@@ -29,7 +29,7 @@ import numpy as np
 
 from . import featuremap, masslines, refread, store
 from . import strokes as strokes_mod
-from .spec import SpecError
+from .spec import SpecError, compile_prims
 
 KINDS = ("raise", "sink", "rim")
 # A stroke fades to nothing AT its width, and a path's section is narrower still than a dab's (each place sums the
@@ -84,12 +84,25 @@ def _ring(mask: np.ndarray, rec: dict, width: float | None):
         field = np.where(full, d_in - d_out, 1e3)   # 0 where a place is as far from the hole as from the outside
         half = float(np.median(d_in[mask] + d_out[mask])) / 2 * k
         loops = measure.find_contours(field, 0.0)
-    else:  # a filled mark: just inside its edge
+    else:
+        ys, xs = np.where(mask)
+        try:
+            line = masslines.middle(_world(rec, xs + 0.5, ys + 0.5), k)
+        except ValueError:
+            line = None
+        if line is not None and line["length"] >= 5.0 * 2 * float(np.median(line["half"])):
+            # a band that does not close (a C, or a ring the figure's edge clipped): an open rim along its middle
+            n = int(np.clip(round(line["length"] / (3.0 * float(np.median(line["half"])))), 4, 14))
+            at = np.linspace(0.0, line["length"], n)
+            path = np.stack([np.interp(at, line["s"], line["c"][:, i]) for i in (0, 1)], 1)
+            return path, (float(width) if width else float(np.median(line["half"])))
+        # a filled mark: just inside its edge
         r_eq = float(np.sqrt(full.sum() / np.pi)) * k
         half = float(width) if width else max(0.15 * r_eq, 1.5 * k)
         loops = measure.find_contours(ndimage.distance_transform_edt(full), max(half / k, 1.0))
     if not loops:
-        raise ValueError("no ring could be read from its mark")
+        raise ValueError("no ring could be read from its mark: mark the ring itself (an ellipse minus a smaller one, "
+                         "or a line round it), clear of the figure's edge")
     loop = max(loops, key=len)                         # (row, col)
     n = int(np.clip(len(loop) // 6, 8, 16))
     pick = loop[np.linspace(0, len(loop) - 1, n, endpoint=False).astype(int)]
@@ -128,9 +141,13 @@ def build(name: str, how: dict) -> dict:
         tw = featuremap.twin(feature)
         if sym and feature.endswith(".R") and tw in how:
             continue  # its .L twin is laid and mirrored
-        on = fm["features"].get(c.get("on") or "")
-        if not on or not on.get("elements"):
-            raise ValueError(f"{feature}: the mass it is on ({c.get('on')!r}) is not built yet")
+        host, walked = c.get("on"), set()
+        while host in fm["features"] and fm["features"][host]["kind"] != "mass" and host not in walked:
+            walked.add(host)  # a form on a form (a nose on a muzzle) lies on that form's mass
+            host = fm["features"][host].get("on")
+        on = fm["features"].get(host or "")
+        if not on or on["kind"] != "mass" or not on.get("elements"):
+            raise ValueError(f"{feature}: the mass it is on ({host or c.get('on')!r}) is not built yet")
         flat = {v: g for v, g in c["marks"].items() if fm["views"][v]["kind"] in refread.ORTHO}
         if not flat:
             raise ValueError(f"{feature}: not marked in a flat view (front, back, side): a form is laid from one")
@@ -164,9 +181,12 @@ def build(name: str, how: dict) -> dict:
                     path = path * np.array([-1.0 if vk in ("front", "back") else 1.0, 1.0])
                 # a mark can overrun the mass it is on (the picture's is fuller there than the model's): a point whose
                 # ray misses the mass is left out, and said
-                key = part or "body"
+                key = (part or "body", host)
                 if key not in surfs:
-                    surfs[key] = strokes_mod.Surface({**spec, "strokes": {}}, key)
+                    bare = {**spec, "strokes": {}}
+                    names = set(on["elements"]) | {featuremap.twin(n) or n for n in on["elements"]}
+                    own = [q for q in compile_prims(bare) if q.name in names and q.part == key[0] and q.op == "add"]
+                    surfs[key] = strokes_mod.Surface(bare, key[0], prims=own or None)
                 hit = []
                 for q in path:
                     try:
@@ -190,10 +210,22 @@ def build(name: str, how: dict) -> dict:
                     st["width"] = st["width"][0]
                 if part:
                     st["part"] = part
-                strokes[f"{base}{vtag}{tag}{sfx}"] = st
+                sname = f"{base}{vtag}{tag}{sfx}"
+                try:  # a path that crosses a gap in the mass (a socket, an edge) can't be seated: left out, said
+                    compile_prims({**spec, "strokes": {sname: st}})
+                except SpecError as e:
+                    notes.append(f"{feature}: could not be laid from {view!r} and was LEFT OUT ({e}): its mark crosses a "
+                                 f"gap or runs off the mass there. Redraw it clear of the gap, or lay it from another view")
+                    return
+                strokes[sname] = st
 
             if kind == "rim":
-                path, half = _ring(mask, rec, h.get("width"))
+                try:
+                    path, half = _ring(mask, rec, h.get("width"))
+                except ValueError as e:
+                    raise ValueError(f"{feature}: {e}") from None
+                if not np.allclose(path[0], path[-1]):
+                    notes.append(f"{feature}: its ring does not close in {view!r}: laid as an open rim along its middle")
                 put("", path, half, h.get("depth", 0.8 * half), h.get("profile", "round"))
             elif lines:
                 half = float(h.get("width", max(1.5 * k, 0.003)))
@@ -215,6 +247,9 @@ def build(name: str, how: dict) -> dict:
                     put("" if len(keep) == 1 else f"_{j + 1}", path, widths, depth, prof)
                 if len(keep) > 1:
                     notes.append(f"{feature}: its mark is {len(keep)} separate pieces: one stroke each")
+        if not strokes:
+            notes.append(f"{feature}: NOTHING of it was laid; what was laid for it before stays")
+            continue
         if "depth" not in h:
             d = next(iter(strokes.values()))["depth"]
             notes.append(f"{feature}: no depth given: {d * 1000:.1f} mm {'in' if kind == 'sink' else 'out'}, from its "

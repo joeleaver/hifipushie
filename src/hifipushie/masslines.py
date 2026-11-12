@@ -295,6 +295,8 @@ def tube(feature: str, f: dict, how: dict, notes: list) -> dict:
         said = "marked by a line in its other view: it runs where the line does, round in section"
     if said:
         notes.append(f"{feature}: {said}")
+    ease = lambda v: np.convolve(np.pad(np.asarray(v, float), 2, mode="edge"), np.ones(5) / 5, mode="valid")  # noqa: E731
+    depth, third = ease(depth), ease(third)  # a ragged row here or there made a horn a chain of beads
     depth = np.maximum(depth, 0.002)
     width = np.maximum(P["half"], 0.002)
     r = np.maximum(width, depth)

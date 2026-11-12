@@ -191,13 +191,19 @@ listed as ASSUMED. Look at the form from the side, in the picture and in the cla
 form wants more than the guess; a shallow one less. `"profile"`: `"soft"` melts in, `"round"` is a dome with an
 edge, `"flat"` a plateau, `"sharp"` a cusp (a crease). `"view"`: the flat view it is laid from: the one that
 looks most squarely at it (by default the one where its mark is largest). A form on a mass's side is laid from
-the side view; laid from the front it would smear along the mass's edge.
+the side view; laid from the front it would smear along the mass's edge. A band that goes ROUND a thing (a
+cuff, a ring, a collar) shows a face to every view: mark it in each and give `"view": "all"` (or a list), and it
+is laid from each. A form at a mass's very edge, seen edge-on from every view (a fringe hanging under a jaw),
+can't be laid well: clay pushed out there points along the edge. Locks that hang free are masses.
 
     build_forms("jug", {"rim": {"as": "raise", "depth": 0.004}, "spout_groove": {"as": "sink", "width": 0.003},
                         "badge": {"as": "rim", "depth": 0.002, "view": "front"}})
 
-A mark in separate pieces (a row of rings, a pair of bumps) is laid as one stroke per piece. A form is laid on
-the mass it is `on`, and lands on that mass's own part: an eyeball or a held thing of another `part` in front of
+A mark in separate pieces (a row of rings, a pair of bumps) is laid as one stroke per piece; pieces that
+overlap are one piece. A form `on` another form lies on that form's mass. A stroke whose path crosses a gap in
+the mass (a socket, a notch) or runs off it can't be laid: it is LEFT OUT and said, and the rest of the call
+goes on: redraw that mark clear of the gap. A `.L` form is laid and mirrored: name the `.L` only. A form is laid
+on the mass it is `on`, and lands on that mass's own part: an eyeball or a held thing of another `part` in front of
 it is not in the way. Where a mark overruns the mass (the picture is fuller there than the model), those places
 are left out and said: fix the mass if it matters. A thing that sticks out past the outline and has a thickness
 of its own (a tuft standing on a crown, a tooth) is a MASS, not a form: mark and build it as one.

@@ -365,6 +365,14 @@ def test_forms_are_laid_from_their_marks(fig):
             forms.build("fig", {"belly_pad": {"as": "bump"}})
         again = forms.build("fig", {"belly_pad": {"as": "sink", "depth": 0.01}})["spec"]["strokes"]
         assert again["belly_pad"]["op"] == "crease" and set(again) == {"belly_pad", "rib.L", "badge"}  # replaced, not added
+        # a ring that does not close (drawn as a C, or clipped by the figure's edge) is an open rim along its middle;
+        # a form on a form lies on that form's mass
+        featuremap.mark("fig", {"arc": {"kind": "form", "on": "badge", "marks": {"front": {
+            "line": [px(-0.05, 0.12), px(-0.03, 0.09), px(0.03, 0.09), px(0.05, 0.12)], "width": 5}}}})
+        res = forms.build("fig", {"arc": {"as": "rim"}})
+        arc = [q["at"] for q in res["spec"]["strokes"]["arc"]["path"]]
+        assert len(arc) >= 4 and not np.allclose(arc[0], arc[-1]) and any("does not close" in n for n in res["notes"]), res["notes"]
     finally:
-        featuremap.mark("fig", {}, remove=["belly_pad", "rib.L", "rib.R", "badge"])
+        featuremap.mark("fig", {}, remove=[n for n in ("belly_pad", "rib.L", "rib.R", "badge", "arc")
+                                           if n in featuremap.load("fig")["features"]])
         store.save("fig", true, "the true figure again")

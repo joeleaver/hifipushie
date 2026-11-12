@@ -6,18 +6,15 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
 
 ## What the tools hold (module docstrings are the spec; the sculptor's page is guide(topic="features"))
 - `read_reference` (refread.py): a sheet cut into views; front / back / side / side_r get a far camera at the
-  sheet's scale in matched.py's format (<model>/cameras/<view>.json: look_matched, feature_tiles, fit_matched work
-  from a turnaround view; checked pixel-aligned). Per view: numbered PATCHES (cut along steps in brightness and
-  colour, joined by colour plus the line between: a plain subject has patches too) and FORM LINES.
+  sheet's scale in matched.py's format (<model>/cameras/<view>.json). Per view: numbered PATCHES (cut along steps
+  in brightness and colour: a plain subject has them too), FORM LINES, and the outline's labelled NOTCHES.
 - `mark_features` (featuremap.py): kind mass / form / paint + on, join, separate, authority, inferred, says,
-  elements; marks per view (patches, box, ellipse, polygon, line, lists, minus, mirror; null clears) kept as masks.
-  A PIECE is cut off the figure by cuts between labelled NOTCHES (a cut that parts nothing is refused). Owes:
-  UNMARKED (> 2 %, hatched, boxes listed), DISAGREE, SIDE, DEPTH, ON.
+  elements; marks per view (piece + cuts between notches, patches, box, ellipse, polygon, line, minus, mirror)
+  kept as masks. Owes: UNMARKED (> 2 %, hatched, boxes listed), DISAGREE, SIDE, DEPTH, ON.
 - `feature_report` (featuresee.py, featurerays.py, featurealign.py): the whole outline per picture, then per
   feature and view NOT MADE / HIDDEN / OFF / right / IN ITS MASS / CAN'T MEASURE. An added shape's footprint is the
   skin it OWNS (nearest own surface at the hit; a shell part whole); a cut's or stroke's is what changes when it
-  leaves the EXPANDED spec. A model not built from the map is first laid under the flat views (scale, ground, a
-  side view's centre; reported). Kept between calls: 108 s cold, 4 s when only marks or links change.
+  leaves the EXPANDED spec. A model not built from the map is first laid under the flat views. Kept between calls.
 - `build_masses` (masses.py, masslines.py): a marked mass becomes a shape from its marks: ball (+ socket), drum,
   flap, trunk, tube. A tube follows its mark's own MIDDLE LINE with its thickness read across it; an end cut from
   another mass runs on under it. The built elements are linked in the map; the model lives in the map's frame.
@@ -34,17 +31,19 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
   blind, the troll told to be the true model (2de593ca): 7 -> 31 right of 37 in six report rounds.
 - BUILD, blind: the troll (d77063f9) 8 rounds, outlines 93-95 %, volume overlap with the true troll 0.80, surface
   median 9 mm off (troll3/score.py). Scraps three times: (08024656) typed polygons, a lumpy toy; (4e634f13) pieces
-  cut by notches, 14 of 19 right, a slab head, fat arms, lump horns (baynard picture 10; the tube's fault, C434b).
+  cut by notches, 14 of 19 right, a slab head, fat arms, lump horns (baynard picture 10; the tube's fault, C434b);
+  (76bc7660) 7 rounds, 28 calls, 16 of 19 right, outlines 89 / 92 / 87 %: the right proportions, a box head.
 
 ## Open faults, worst first
-1. Forms are NOT proven in blind hands, and no gate picture exists yet. Tried by me on trial 4's masses
-   (home/scraps_four): rims, muzzle, nose, brows and ear hollows make the head read as a goat in profile and
-   three-quarter. A form's depth is a guess from one view. No fringe / lock kinds; a band needs "view": "all".
-2. Blind mass build 3 (76bc7660, scraps7/out): 7 rounds, 28 calls, 16 of 19 right, outlines 89 / 92 / 87 %: the
-   right proportions, a box head. Its horn splay and page notes are fixed since; a trunk still can't be narrower
-   in front than behind (a muzzle wants its own mass).
+1. NO GATE PICTURE YET. Blind forms trial (8011f62b, scraps8/out, baynard picture 11): 21 forms laid in 5
+   working rounds on blind build 3's masses; "a cartoon goat holding a can, not Scraps": the HEAD MASS is the
+   fault (one trunk = a box; small eyes in oversized sockets; a muzzle marked as a form). The map's masses want
+   a head in several masses (skull, muzzle), and a trunk can't be narrower in front than behind.
+2. Forms can't hang free (a beard, a nape fringe, locks): those are masses, and a mass marked in several pieces
+   is not yet built piece by piece. A band round a limb is laid per view ("view": "all"); a ring round a bone
+   (strokes' bone address) is not built. A form's depth is a guess from one view.
 3. A perspective picture's camera comes from fit_concept_camera (the MODEL's outline): circular on a rough
-   model. Solve it from the map's own features. Not built. feature_tiles was not in the trial's tool list.
+   model. Solve it from the map's own features. Not built. feature_tiles was not in the trials' tool list.
 4. Shell parts are owned whole (a buckle = the whole belt); a garment over two legs has no kind. Notches are
    sparse where a join has no pinch (those cuts are ruler pixels); featuresee.py is ~690 lines.
 
@@ -57,4 +56,5 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (this worktree's src; freeze a copy per
   trial: `git archive HEAD src | tar -x -C frozenN`). scraps5/rebuild.py, scraps5/lines.py: trial 4 rebuilt, lines drawn.
 - `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py tests/test_masslines.py`
-NEXT: a blind agent lays Scraps's forms on blind build 3's masses (scraps_six); that picture goes to Joe.
+NEXT: the page on splitting a head into masses + a blind re-map of Scraps's masses; masses in several pieces
+(hanging locks); a ring round a bone. Then masses + forms again, blind, and the same on Puddles.
