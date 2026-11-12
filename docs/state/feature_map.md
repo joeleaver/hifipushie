@@ -1,5 +1,4 @@
 # The feature map (a sculpt read from its reference pictures): STATE 2026-11-12
-
 Branch `feature-map` (worktree .claude/worktrees/feature-map), from main c3288704. Not pushed, not landed; bin/suite
 NOT run (tests/test_featuremap.py, toolsets, find_jobs, skill_file pass). Ledger C434 (recheck the number).
 For Baynard Racing's sculpting-from-references project (`baynard-racing/workspace/scraps/SCULPT_PROJECT.md`): two
@@ -23,8 +22,8 @@ generated mesh as input); every trial by a blind Opus 5.5 medium agent with the 
   of a model with a map prints how much of it no element makes.
 
 ## Proof, and where it stops
-- tests/test_featuremap.py (7; ~1 min): a figure draws its own turnaround; the true model all right; not made,
-  moved 3 cm, half size, buried, built 4 cm back and 2 cm low, a line with no form: each found.
+- tests/test_featuremap.py (7; ~1 min): a figure draws its own turnaround; the true model is all right; not made,
+  moved, half size, buried, built off its origin, a line with no form: each found.
 - Blind trial 1, Scraps (/mnt/data/hifipushie/featuremap/scraps/): 46 features (19 mass, 22 form, 5 paint), 8 map
   rounds, 52 calls, 41 min, nothing owed. The old sculpt (a copy): 4 right, 27 off, 1 hidden, 9 NOT MADE (muzzle,
   ear hollows, horn rings, beard fringe, can ribs and coil, teats).
@@ -48,13 +47,11 @@ generated mesh as input); every trial by a blind Opus 5.5 medium agent with the 
 5. No FORM measure (the model's form lines against the picture's): a form made by its mass's shape is ["="],
    unmeasured. featuresee.py is 540 lines: align_flat wants its own module.
 
-## Decisions in force
+## Decisions in force, and dead ends
 - Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches;
   what a subject's features are is the sculptor's judgement per subject (the page names no subject).
-
-## Dead ends
-- A mass measured with everything on it (a head's mark would hold its ears). A change counted from a share of
-  the feature's own largest, to drop halos (it moved small features' centres).
+- Dead: a mass measured with everything on it (a head's mark would hold its ears); a change counted from a share
+  of the feature's own largest, to drop halos (it moved small features' centres).
 
 ## Commands
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (`fm` points at frozen1 = c34ad512:
