@@ -3,7 +3,7 @@
 Goal: one character with its clothes out the far end as one game-ready GLB, by tools alone (the area re-review's first
 move: /mnt/data/hifipushie/review_20261112/export.md). Code: garment_export.py + garment_export_tool.py (step 10 and its
 LOD files), garment_asset.py (the hand-over), asset_export.py (the clothes branch, the rig block, the LOD loop),
-garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_garment_export.py. Ledger C434, C439, C440.
+garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_garment_export.py. Ledger C434, C439, C441.
 
 ## Current best
 - export_asset ships a chain garment (a garment with a garment record) AS export_garment WROTE IT at step 10: its mesh,
@@ -17,7 +17,7 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
   says NOT IN THIS EXPORT with the call that puts it in. A step 10 whose own gate FAILED ships with a WARNING naming
   the rows; one exported before the LOD files is decimated with a WARNING naming export_garment.
 - Seams are shared per stretch (garment_game.boundaries): armholes, neckline and cuffs were open loops before.
-- Skin under a LOD (C440): skin covered at LOD0 (cloth within 60 mm outside it) that comes THROUGH a chain garment's own
+- Skin under a LOD (C441): skin covered at LOD0 (cloth within 60 mm outside it) that comes THROUGH a chain garment's own
   LOD cloth is cut at that LOD (garment_asset.skin_through): 22 / 28 / 101 of the body's triangles under the shirt.
 - Proof: cf_shirt + shirt, on a copy of the T14 proof workspace (approvals stubbed test-only):
   export_garment 190 s: LOD0 10,226 + 1,440 triangles (27 mm), LOD1 2,552 + 360 (76 mm), LOD2 1,156 + 162 (87 mm),
@@ -28,7 +28,7 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
   ..._proof3.png is the after without the cut).
 
 ## Open faults (worst first)
-1. Skin through the sleeves at the LODs, what is left after the cut (C440): the forearm patches LOD0 has too (fault
+1. Skin through the sleeves at the LODs, what is left after the cut (C441): the forearm patches LOD0 has too (fault
    2), a wedge behind the left armpit at LOD3, one patch behind a forearm at LOD2, a patch on the left upper arm at
    LOD1. The shirt itself is clean at every LOD (no kink, no torn front or collar). Tried and taken out: lifting each
    face's corners along the body's normal until its points clear the skin (to 50 mm) bloats the shirt.

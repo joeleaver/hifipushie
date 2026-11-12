@@ -23,7 +23,7 @@ parts(name, recs, out_dir, log) -> (cparts, weights, looks, left_out, lods):
     logged as a WARNING naming export_garment: asset_export then decimates it like any part.
 take_lods(own, parts, lp, lr, rep, bones) -> log line: one LOD's chain parts into asset_export's LOD (its LOD loop).
 skin_through(p, covers, P0, under0) -> keep per triangle: skin that comes THROUGH a garment's own LOD cloth and was
-    under a garment at LOD0 is cut at that LOD (C440): a 9-12 cm grid's flat faces sink further under the skin than
+    under a garment at LOD0 is cut at that LOD (C441): a 9-12 cm grid's flat faces sink further under the skin than
     the push-under looks (2 cm) or moves (1 cm), and moving the cloth out instead bloats the garment.
 bone_weights(weights, bones) -> {part name: (J, W)} in the export rig's bone order.
 read(glb) -> the garment GLB as arrays in Blender axes (garment_glb.write's inverse).

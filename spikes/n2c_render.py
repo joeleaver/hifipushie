@@ -23,8 +23,10 @@ PAL = ["#d62728", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#e377c
 base = sorted({n[:-2] if n[-2:] in (".L", ".R") else n for n in c.names})
 col = {n: PAL[base.index(n[:-2] if n[-2:] in (".L", ".R") else n) % len(PAL)] for n in c.names}
 segs = {}
+fin = ~np.isnan(X).any(1)  # (a ply bound afterwards has no start: not drawn)
 for (a, b), p in zip(c.chain_v, c.chain_piece):
-    segs.setdefault(c.names[p], []).append((a, b))
+    if fin[a] and fin[b]:
+        segs.setdefault(c.names[p], []).append((a, b))
 VIEWS = [("front", [0, -1, 0.05]), ("left", [1, 0, 0.05]), ("back", [0, 1, 0.05]), ("right", [-1, 0, 0.05])]
 R = Image.open(ref).convert("RGB")
 ims = []
@@ -35,7 +37,7 @@ if quick:
         right = np.cross(dv, [0, 0, 1.0])
         right /= np.linalg.norm(right)
         up = np.cross(right, dv)
-        allp = np.r_[X, body.V]
+        allp = np.r_[X[fin], body.V]
         lo = np.array([(allp @ right).min(), (allp @ up).min()])
         sc = (S - 40) / max(np.ptp(allp @ right), np.ptp(allp @ up))
         pr = lambda P: np.c_[(P @ right - lo[0]) * sc + 20, S - ((P @ up - lo[1]) * sc + 20)]
@@ -72,7 +74,7 @@ else:
             F += [[k, k2, 6 + k2], [k, 6 + k2, 6 + k]]
         F = (np.array(F)[None] + 12 * np.arange(len(ss))[:, None, None]).reshape(-1, 3)
         parts.append({"name": p, "V": V, "F": F, "color": col[p]})
-    lo, hi = X.min(0), X.max(0)
+    lo, hi = X[fin].min(0), X[fin].max(0)
     box = [[lo[0] - 0.05, lo[1] - 0.05, lo[2] - 0.03], [hi[0] + 0.05, hi[1] + 0.05, float(body.V[:, 2].max()) + 0.02]]
     with resources.heavy("n2c chains render", gb=3.0, gpu=True, log=print):
         for nm, dv in VIEWS:

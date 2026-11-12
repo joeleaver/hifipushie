@@ -4,13 +4,15 @@ mapped by a DEVELOPABLE map with a handful of numbers, so lengths are given and 
 Joe (2026-11-12) chose "Rolled panels, bends" after three runs failed at one point: turning flats into an assembled 3D
 shape with positions as the unknowns (N2c: links 300-2,900 % off their cut before any bend). Here no point is ever a
 free variable:
-- A PANEL is a piece's flat (or a part of it between fold rows) mapped by: a ROLL round a cylinder (the axis's direction
-  in the flat, phi, and its curvature, kappa: 0 = flat) then a rigid motion (a rotation vector and a translation): 8
-  numbers. The map is ISOMETRIC by construction: every link of every chain is at its cut whatever the numbers
+- A PANEL is a piece's flat (or a part of it between fold rows) mapped by: a ROLL round a cylinder or a CONE (the
+  generatrix's direction in the flat, phi, the curvature across it, kappa: 0 = flat, and the taper g = sin of the cone's
+  half-angle: 0 = a cylinder; N2e: a sleeve cap's or darted panel's ease needs a cone) then a rigid motion (a rotation
+  vector and a translation): 9 numbers. Cylinder or cone is the fit's choice per panel, never by name. The map is ISOMETRIC by construction: every link of every chain is at its cut whatever the numbers
   (`roll`: (s, t) -> (s, sin(k t) / k, (1 - cos(k t)) / k), the flat's +z onto the surface's normal).
 - A FOLD ROW splits its piece into panels (each point's side of each row; row points belong to both) joined by a
   HINGE along the row with one angle: the turned panel's direction across the row against the plan's turn (the turn
-  split over the draft's rows, towards the side the draft's sign says: sign x the flat's winding, +1 = the flat's +z).
+  split over the draft's rows, towards the side the draft's sign says: sign x the flat's winding x the row's handedness
+  (its drafted direction x the turned side; N2e: without it a mirrored piece's fold turned the other way), +1 = +z).
   The turned side of a row is its smaller side.
 - A piece sewn to nothing (a ply that follows its host) is not a panel: it is bound on its host afterwards.
 Panels(cnet, plan, skip) -> .panels [{piece, ids, c (flat centre)}], .owner (point -> its first panel), .hinges.
@@ -25,28 +27,55 @@ from scipy.spatial.transform import Rotation
 
 from .chain_lay_net import _side
 
-NP = 8  # numbers per panel: rotation vector (3), translation (3), roll axis angle in the flat, roll curvature
+NP = 9  # numbers per panel: rotation vector (3), translation (3), roll axis angle in the flat, curvature, taper
+G0 = 1e-3  # a start's taper: a cylinder to the eye, but the fit's differences see the cone (at 0 they don't)
+G_MAX = 0.95  # |taper| (the cone's sin half-angle over its curvature ratio) is clipped here
 
 
-def roll(uv, phi, kappa):
-    """The flat uv (n, 2, about the panel's centre) rolled round a cylinder: (n, 3) local, isometric (module doc)."""
+def _cyl(s, t, kappa):
+    a = kappa * t
+    if abs(kappa) < 1e-6:
+        return s, t - kappa * kappa * t ** 3 / 6, kappa * t * t / 2
+    return s, np.sin(a) / kappa, (1 - np.cos(a)) / kappa
+
+
+def _cone(s, t, kappa, g):
+    """(s, t) rolled round a CONE whose generatrix through the centre runs along s and whose curvature across it at the
+    centre is kappa; g = sin(half-angle) sets the apex at s = -1 / (g kappa) (g -> 0: the cylinder). Isometric: a flat
+    point at polar (rho, alpha) about the apex goes to slant rho, angle alpha / g round the axis."""
+    sk, sg = (1.0 if kappa >= 0 else -1.0), (1.0 if g >= 0 else -1.0)
+    k, gg = abs(kappa), min(abs(g), G_MAX)
+    s = s * sg
+    rc = 1.0 / (gg * k)
+    rho = np.hypot(s + rc, t)
+    th = np.arctan2(t, s + rc) / gg
+    cb = np.sqrt(1 - gg * gg)
+    x = rho * (cb * cb + gg * gg * np.cos(th)) - rc
+    y = rho * gg * np.sin(th)
+    z = rho * gg * cb * (1 - np.cos(th))
+    return x * sg, y, z * sk
+
+
+def roll(uv, phi, kappa, g=0.0):
+    """The flat uv (n, 2, about the panel's centre) rolled round a cylinder (g = 0) or a cone (g = sin of its half
+    angle): (n, 3) local, isometric (module doc)."""
     c, s_ = np.cos(phi), np.sin(phi)
     s = uv[:, 0] * c + uv[:, 1] * s_
     t = -uv[:, 0] * s_ + uv[:, 1] * c
-    a = kappa * t
-    if abs(kappa) < 1e-6:
-        y, z = t - kappa * t ** 3 * kappa / 6, kappa * t * t / 2
+    if abs(g) < 1e-7 or abs(kappa) < 1e-6:
+        x, y, z = _cyl(s, t, kappa)
     else:
-        y, z = np.sin(a) / kappa, (1 - np.cos(a)) / kappa
+        x, y, z = _cone(s, t, kappa, g)
     # (back into the flat's own axes so phi = 0, kappa = 0 is the identity on the plane)
-    return np.c_[s * c - y * s_, s * s_ + y * c, z]
+    return np.c_[x * c - y * s_, x * s_ + y * c, z]
 
 
-def roll_normal(uv, phi, kappa):
-    t = -uv[:, 0] * np.sin(phi) + uv[:, 1] * np.cos(phi)
-    a = kappa * t
-    ny = -np.sin(a)
-    return np.c_[-ny * np.sin(phi), ny * np.cos(phi), np.cos(a)]
+def roll_normal(uv, phi, kappa, g=0.0, eps=1e-4):
+    """The unit normal of the rolled flat at uv (the flat's +z where kappa = 0), by the map's own differences."""
+    du = roll(uv + [eps, 0], phi, kappa, g) - roll(uv - [eps, 0], phi, kappa, g)
+    dv = roll(uv + [0, eps], phi, kappa, g) - roll(uv - [0, eps], phi, kappa, g)
+    n = np.cross(du, dv)
+    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-18)
 
 
 class Panels:
@@ -123,6 +152,11 @@ class Panels:
                     tp = self.panels[b]["ids"]
                     if (cnet.uv[tp].mean(0) - cnet.uv[on].mean(0)) @ m2 < 0:
                         m2 = -m2
+                    # (N2e, ONE rule: the draft's sign is the side of its row's direction, so a mirrored piece's
+                    # mirrored row with the opposite sign turns the same way about the body: x the row's handedness
+                    # (its direction x the turned side) x the flat's winding: +1 = the panel's own +z)
+                    rd = cnet.uv[r[-1]] - cnet.uv[r[0]]
+                    way = way * (1.0 if rd[0] * m2[1] - rd[1] * m2[0] >= 0 else -1.0)
                     self.hinges.append({"base": a, "turned": b, "row": on, "turn_deg": turn, "way": way,
                                         "mid": cnet.uv[on].mean(0), "across": m2, "name": f"{bid}#{k}"})
         self.n = len(self.panels)
@@ -136,13 +170,26 @@ class Panels:
         return k
 
     # ---- the map
+    def _taper(self, th, k):
+        """The cone's taper, clipped so its apex stays off the panel (a flat holding its apex makes no cone): no panel
+        point lies past the apex along the generatrix."""
+        P = self.panels[k]
+        g, kap = float(th[8]), abs(float(th[7]))
+        if kap < 1e-9 or g == 0.0:
+            return g
+        d = self.cnet.uv[P["ids"]] - P["c"]
+        s = d[:, 0] * np.cos(th[6]) + d[:, 1] * np.sin(th[6])
+        far = max(float((-s * np.sign(g)).max()), 1e-3)
+        lim = min(G_MAX, 1.0 / (1.1 * kap * far))
+        return float(np.clip(g, -lim, lim))
+
     def place(self, th, k, uv):
         """Panel k's numbers th (NP,) applied to flat points uv (n, 2)."""
-        L = roll(uv - self.panels[k]["c"], th[6], th[7])
+        L = roll(uv - self.panels[k]["c"], th[6], th[7], self._taper(th, k))
         return Rotation.from_rotvec(th[:3]).apply(L) + th[3:6]
 
     def normal(self, th, k, uv):
-        return Rotation.from_rotvec(th[:3]).apply(roll_normal(uv - self.panels[k]["c"], th[6], th[7]))
+        return Rotation.from_rotvec(th[:3]).apply(roll_normal(uv - self.panels[k]["c"], th[6], th[7], self._taper(th, k)))
 
     def positions(self, TH, which=None):
         """(n, 3): every point at its owner panel's map (which: a per-point panel instead of the owner)."""
@@ -178,10 +225,10 @@ class Panels:
             U, _, Vt = np.linalg.svd((A - ma).T @ (B - mb))
             D = np.diag([1.0, 1.0, np.sign(np.linalg.det(Vt.T @ U.T)) or 1.0])
             R = Vt.T @ D @ U.T
-            th0 = np.r_[Rotation.from_matrix(R).as_rotvec(), mb - R @ ma, 0.0, 0.0]
+            th0 = np.r_[Rotation.from_matrix(R).as_rotvec(), mb - R @ ma, 0.0, 0.0, G0]
             best = None
             for phi in (0.0, np.pi / 2):  # (the roll axis along either flat axis; the fit takes the better)
-                for kap in (-4.0, 4.0):
+                for kap in (-12.0, -4.0, 4.0, 12.0):
                     x0 = th0.copy()
                     x0[6], x0[7] = phi, kap
                     r = least_squares(lambda t: (self.place(t, k, self.cnet.uv[ids]) - B).ravel(), x0, max_nfev=200)

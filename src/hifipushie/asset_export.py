@@ -777,7 +777,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 log.append("LODs: parts worn under garments also put back under them: " + ", ".join(
                     f"{pn} ({int(m_[1].sum())} vertices free to move, {m_[2]:.0%} of those in reach under)" for pn, m_ in under_masks.items()))
         garment_cull = garment_cull_masks(parts, layer_stack, garm_)  # (Garrett s10) under garments' LOD0 cover masks
-        through0 = {}  # (C440) {part worn under: (its LOD0 points, covered by a chain garment there)}: garment_asset.skin_through
+        through0 = {}  # (C441) {part worn under: (its LOD0 points, covered by a chain garment there)}: garment_asset.skin_through
         if chain_lods:
             from . import garment_asset
             cov0_ = [parts[g_] for g_ in chain_w if g_ in parts and parts[g_].get("shell")]
@@ -836,7 +836,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                         rep_l[pn]["triangles"] = len(lp[pn]["corner_vert"]) // 3
                         log.append(f"LOD{k}: {pn}: {int((~kc_).sum())} of {len(kc_)} triangles deep under the garments at LOD0 "
                                    f"dropped (lods_under.cull_covered, {lodmod.LOD_UNDER_CULL_RIM * 1000:.0f} mm rim)")
-            for pn, m_ in (through0.items() if own_ else ()):  # (C440) skin still THROUGH a chain garment's own LOD
+            for pn, m_ in (through0.items() if own_ else ()):  # (C441) skin still THROUGH a chain garment's own LOD
                 # cloth (its flat faces sink further than the push-under looks or moves), covered at LOD0: cut
                 cov_ = [lp[g_] for g_ in own_ if g_ in lp and lp[g_].get("shell")]
                 if pn not in lp or not cov_:
