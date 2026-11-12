@@ -45,7 +45,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from . import featurealign, featuremap, matched, sdf, store
+from . import featurealign, featuremap, matched, refread, sdf, store
 from .featurerays import depth_image, first_hit, rays, relief  # noqa: F401  (the pictures and tests use them from here)
 from .spec import compile_prims
 
@@ -189,9 +189,35 @@ def _mass_of(fm: dict, feature: str) -> str | None:
     return None
 
 
+def fitted(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
+    """The feature's mark in a view. Where the feature names a flat view to believe (`authority`) and this is
+    another flat view, the mark's heights are fitted to that view's, as build_masses fits them: two views that
+    disagree about a height can't both be matched, and the sculptor has said which one counts."""
+    mk = featuremap.mask(name, feature, view)
+    c = fm["features"][feature]
+    auth, rec = c.get("authority"), fm["views"][view]
+    if not auth or auth == view or auth not in c["marks"] or not mk.any():
+        return mk.copy()
+    ra = fm["views"].get(auth) or {}
+    if rec.get("kind") not in refread.ORTHO or ra.get("kind") not in refread.ORTHO:
+        return mk.copy()
+    ya = np.where(featuremap.mask(name, feature, auth).any(1))[0]
+    yb = np.where(mk.any(1))[0]
+    if not len(ya) or yb[-1] == yb[0]:
+        return mk.copy()
+    a_hi, a_lo = ((ra["ground_px"] - y) * ra["m_per_px"] for y in (ya[0], ya[-1] + 1))  # metres, top and bottom
+    t0, t1 = (rec["ground_px"] - z / rec["m_per_px"] for z in (a_hi, a_lo))             # this view's rows for them
+    out = np.zeros_like(mk)
+    rows = np.arange(int(np.floor(t0)), int(np.ceil(t1)))
+    rows = rows[(rows >= 0) & (rows < mk.shape[0])]
+    src = yb[0] + (rows + 0.5 - t0) * (yb[-1] + 1 - yb[0]) / max(t1 - t0, 1e-9)
+    out[rows] = mk[np.clip(src.astype(int), yb[0], yb[-1])]
+    return out
+
+
 def seen_mark(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
     """The feature's mark in a view, less the marks of the masses on it: what the picture shows of the thing itself."""
-    mk = featuremap.mask(name, feature, view).copy()
+    mk = fitted(name, fm, feature, view)
     for ch in featuremap.children(fm, feature):
         c = fm["features"][ch]
         if c.get("kind") == "mass" and view in c["marks"]:
@@ -478,7 +504,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 12  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 13  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
@@ -555,7 +581,12 @@ def _report(name: str, elements, views, resolution: int, tol, peek: bool = False
         fig = np.asarray(Image.open(fm["views"][v]["image"]).convert("RGBA"))[..., 3] > 127
         mod = np.isfinite(fp["depth"][v])
         outline[v] = float((fig & mod).sum() / max((fig | mod).sum(), 1))
-    rows = []
+    rows, _seen = [], {}
+
+    def seen(f_, v_):
+        if (f_, v_) not in _seen:
+            _seen[(f_, v_)] = seen_mark(name, fm, f_, v_)
+        return _seen[(f_, v_)]
     for f, c in fm["features"].items():
         for v in cams:
             if v not in c["marks"] or c["kind"] == "paint":
@@ -565,12 +596,28 @@ def _report(name: str, elements, views, resolution: int, tol, peek: bool = False
                 continue
             cam = cams[v]
             k = cam.get("m_per_px") or float(np.nanmedian(np.where(np.isfinite(fp["depth"][v]), fp["depth"][v], np.nan))) / cam["f_px"]
-            ref = seen_mark(name, fm, f, v)
-            if c["kind"] == "mass":  # where the model has another marked mass in front, inside that mass's own mark,
-                # this one is rightly hidden (a thigh under shorts): a mark may run under a neighbour
+            ref = seen(f, v).copy()
+            whole = int(ref.sum())
+            if c["kind"] == "mass":  # where the model has another marked mass in front, inside what the picture
+                # shows of THAT mass, this one is rightly hidden (a thigh under shorts): a mark may run under a
+                # neighbour. (What shows of a mass leaves out the masses on it, so a mass never hides its own child.)
+                others = np.zeros_like(ref)
+                under, up = set(), c.get("on")
+                while up in fm["features"] and up not in under:  # what it sits on, all the way down
+                    under.add(up)
+                    up = fm["features"][up].get("on")
                 for g, cg in fm["features"].items():
                     if g != f and cg["kind"] == "mass" and v in cg["marks"] and (g, v) in fp["masks"] and made.get(g):
-                        ref &= ~(fp["masks"][(g, v)] & featuremap.mask(name, g, v))
+                        if g not in under:  # the mass it sits on showing through is "too small", never "hidden"
+                            others |= fp["masks"][(g, v)]
+                        ref &= ~(fp["masks"][(g, v)] & seen(g, v))
+                own = fp["masks"].get((f, v))
+                if made[f] != [IN_MASS] and own is not None and own.sum() < 0.3 * whole and \
+                        (seen(f, v) & others).sum() >= 0.6 * whole:
+                    rows.append({"feature": f, "view": v, "status": "HIDDEN",
+                                 "why": "most of its mark here lies behind other masses in the model: judged in its "
+                                        "other views"})
+                    continue
             if not ref.any():  # nothing of it shows past the masses on it: nothing to measure in this view
                 continue
             if made[f] == [IN_MASS]:

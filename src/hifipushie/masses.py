@@ -15,9 +15,10 @@ A mass is built `as`:
   "trunk"  one upright mass through cross-sections: at each height its width from the front (or back) mark and its
            depth and lean from the side mark (a torso, an upright head, a neck). `round` as above, per section.
            `sections`: how many (default 7).
-  "tube"   a tapering limb or horn along the mark's own long axis, which may run up, sideways or forward and may
-           bend: a chain of bones through `joints` + 1 stations (default 2 bones), each station's middle and half
-           sizes read across the axis in both views. The bones are the limb's bones later, for the rig.
+  "tube"   a limb, horn or tail along its mark's own MIDDLE LINE, whichever way that runs and however it bends
+           (masslines.py): a chain of bones through `joints` stations (default 4), each station's half sizes read
+           ACROSS the line in both views. An end touching another marked mass runs on under it; a free end is
+           capped where the mark stops. The bones are the limb's bones later, for the rig.
   "flap"   a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
            long axis of its broadest mark, its width read across that axis, its thickness from its other view
            (or `thick`, metres). A sheet running sideways leans the way its other view shows it. `cup`: metres its
@@ -34,36 +35,56 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import featuremap, refread, store
+from . import featuremap, masslines, refread, store
 
 KINDS = ("ball", "drum", "flap", "trunk", "tube")
 
 
 def _flat(fm: dict, name: str, feature: str) -> dict:
     """The feature's marks as world extents: {"xz": (x, z) point cloud from front / back marks, "yz": from side
-    marks}, metres, mirrored to the creature's own axes."""
-    out, span = {}, {}
+    marks}, metres, mirrored to the creature's own axes; and "touch_xz" / "touch_yz": the points of those marks
+    that lie against ANOTHER mass's mark (where it runs on under a neighbour)."""
+    from scipy import ndimage
+    out, span, touch, px, lines = {}, {}, {}, 0.0, {}
     c = fm["features"][feature]
+    masses = [n for n, o in fm["features"].items() if o["kind"] == "mass" and n != feature]
     for v, g in c["marks"].items():
         rec = fm["views"][v]
         if rec["kind"] not in refread.ORTHO:
             continue
         k, c0, ground = rec["m_per_px"], rec["centre_px"], rec["ground_px"]
-        ys, xs = np.where(featuremap.mask(name, feature, v))
+        px = max(px, float(k))
+        own = featuremap.mask(name, feature, v)
         sign = -1.0 if rec["kind"] in ("back", "side_r") else 1.0
-        pts = np.stack([sign * (xs + 0.5 - c0) * k, (ground - ys - 0.5) * k], 1)
+        world = lambda m: np.stack([sign * (np.where(m)[1] + 0.5 - c0) * k, (ground - np.where(m)[0] - 0.5) * k], 1)  # noqa: E731
+        pts = world(own)
         span[v] = (float(pts[:, 1].min()), float(pts[:, 1].max()))
-        out[v] = (("xz" if rec["kind"] in ("front", "back") else "yz"), pts)
+        key = "xz" if rec["kind"] in ("front", "back") else "yz"
+        out[v] = (key, pts)
+        others = np.zeros_like(own)
+        for n in masses:
+            if v in fm["features"][n]["marks"]:
+                others |= featuremap.mask(name, n, v)
+        touch[v] = (key, world(own & ndimage.binary_dilation(others & ~own, iterations=3)))
+        lines.setdefault(key, []).append(bool(g.get("line")))
     auth = c.get("authority")
     if auth in span:  # the other views' heights are fitted to the view to believe
         a0, a1 = span[auth]
         for v, (key, pts) in out.items():
             if v != auth and span[v][1] > span[v][0]:
                 b0, b1 = span[v]
-                pts[:, 1] = a0 + (pts[:, 1] - b0) * (a1 - a0) / (b1 - b0)
+                for q in (pts, touch[v][1]):
+                    q[:, 1] = a0 + (q[:, 1] - b0) * (a1 - a0) / (b1 - b0)
     merged = {}
-    for key, pts in out.values():
-        merged[key] = pts if key not in merged else np.concatenate([merged[key], pts])
+    for src, pre in ((out, ""), (touch, "touch_")):
+        for key, pts in src.values():
+            key = pre + key
+            merged[key] = pts if key not in merged else np.concatenate([merged[key], pts])
+    if merged:
+        merged["px"] = px
+        for key, each in lines.items():
+            if all(each):
+                merged["line_" + key] = True  # marked by a line only there: where it runs, with no width of its own
     return merged
 
 
@@ -239,8 +260,32 @@ def _flap(feature: str, f: dict, how: dict, notes: list) -> dict:
     return {"blobs": {feature: {"shape": "sheet", "spine": spine, "width_axis": wide, "stations": stations}}}
 
 
+def _solid(pts: np.ndarray, px: float, feature: str, notes: list) -> np.ndarray:
+    """The mark without the rows it only fringes: a slanted cut leaves slivers at a mark's two sides below (or
+    above) its body, and a section read across them spans the whole width with nothing between (a thin flange)."""
+    if not px or len(pts) < 20:
+        return pts
+    row = np.floor((pts[:, 1] - pts[:, 1].min()) / px + 0.5).astype(int)
+    n = np.bincount(row)
+    lo = np.full(len(n), np.inf)
+    hi = np.full(len(n), -np.inf)
+    np.minimum.at(lo, row, pts[:, 0])
+    np.maximum.at(hi, row, pts[:, 0])
+    full = n * px >= 0.5 * (hi - lo + px)
+    keep = np.zeros(len(n), bool)
+    good = np.flatnonzero(full)
+    if len(good) < 3:
+        return pts
+    keep[good[0]:good[-1] + 1] = True  # only the ends are trimmed: a hollow row inside it stays
+    if keep.all():
+        return pts
+    notes.append(f"{feature}: {int((~keep).sum() * px * 1000)} mm of rows at its end hold only slivers of its mark (a "
+                 f"slanted cut's corners): left out of its sections")
+    return pts[keep[row]]
+
+
 def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
-    xz = _need(f, feature, "xz")
+    xz = _solid(_need(f, feature, "xz"), f.get("px"), feature, notes)
     yz = f.get("yz")
     n = int(how.get("sections", 7))
     z0, z1 = float(xz[:, 1].min()), float(xz[:, 1].max())
@@ -274,85 +319,6 @@ def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
                                 "top": {"z": round(z1, 4)}, "bottom": {"z": round(z0, 4)}}}}
 
 
-def _tube(feature: str, f: dict, how: dict, notes: list) -> dict:
-    xz, yz = f.get("xz"), f.get("yz")
-    ext = {}
-    if xz is not None:
-        ext["x"] = float(np.ptp(xz[:, 0]))
-    if yz is not None:
-        ext["y"] = float(np.ptp(yz[:, 0]))
-    ext["z"] = max(float(np.ptp(p[:, 1])) for p in (xz, yz) if p is not None)
-    axis = how.get("along") or max(ext, key=ext.get)
-    if axis not in ext:
-        raise ValueError(f"{feature}: along is one of {sorted(ext)} for the views it is marked in")
-    n = int(how.get("joints", 3))
-    side = feature[-2:] if feature[-2:] in (".L", ".R") else ""
-    base = feature[:len(feature) - len(side)]
-    P, half = [], []  # each station: its middle [x, y, z] and half sizes across the axis (two numbers)
-    if axis == "z":
-        ref = xz if xz is not None else yz
-        st, _, _ = _stations(ref, 1, n, 0.04)
-        for z, a, b in st:
-            if xz is not None:
-                cx, hx = (a + b) / 2, (b - a) / 2
-            else:
-                cx, hx = float(how.get("x", 0.0)), None
-            s = _span(yz, 1, z, z, 0.01) if yz is not None else None
-            if s:
-                cy, hy = (s[0] + s[1]) / 2, (s[1] - s[0]) / 2
-            elif xz is None:
-                cy, hy = (a + b) / 2, (b - a) / 2
-            else:
-                cy, hy = float(how.get("y", 0.0)), None
-            hx, hy = hx if hx is not None else hy, hy if hy is not None else hx
-            P.append([cx, cy, z])
-            half.append((hx, hy))  # (width along x, depth along y)
-        if yz is None:
-            notes.append(f"{feature}: no side mark: round in section at y {how.get('y', 0.0):+.3f}")
-    elif axis == "x":
-        st, _, _ = _stations(xz, 0, n, 0.04)
-        cy = float(yz[:, 0].mean()) if yz is not None else float(how.get("y", 0.0))
-        dy = float(np.ptp(yz[:, 0])) / 2 if yz is not None else None
-        hmax = max((b - a) / 2 for _, a, b in st)
-        for x, a, b in st:
-            hz = (b - a) / 2
-            P.append([x, cy, (a + b) / 2])
-            half.append(((dy * hz / hmax) if dy else hz, hz))  # (depth along y, height along z)
-        if yz is None:
-            notes.append(f"{feature}: no side mark: round in section at y {cy:+.3f}")
-    else:
-        st, _, _ = _stations(yz, 0, n, 0.04)
-        cx = float(xz[:, 0].mean()) if xz is not None else float(how.get("x", 0.0))
-        dx = float(np.ptp(xz[:, 0])) / 2 if xz is not None else None
-        hmax = max((b - a) / 2 for _, a, b in st)
-        for y, a, b in st:
-            hz = (b - a) / 2
-            P.append([cx, y, (a + b) / 2])
-            half.append(((dx * hz / hmax) if dx else hz, hz))  # (width along x, height along z)
-    if len(P) < 2:
-        raise ValueError(f"{feature}: its mark is too small to find a run of stations along {axis}")
-    ai = "xyz".index(axis)  # a bone ends in a round cap one radius past its joint: set the end joints in by that
-    run = np.concatenate([p[:, 0 if axis != "z" else 1] for p in ((xz,) if axis == "x" else (yz,) if axis == "y" else
-                                                                  tuple(q for q in (xz, yz) if q is not None))])
-    lo, hi = float(run.min()), float(run.max())
-    P[0][ai] = lo + min(max(half[0]), 0.4 * (hi - lo))
-    P[-1][ai] = hi - min(max(half[-1]), 0.4 * (hi - lo))
-    gap = 0.08 * (P[-1][ai] - P[0][ai])  # stations the end joints have passed, or crowd, go
-    keep = [0] + [i for i in range(1, len(P) - 1) if P[0][ai] + gap < P[i][ai] < P[-1][ai] - gap] + [len(P) - 1]
-    P, half = [P[i] for i in keep], [half[i] for i in keep]
-    joints, bones = {}, {}
-    for i, (p, (w, h)) in enumerate(zip(P, half)):
-        joints[f"{base}_j{i}{side}"] = {"pos": [round(c, 4) for c in p], "r": round(max(min(w, h), 0.002), 4)}
-    for i in range(len(P) - 1):
-        (w0, h0), (w1, h1) = half[i], half[i + 1]
-        r0, r1 = max(w0, h0, 0.002), max(w1, h1, 0.002)
-        bones[f"{base}_b{i}{side}"] = {"a": f"{base}_j{i}{side}", "b": f"{base}_j{i + 1}{side}", "r_a": round(r0, 4),
-                                       "r_b": round(r1, 4),
-                                       "flat": [round((w0 / r0 + w1 / r1) / 2, 3), round((h0 / r0 + h1 / r1) / 2, 3)],
-                                       "group": feature, "join": 0.004}
-    return {"joints": joints, "bones": bones}
-
-
 def build(name: str, how: dict, symmetry: bool = True) -> dict:
     """Build the masses named in `how` {feature: {"as": kind, ...}} into model `name` (made if it doesn't exist).
     Returns {"spec", "version", "made": {feature: [elements]}, "notes": [...]}."""
@@ -380,11 +346,12 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
         if sym and feature.endswith(".R") and tw in how:
             continue  # its .L twin is built and mirrored
         src = _flat(fm, name, feature)
-        if not src:
+        if not any(k in src for k in ("xz", "yz")):
             raise ValueError(f"{feature}: not marked in any flat view (front, back, side)")
         flip = sym and feature.endswith(".R")
         if flip:  # build it as the .L it mirrors from
-            src = {k: v * np.array([-1.0 if k == "xz" else 1.0, 1.0]) for k, v in src.items()}
+            src = {k: v * np.array([-1.0 if k.endswith("xz") else 1.0, 1.0]) if isinstance(v, np.ndarray) else v
+                   for k, v in src.items()}
         target = tw if flip else feature
         h = dict(h)
         if h.get("socket"):
@@ -394,7 +361,7 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
                 raise ValueError(f"{feature}: socket is for a ball set into the mass it is on, and that mass "
                                  f"({c.get('on')!r}) must be built first (in an earlier call, or earlier in this one)")
             h["_targets"] = [featuremap.twin(n) or n for n in under] if flip else under
-        part = {"ball": _ball, "drum": _drum, "flap": _flap, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
+        part = {"ball": _ball, "drum": _drum, "flap": _flap, "trunk": _trunk, "tube": masslines.tube}[kind](target, src, h, notes)
         for old in c.get("built") or []:  # what was built for it before goes
             for k in ("joints", "bones", "blobs"):
                 spec[k].pop(old, None)

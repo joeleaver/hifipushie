@@ -138,7 +138,7 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
 def build_masses(name: str, how: dict, symmetry: bool = True, view: str | None = None, save: str | None = None):
     """Turn masses of the feature map into shapes, their numbers read off the marks: no coordinate typed. how:
     {feature: {"as": "ball" (a rounded lump) | "drum" (a cylinder) | "flap" (a thin sheet) | "trunk" (an upright
-    mass through cross-sections) | "tube" (a limb or horn along its axis, as bones), "round": 2 = round .. higher
+    mass through cross-sections) | "tube" (a limb or horn along its own middle line, as bones), "round": 2 = round .. higher
     = squarer, "sections" / "joints", "along": "x" | "y" | "z", "part", "blend": m, "thick", "cup", "y" / "x"}}.
     Makes the model if there is none; a feature built again replaces what was built for it. Returns what was
     made, what had to be assumed, and the feature report with a picture. Details: guide(topic="build_masses"); the page: guide(topic="features")."""

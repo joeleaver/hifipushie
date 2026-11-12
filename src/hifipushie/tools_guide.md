@@ -301,10 +301,11 @@ Builds masses of the feature map into the model from their marks (masses.py): ho
 "drum" | "trunk" | "tube", ...}}. A ball is a super blob from the marks' boxes (a drum: a cylinder along the
 longest; a flap: a sheet along its broadest mark's long axis); a trunk is a loft with a section per height
 (width from the front or back mark, depth and lean from the side mark); a tube is a chain of bones along the
-mark's long axis ("along" x / y / z overrides), "joints" stations. A ".L" is built and mirrored. What no mark
+mark's own middle line, its thickness read across that line, "joints" stations; an end cut from another mass
+runs on under it. A ".L" is built and mirrored. What no mark
 shows is listed as ASSUMED. The built elements are written into the map, and the feature report follows.
 Per feature: "as" (required); "round" 2 = round in section .. 12 = square (ball 2, trunk 2.3 by default); "sections"
-(trunk, 7); "joints" (tube 3, flap 4: stations along it); "along" "x" | "y" | "z" (drum, tube, flap: the axis, when
+(trunk, 7); "joints" (tube 4, flap 4: stations along it); "along" "x" | "y" | "z" (drum, flap: the axis, when
 the longest extent is not it); "edge" (drum: metres its rims are rounded); "thick", "cup", "puff" (flap: metres
 thick, metres its edges lift, 0 = a slab .. 1 = a lens); "socket" true | metres (ball: hollow the mass it is on
 round it); "part" (any name: its own piece); "blend" (metres: 0.003 crisp .. 0.02 the default .. 0.04 no line);

@@ -19,7 +19,8 @@ so the sculpt is built from them and measured against each one. Make it BEFORE a
    `read_reference(name, view=..., focus=[x0, y0, x1, y1])` looks closer; `detail="fine"` cuts smaller patches.
    Read EVERY picture before marking, and mark each feature in every picture that shows it.
 2. `mark_features(name, features)`: you name what you see. It returns the map drawn on the picture, each
-   feature's place and size, and what the map STILL OWES.
+   feature's place and size, and what the map STILL OWES. `mark_features(name, view="front")` draws one view
+   large, with rulers: check every mark there before building.
 3. `build_masses(name, how)`: turns the map's masses into shapes, their numbers read off your marks. You say
    what each mass IS; you type no coordinate. It makes the model if there is none.
 4. `feature_report(name, elements)`: says for every feature whether it is made, and how far it is from its mark.
@@ -64,8 +65,11 @@ Marks are in each view's own pixels: read them off the rulers. Every mark is cli
   are where parts divide. An arm is a patch on it and one cut from the armpit's notch. Where the other
   end has no notch (a smooth shoulder), say which way the cut goes instead: `["n17", "up"]` (or `"down"`,
   `"left"`, `"right"`) runs straight that way until it leaves the figure, and `["n17", "across"]` takes the
-  shortest way through, which is how a limb is cut off at its root. A pixel `[x, y]` off the rulers works too. The mark's edge is then the picture's own outline to the pixel, which is
-  what a shape is built from. If the tool says the cuts don't part it, a cut misses the outline: look again.
+  shortest way through, which is how a limb is cut off at its root. A pixel `[x, y]` off the rulers works too.
+  The mark's edge is then the picture's own outline to the pixel, which is what a shape is built from.
+  Each cut parts off ONE neighbour, and a cut stops where it first leaves the figure: a mass with three
+  neighbours takes three cuts. A cut that parts nothing is refused by number: it missed the outline or stopped
+  short of it. Look at the mark drawn large before you build from it.
 - `{"patches": [12, 13]}`: the numbered patches. The quick way for a form or paint the patches follow.
 - `{"box": [x0, y0, x1, y1]}`, `{"ellipse": [cx, cy, rx, ry]}`, `{"polygon": [[x, y], ...]}`: for what lies
   inside the outline and no cut can part off (a mass seen against another mass). A hand-drawn edge wobbles, and
@@ -73,6 +77,9 @@ Marks are in each view's own pixels: read them off the rulers. Every mark is cli
 - `{"line": [[x, y], ...], "width": 3}`: a crease or a groove: something with no width of its own. It is
   measured by whether the model has form along it. A form that has height (a band, a rim, a cuff) is marked by its
   whole extent, never by a line along one edge.
+  On a MASS a line says "it runs here, and this view doesn't show how thick it is": an arm hanging against the
+  body, seen from the side, has no outline of its own there. Draw a line down its middle; its thickness comes
+  from the view that shows its outline. A guessed polygon there is built as if it were the outline.
 - Keys add up; `"minus": {...}` takes away. A box, ellipse, polygon or line key also takes a LIST of them, for one
   feature in several pieces (a scatter of bumps, a row of teeth): `{"ellipse": [[30, 40, 4, 4], [52, 44, 3, 3]]}`.
   Things made together and alike are one feature, not one each.
@@ -93,6 +100,9 @@ a mass's WHOLE extent, also where it runs under another mass you have marked (a 
 behind a beard): it is built from its whole mark, and what the model hides there is not held against it.
 Split masses where the subject is jointed, not where the outline happens to turn: a limb's segments, a hand apart
 from its forearm.
+A limb, horn or tail needs nothing added to sink its root into its neighbour: built as a tube it runs on under
+the mass it was cut from by itself, and a box added there is built as part of its outline. Cut a mass at the
+same height in every view: where its views end at different heights its shape is stretched between them.
 
 Example (a made-up subject):
 
@@ -120,21 +130,25 @@ Build once the map owes nothing. For every mass say what it is, `"as"`:
   lift, for a hollow side. A ball or a tube would make it a fat lump.
 - `"trunk"`: one upright mass through cross-sections: at each height its width from the front and back marks
   together, its depth and its lean from the side mark. For a mass that stands up and sits on the centre line. Its
-  two ends are domes.
-- `"tube"`: something long that tapers, along its own axis: up, sideways or forward, and it may bend. Built as a
-  chain of bones through `"joints"` stations (3 by default; more for a curve), each station's middle and half
-  sizes read across the axis in both views. `"along": "x" | "y" | "z"` if the long axis it picks is wrong.
+  two ends are domes. It follows its mark: where the mark's edge is a straight cut, so is the trunk's side.
+- `"tube"`: a limb, a horn, a tail: something long, whichever way it runs and however it bends. It follows its
+  mark's own MIDDLE LINE, and its thickness is read ACROSS that line, so a slanted limb is as thick as it is
+  drawn. Built as a chain of bones through `"joints"` stations (4 by default; more for a curve). The end that was
+  cut from another mass runs on under that mass; a free end stops where its mark stops. The answer says how long
+  and how thick it read each tube, and which ends it took as cut: check those against the picture.
 
-`"round"`: 2 is round in section, higher is squarer, like a soft block (a ball's or trunk's own judgement call:
-look at the outline's corners). `"sections"`: how many heights a trunk is read at (7; more for a wavy outline).
+`"round"`: 2 is round in section (an ellipse), 4 is a soft box; 2.0 to 2.6 look much alike, so move it in whole
+steps (a ball's or trunk's own judgement call: look at the outline's corners). It changes the section only: a
+mass's outline from the front and side stays what its marks are.
+`"sections"`: how many heights a trunk is read at (7; more for a wavy outline).
 `"part"`: any name: the mass becomes its own piece (its own mesh and colour later) and never melts into the
 rest; give it to a thing that is separate. `"blend"`: metres, how softly a mass melts into what it touches: 0.003
 for a thing that sits ON another with a crisp line round it, 0.02 (what you get if you say nothing) for an
 ordinary join, 0.04 for one that grows OUT of the other with no line at all. The `join` you wrote says which.
 
 Where the flat views disagree about a mass's height (drawn views often do), set its `authority`: the other
-views' marks are fitted to that one before it is built. A trunk reads its outline smoothed over a tenth of its
-height; a real step in the outline wants its own mass.
+views' marks are fitted to that one before it is built, and the report measures those views against the fitted
+mark. A trunk reads its outline smoothed over a tenth of its height; a real step in the outline wants its own mass.
 
 Both views are needed for a shape: what a missing view would give is listed as ASSUMED, and for a ball with no
 side mark you must give `"y"` (where it sits front to back). `.L` is built and mirrored to `.R`.
@@ -173,8 +187,9 @@ then not measured, only judged by eye on its tile. Use `["="]` when you can SEE 
 pass one that isn't there.
 
 `feature_report` first gives the whole outline's overlap with each picture: one row among many. Then, for masses
-and forms (paint is colour: a later stage): NOT MADE (no element makes it), HIDDEN (made, but nothing of it shows
-from that view), OFF (with how far, how big, how much of the mark it covers), right, IN ITS MASS (`["="]`),
+and forms (paint is colour: a later stage): NOT MADE (no element makes it), HIDDEN (made, but nothing or little
+of it shows from that view past the masses in front: judge it in its other views), OFF (with how far, how big, how
+much of the mark it covers), right, IN ITS MASS (`["="]`),
 CAN'T MEASURE (with the reason). A form's elements count as part of the mass it is on. A feature is measured by
 what shows of the thing itself: clothing over a limb is the clothing's, not the limb's.
 
@@ -190,4 +205,6 @@ view's centre line) and says what moved in a MOVED line: "the model is 1.04 x th
 is a finding about the model. Features are then placed relative to the whole figure, as an eye compares them. Fix NOT MADE first, biggest feature first; an
 OFF feature is fixed at the element that makes it. The numbers place and size a feature; whether its SHAPE reads
 right is judged by eye, on same-view tiles beside the picture (`feature_tiles(name, ..., label=<view>)` works
-from every view read here) and by the blind review. A table with nothing wrong is where that look starts.
+from every view read here) and by the blind review. A table with nothing wrong is where that look starts:
+"right" says a mass covers its mark, not that it looks like the thing. Look at the clay beside the picture
+every round and say what you see.

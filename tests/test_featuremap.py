@@ -304,3 +304,23 @@ def test_masses_are_built_from_their_marks(fig):
         for n in fig["marks"]:
             fm["features"][n].update(elements=[n], built=[])
         featuremap.save("fig", fm)
+
+
+def test_the_view_to_believe_is_measured_against(fig):
+    """Two views that disagree about a height can't both be matched: with `authority` set, the other view's mark
+    is fitted to that view's heights before the model is compared with it (as build_masses fits it)."""
+    featuremap.mark("fig", _features(fig["marks"]))
+    fm = featuremap.load("fig")
+    box = fm["features"]["ear.L"]["marks"]["side"]["box"]
+    try:
+        short = [box[0], box[1] + 14, box[2], box[3]]  # the side picture draws the ear 14 px shorter
+        featuremap.mark("fig", {"ear.L": {"marks": {"side": {"box": short}}, "authority": "front"}})
+        fm = featuremap.load("fig")
+        raw = np.where(featuremap.mask("fig", "ear.L", "side").any(1))[0]
+        fit = np.where(featuresee.fitted("fig", fm, "ear.L", "side").any(1))[0]
+        front = np.where(featuremap.mask("fig", "ear.L", "front").any(1))[0]
+        assert raw[-1] - raw[0] < front[-1] - front[0] - 8
+        assert abs(fit[0] - front[0]) <= 1 and abs(fit[-1] - front[-1]) <= 1, (fit[0], fit[-1], front[0], front[-1])
+        assert np.array_equal(featuresee.fitted("fig", fm, "ear.L", "front"), featuremap.mask("fig", "ear.L", "front"))
+    finally:
+        featuremap.mark("fig", {"ear.L": {"marks": {"side": fig["marks"]["ear.L"]["side"]}, "authority": None}})

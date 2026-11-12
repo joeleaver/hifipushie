@@ -191,8 +191,7 @@ def _piece(fig: np.ndarray, m: dict, view: str, rec: dict, name: str) -> np.ndar
     ends by 8 px, so a cut between two notches on the outline reaches outside it)."""
     from scipy import ndimage
     H, W = fig.shape
-    wall = Image.new("L", (W, H), 0)
-    d = ImageDraw.Draw(wall)
+    walls = []
     for c in m.get("cuts") or []:
         if len(c) == 2 and isinstance(c[1], str) and c[1] in WAYS:
             a = np.array(_point(c[0], rec, name, view))
@@ -202,8 +201,10 @@ def _piece(fig: np.ndarray, m: dict, view: str, rec: dict, name: str) -> np.ndar
         for i, j in ((0, 1), (-1, -2)):
             v = q[i] - q[j]
             q[i] = q[i] + 8.0 * v / max(float(np.hypot(*v)), 1e-9)
-        d.line([tuple(float(v) for v in p) for p in q], fill=255, width=3)
-    wall = np.asarray(wall) > 127
+        one = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(one).line([tuple(float(v) for v in p) for p in q], fill=255, width=3)
+        walls.append(np.asarray(one) > 127)
+    wall = np.any(walls, axis=0) if walls else np.zeros((H, W), bool)
     x, y = (int(round(float(v))) for v in _point(m["piece"], rec, name, view))
     if not (0 <= x < W and 0 <= y < H and fig[y, x]):
         raise ValueError(f"the piece's point {m['piece']} in {view!r} is not on the figure (view px, {W} x {H}: read "
@@ -216,6 +217,15 @@ def _piece(fig: np.ndarray, m: dict, view: str, rec: dict, name: str) -> np.ndar
         raise ValueError(f"the cuts in {view!r} don't part the piece at {m['piece']} from the rest of the figure (it "
                          f"is {got.sum() / fig.sum():.0%} of it): each cut must run right across the figure, from "
                          f"outside its outline to outside it again")
+    for i, w in enumerate(walls):  # a cut the piece is the same without did nothing: it missed, or stopped short
+        if len(walls) < 2:
+            break
+        rest = np.any([x for j, x in enumerate(walls) if j != i], axis=0)
+        lab2, _ = ndimage.label(fig & ~rest)
+        if not rest[y, x] and abs(int((lab2 == lab2[y, x]).sum()) - int(got.sum())) <= int(w.sum()):
+            raise ValueError(f"cut {i + 1} of the piece at {m['piece']} in {view!r} ({m['cuts'][i]}) changes nothing: the "
+                             f"piece is the same without it. It doesn't run right across the figure where this piece "
+                             f"joins the rest (a cut stops where it first leaves the figure): move it, or take it out")
     return ndimage.binary_dilation(got, iterations=2) & fig & (got | wall)  # its share of the cut lines too
 
 
