@@ -45,21 +45,20 @@ generated mesh as input); every trial by a blind Opus 5.5 medium agent with the 
 3. Slow: a 57-feature report is 6-12 min on a loaded machine; no progress line.
 4. Marking is typed 2D numbers where patches don't follow a feature; the new line-bounded patches are untried by
    an agent. matched.mask_of lost a white tuft against a light background (read_reference says check, takes mask=).
-5. No FORM measure (the model's form lines against the picture's): a form made by its mass's shape is ["="], unmeasured.
-6. featuresee.py is 540 lines: align_flat wants its own module.
+5. No FORM measure (the model's form lines against the picture's): a form made by its mass's shape is ["="],
+   unmeasured. featuresee.py is 540 lines: align_flat wants its own module.
 
 ## Decisions in force
-- Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches.
-- What a subject's features are is the sculptor's judgement per subject; the page names no subject.
+- Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches;
+  what a subject's features are is the sculptor's judgement per subject (the page names no subject).
 
 ## Dead ends
-- A mass measured with everything on it (a head's mark would hold its ears): "what is seen of the thing itself".
-- A change counted from a share of the feature's own largest (to drop halos): moved small features' centres.
+- A mass measured with everything on it (a head's mark would hold its ears). A change counted from a share of
+  the feature's own largest, to drop halos (it moved small features' centres).
 
 ## Commands
-- Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (home .../featuremap/home; `fm` points
-  at frozen1 = c34ad512: repoint PYTHONPATH first). Builder's troll re-measure: troll/recheck.py (the agent's map
-  is kept in troll/features_as_the_agent_left_them).
+- Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (`fm` points at frozen1 = c34ad512:
+  repoint PYTHONPATH first). Troll re-measure: troll/recheck.py (the agent's map: troll/features_as_the_agent_left_them).
 - `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py`
 
 NEXT: open fault 1 (ownership, then trial 2 on the troll). Then run 2: masses from their outlines (a feature marked
