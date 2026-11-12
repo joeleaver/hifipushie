@@ -102,6 +102,24 @@ def test_hinge_turns_to_its_planned_angle():
     assert max(rd["seam_gaps_mm"]["hinge f#0"]) < 0.5
 
 
+def test_outline_walked_whole_through_a_pinch():
+    """(N2f, C443) An outline touching itself at one vertex (a sliver triangle on a corner, as at a collar's tip) is
+    walked whole: every boundary edge once (a greedy walk cut it short and lost a collar's neck edge); a chains-only
+    network gives the pattern's outline."""
+    u, F = grid(5, 4, 0.2, 0.1)
+    corner = 4 * 4 + 3  # (the (0.2, 0.1) corner)
+    u = np.r_[u, [[0.25, 0.1], [0.25, 0.14]]]
+    F = np.r_[F, [[corner, len(u) - 2, len(u) - 1]]]
+    M, _ = pattern([("a", u, F)])
+    net = Network(M)
+    lp = net.loop("a")
+    assert len(lp) == 14 + 3 and (lp == corner).sum() == 2
+    E = {tuple(sorted(e)) for e in zip(lp, np.roll(lp, -1))}
+    assert len(E) == 17
+    c, keep = chain_network(net)
+    assert set(keep[c.loop("a")]) == set(lp[np.isin(lp, keep)])
+
+
 def test_ruled_hinge_turn_is_exact_by_construction():
     """(N2f) A hinge rules its turned panel: whatever the numbers (any rigid motion, any roll of both panels), the turned
     panel leaves the row at the plan's turn and meets the base at the row's middle; a fold lying on another piece is
