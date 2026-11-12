@@ -8,7 +8,7 @@ import time
 
 import numpy as np
 
-from hifipushie import terrain
+from hifipushie import terrain_model
 
 SPEC = {"world": {"kind": "coast", "base": 14}, "extent": [[0, 0], [512, 512]], "cell": 4.0,
         "sea": {"level": 0, "land": "isle", "depth": 20, "shore": "rocky"},
@@ -27,18 +27,18 @@ class _Stop(Exception):
 def base(spec):
     """The ground right after the harmonic base (before erosion and the rest: what the river's solve decides)."""
     keep = {}
-    orig = terrain.Terrain._texture
+    orig = terrain_model.Terrain._texture
 
     def stop(self):
         keep["T"] = self
         raise _Stop
-    terrain.Terrain._texture = stop
+    terrain_model.Terrain._texture = stop
     try:
-        terrain.Terrain(copy.deepcopy(spec))
+        terrain_model.Terrain(copy.deepcopy(spec))
     except _Stop:
         pass
     finally:
-        terrain.Terrain._texture = orig
+        terrain_model.Terrain._texture = orig
     return keep["T"]
 
 

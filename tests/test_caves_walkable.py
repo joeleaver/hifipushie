@@ -9,7 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain, terrain_caves, terrain_mesh as tm
+from hifipushie import terrain_caves, terrain_mesh as tm
+from hifipushie import terrain_model
 from hifipushie import terrain_field, terrain_relief, terrain_volumes
 
 KARST = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 2,
@@ -32,7 +33,7 @@ CONE = {"world": {"kind": "crater", "base": 10}, "extent": [[0, 0], [400, 400]],
 def _terrain(spec):
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    return terrain.load(d / "spec.json")
+    return terrain_model.load(d / "spec.json")
 
 
 def test_mouth_meets_the_ground(T):

@@ -8,13 +8,14 @@ import numpy as np
 import pytest
 
 from hifipushie import clutter
+from hifipushie import clutter_build, clutter_export, clutter_forms, clutter_kit, clutter_mesh
 
 SMALL = {"variants": 2, "atlas": 256}
 
 
 @pytest.fixture(scope="module")
 def boulder():
-    return clutter.build({"kind": "boulder", "style": "realistic", **SMALL})
+    return clutter_build.build({"kind": "boulder", "style": "realistic", **SMALL})
 
 
 def test_presets_and_styles_resolve():
@@ -41,7 +42,7 @@ def test_lods_sound_within_budget_and_keep_the_outline(boulder):
     cfg = boulder["cfg"]
     for v in boulder["variants"]:
         for j, (L, tgt) in enumerate(zip(v["lods"], cfg["lods"])):
-            chk = clutter.mesh_check(L["V"], L["F"])
+            chk = clutter_mesh.mesh_check(L["V"], L["F"])
             assert chk["open_edges"] == 0 and chk["nonmanifold_edges"] == 0 and chk["degenerate"] == 0, (v["name"], j, chk)
             assert L["triangles"] <= 1.12 * tgt, (v["name"], j, L["triangles"], tgt)
             assert L["iou"] >= (0.9 if j == 1 else 0.82 if j == 2 else 1.0), (v["name"], j, L["iou"])
@@ -61,7 +62,7 @@ def test_one_metre_across_pivot_on_the_ground_line(boulder):
 
 
 def test_variants_differ_in_proportion():
-    B = clutter.build({"kind": "boulder", "style": "realistic", "variants": 3, "atlas": 256, "lods": [200]})
+    B = clutter_build.build({"kind": "boulder", "style": "realistic", "variants": 3, "atlas": 256, "lods": [200]})
     h = [v["height"] for v in B["variants"]]
     assert max(h) / min(h) > 1.25, h  # a lump, a flat block, a tall wedge
 
@@ -74,21 +75,21 @@ def test_a_boulder_is_not_a_box(boulder):
         n = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
         a = np.linalg.norm(n, axis=1)
         n = n / a[:, None]
-        m = clutter.outline_measures(v["lods"][0]["V"], v["lods"][0]["F"])
+        m = clutter_mesh.outline_measures(v["lods"][0]["V"], v["lods"][0]["F"])
         assert 0.35 < m["height_over_width"] < 1.0, m
         assert m["top_over_base"] < 1.6  # (base at 20% / top at 80% of the height: wider low; reported the other way round)
 
 
 def test_deterministic():
-    a = clutter.build({"kind": "slab", "style": "anime", "variants": 1, "atlas": 128, "lods": [120]})
-    b = clutter.build({"kind": "slab", "style": "anime", "variants": 1, "atlas": 128, "lods": [120]})
+    a = clutter_build.build({"kind": "slab", "style": "anime", "variants": 1, "atlas": 128, "lods": [120]})
+    b = clutter_build.build({"kind": "slab", "style": "anime", "variants": 1, "atlas": 128, "lods": [120]})
     assert np.array_equal(a["variants"][0]["lods"][0]["V"], b["variants"][0]["lods"][0]["V"])
     assert np.array_equal(a["albedo"]["summer"], b["albedo"]["summer"])
 
 
 def test_styles_change_form_and_paint():
-    r = clutter.build({"kind": "boulder", "style": "realistic", "variants": 1, "atlas": 128, "lods": [300]})
-    b = clutter.build({"kind": "boulder", "style": "blobby", "variants": 1, "atlas": 128, "lods": [300]})
+    r = clutter_build.build({"kind": "boulder", "style": "realistic", "variants": 1, "atlas": 128, "lods": [300]})
+    b = clutter_build.build({"kind": "boulder", "style": "blobby", "variants": 1, "atlas": 128, "lods": [300]})
 
     def sharp(B):  # mean angle between neighbouring face normals
         L = B["variants"][0]["lods"][0]
@@ -117,7 +118,7 @@ def _glb_json(path):
 
 
 def test_export_files_and_json(tmp_path):
-    J = clutter.export({"kind": "boulder", "style": "cartoon", **SMALL}, tmp_path, stem="t")
+    J = clutter_export.export({"kind": "boulder", "style": "cartoon", **SMALL}, tmp_path, stem="t")
     assert J["grade"] == "clutter" and J["kind"] == "boulder" and J["style"]["name"] == "cartoon"
     assert J["contract"]["version"] >= 12 and J["slot_list"][0]["slot"] == "rock"
     c = J["clutter"]
@@ -132,11 +133,11 @@ def test_export_files_and_json(tmp_path):
         assert G["nodes"][0]["name"].endswith("-convcolonly") and v["collision_triangles"] <= 26
     for se in ("spring", "summer", "autumn", "winter", "snow"):
         assert (tmp_path / J["seasons"][se]["rock"]["baseColorTexture"]["file"]).exists()
-    assert "boulder" in clutter.report(J)
+    assert "boulder" in clutter_export.report(J)
 
 
 def test_bush_has_wind_cards_and_seasons(tmp_path):
-    J = clutter.export({"kind": "bush", "style": "realistic", "variants": 1, "atlas": 512}, tmp_path, stem="b")
+    J = clutter_export.export({"kind": "bush", "style": "realistic", "variants": 1, "atlas": 512}, tmp_path, stem="b")
     v = J["clutter"]["variants"][0]
     t = [l["triangles"] for l in v["lods"]]
     assert t[0] <= 290 and t[1] <= 110 and t[2] <= 24, t  # sprays + stems / a share of the same sprays + stems / two crossed cards
@@ -177,7 +178,7 @@ def test_closed_styles_are_lumps_standing_on_the_ground():
     cfg = clutter.resolve({"kind": "bush", "style": "blobby"})
     assert cfg["form"]["open"] is False and cfg["form"]["cards"][1] == 0
     rng = np.random.default_rng(3)
-    S = clutter.Bush(rng, cfg["form"])
+    S = clutter_forms.Bush(rng, cfg["form"])
     assert S.gum and not S.stems and len(S.ell) >= 4
     # every lump's column is solid from its middle to the ground
     for c, r in S.ell:
@@ -188,7 +189,7 @@ def test_closed_styles_are_lumps_standing_on_the_ground():
     d = np.c_[np.cos(a), np.sin(a), np.zeros(48)]
     R = np.linalg.norm(S.surface(d, np.array([0.0, 0.0, 0.3 * S.H]))[:, :2], axis=1)
     assert R.min() > 0.05 and R.max() / R.min() > 1.25, (R.min(), R.max())
-    B = clutter.build({"kind": "bush", "style": "blobby", "variants": 1, "atlas": 384, "lods": [250, 100]})
+    B = clutter_build.build({"kind": "bush", "style": "blobby", "variants": 1, "atlas": 384, "lods": [250, 100]})
     L = B["variants"][0]["lods"][0]
     assert "wind" in L and L["wind"].shape[1] == 4
     # the mesh's foot: vertices at the ground line all round (within 3 cm), none hanging in the air on a stalk
@@ -198,7 +199,7 @@ def test_closed_styles_are_lumps_standing_on_the_ground():
 
 
 def test_litter_card(tmp_path):
-    J = clutter.export({"kind": "litter", "style": "anime", "variants": 2, "atlas": 256}, tmp_path, stem="l")
+    J = clutter_export.export({"kind": "litter", "style": "anime", "variants": 2, "atlas": 256}, tmp_path, stem="l")
     assert J["seasons"]["snow"]["litter"]["hidden"] and not J["seasons"]["autumn"]["litter"]["hidden"]
     assert [l["triangles"] for l in J["clutter"]["variants"][0]["lods"]] == [8, 2]
     from PIL import Image
@@ -208,8 +209,8 @@ def test_litter_card(tmp_path):
 
 
 def test_manifest(tmp_path):
-    clutter.export({"kind": "litter", "style": "realistic", "variants": 1, "atlas": 128}, tmp_path / "real_litter", stem="l")
-    M = clutter.manifest(tmp_path)
+    clutter_export.export({"kind": "litter", "style": "realistic", "variants": 1, "atlas": 128}, tmp_path / "real_litter", stem="l")
+    M = clutter_kit.manifest(tmp_path)
     assert M["kinds"]["litter"]["styles"]["realistic"]["folder"] == "real_litter"
     assert "blobby" in M["kinds"]["litter"]["missing"] and set(M["kinds"]) >= {"bush", "boulder", "reeds", "tussock"}
     assert (tmp_path / "clutter.json").exists()
@@ -218,13 +219,13 @@ def test_manifest(tmp_path):
 @pytest.mark.parametrize("kind", ["cobbles", "driftwood"])
 def test_patches_and_wood_hold_their_budgets(kind):
     # a patch of stones (a hull per stone) and driftwood (built tubes at LOD 1 / 2, a jam always): never over budget, sound
-    B = clutter.build({"kind": kind, "style": "realistic", "atlas": 128})
+    B = clutter_build.build({"kind": kind, "style": "realistic", "atlas": 128})
     cfg = B["cfg"]
     vf = cfg.get("variant_forms") or [{}]
     for k, v in enumerate(B["variants"]):
         x = float(vf[k % len(vf)].get("lods_x", 1.0))
         for j, (L, tgt) in enumerate(zip(v["lods"], cfg["lods"])):
-            chk = clutter.mesh_check(L["V"], L["F"])
+            chk = clutter_mesh.mesh_check(L["V"], L["F"])
             assert L["triangles"] <= 1.15 * tgt * x, (kind, v["name"], j, L["triangles"], tgt * x)
             assert chk["open_edges"] == 0 and chk["degenerate"] == 0, (kind, v["name"], j, chk)
 
@@ -233,7 +234,7 @@ def test_patches_and_wood_hold_their_budgets(kind):
 def test_no_state_is_null(tmp_path, kind):
     """A first loader crashed on "snow": null (a plant always has an object there). A state or block that does not
     apply is {} or says so; a list is []; only an absent text / file / single number may be null (contract log 13)."""
-    J = clutter.export({"kind": kind, "style": "realistic", "variants": 1, "atlas": 256}, tmp_path, stem="k")
+    J = clutter_export.export({"kind": kind, "style": "realistic", "variants": 1, "atlas": 256}, tmp_path, stem="k")
     assert isinstance(J["snow"], dict) and "coverage" in J["snow"]
     assert isinstance(J["clutter"]["wet"], dict)
     assert isinstance(J["clutter"]["instance_tints"], list)
@@ -253,7 +254,7 @@ def test_river_rocks_are_not_all_round_mossy_stones():
     vf = cfg["variant_forms"]
     assert sum(1 for v in vf if v.get("round", 1.0) <= 0.3) >= 2
     assert cfg["paint"]["moss_up"] >= 0.3 and 0.0 in cfg["paint"]["moss_vary"]
-    B = clutter.build({"kind": "river_rock", "style": "realistic", "variants": 4, "atlas": 512})
+    B = clutter_build.build({"kind": "river_rock", "style": "realistic", "variants": 4, "atlas": 512})
     # sharper stones have flatter faces: more of their surface within 12 deg of a few directions
     def planar(L):
         V, F = L["V"], L["F"]
@@ -278,7 +279,7 @@ def test_rock_pictures_hold_a_cliffs_tone_range(style):
     """A boulder is tinted per instance to its cliff's rock colour: that only lands it there if its pictures' mean IS the
     stated colour and their tones lie in a cliff's range (cartoon was 0.15 .. 2.9 of a mean 40% under: charcoal)."""
     from hifipushie.terrain_style import _srgb_lin
-    B = clutter.build({"kind": "boulder", "style": style, "variants": 2, "atlas": 384})
+    B = clutter_build.build({"kind": "boulder", "style": style, "variants": 2, "atlas": 384})
     cfg = B["cfg"]
     lo, hi = cfg["paint"]["tone_range"]
     w = np.array([0.2126, 0.7152, 0.0722])
@@ -290,7 +291,7 @@ def test_rock_pictures_hold_a_cliffs_tone_range(style):
     p5, p95 = np.percentile(L / L.mean(), [5, 95])
     assert p95 / p5 <= hi / lo * 1.12, (p5, p95, lo, hi)
     # and without it the same stones are far wider (what the step is for)
-    B0 = clutter.build({"kind": "boulder", "style": style, "variants": 2, "atlas": 384, "paint": {"tone_range": None}})
+    B0 = clutter_build.build({"kind": "boulder", "style": style, "variants": 2, "atlas": 384, "paint": {"tone_range": None}})
     L0 = (_srgb_lin(B0["albedo"]["summer"][..., :3]) @ w).ravel()
     L0 = L0[L0 > 1e-4]
     q5, q95 = np.percentile(L0 / L0.mean(), [5, 95])

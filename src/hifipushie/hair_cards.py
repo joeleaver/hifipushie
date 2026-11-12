@@ -262,7 +262,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     """The strand atlas: {"color" (H, W, 4) sRGB floats, straight alpha; "normal" (H, W, 3); "aux" (H, W, 4): root
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand.
-    `bake` (hair_clumps.bake: cards' own strands, a block as wide as the tiles + chart): stacked UNDER the tiles; the
+    `bake` (hair_clumps_bake.bake: cards' own strands, a block as wide as the tiles + chart): stacked UNDER the tiles; the
     tiles' rows are then the top `rows` of `rows_total` (every tile / chart uv's v is remapped: remap_v).
     `shells` (hair_cap.combed's shell maps, sh1): a block under everything else, one slot (size / 2 square) a shell
     side by side; out["shells"] = {"row0", "rows", "slot_w"} (texels) for their uv."""
@@ -331,7 +331,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         if bake is not None:  # (the baked strands carry their own ribbons in their tone)
             hs_[Ht:Hb_] = 0.0
         val = val * (1 + float(look.get("highlight_contrast", 0.6)) * hs_)[..., None]
-    if bake is not None and bake.get("tone") is not None:  # the baked strands' own tone (hair_clumps.strand_tones,
+    if bake is not None and bake.get("tone") is not None:  # the baked strands' own tone (hair_clumps_bake.strand_tones,
         # / peak: the cards' vertex colours then carry only the root ramp)
         from . import hair_colour as hcol
         # (normalised by their mean: the atlas's 8 bits clip over 1, and at tone x peak the highlights went white-grey;
@@ -669,7 +669,7 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         vv = (c["s"] - c["s"][0]) / max(length, 1e-9)
         left, right = c["P"] - c["X"] * c["hw"][:, None], c["P"] + c["X"] * c["hw"][:, None]
         V.append(np.stack([left, right], 1).reshape(-1, 3))
-        if c.get("island") is not None:  # its own baked picture (hair_clumps.bake): across = the clump's spread
+        if c.get("island") is not None:  # its own baked picture (hair_clumps_bake.bake): across = the clump's spread
             u0, u1, vt, vb = c["island"]
             fr = c["hw"] / max(2 * hwm, 1e-9)
             vi = vt - vv * (vt - vb)
@@ -711,7 +711,7 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
             hl_ = ((hsh_ // 1000 + ci * 7919) % 1000) / 999.0 + 1e-4 if 2 * float(np.median(c["hw"])) <= HIGHLIGHT_W else None
             tone = hcol.lock_tone(look, (hsh_ % 1000) / 999.0, float(c.get("shade", 0.0))) \
                 * hcol.along_tone(look, age, hl_, float(c.get("sun", 0.0)))
-            if c.get("island") is not None:  # its picture carries its strands' tone (hair_clumps.strand_tones)
+            if c.get("island") is not None:  # its picture carries its strands' tone (hair_clumps_bake.strand_tones)
                 tone = np.full(np.shape(age), float(c.get("tone_k", 1.0)))
             if c.get("fine"):  # rows the strands draw FINE (see-through, light against the sky: the outline): half the lift;
                 # at full tone the sparse tile's hairs were a hard dark wire rim round the head (review c2)

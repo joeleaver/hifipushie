@@ -9,7 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain, terrain_cliffs, terrain_mesh as tm
+from hifipushie import terrain_cliffs, terrain_mesh as tm
+from hifipushie import terrain_model
 from hifipushie import terrain_field, terrain_seam_check, terrain_tile_finish, terrain_tile_job, terrain_tile_jobs, terrain_tile_mesh, terrain_tiles, terrain_volumes
 
 SPEC = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [128, 128]], "cell": 0.64,
@@ -23,7 +24,7 @@ TILE = (2, 0)  # (the tile with the most sheer columns)
 def _coast():
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(SPEC))
-    return terrain.load(d / "spec.json")
+    return terrain_model.load(d / "spec.json")
 
 
 def _shell(T):
@@ -308,7 +309,7 @@ def test_dam_stays_in_the_heightmap():
     spec["landforms"] = {"pond": {"type": "lake", "at": [64, 96], "radius": 10, "depth": 2, "dam": True}}
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    T = terrain.load(d / "spec.json")
+    T = terrain_model.load(d / "spec.json")
     lk = T.lakes["pond"]
     assert lk["area"] > 100 and T.dams["pond"].any(), (lk, T.dams["pond"].sum())
     rep = "\n".join(T.report()) if isinstance(T.report(), list) else str(T.report())
@@ -343,7 +344,7 @@ def test_beach_shelves_on_to_the_sea_floor():
             "cover": [{"type": "meadow", "in": "everywhere"}]}
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    T = terrain.load(d / "spec.json")
+    T = terrain_model.load(d / "spec.json")
     sea = T.H < -1.5
     assert sea.sum() * T.cell ** 2 > 2e4, "the test terrain has no sea"
     held = float((np.abs(T.H[sea] + 8.4) < 0.05).mean())

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain
+from hifipushie import terrain_model
 
 SPECS = [Path("/home/joe/dev/pushieworld/pushie/terrain/island.json"),
          Path(os.environ.get("HIFIPUSHIE_HOME", "workspace")) / "terrain" / "pw_island2" / "spec.json"]
@@ -28,7 +28,7 @@ def main():
         print("skipped: no island spec here")
         return
     t = time.time()
-    T = terrain.Terrain(json.loads(spec.read_text()))
+    T = terrain_model.Terrain(json.loads(spec.read_text()))
     raw = json.loads(spec.read_text())["sites"]
     for name, want in LEVELS.items():
         got = T.sites[name]["level"]

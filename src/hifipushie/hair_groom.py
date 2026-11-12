@@ -459,7 +459,7 @@ def part_line(sc: Scalp, g: dict):
 
 def part_side_of(sc: Scalp, g: dict):
     """A function roots (k, 3) -> (side -1 / +1 of the parting, distance m to its line) for the clump cut
-    (hair_clumps.cut: no card spans the part), or None if the groom has no parting."""
+    (hair_clumps_cut.cut: no card spans the part), or None if the groom has no parting."""
     from . import hair_spec
     try:
         pl = part_line(sc, g)
