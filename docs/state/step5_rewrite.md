@@ -48,5 +48,6 @@ layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4
 
 Run: `uv run pytest -q tests/test_chain_solve.py tests/test_chain_plies.py`. Ledger C426, C429, C431.
 
-NEXT: N2b: a seed with seams closed by construction (pieces laid outward from the edge-taped neckline and along their
-sewn neighbours, lengths kept), shoulders on the body surface; prove links < 30 % at seed, then the one solve.
+NEXT: N2b, CHAINS ONLY (Joe 2026-11-12, proposal rewritten): the network is boundary + fold chains + lines across,
+no interior; chains laid on their tapes and walked from their seams (isometric start); one solve; chains rendered alone
+beside the reference. chain_seed's whole-surface mapping is superseded (delete it in N2b).
