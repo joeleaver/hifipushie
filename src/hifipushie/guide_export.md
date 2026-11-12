@@ -14,6 +14,8 @@ solid clothing, eyeball backs) are removed first.
   mesh, maps and skin weights as part `cloth_<garment>` (its buttons and trims as `cloth_<garment>_details`), and
   the skin it covers is dropped. Nothing is rebuilt. A garment that is not there yet is left out, and the answer's
   first line says so with the call that puts it in: `NOT IN THIS EXPORT: garment <name>: ... next: ...`.
+  Its LODs are the garment's OWN LOD files (`export_garment` writes one per LOD: the pattern re-grid, coarser), never
+  a decimation; a garment exported before those files existed is decimated with a WARNING: `export_garment` again.
 - Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
   variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
   these; the exported GLB in EEVEE does.

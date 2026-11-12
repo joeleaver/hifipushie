@@ -113,7 +113,11 @@ def read(path) -> dict:
     def png(tex):
         if tex is None:
             return None
-        v = js["bufferViews"][js["images"][js["textures"][tex["index"]]["source"]]["bufferView"]]
+        im = js["images"][js["textures"][tex["index"]]["source"]]
+        if "bufferView" not in im:  # (a character's LOD names its maps by file, beside the GLB: asset_glb external)
+            f = Path(path).parent / im.get("uri", "")
+            return f.read_bytes() if im.get("uri") and f.exists() else None
+        v = js["bufferViews"][im["bufferView"]]
         return bytes(binc[v.get("byteOffset", 0):v.get("byteOffset", 0) + v["byteLength"]])
     bones = [js["nodes"][j]["name"] for j in js["skins"][0]["joints"]] if js.get("skins") else []
     meshes = []

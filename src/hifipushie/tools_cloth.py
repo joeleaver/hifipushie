@@ -390,8 +390,10 @@ def export_garment(name: str, garment: str, wear: str = "open", role: str = "mai
     """STEP 10: a chain garment as a GAME ASSET: the hung garment (else the build) re-gridded on its FLAT PATTERN (UVs =
     the pattern) at the density that fits the role's clothing budget (budgets.json), step 7's details as their own
     meshes, skinned to the rig with weights read off the body; one GLB. Refused by name: step 9 not approved; over
-    budget at the coarsest grid (says what to change). Writes step 10. Returns the look (EEVEE, rest + an arm raised,
-    beside the reference) + triangles vs budget, UV stretch, the weight check. guide(topic="export_garment")"""
+    budget at the coarsest grid (says what to change). Also writes <garment>_LOD1..3.glb (the same re-grid, coarser:
+    what export_asset takes at each LOD of the character). Writes step 10. Returns the look (EEVEE, rest + the bend
+    poses beside the reference, then the LODs) + triangles vs budget, UV stretch, the bend check, each LOD's count.
+    guide(topic="export_garment")"""
     from . import garment_export_tool as get
     looks, txt = get.run(name, garment, wear, role, look)
     return [_out(PILImage.open(p_).convert("RGB"), None) for p_ in looks] + [txt] if looks else txt
