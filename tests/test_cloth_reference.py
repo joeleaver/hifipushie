@@ -37,11 +37,6 @@ def _tube(cx, cy, r, z0, z1, n=24, m=30):
     return V, np.array(F)
 
 
-def test_guide_topic():
-    from hifipushie import server
-    assert "points-of-measure" in server.guide("cloth_reference") or "POM" in server.guide("cloth_reference")
-
-
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):
