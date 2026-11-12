@@ -20,21 +20,21 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   - 281 functions and constants, fold_checks whole; their tests. Source 207.5k -> 202.4k lines; 1,792 tests collect.
 - Proof for each cut (parent tree vs branch, fresh homes): cf_shirt and wf_simon builds bit-identical in X; flat_check
   on the s4-19 jacket and s4-14 hussar identical.
-- The split (tags archive/before-split-*; all landed):
+- The split (tags archive/before-split-*; 1-6 landed):
   1 server.py (3,913 lines; C413) -> mcp_app, tool_common, tools_find, one tools_<domain>.py each; tool surface identical.
   2 terrain_mesh.py (5,680; C414) -> 15 modules (terrain_mesh.MODULES), pure moves; the tile state hashes them all.
   3 hair.py (5,694; C415) -> 15 modules (hair.MODULES); 28 functions import a later module themselves; rebound names late.
   4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10, 10, 9; base.MODULES in the skin caches' hashes; class
     GnmFace (1,788 lines) keeps its name, its methods in five mixins.
-  5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10 modules; blockin_models._refs read late. Its check
-    for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py guards all modules.
-  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424) -> 8, 8, 6 modules, none over
-    500 lines; class Terrain (1,726 lines) in terrain_model with five mixins; terrain.MODULES in the terrain cache's hash.
+  5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10; found a live bug (blockin.ruler): test_undefined_names.py.
+  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424) -> 8, 8, 6 modules; class Terrain (1,726 lines) in terrain_model
+    with five mixins; terrain.MODULES in the terrain cache's hash.
+  7 skin_project.py, vegetation.py, terrain_design.py (5.7k; branch split-tier2) -> 9, 6, 7 modules.
 - CONSTANTS STAY (C422, landed 2026-11-11): export scripts outside the repo set module.NAME (assembly/exp.py
   HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants; for hair and faceshapes
   those values were then ignored. Now a family's base module holds every constant: tests/test_constants_address.py.
-- Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), hair_cards_job 600 (cards_job
-  570): refactoring, not moving. Also terrain_volumes, faceshapes_face 596, hair_look, hair_groom, blockin_steps.
+- Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), vegetation_grow 750 (grow 733),
+  hair_cards_job 600 (cards_job 570): refactoring, not moving. Also terrain_volumes, faceshapes_face, hair_look, hair_groom.
 - Not done: module docstrings in drape, zozo_hang, garment_pull, cloth_check still describe removed parts (fix at split).
 
 ## What still reaches the old clothes code (measured after cut 2; each cut assumes the ones above it)
@@ -56,5 +56,5 @@ split_module.py, split_class.py, rehome.py + plan_<module>.py; repoint.py, regap
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 
-NEXT: asset (3.7k, after the loop-retopology branch), blender_scene (Blender runs it by path: look first); cloth.py,
-pattern_form, garment_pull and cloth_made wait for the chain-build cut. Then the two giant functions, then the re-review.
+NEXT: the 1,500-2,000 line files (rig, retopo, veg_style, hair_cards, hair_flow); asset (after loop-retopology) and
+blender_scene (Blender runs it by path); the clothes files wait for the chain-build cut. Then giant functions, re-review.
