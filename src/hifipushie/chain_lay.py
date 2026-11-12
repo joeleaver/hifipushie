@@ -41,6 +41,7 @@ from .chain_lay_net import _side
 
 CLOSE_TOL = 0.5  # % off its cut: past this after the bends, a link's loop cannot close by bends (named)
 BEND_ITERS = 80  # projection passes of the bends
+FOLD_THROUGH = 0.25  # a fold is not turned when its turning side carries more than this of a placed piece with no row
 ARAP_ITERS = 30  # local / global rounds bending a piece sewn on to its placed nodes
 
 
@@ -281,21 +282,53 @@ def _draft_fold(net, f, bid):
     return fd
 
 
-def _turn(cnet, p, Xn, plan, frame, reads):
-    """Turn piece p's planned folds (module doc, 3)."""
+def _fold_side(cnet, loop, row, pts):
+    """The points of pts on the fold row's smaller side: the outline arc between the row's ends that encloses the smaller
+    area with the row, and the points inside it (never by the row's line extended: that cuts the whole piece)."""
+    from .chain_lay_net import _inside
+    uv = cnet.uv
+    i0 = int(np.argmin(np.linalg.norm(uv[loop] - uv[row[0]], axis=1)))
+    i1 = int(np.argmin(np.linalg.norm(uv[loop] - uv[row[-1]], axis=1)))
+    n = len(loop)
+    best = None
+    for arc in (loop[(i0 + np.arange((i1 - i0) % n + 1)) % n], loop[(i1 + np.arange((i0 - i1) % n + 1)) % n][::-1]):
+        P = np.r_[uv[arc], uv[row[::-1][1:-1]]]
+        area = 0.5 * abs(float((P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1]).sum()))
+        if best is None or area < best[0]:
+            best = (area, arc, P)
+    _, arc, P = best
+    m = _inside(P, uv[pts]) | np.isin(pts, arc)
+    return pts[m & ~np.isin(pts, row)]
+
+
+def _turn(cnet, p, Xn, plan, frame, reads, loop, done, placed):
+    """Turn piece p's planned folds (module doc, 3). A node another fold already turned stays as it is; a fold whose
+    turning side carries more than FOLD_THROUGH of a placed piece with no fold row of its own is not turned: that cloth
+    can't fold there (named, back to step 4)."""
     root, nm = cnet.root, cnet.names[p]
     pts = np.where(cnet.piece == p)[0]
+    rowed = {d.get("piece") for d in cnet.M.get("folds") or [] if d.get("rows")}
     for bid, f in sorted((plan.get("folds") or {}).items()):
         if f["on"] != nm:
             continue
         fd = _draft_fold(cnet, f, bid)
         rows = [np.asarray(r, np.int64) for r in fd.get("rows") or []]
         way = float(fd.get("sign", 1.0)) * _uv_wind(cnet, nm)
+        side = np.unique(root[_fold_side(cnet, loop, rows[0], pts)]) if rows else np.zeros(0, np.int64)
+        through = []
+        for q in range(len(cnet.names)):
+            qn = np.unique(root[cnet.piece == q])
+            if q != p and cnet.names[q] not in rowed and placed[qn].all():
+                frac = float(np.isin(qn, side).mean())
+                if frac > FOLD_THROUGH:
+                    through.append(f"{cnet.names[q]} ({frac:.0%})")
+        if through:
+            reads.setdefault(nm, {})[f"not turned {bid}"] = (f"its turning side carries {', '.join(through)}, which has "
+                                                            "no fold row there: back to step 4 (a roll row on it)")
+            continue
         for row in rows:
-            sd = _side(cnet.uv, row, cnet.uv[pts])
-            s = 1.0 if (sd > 0).sum() <= (sd < 0).sum() else -1.0
             rn = np.unique(root[row])
-            mv = np.setdiff1d(np.unique(root[pts[sd == s]]), rn)
+            mv = np.setdiff1d(np.unique(root[_fold_side(cnet, loop, row, pts)]), np.r_[rn, list(done)].astype(np.int64))
             if not len(mv):
                 continue
             a = Xn[root[row[0]]]
@@ -304,6 +337,7 @@ def _turn(cnet, p, Xn, plan, frame, reads):
             sg = 1.0 if np.cross(ax, Xn[mv].mean(0) - a) @ (way * nb[0]) >= 0 else -1.0
             R = _rot(ax, sg * np.radians(float(f["turn_deg"]) / len(rows)))
             Xn[mv] = (Xn[mv] - a) @ R.T + a
+        done.update(side.tolist())
         reads.setdefault(nm, {})[f"turned {bid}"] = float(f["turn_deg"])
 
 
@@ -425,9 +459,10 @@ def lay(net, cnet, keep, body, plan: dict | None = None, holds=None, frame=None,
                      reads, pulls)
     Xn[root[run]], placed[root[run]] = Pc, True
     away = _away(cnet, first, part.get(first, {first}))
+    done: set = set()
     for p in seq:
         _place(cnet, p, Xn, placed, frame, reads, onto=cnet.names[p] in follow, away=away if p == first else None)
-        _turn(cnet, p, Xn, plan, frame, reads)
+        _turn(cnet, p, Xn, plan, frame, reads, idx[net.loop(cnet.names[p])], done, placed)
     left = [cnet.names[p] for p in range(len(cnet.names)) if p not in seq]
     if [p for p in left if p not in h.layers]:
         raise ChainRefused(f"{', '.join(p for p in left if p not in h.layers)}: sewn to nothing placed: back to step 4")
