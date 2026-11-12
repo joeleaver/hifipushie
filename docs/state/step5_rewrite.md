@@ -46,7 +46,7 @@ Step 6 fills surfaces between them. Runs N1 -> N2 -> N2b -> N2c -> N2d (rolled p
 5. Cones untested on the jacket's caps (gaps there unchanged); the synthetic cap closes (test).
 
 Run: `uv run pytest -q tests/test_chain_panels.py tests/test_chain_lay.py tests/test_chain_solve.py tests/test_chain_plies.py`.
-Ledger C426-C433, C435, C438, C439.
+Ledger C426-C433, C435, C438, C440.
 
 NEXT: N2f: fix the edge-laid collar start (render the start alone until the collar rings the neck), make each hinge's
 turn exact by construction, then rerun run2's two starts and judge X_asm beside the reference.

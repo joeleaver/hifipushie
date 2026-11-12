@@ -251,7 +251,16 @@ below it (chords across folds); no open pattern edges; the weight check (LeftArm
 the body changes <= 12 mm p95 where the body moved). Refused unless step 9 is approved (internally an approved 7a exports the
 build; step 10 is then not written: the text says so). Writes <job>/export/<garment>.glb (+ _export.json, the look GLBs)
 and step 10; the look is SHAPE: the GLB with the body in EEVEE (asset_export.preview), rest beside the reference, and posed.
-Not done: LODs, the normal bake of the folds (garment_game.bake), layering culls (a shirt under a jacket).
+LODs: it also writes `<garment>_LOD1.glb` .. `_LOD3.glb`, the SAME pattern re-grid at a coarser grid (never a
+decimation of LOD0: that kinks and tears a garment), each at the role's clothing budget for that LOD (0.25 / 0.11 / 0.05
+of LOD0: what the character's export gives a part below the neck), stiff pieces with fewer rows (4 / 2 / 1), the same
+pattern UVs and maps, weights read off the body again on each LOD's own mesh. Details per LOD: a piece (one button)
+smaller than 2 px at the LOD's switch size on a 1920 px screen is LEFT OUT, the others are simplified to the LOD's share
+and seated on the LOD's cloth; the text says which, with the size that decided it. Each LOD is a line in the text and an
+entry in step 10's output (`lods`: file, triangles, grid); a LOD with an open pattern edge fails the gate, a LOD over its
+share is information. The last look is the LOD files, LOD1 at the top, the garment alone.
+Then the character: `export_asset(name, out_dir, role=..., rig=True)` takes this file and its LOD files as they are.
+Not done: the normal bake of the folds (garment_game.bake), layering culls (a shirt under a jacket), the bend check at the LODs.
 
 ### `pattern_check`
 

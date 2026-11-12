@@ -2,7 +2,8 @@
 
 The old route re-simulated the garment's draft and shipped that. These tests hold the hand-over: the file reads back
 as written, the two-sided layout is recognised, an unapproved or unexported garment is left out and said, weights
-follow the rig by bone NAME, and the character export never hands a garment with a record to cloth.export_part."""
+follow the rig by bone NAME, and the character export never hands a garment with a record to cloth.export_part.
+C439: each LOD of the character takes the garment's own LOD file (never a decimation of its LOD0)."""
 from pathlib import Path
 
 import numpy as np
@@ -102,12 +103,13 @@ def test_only_an_approved_exported_garment_is_shipped(tmp_path, monkeypatch):
     gone = _rec(**{"10": {"status": "done", "output": {"glb": str(tmp_path / "gone.glb")}}})
     with pytest.raises(ga.NotShipped, match="gone"):
         ga.exported(gone)
-    # its own gate failed: shipped as it is, and the log says so (the record keeps no row names: the count)
+    # its own gate failed: shipped as it is, and the log names the rows (the record keeps each row's "id")
     monkeypatch.setattr(gr, "states", _states(ten="failed"))
-    bad = _rec(**{"10": {"status": "failed", "output": {"glb": str(glb)},
-                         "gate": {"rows": [{"status": "PASS"}, {"status": "FAIL"}, {"id": "bends cleanly: arm", "status": "FAIL"}]}}})
+    bad = _rec(**{"10": {"status": "failed", "output": {"glb": str(glb)}, "gate": {"rows": [
+        {"id": "triangles", "status": "PASS"}, {"id": "uv stretch", "status": "INFO"},
+        {"id": "LOD3 open pattern edges", "status": "FAIL"}, {"id": "bends cleanly: arm", "status": "FAIL"}]}}})
     p, warn = ga.exported(bad)
-    assert p == glb and len(warn) == 1 and "FAILED (bends cleanly: arm" in warn[0] and "shipped as exported" in warn[0]
+    assert p == glb and warn == ["step 10's own gate FAILED (LOD3 open pattern edges; bends cleanly: arm): shipped as exported"]
 
 
 def test_parts_are_the_files_own_mesh_maps_and_weights(tmp_path, monkeypatch):
@@ -116,9 +118,12 @@ def test_parts_are_the_files_own_mesh_maps_and_weights(tmp_path, monkeypatch):
     recs = {"shirt": _rec(**{"10": {"status": "done", "output": {"glb": str(glb)}}}),
             "coat": _rec(**{"10": {"status": "todo"}})}
     log = []
-    cparts, weights, looks, left = ga.parts("m", recs, tmp_path / "out_missing_is_made" if False else tmp_path, log.append)
+    cparts, weights, looks, left, lods = ga.parts("m", recs, tmp_path, log.append)
     assert [pn for pn, _, _ in cparts] == ["cloth_shirt", "cloth_shirt_details"]
     assert [g for g, _ in left] == ["coat"] and "export_garment" in left[0][1] and looks == {}
+    # an export from before the LOD files: shipped, its LODs left to the decimator, and the log says how to change that
+    assert lods == {} and sum("WARNING cloth shirt: its export has no LOD files" in line and "DECIMATED" in line
+                              and 'next: export_garment("m", "shirt") again' in line for line in log) == 1
     (_, part, files), (_, dpart, dfiles) = cparts
     want = _garment()
     assert np.allclose(part["verts"], want["V"], atol=1e-6) and np.array_equal(part["corner_vert"], want["T"].ravel())
@@ -143,6 +148,65 @@ def test_parts_are_the_files_own_mesh_maps_and_weights(tmp_path, monkeypatch):
     assert any("not rebuilt" in line for line in log) and any("2 detail(s)" in line for line in log)
 
 
+def _lod_garment(nx):
+    """The strip again on a coarser grid (nx columns), two-sided as garment_game.shell lays it out."""
+    V0 = np.array([[x * 0.2 / (nx - 1), 0.0, 1.0 + z * 0.1] for z in range(2) for x in range(nx)], float)
+    q = np.arange(2 * nx).reshape(2, nx)
+    T0 = np.concatenate([np.stack([q[0, :-1], q[0, 1:], q[1, :-1]], 1), np.stack([q[0, 1:], q[1, 1:], q[1, :-1]], 1)])
+    n = len(V0)
+    J = np.zeros((2 * n, 4), int)
+    J[:, 0] = 2
+    W = np.zeros((2 * n, 4))
+    W[:, 0] = 1.0
+    return {"name": "shirt", "V": np.r_[V0, V0 + [0.0, 0.001, 0.0]], "T": np.r_[T0, T0[:, [0, 2, 1]] + n],
+            "uv": np.tile((V0[:, [0, 2]] - [0.0, 1.0]) * [4.0, 8.0] + 0.05, (2, 1)),
+            "N": np.r_[np.tile([0.0, -1.0, 0.0], (n, 1)), np.tile([0.0, 1.0, 0.0], (n, 1))], "colour": [0.5, 0.6, 0.7],
+            "J": J, "W": W}
+
+
+def test_each_lod_takes_the_garments_own_lod_file(tmp_path, monkeypatch):
+    """export_garment writes <garment>_LOD<k>.glb (the pattern re-grid, coarser); the character's LOD k is that file:
+    its mesh, uv and weights, LOD0's palette cell for a detail it keeps, no details part where it keeps none."""
+    glb = _file(tmp_path)
+    f1 = garment_glb.write(tmp_path / "shirt_LOD1.glb", "shirt", [_lod_garment(2), _button(1)], BONES)
+    f2 = garment_glb.write(tmp_path / "shirt_LOD2.glb", "shirt", [_lod_garment(2)], BONES)
+    rec = _rec(**{"10": {"status": "done", "output": {"glb": str(glb), "lods": [
+        {"lod": 1, "glb": str(f1), "share": 0.25}, {"lod": 2, "glb": str(f2), "share": 0.11},
+        {"lod": 3, "glb": str(tmp_path / "shirt_LOD3.glb"), "share": 0.05}]}}})
+    assert ga.lod_files(rec) == {1: (f1, 0.25), 2: (f2, 0.11)}  # (LOD3's file is gone: that LOD is left to the decimator)
+    monkeypatch.setattr(gr, "states", _states())
+    log = []
+    cparts, weights, _, _, lods = ga.parts("m", {"shirt": rec}, tmp_path, log.append)
+    assert sorted(lods) == [1, 2] and not any("WARNING" in line for line in log)
+    assert any("its own LOD files (LOD1 shirt_LOD1.glb, LOD2 shirt_LOD2.glb)" in line for line in log)
+    part, (names, J, W), share = lods[1]["cloth_shirt"]
+    want = _lod_garment(2)
+    assert share == 0.25 and np.allclose(part["verts"], want["V"], atol=1e-6) and part["shell"]["outer"] == 2
+    assert np.array_equal(part["corner_vert"], want["T"].ravel()) and np.allclose(part["uv"], want["uv"][want["T"].ravel()], atol=1e-6)
+    assert names == ["root", "spine", "arm"] and np.array_equal(J, want["J"])
+    dpart, dw, _ = lods[1]["cloth_shirt_details"]  # the one button it keeps, on LOD0's palette cell (the second of two)
+    assert len(dpart["corner_vert"]) == 12 and np.allclose(dpart["uv"][:, 0], 0.75) and len(dw[1]) == 4
+    assert lods[2]["cloth_shirt_details"] == (None, None, 0.11)
+    # into the character's LOD (asset_export's loop): LOD0's atlas index and pose correctives, the export rig's bones
+    parts = {pn: dict(p, atlas=i + 3) for i, (pn, p, _) in enumerate(cparts)}
+    n0 = len(parts["cloth_shirt"]["verts"])
+    d = np.tile([0.0, 0.0, 0.01], (n0, 1))
+    parts["cloth_shirt"]["shapes"] = {"corr_arm": (d, np.tile([0.0, -1.0, 0.0], (n0, 1)), np.tile([0.0, -1.0, 0.0], (n0, 1))),
+                                      "smile": (d, d, d)}
+    rig = [{"name": "arm"}, {"name": "spine"}, {"name": "root"}]
+    lp, lr, rep = {"body": {}}, {"weights": {}}, {}
+    line = ga.take_lods(lods[1], parts, lp, lr, rep, rig)
+    assert set(lp) == {"body", "cloth_shirt", "cloth_shirt_details"} and lp["cloth_shirt"]["atlas"] == 3
+    assert lp["cloth_shirt_details"]["atlas"] == 4 and np.all(lr["weights"]["cloth_shirt"][0][:, 0] == 0)  # "arm" by name
+    assert list(lp["cloth_shirt"]["shapes"]) == ["corr_arm"]  # (pose correctives stay in every LOD; face shapes are not cloth's)
+    assert np.allclose(lp["cloth_shirt"]["shapes"]["corr_arm"][0], [0.0, 0.0, 0.01]) and "shapes" not in lp["cloth_shirt_details"]
+    assert rep["cloth_shirt"] == {"triangles0": 10, "triangles": 4, "own_lod": True} and "not decimated" in line
+    lp, lr, rep = {}, {"weights": {}}, {}
+    line = ga.take_lods(lods[2], parts, lp, lr, rep, rig)
+    assert set(lp) == {"cloth_shirt"} and rep["cloth_shirt_details"]["triangles"] == 0 and "cloth_shirt_details left out" in line
+    assert ga.take_lods(lods[2], parts, {}, None, {}, None)  # (an unrigged export: no weights to place)
+
+
 def test_weights_follow_the_rig_by_bone_name():
     names = ["root", "spine", "arm"]
     J = np.array([[1, 2, 0, 0], [2, 0, 0, 0]])
@@ -163,3 +227,12 @@ def test_the_character_export_never_hands_a_chain_garment_to_the_old_simulation(
     assert i < j and 'old_ = {g_: v_ for g_, v_ in spec["cloth"].items() if g_ not in chain}' in src[i:j]
     assert 'clothmod.export_part(name, {**spec, "cloth": old_}' in src and ") if old_ else []" in src[j:j + 200]
     assert "garment_asset.bone_weights(" in src and '"garments_left_out"' in src
+
+
+def test_the_character_export_never_decimates_a_chain_garment_that_has_its_own_lod_files():
+    """asset_export's LOD loop keeps the parts with an own LOD file away from lods_part and takes the files instead."""
+    src = (Path(ga.__file__).parent / "asset_export.py").read_text()
+    i = src.index("own_ = {pn: v for pn, v in chain_lods.get(k, {}).items() if pn in parts}")
+    j = src.index("garment_asset.take_lods(own_, parts, lp, lr, rep_l")
+    assert i < src.index("if pn not in pf_of and pn not in own_}", i) < j < src.index("write_glb(lg, aname, lp", j)
+    assert "chain_lods = garment_asset.parts(name, chain, out_dir, log.append)" in src
