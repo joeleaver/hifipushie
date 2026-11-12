@@ -188,13 +188,14 @@ if __name__ == "__main__":
         # edges through the pictures' cameras. No mesh of the target is used.
         import arms
         from hifipushie import face_ruler as fr
+        from hifipushie import face_ruler_orbit, face_ruler_solve
         d, st, cB = _load(a[1])
         tr = len(a) > 2 and a[2] == "trial" and st.get("trial")
         cur = np.asarray(st["trial"]["c"] if tr else st["c"], float)
-        res = fr.read(fr.gnm_head(cur), arms.pictures(cB))
+        res = face_ruler_solve.read(fr.gnm_head(cur), arms.pictures(cB))
         print(f"picture ruler {a[1]} ({'TRIAL' if tr else 'CURRENT'} vs TARGET's pictures; +-err = the reader's own "
               "error estimate for that row; a gap inside it is not a difference)")
-        print(fr.text(res["gaps"]))
+        print(face_ruler_orbit.text(res["gaps"]))
     elif cmd == "manual":
         print((drv.G / "manual.md").read_text() if (drv.G / "manual.md").exists() else "no manual yet")
     else:

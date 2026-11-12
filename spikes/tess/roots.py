@@ -7,12 +7,13 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import hair, hair_strands as hs, store
+from hifipushie import hair_groom, hair_head
 
 name, out = sys.argv[1], sys.argv[2]
 sp = store.load(name)
-sc = hair.scalp(name, sp)
-g = hair.groom_of(sp) if hasattr(hair, "groom_of") else hair._merge(hair.GROOM, sp["hair"]["groom"])
-line = hair.hairline(sc, g)
+sc = hair_head.scalp(name, sp)
+g = hair.groom_of(sp) if hasattr(hair, "groom_of") else hair_groom._merge(hair.GROOM, sp["hair"]["groom"])
+line = hair_groom.hairline(sc, g)
 W, H = 1000, 650
 img = Image.new("RGB", (W, H), (245, 245, 245))
 dr = ImageDraw.Draw(img)
@@ -26,7 +27,7 @@ def xy(az, el):
 S = {**hs.hc.STRAND_DEFAULTS, **(sp["hair"].get("strands") or {})} if hasattr(hs.hc, "STRAND_DEFAULTS") else None
 for az in range(-100, 101, 2):
     for el in range(-40, 90, 2):
-        d = float(hair.inside(sc, line, az % 360, el))
+        d = float(hair_groom.inside(sc, line, az % 360, el))
         v = int(245 - 120 * np.clip((d + 0.0015) / 0.012, 0, 1))
         x, y = xy(az, el)
         dr.rectangle([x - 5, y - 5, x + 5, y + 5], fill=(v, v, 245))

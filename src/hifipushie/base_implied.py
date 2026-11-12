@@ -209,8 +209,8 @@ def eye_native(spec: dict) -> dict | None:
     if not isinstance(hd, dict) or hd.get("eye_radius") or hd.get("source", "gnm") != "gnm":
         return None
     if (b.get("body") or {}).get("source") == "human":
-        from . import onemesh
-        ht = onemesh.head_rest(b)
+        from . import onemesh_head
+        ht = onemesh_head.head_rest(b)
     else:
         ht = head_of({"joints": inject(spec)["joints"]}, b)
     return None if ht is None else ht.get("eye_gnm")

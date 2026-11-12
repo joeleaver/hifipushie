@@ -11,7 +11,7 @@ For: Baynard Racing's racers (Puddles the pig, face kit + mouth interior); gener
 - `face_shapes.rest = {ARKit: w}`: carried, not baked. GLB mesh.weights = rest (Playweft pw-gltf reads them as
   defaults), mesh.extras.restExpression, json face_shapes.rest + rest_how, rig.md "Face shapes: rest expression".
 - Code: facepose.py (spec in its docstring), faceshapes_apply.apply(quick=, neutrals=), server.look(shapes=),
-  scene.look(shape_pose=) + scene.slit_voxel, asset REST_HOW / write_glb weights, rignotes face section.
+  scene_sync.look(shape_pose=) + scene_sync.slit_voxel, asset REST_HOW / write_glb weights, rignotes face section.
 - Tests: tests/test_facepose.py (5). Proof sheet: examples/face_pose_match.py.
 
 ## Evidence (pudpose = copy of puddles, grin jawOpen .8, lowerDown .6, smile .3, jawOpen_mouthSmile .24)

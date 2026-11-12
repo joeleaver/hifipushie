@@ -371,7 +371,7 @@ turned or scaled become instance edits (the story's weather offsets taken back o
 numbers (a layer's opacity and colour, mask ranges, noise scale, near distances; nodes named hp:...) come
 back into the spec, and garments: their colour node, roughness, and their shape (a sculpt/clean-up in Blender,
 kept as per-vertex offsets on top of that sim: cloth.<g>.sculpt). Only values changed from what the last sync wrote count. Reports instances that now cut
-into something (scene.clear_of slides one out). Reads the person's running Blender when it has the scene open
+into something (scene_sync.clear_of slides one out). Reads the person's running Blender when it has the scene open
 (unsaved edits too), else the saved file.
 
 ### `heavy_status`

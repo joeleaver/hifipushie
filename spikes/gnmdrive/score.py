@@ -24,7 +24,8 @@ def dictionary():
         names += [m, m + "!"]
     names += ["nd:" + n for n in bi.gap_names()]
     from hifipushie import base as basemod
-    regs = sorted(k for k in basemod._gnm_data()["groups"] if k.endswith("_region"))
+    from hifipushie import base_identity
+    regs = sorted(k for k in base_identity._gnm_data()["groups"] if k.endswith("_region"))
     # (left_ / right_ region PCs move ONE side: a symmetric difference can't use them; the oracle leaves them out)
     names += [f"pc:{r}{k}" for r in regs if not r.startswith(("left_", "right_")) for k in range(8)]
     for z in gcm.ZONES:

@@ -2,11 +2,12 @@
 report to stdout and $G/out/go_<out>.txt, the new skin to $G/out/go_<out>.json."""
 import json, os, sys, time
 from hifipushie import skin_read as sr, store
+from hifipushie import skin_read_fit
 
 m, out = sys.argv[1:3]
 kw = dict(a.split("=") for a in sys.argv[3:])
 t = time.time()
-res = sr.apply(m, out=out, rounds=int(kw.get("rounds", 2)), anchor=kw.get("anchor", "auto"),
+res = skin_read_fit.apply(m, out=out, rounds=int(kw.get("rounds", 2)), anchor=kw.get("anchor", "auto"),
                stubble=None if "stubble" not in kw else kw["stubble"] == "1",
                groups=tuple(kw["groups"].split(",")) if "groups" in kw else sr.DEFAULT_GROUPS,
                log=lambda s: print(s) if "[measure]" not in str(s) else None)

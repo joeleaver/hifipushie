@@ -161,14 +161,14 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
                 c["_note"] = c.get("_note", "") + f" | NOT SEEN: {why}"
     geometric =strokes or instances or shading not in ("clay", "flat")  # clip and close-ups render painted too
     if paint and not geometric and store.load(name).get("paint"):
-        from . import scene
-        r = scene.sync(name)
+        from . import scene_sync
+        r = scene_sync.sync(name)
         closeup = focus is not None and zoom > 1
         sp = None
         if posed is not None:
             from . import facepose
             sp = facepose.scene_moves(posed[1], store._dir(name) / "build" / "face_scene_moves.npz")
-        sheet, secs = scene.look(name, views or ([] if cams else (render.DEFAULT_VIEWS[:1] if closeup else render.DEFAULT_VIEWS)),
+        sheet, secs = scene_sync.look(name, views or ([] if cams else (render.DEFAULT_VIEWS[:1] if closeup else render.DEFAULT_VIEWS)),
                                  cams, size, None, paint_layer, hide_parts, only_parts, flat=shading == "flat",
                                  clip=clip, focus=focus if closeup else None, zoom=zoom, hide_hair=hide_hair,
                                  shape_pose=sp)
@@ -176,14 +176,14 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
             sheet.save(save)
         notes = [l for l in r["log"] if "cuts into" in l or "from the scene" in l or "scene:" in l]
         if paint_layer:
-            c = scene.look.coverage
+            c = scene_sync.look.coverage
             notes.insert(0, f"{paint_layer} covers " + ("NOTHING in view: misaddressed?" if c < 0.0005 else
                                                         f"{c:.1%} of the surface in view"))
         info = (f"{name}: scene look (EEVEE, painted) in {secs}s, sync {sum(r['seconds'].values()):.1f}s"
                 + (f" | {'; '.join(notes)}" if notes else ""))
         if posed is not None:
             from . import facepose
-            sv = scene.slit_voxel(name)
+            sv = scene_sync.slit_voxel(name)
             info += " | " + facepose.note(store.load(name), posed[1]["weights"], posed[1]["seconds"], sv)
         for f, c in zip([render.camera_frame(c, i) for i, c in enumerate(cams)], cams):
             info += (f" | {f['name']}: eye ({', '.join(f'{x:.2f}' for x in f['eye'])}) -> target "
@@ -251,10 +251,10 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
                               keep)
         imgs = [im if "eye" in f else render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
     if instances:
-        from . import assemble
+        from . import assemble_expand
         marks = []
-        for inst, pl in assemble.placements(store.load(name)).items():
-            M = assemble.world_of(pl)
+        for inst, pl in assemble_expand.placements(store.load(name)).items():
+            M = assemble_expand.world_of(pl)
             fr = M[:3, :3] @ [0.0, -1.0, 0.0]
             marks.append({"label": inst, "at": M[:3, 3], "front": fr / (np.linalg.norm(fr) or 1)})
         imgs = [im if "eye" in f else render.draw_instances(im, f, marks) for im, f in zip(imgs, frames)]
@@ -425,7 +425,8 @@ def check(name: str, resolution: int = 160, save: str | None = None, only_parts:
     if spec.get("scatter"):
         import hashlib
         from . import assemble
-        assemble.expand(spec)
+        from . import assemble_expand
+        assemble_expand.expand(spec)
         notes = assemble.NOTES.get(hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest())
         if notes:
             realism_txt += "\n\nSCATTER:\n" + "\n".join(f"- {n}" for n in notes)

@@ -3,17 +3,18 @@ spine, where they root (x off the part, y back from the front), their height ran
 import sys
 import numpy as np
 from hifipushie import hair, hair_cards as hc, store
+from hifipushie import hair_cards_mesh, hair_head, hair_spec
 
 m = sys.argv[1]
 sp = store.load(m)
-sc = hair.scalp(m, sp)
+sc = hair_head.scalp(m, sp)
 y0 = -float(sc.r(0.0, 30.0)) * np.cos(np.radians(30.0))
 rows = []
 for n, lk in sp["hair"]["locks"].items():
     if not n.startswith("tg") or lk.get("space") == "xyz":
         continue
-    P = hair.lock_world(sc, lk, lk["pts"])
-    S = hc.spine({**lk, "pts": P.tolist()}, 80)[0]
+    P = hair_spec.lock_world(sc, lk, lk["pts"])
+    S = hair_cards_mesh.spine({**lk, "pts": P.tolist()}, 80)[0]
     T = np.diff(S, axis=0)
     T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-9)
     turn = np.degrees(np.arccos(np.clip((T[1:] * T[:-1]).sum(1), -1, 1))).sum()

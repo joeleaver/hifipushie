@@ -16,6 +16,7 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 import gt, hsrd, rast, draw
 from hifipushie import likeness
+from hifipushie import likeness_detect
 
 Image.MAX_IMAGE_PIXELS = None
 pose = sys.argv[1]
@@ -54,7 +55,7 @@ else:
                 continue
             im = Image.open(C[n]["image"]).convert("RGB")
             k = 1280 / max(im.size)
-            P = likeness.detect([im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS)])[0]
+            P = likeness_detect.detect([im.resize((int(im.width * k), int(im.height * k)), Image.LANCZOS)])[0]
             if P is not None:
                 det[n] = np.asarray(P)[likeness.MP68][:, :2] / k
         if len(det) >= 8:
@@ -135,6 +136,7 @@ print(f"  {len(views)} head cameras for the silhouettes; mask foreground share {
 V, F = scan["V"], scan["F"]
 zcut = V[:, 2].max() - 0.33                    # the scan's lower part (shoulders, the cut) makes no silhouette here
 from hifipushie import humanfit
+from hifipushie import humanfit_views
 
 
 def contour(mask):
@@ -162,7 +164,7 @@ def residuals(T, want_J=True):
         cm = contour(m)
         ys, xs = np.nonzero(cm)
         z = vis["z"][ys, xs]
-        Rc = humanfit._cam_rot(cam)
+        Rc = humanfit_views._cam_rot(cam)
         w, h = cam["size"]
         xc = np.c_[(xs + 0.5 - w / 2) * z / cam["f"], (ys + 0.5 - h / 2) * z / cam["f"], z]
         Xw = (xc - np.asarray(cam["t"])) @ Rc

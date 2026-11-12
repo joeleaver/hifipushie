@@ -10,13 +10,14 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from hifipushie import hair, hair_read, humanfit, store
+from hifipushie import hair_head, hair_read_capture, humanfit_views
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 OUT = os.environ["TOUT"]
 prev = kw.get("prev")
 spec = store.load(m)
-sc = hair.scalp(m, spec)
+sc = hair_head.scalp(m, spec)
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
 T = 500
 font = ImageFont.load_default(size=22)
@@ -28,7 +29,7 @@ def size(i):
 
 def tile(model, i):
     p = f"{OUT}/s_{model}_v{i}.png"
-    return hair_read.render_as_picture(p, size(i)) if os.path.exists(p) else None
+    return hair_read_capture.render_as_picture(p, size(i)) if os.path.exists(p) else None
 
 
 def ref(i):
@@ -38,7 +39,7 @@ def ref(i):
 def head_box(i, pad=1.7, down=0.18):
     cam = refs["cameras"][i]
     A, E = np.meshgrid(np.arange(0, 360, 4.0), np.arange(-40, 90, 4.0))
-    uv = humanfit.project(cam, sc.point(A.ravel(), E.ravel(), 0.0))
+    uv = humanfit_views.project(cam, sc.point(A.ravel(), E.ravel(), 0.0))
     x0, y0 = uv.min(0)
     x1, y1 = uv.max(0)
     s = pad * max(x1 - x0, y1 - y0)
@@ -49,7 +50,7 @@ def head_box(i, pad=1.7, down=0.18):
 def at(i, az, el, size_mm, h=0.01, dz=0.0):
     cam = refs["cameras"][i]
     P = sc.point(np.array([az]), np.array([el]), h) + np.array([0, 0, dz])
-    uv = humanfit.project(cam, P)[0]
+    uv = humanfit_views.project(cam, P)[0]
     eye, _ = hair_read.cam_eye(cam)
     s = size_mm / 1000.0 * cam["f"] / np.linalg.norm(sc.C - eye)
     return (uv[0] - s / 2, uv[1] - s / 2, uv[0] + s / 2, uv[1] + s / 2)

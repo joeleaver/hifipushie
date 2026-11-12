@@ -168,9 +168,9 @@ def _one_mesh(spec: dict, rb: list[dict], surf: dict, names: list[str]) -> np.nd
     from scipy.spatial import cKDTree
 
     from . import base as basemod
-    from . import onemesh
+    from . import onemesh_report
     tpl = basemod.source(spec["base"])
-    bones, idx, w = onemesh.weights(tpl)
+    bones, idx, w = onemesh_report.weights(tpl)
     central = _central(tpl, names)
     D = np.zeros((len(idx), len(rb)))
     rows = np.arange(len(idx))

@@ -10,6 +10,7 @@ from PIL import Image
 
 import stage
 from hifipushie import likeness, likeness_eyes as le
+from hifipushie import likeness_detect
 from hifipushie import store
 from hifipushie.spec import expand_mirror
 
@@ -42,7 +43,7 @@ for arg in sys.argv[2:]:
     elif im.width == 2 * im.height:
         im = im.crop((im.width // 2, 0, im.width, im.height))
     mmpx = 2 * dist * np.tan(np.radians(fr["fov"]) / 2) * 1000 / im.width
-    d = likeness.detect([im])[0]
+    d = likeness_detect.detect([im])[0]
     if d is None:
         print(lab, "no face found")
         continue

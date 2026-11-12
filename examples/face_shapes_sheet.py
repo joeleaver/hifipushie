@@ -19,6 +19,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from hifipushie import asset, faceshapes, store
+from hifipushie import asset_export, faceshapes_apply
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,19 +38,19 @@ def main(model: str = "goblin_talk", out: str = "workspace/face_shapes"):
         info = asset.export(model, glb.parent, triangles=40000 if human else 15000, texture=2048 if human else 1024,
                             rig=True, fbx=True, face_shapes=True)
         print("\n".join(info["log"]))
-    got = faceshapes.read_glb(glb)
+    got = faceshapes_apply.read_glb(glb)
     for mesh, g in got.items():
         moving = [n for n, t in zip(g["names"], g["targets"]) if np.abs(t["POSITION"]).max() > 0]
         print(f"{mesh}: {g['count']} vertices, {len(g['names'])} targets, {len(moving)} move it")
-    face = faceshapes.face_of(spec)
+    face = faceshapes_apply.face_of(spec)
     target = face.M + face.up * 0.35 * face.R - face.out * 0.2 * face.R
     dist = 5.0 * face.R
     q = (face.out + face.side) / np.sqrt(2)  # three quarter from the creature's left
     cams = [{"eye": (target + face.out * dist).tolist(), "target": target.tolist(), "fov": 30, "name": "front"},
             {"eye": (target + q * dist).tolist(), "target": target.tolist(), "fov": 30, "name": "3/4 left"}]
     # every shape alone, then the combinations as a player sets them (correctives filled in: faceshapes.playback)
-    poses = [("neutral", {})] + [(n, {n: 1.0}) for n in faceshapes.names_of(True)] + list(faceshapes.COMBOS.items())
-    sheets = asset.preview(glb, [], size=300, samples=16, cameras=cams,
+    poses = [("neutral", {})] + [(n, {n: 1.0}) for n in faceshapes_apply.names_of(True)] + list(faceshapes.COMBOS.items())
+    sheets = asset_export.preview(glb, [], size=300, samples=16, cameras=cams,
                            poses=[faceshapes.playback(p) if len(p) > 1 else p for _, p in poses],
                            lighting=(spec.get("style") or {}).get("look"))
     try:

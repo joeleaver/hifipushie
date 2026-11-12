@@ -10,19 +10,20 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin as bi, likeness as lk, paint, skin_read as sr, store
+from hifipushie import blockin_models, likeness_render, skin_read_context, skin_read_frames, skin_read_reads
 
 src, name = sys.argv[1], sys.argv[2]
-bi.fork(src, name, replace=True)
+blockin_models.fork(src, name, replace=True)
 spec = store.load(name)
-frames = sr.capture(name, spec, log=print)
-ctx = sr.context(name, spec, frames=frames, log=print)
-mesh = lk.model_mesh(spec["base"])
+frames = skin_read_frames.capture(name, spec, log=print)
+ctx = skin_read_context.context(name, spec, frames=frames, log=print)
+mesh = likeness_render.model_mesh(spec["base"])
 c0 = np.asarray(paint.colour(((spec.get("skin") or {}).get("eyes") or {}).get("iris", "#5a3a1e")), float)[:3]
 print("the model's iris colour now:", "#" + "".join(f"{int(round(255 * x)):02x}" for x in c0))
 hexs = lambda lin: "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in np.clip(sr._srgb(np.clip(lin, 0, 1)), 0, 1))  # noqa: E731
 tiles = []
 for f, v in zip(ctx.frames, ctx.views):
-    scl, iris = sr._eye_classes(f, mesh, spec)
+    scl, iris = skin_read_context._eye_classes(f, mesh, spec)
     ok = (f["alpha"] > 0.98)
     scl, iris = scl & ok, iris & ok
     if iris.sum() < 30 or scl.sum() < 60:
@@ -41,7 +42,7 @@ for f, v in zip(ctx.frames, ctx.views):
     r_bri = (out["iris"]["P_mid"] / out["iris"]["R_med"]) / (out["sclera"]["P_bright"] / out["sclera"]["R_med"])
     cands = {"old (clipped)": sr._lin(c0) * r_old, "unclipped": sr._lin(c0) * r_unc, "bright sclera": sr._lin(c0) * r_bri}
     if hasattr(sr, "iris_colour"):
-        cands["ships"] = sr._lin(np.asarray(paint.colour(sr.iris_colour(c0, r_bri)), float)[:3])
+        cands["ships"] = sr._lin(np.asarray(paint.colour(skin_read_reads.iris_colour(c0, r_bri)), float)[:3])
     for k, c in cands.items():
         print(f"   {k}: ratio {np.round(c / np.maximum(sr._lin(c0), 1e-6), 2)} -> {hexs(c)}")
     ys, xs = np.where(iris | scl)

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import rock_round  # noqa: E402
 
 from hifipushie import terrain, terrain_mesh  # noqa: E402
+from hifipushie import terrain_model, terrain_tile_views, terrain_tiles
 
 
 def cost(o):
@@ -31,7 +32,7 @@ def main():
     name, ps = sys.argv[2], sys.argv[3]
     variants = [a for a in sys.argv[4:] if not a.startswith("--")]
     V = json.loads((Path(__file__).parent / "rock_views.json").read_text())
-    T = terrain.load(rock_round.ROOT / rock_round.SPECS[name])
+    T = terrain_model.load(rock_round.ROOT / rock_round.SPECS[name])
     cfgv = V[name][ps]
     costs = json.loads((out / "costs.json").read_text()) if (out / "costs.json").exists() else {}
     for var in variants:
@@ -44,13 +45,13 @@ def main():
             cfg["texture_max"] = 4096
         t0 = time.time()
         if "--render-only" not in sys.argv:
-            terrain_mesh.preview_tiles(T, o, cfgv["center"], cfgv.get("radius", 40.0), d, cfg)
+            terrain_tiles.preview_tiles(T, o, cfgv["center"], cfgv.get("radius", 40.0), d, cfg)
             costs[f"{name}_{ps}_{var}"] = {**cost(o), "preview_s": round(time.time() - t0, 1)}
             print(var, costs[f"{name}_{ps}_{var}"], flush=True)
         views = rock_round.views_for(T, cfgv["views"])
         for v in views:
             v["out"] = str(o / f"{name}_{v['name']}.png")
-        terrain_mesh.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, box=cfgv.get("box"),
+        terrain_tile_views.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, box=cfgv.get("box"),
                                   textured="detail" if var[0] == "m" else True, detail_fade="--nofade" not in sys.argv)
         (out / "costs.json").write_text(json.dumps(costs, indent=1))
 

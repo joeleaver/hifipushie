@@ -4,24 +4,25 @@ import copy, sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, likeness as lk, skin, skin_project as sp, store, images
+from hifipushie import blockin_clay, blockin_expression, blockin_models, likeness_render, skin_params, skin_project_atlas, skin_project_detail, skin_project_light, skin_project_sample
 def lch(lin):
     L = sp.lab(np.asarray(lin, float)[None])[0]
     return f"L {L[0]:5.1f} a {L[1]:5.1f} b {L[2]:5.1f} hue {np.degrees(np.arctan2(L[2], L[1])):5.1f} C {np.hypot(L[1], L[2]):4.1f}"
 for m in sys.argv[1:]:
-    spec = store.load(m); rj = bi._refs(m); at = sp.atlas(spec["base"]); regs = sp.region_masks(at)
+    spec = store.load(m); rj = blockin_models._refs(m); at = skin_project_atlas.atlas(spec["base"]); regs = skin_project_detail.region_masks(at)
     pj = spec["skin"]["projection"]
     alb = sp._lin(np.asarray(Image.open(images.id_path(pj["albedo"])).convert("RGB"), float) / 255.0)[at["ii"], at["jj"]]
     cf = np.asarray(Image.open(images.id_path(pj["confidence"])).convert("RGB"), float)[..., 0][at["ii"], at["jj"]] / 255.0
     rec_p = store._dir(m) / "skin_layers" / "recomposed.png"
     rec = sp._lin(np.asarray(Image.open(rec_p).convert("RGB"), float) / 255.0)[at["ii"], at["jj"]] if rec_p.exists() else None
     s2 = copy.deepcopy(spec); s2["skin"].pop("stack", None)
-    ours = sp.ours_albedo(at, s2, log=lambda s: None)
-    vi = bi._front(rj)
-    mesh = bi._per_view(spec["base"], rj, [vi], lambda b: lk.model_mesh(b))[vi]
+    ours = skin_project_light.ours_albedo(at, s2, log=lambda s: None)
+    vi = blockin_clay._front(rj)
+    mesh = blockin_expression._per_view(spec["base"], rj, [vi], lambda b: likeness_render.model_mesh(b))[vi]
     ph = np.asarray(Image.open(rj["views"][vi]["image"]).convert("RGB"))
-    smp = sp.sample_view(at, mesh, rj["cameras"][vi], ph)
-    tone = sp._lin(np.asarray(skin.tone_rgb(skin.params(spec)["tone"]), float))
-    print(f"\n{m} (tone sRGB {skin.tone_rgb(skin.params(spec)['tone'])}):")
+    smp = skin_project_sample.sample_view(at, mesh, rj["cameras"][vi], ph)
+    tone = sp._lin(np.asarray(skin.tone_rgb(skin_params.params(spec)["tone"]), float))
+    print(f"\n{m} (tone sRGB {skin.tone_rgb(skin_params.params(spec)['tone'])}):")
     for nm, q in (("mid-cheek", regs["cheek"]), ("under-eye", regs["under_eye"])):
         q = q & (cf > 0.6) & smp["vis"]
         print(f"  {nm} ({int(q.sum())} texels)")

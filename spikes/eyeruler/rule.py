@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin_brows as bb, eye_ruler as er, likeness, store
+from hifipushie import likeness_detect
 
 G = os.environ["G"] + "/out"
 bx = json.load(open(G + "/box.json"))
@@ -85,7 +86,7 @@ for a in sys.argv[1:]:
         eyes = er.read(q["img"], q["P"], mm, debug=True)
         im_o = q["img"]
     else:
-        P = likeness.detect([im])[0]
+        P = likeness_detect.detect([im])[0]
         if P is None:
             print(tag, "NOT detected: the photo's points are used")
             P = (q["P"] - box[:2]) * K

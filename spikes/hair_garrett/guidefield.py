@@ -9,13 +9,14 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import hair, store
+from hifipushie import hair_head
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 OUT = os.environ["TOUT"]
 L = float(kw.get("len", 0.01))
 spec = store.load(m)
-sc = hair.scalp(m, spec)
+sc = hair_head.scalp(m, spec)
 C = np.asarray(sc.C, float)
 locks = spec["hair"]["locks"]
 R, D = [], []

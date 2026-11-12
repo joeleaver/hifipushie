@@ -14,14 +14,14 @@ from .asset_raster import (
 )
 
 def inner_paint(parts: dict, topo: dict, head: dict, log: list) -> None:
-    """A GNM head's inner lip rolls (skin_features.inner_lip_values by GNM vertex) as each low-poly corner's
+    """A GNM head's inner lip rolls (skin_features_mouth.inner_lip_values by GNM vertex) as each low-poly corner's
     "inner_paint" weight, which bake() lays over the scene's colour: the scene's surface has no rolls with the lips
     closed (the fill behind the seam), so what the bake found there was the skin beside the seam."""
-    from . import skin_features as sfe
-    val = sfe.inner_lip_values(head)
+    from . import skin_features_mouth
+    val = skin_features_mouth.inner_lip_values(head)
     if val is None:
         return
-    deep = sfe.mouth_interior_values(head)
+    deep = skin_features_mouth.mouth_interior_values(head)
     if deep is None:
         deep = np.zeros(len(val))
     on_sock = deep > 0
@@ -69,8 +69,8 @@ def lip_floor_mask(spec: dict, X: np.ndarray, n: np.ndarray) -> np.ndarray:
     try:
         pts = Points(spec, X, n, np.zeros(len(X), int), [sk.get("part", "body")], 0.001)
         pts.footprint = 0.0005
-        from . import skin
-        ly = skin.expand_zones(spec, {"mask": [asset.LIP_FLOOR_ZONE]}, "lip floor")
+        from . import skin_zones
+        ly = skin_zones.expand_zones(spec, {"mask": [asset.LIP_FLOOR_ZONE]}, "lip floor")
         return paint_apply.layer_mask(spec, "lip_floor", ly, paint_apply._View(pts, np.arange(len(X))))
     except (KeyError, ValueError):  # (no lip landmarks on this model: no floor)
         return np.zeros(len(X))

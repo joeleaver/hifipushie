@@ -10,6 +10,7 @@ import numpy as np
 import shot
 import skin_look_j
 from hifipushie import asset, store
+from hifipushie import asset_export
 
 name, glb, out = sys.argv[1:4]
 poses = json.loads(sys.argv[4]) if len(sys.argv) > 4 else None
@@ -24,7 +25,7 @@ for n, d in D.items():
     d /= np.linalg.norm(d)
     cams.append({"eye": (c + d * 1.25).tolist(), "target": (c - [0, 0, 0.02]).tolist(), "fov": 19.0, "name": n})
 lt = {k: v for k, v in shot.light().items()}
-r = asset.preview(Path(glb), [], size=640, samples=48, cameras=cams, lighting=lt, poses=poses)
+r = asset_export.preview(Path(glb), [], size=640, samples=48, cameras=cams, lighting=lt, poses=poses)
 if poses is None:
     r.save(out)
 else:

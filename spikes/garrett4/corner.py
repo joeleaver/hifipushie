@@ -6,14 +6,15 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod, faceshapes, retopo, store
+from hifipushie import base_identity, faceshapes_apply, retopo_wrap
 
 spec = store.load(sys.argv[1])
-r = retopo.wrap(spec, log=[])
+r = retopo_wrap.wrap(spec, log=[])
 V, gnm = np.asarray(r["verts"], float), np.asarray(r["gnm"])
-face = faceshapes.face_of(spec)
+face = faceshapes_apply.face_of(spec)
 R = face._lip_rings()
 lev = R["lev"]
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
 skin = np.asarray(g["skin"], bool)
 J = {k: np.asarray(v["pos"], float) for k, v in __import__("hifipushie").spec.expand_mirror(spec)["joints"].items() if k.startswith("lm_mouth_corner")}

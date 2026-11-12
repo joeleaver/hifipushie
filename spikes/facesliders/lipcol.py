@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import likeness
+from hifipushie import likeness_detect, likeness_sides
 from hifipushie.likeness_eyes import frame
 
 
@@ -19,7 +20,7 @@ def lab(img):
 def read(img, mmpx, P=None):
     from scipy.ndimage import map_coordinates
     if P is None:
-        d = likeness.detect([img.convert("RGB")])[0]
+        d = likeness_detect.detect([img.convert("RGB")])[0]
         if d is None:
             raise SystemExit("no face found in the render")
         P = np.asarray(d["P"] if isinstance(d, dict) else d, float)[:, :2]
@@ -43,8 +44,8 @@ def read(img, mmpx, P=None):
     return out
 
 
-refs = likeness._refs("ll_garrett")
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs("ll_garrett")
+ph = likeness_sides.photo_sides(refs)[0]
 rows = {"photo": read(ph["img"], ph["mmpx"], ph["side"].P)}
 for arg in sys.argv[1:]:
     lb, path = arg.split("=", 1)

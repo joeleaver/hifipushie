@@ -7,13 +7,14 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import lashes, store, base as basemod
+from hifipushie import base_measures
 from hifipushie.spec import expand_mirror
 
 name = sys.argv[1]
 spec = store.load(name)
 t = time.time()
 s = expand_mirror(spec)
-head = basemod.head_of(s, s["base"])
+head = base_measures.head_of(s, s["base"])
 print("head", len(head["verts"]), "eye_r", head["eye_r"], f"{time.time() - t:.1f} s")
 t = time.time()
 L = lashes.lid_lines(head)

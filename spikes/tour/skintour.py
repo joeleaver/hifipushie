@@ -11,6 +11,7 @@ sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3", os.path.dirname(os.p
 from PIL import Image
 import stage
 from hifipushie import blockin as bi, humanfit, resources, store
+from hifipushie import blockin_clay, blockin_expression, blockin_focus, blockin_models, humanfit_views
 import tour  # noqa: F401  (registers the chin / brow_forehead features; its main part is guarded below)
 
 m = sys.argv[1]
@@ -20,15 +21,15 @@ os.makedirs(out, exist_ok=True)
 T = int(kw.get("tile", 480))
 proj = kw.get("proj", "1") == "1"
 feats = kw.get("features", "eyes,brow_forehead,nose,mouth,chin,chin_jaw,cheeks").split(",")
-rj = bi._refs(m)
+rj = blockin_models._refs(m)
 VI = list(range(len(rj["views"])))
-meshes = bi._per_view(store.load(m)["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
-order = [i for i in VI if i != bi._front(rj)] + [bi._front(rj)]
+meshes = blockin_expression._per_view(store.load(m)["base"], rj, VI, lambda b: blockin_clay.presented_mesh(b, rj=rj))
+order = [i for i in VI if i != blockin_clay._front(rj)] + [blockin_clay._front(rj)]
 BOXES, FRAMES = {}, []   # every view's features in ONE Blender (each frame under its own view's light)
 for vi in VI:
     cam = rj["cameras"][vi]
-    L2 = humanfit.project(cam, meshes[vi]["state"]["L"])
-    BOXES[vi] = {f: [float(x) for x in bi._feature_box(f, L2)] for f in feats}
+    L2 = humanfit_views.project(cam, meshes[vi]["state"]["L"])
+    BOXES[vi] = {f: [float(x) for x in blockin_focus._feature_box(f, L2)] for f in feats}
     light = stage.photo_light(m, vi)
     FRAMES += [{**stage.fitted_frame(cam, b, f"{f}@{vi}"), "lighting": light} for f, b in BOXES[vi].items()]
 with resources.heavy(f"skin tour {m}", gb=6):

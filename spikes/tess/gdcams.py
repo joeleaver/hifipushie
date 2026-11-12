@@ -16,7 +16,8 @@ for i, nm in enumerate(("front", "three_quarter", "profile")):
     f = stage.fitted_frame(refs["cameras"][i], [200, 150, 950, 900], nm)
     e = np.asarray(f["eye"], float)
     from hifipushie import hair
-    C = hair.scalp(name).C + np.array([0.0, 0.03, -0.05])  # the head + tail, centred (Godot ignores lens shift)
+    from hifipushie import hair_head
+    C = hair_head.scalp(name).C + np.array([0.0, 0.03, -0.05])  # the head + tail, centred (Godot ignores lens shift)
     cams.append({"name": nm, "eye": g(e), "target": g(C), "up": [0, 1, 0], "fov": 22.0})
 json.dump(cams, open(out, "w"), indent=1)
 print(json.dumps(cams)[:400])

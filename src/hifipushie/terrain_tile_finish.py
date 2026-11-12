@@ -193,10 +193,10 @@ def _textured_prep(P, N, W, F, k, origin, stem):
             tx[key] = tx[key][o]
     Pa, Na = sp["P"], sp["N"]
     if getattr(c.get("field"), "region", None) is not None and str(stem).startswith("tile"):
-        from . import terrain_cliffs
+        from . import terrain_cliffs_checks
         # (a cliff shell's sunk edge takes the AO of the true ground over it: its vertices metres down read 0, and
         # interpolated up its dive, the strip that shows over the heightmap was black: pushieworld note 104)
-        Pa, Na = terrain_cliffs.lifted(c["field"], Pa, Na)
+        Pa, Na = terrain_cliffs_checks.lifted(c["field"], Pa, Na)
     ao_v = terrain_bake.bake_ao(Metric(c["base"]), Pa, Na)
     info = {}
     if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)

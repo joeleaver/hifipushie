@@ -1,6 +1,7 @@
 """tess.py [style] : give hc_tess a tied, wavy groom and save it."""
 import sys
 from hifipushie import hair, store
+from hifipushie import hair_spec
 
 name = "hc_tess"
 spec = store.load(name)
@@ -21,4 +22,4 @@ spec["hair"] = {
     "look": {"gap": "#1c110c", "lit": "#5c3b28", "sheen": "#8a6044", "vary": 0.3, "root": 0.1, "tip_amount": 0.5},
 }
 store.save(name, spec, "hair: tied wavy groom")
-print(hair.groom(name))
+print(hair_spec.groom(name))

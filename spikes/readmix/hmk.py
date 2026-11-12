@@ -17,6 +17,7 @@ sys.path.insert(0, G_)
 import gt, hsrd, hsrdset as H
 from gmk import canon, CL, SIZE, PXM
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
+from hifipushie import blockin_models, face_ruler_camera, humanfit_views
 
 pose, k = sys.argv[1], sys.argv[2]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
@@ -29,7 +30,7 @@ S = (fj["S"]["s"], np.asarray(fj["S"]["R"]), np.asarray(fj["S"]["t"]))       # s
 Tj = P.cams["T_scan_to_rig"]
 Trig = (1.0, np.asarray(Tj["R"]), np.asarray(Tj["t"]))                       # scan -> rig
 T = f"rm_{k}_T"
-bi.start(T, [], sex=sex, age=age, replace=True)
+blockin_models.start(T, [], sex=sex, age=age, replace=True)
 sp = store.load(T)
 bi.set_identity(sp, cstar)
 (store.HOME / T / "spec.json").write_text(json.dumps(sp))
@@ -102,18 +103,18 @@ for vn, yaw in VIEWS.items():
     Image.fromarray(pic).save(fn)
     cam = canon(hsrd.pipeline_cam(hv, RM), ctr)
     w, h = SIZE
-    ty = abs(fr.view_yaw(cam))
+    ty = abs(face_ruler_camera.view_yaw(cam))
     pts = {}
     if yaw >= 70:
-        Pp = humanfit.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
+        Pp = humanfit_views.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
         pts = {kk: [round(float(p[0]), 1), round(float(p[1]), 1)] for kk, p in zip(CL, Pp)}
     nominal = int(5 * round(ty / 5))
     views.append({"image": str(fn), "size": [w, h], "yaw": (nominal if nominal < 70 else -nominal), "points": pts, "name": vn,
                   "truth": {"rig": chosen[vn], "dist_m": hv["dist"], "lens_diag_mm": round(cam["f"] / float(np.hypot(w, h)) * 43.27, 1),
                             "outside_px_share": float(1 - inside.mean())}})
     cams.append(cam)
-    print(f"  {vn} {chosen[vn]} turn {ty:.1f} pitch {fr.view_pitch(cam):+.1f} dist {cam['t'][2]:.2f} m outside {100 * (1 - inside.mean()):.1f} %")
-views = bi.with_anchor_points(views)
+    print(f"  {vn} {chosen[vn]} turn {ty:.1f} pitch {face_ruler_camera.view_pitch(cam):+.1f} dist {cam['t'][2]:.2f} m outside {100 * (1 - inside.mean()):.1f} %")
+views = blockin_models.with_anchor_points(views)
 (store.HOME / T / "human_refs.json").write_text(json.dumps({"views": views, "cameras": cams, "blockin": {"root": T, "attach": "native", "truth": {"pose": pose}}}))
 D = bi.data()
 en = [str(x) for x in D["eth_names"]]
@@ -121,7 +122,7 @@ for cls in [c_ for c_ in kw.get("classes", "pooled").split(",") if c_]:
     vv = [dict(v, lens_mm=v["truth"]["lens_diag_mm"]) for v in views]
     S0 = f"rm_{k}_L{cls}00"
     if cls == "pooled":
-        bi.start(S0, vv, sex=sex, age=age, cameras="refit", replace=True)
+        blockin_models.start(S0, vv, sex=sex, age=age, cameras="refit", replace=True)
     elif cls == "blend":
         from scipy.optimize import minimize
         E = np.asarray(D["eth_means"][int(sex == "male")])
@@ -129,7 +130,7 @@ for cls in [c_ for c_ in kw.get("classes", "pooled").split(",") if c_]:
                      constraints={"type": "eq", "fun": lambda w: w.sum() - 1}).x
         bl = {e: round(float(x), 3) for e, x in zip(en, w) if x > 1e-3}
         print("oracle blend", bl)
-        bi.start(S0, vv, sex=sex, age=age, ethnicity=bl, cameras="refit", replace=True)
+        blockin_models.start(S0, vv, sex=sex, age=age, ethnicity=bl, cameras="refit", replace=True)
     else:
-        bi.start(S0, vv, sex=sex, age=age, ethnicity=cls, cameras="refit", replace=True)
+        blockin_models.start(S0, vv, sex=sex, age=age, ethnicity=cls, cameras="refit", replace=True)
     print("start", S0)

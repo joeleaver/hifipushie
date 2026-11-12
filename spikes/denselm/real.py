@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from hifipushie import blockin as bi, denselm, face_ruler as fr, likeness, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, likeness_detect, likeness_render, likeness_sides
 
 T = "/home/joe/dev/s0urc3/docs/img/tess_ref_full/"
 G = "/home/joe/dev/s0urc3/docs/img/garrett_ref_full/"
@@ -83,21 +84,21 @@ def main():
         for vname, model, vi, path in SUBJECTS[sub]:
             cam = head = None
             if model:
-                rj = bi._refs(model)
+                rj = blockin_models._refs(model)
                 v, cam = rj["views"][vi], rj["cameras"][vi]
                 img = Image.open(v["image"]).convert("RGB")
                 pts = {k: p for k, p in (v.get("points") or {}).items()}
-                head = fr.model_head(store.load(model))
+                head = face_ruler_blockin.model_head(store.load(model))
                 _, q68 = fr._cam_points(cam, np.asarray(head["L"], float)[:68])
-                box0 = likeness._box({str(i): p for i, p in enumerate(q68)}, img.size)
-                mp = likeness.detect_region(img, box0)
+                box0 = likeness_sides._box({str(i): p for i, p in enumerate(q68)}, img.size)
+                mp = likeness_detect.detect_region(img, box0)
                 init = q68
             else:
                 img = Image.open(path).convert("RGB")
-                mp = likeness.detect([img])[0]
+                mp = likeness_detect.detect([img])[0]
                 if mp is None:
                     w, h = img.size
-                    mp = likeness.detect_region(img, (w * 0.15, h * 0.1, w * 0.85, h * 0.75))
+                    mp = likeness_detect.detect_region(img, (w * 0.15, h * 0.1, w * 0.85, h * 0.75))
                 init = None if mp is None else np.asarray(mp, float)[likeness.MP68]
             if init is None:
                 print(f"{sub} {vname}: no face box (MediaPipe found none and no model): skipped")
@@ -108,7 +109,7 @@ def main():
             reg = L["region"]
             o68 = xy[L["lm68"]]
             ext = float(np.ptp(o68[:, 1]))
-            mmpx = 120.0 / max(ext, 1.0) if cam is None else likeness._mm_per_px(cam, np.asarray(head["L"], float)[27:48])
+            mmpx = 120.0 / max(ext, 1.0) if cam is None else likeness_render._mm_per_px(cam, np.asarray(head["L"], float)[27:48])
             # (no camera: ~120 mm brow-to-chin over the 68's height: a rough scale for the sigma colours only)
             sgmm = sg * mmpx
             line = f"{sub} {vname}: face {ext:.0f} px ({mmpx:.2f} mm/px); our sigma (mm) median by region: " + ", ".join(
@@ -123,7 +124,7 @@ def main():
                              f"MediaPipe {np.median(dm):.2f} (inner {np.median(dm[17:]):.2f}, jaw {np.median(dm[:17]):.2f})")
                     hv = head.get("dense_v")
                     if hv is None:
-                        fr._dense_obs(head, {"cam": cam, "kind": "front"}, {"xy": xy, "sigma": sg})
+                        face_ruler_camera._dense_obs(head, {"cam": cam, "kind": "front"}, {"xy": xy, "sigma": sg})
                         hv = head["dense_v"]
                     _, Q = fr._cam_points(cam, head["V"][hv])
                     dd = np.linalg.norm(xy[:len(hv)] - Q, axis=1) * mmpx

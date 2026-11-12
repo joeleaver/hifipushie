@@ -20,6 +20,7 @@ from PIL import Image
 
 import stage
 from hifipushie import hair, render, resources, scene, skin_look, store
+from hifipushie import hair_job
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -65,7 +66,7 @@ def shoot(f, lt):
         fr = {**f, "out": str(Path(tmp) / "a.png")}
         job = {"blend": str(scene.blend_path(sn)), "views": [fr], "size": N, "samples": 24, "hide": [], "flat": False,
                "transparent": True, "lighting": {**lt, "target": fr["center"]}, "eevee": stage.STAGE_EEVEE,
-               "mode": "hair_look", "hair": hair.job(sn, st), "clay_views": [], "id_views": [], "look_engine": eng}
+               "mode": "hair_look", "hair": hair_job.job(sn, st), "clay_views": [], "id_views": [], "look_engine": eng}
         if eng == "cycles":
             job.update(hair_bounces=10, denoise=True, adaptive_threshold=0.01, samples=int(kw.get("samples", 96)))
         scene._blender(job, 3600)

@@ -25,6 +25,7 @@ from scipy.sparse.linalg import factorized
 from scipy.spatial import cKDTree
 
 from hifipushie import base, headfit, makehuman
+from hifipushie import base_identity
 
 AGES = [1, 3, 6, 9, 12, 15, 18, 25, 35, 50, 65, 80, 90]
 LAM = 12.0  # smoothing of a displacement field over the mesh
@@ -73,7 +74,7 @@ def vnormals(V, T):
 
 
 def main():
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     hg = headfit._gnm()
     V0 = g["template_vertex_positions"].astype(float)
     Jm = hg["J0"].mean(0)

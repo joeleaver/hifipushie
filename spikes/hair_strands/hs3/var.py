@@ -4,6 +4,7 @@ whose name contains A or B); look.k=v; groom.a.b=v; other k=v = hair.strands dia
 import json, os, sys, time
 from PIL import Image, ImageDraw
 from hifipushie import hair, store, hair_strands as HS
+from hifipushie import hair_look, hair_spec, hair_strands_job
 
 name, out = sys.argv[1], sys.argv[2]
 groups, cur = [[]], None
@@ -13,7 +14,7 @@ for a in sys.argv[3:]:
     else:
         groups[-1].append(a)
 common, variants = groups[0], groups[1:] or [["base:"]]
-_st = HS.stacks
+_st = hair_strands_job.stacks
 
 
 def run(args, label):
@@ -43,12 +44,12 @@ def run(args, label):
     def stacks(*a, **k):
         d = _st(*a, **k)
         return {n: [m for m in st if not any(q in m[0] for q in skip)] for n, st in d.items()}
-    HS.stacks = stacks
-    hair.validate(spec)
+    hair_strands_job.stacks = stacks
+    hair_spec.validate(spec)
     t = time.time()
-    sheet, sec, fr = hair.look(name, views=views, size=size, spec=spec, **kw)
+    sheet, sec, fr = hair_look.look(name, views=views, size=size, spec=spec, **kw)
     st = [l for l in fr if "strands" in l]
-    print(label, sec, "s", "bare", hair.look.mass_share, st[0][:200] if st else "", flush=True)
+    print(label, sec, "s", "bare", hair_look.look.mass_share, st[0][:200] if st else "", flush=True)
     return sheet.crop((0, 22, size * len(views), 22 + size)), f"{label}   {sec}s"
 
 

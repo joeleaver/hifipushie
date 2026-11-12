@@ -8,6 +8,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import paint, skin, skin_folds as sf, skin_marks as mk, skin_read as sr, store
+from hifipushie import skin_params, skin_zones
 from hifipushie import skin_read_context, skin_read_fit, skin_read_fold_fit, skin_read_folds, skin_read_frames, skin_read_params, skin_read_reads
 from hifipushie.spec import SpecError
 from test_skin import head_spec
@@ -60,7 +61,7 @@ def test_get_set_and_fold_options():
     assert s2["features"]["flush"] == {"amount": 0.6, "where": ["cheek"]} and s2["lips"]["lower"]["melanin"] == 1.4
     skin_read_params._unset(s2, sk, "lips.lower.melanin"); skin_read_params._unset(s2, sk, "zones.nose_red")
     assert "lips" not in s2 and "zones" not in s2
-    skin.params({"skin": {"lips": {"lower": {"blood": 1.5}}, "zones": {"perioral_red": 0.5, "periorbital": 1.0}}})
+    skin_params.params({"skin": {"lips": {"lower": {"blood": 1.5}}, "zones": {"perioral_red": 0.5, "periorbital": 1.0}}})
     o = sf.options({"nasolabial": 0.8, "tear_trough": {"amount": 1.0, "L": {"shift": [1, 2, 1], "extent": [0.1, 0.8]}}, "lid_fold": 0})
     assert set(o) == {"nasolabial", "tear_trough"} and o["tear_trough"]["sides"][".L"]["extent"] == [0.1, 0.8]
     assert o["tear_trough"]["sides"][".R"]["shift"] == [] and o["nasolabial"]["width"] == sf.FOLDS["nasolabial"]["width"]
@@ -76,12 +77,12 @@ def test_get_set_and_fold_options():
 @_tmp
 def test_beard_zones_partition_and_weights():
     spec = head_spec(hair={"stubble": {"style": "short"}})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     V, N, _ = mk.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
     z = mk.beard_zones(J)(V)
     assert set(z) == set(mk.BEARD_ZONES) and np.allclose(sum(z.values()), 1.0, atol=1e-9) and all((v >= -1e-12).all() for v in z.values())
-    from hifipushie.skin_features import stubble_options
+    from hifipushie.skin_features_hair import stubble_options
     full = mk.beard_density(J, stubble_options({"amount": 1.0, "style": "short"}))(V, N)
     goat = mk.beard_density(J, stubble_options({"amount": 1.0, "style": "short", "zones": {"cheeks": 0.0, "jaw": 0.0, "neck": 0.0}}))(V, N)
     ch, ck = z["chin"] > 0.8, (z["cheeks"] > 0.8) & (full > 0.2)
@@ -93,7 +94,7 @@ def test_beard_zones_partition_and_weights():
 @_tmp
 def test_fold_map_and_layers():
     spec = head_spec(age=30, folds={"nasolabial": {"amount": 1.0, "L": {"shift": [3.0] * 5}}, "tear_trough": 0.8})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     ps0 = sf.paths(spec, "body", J, None, names=["nasolabial"])
     ps1 = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["nasolabial"])
     q0, q1 = ps0[("nasolabial", ".L")], ps1[("nasolabial", ".L")]
@@ -129,7 +130,7 @@ def test_folds_are_geometry():
     prims = compile_prims(spec)
     tis = {p.name for p in prims if p.kind == "tissue"}
     assert tis == {"fold_nasolabial.L", "fold_tear_trough.L", "fold_tear_trough.R", "fold_lid_fold.L", "fold_lid_fold.R"}, tis
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     S = sf.surface(spec, "body", J)
     body = [p for p in prims if p.part == "body"]
     ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]))
@@ -178,7 +179,7 @@ def test_colour_read_and_fit_recover_zones():
     differences and the fit brings the parameters back (no anchor: the tone is left alone)."""
     truth = {"age": 30, "eyes": False, "zones": {"midface_red": 2.2, "forehead_yellow": 0.2, "nose_red": 2.0}, "lips": {"blood": 0.5, "melanin": 2.0}}
     spec = head_spec(age=30, eyes=False)
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     V, N, _ = mk.head_mesh(spec, "body", J)
     front = N[:, 1] < -0.2
     V, N = V[front].astype(float), N[front].astype(float)
@@ -343,7 +344,7 @@ def test_folds_under_expression():
     from hifipushie import sdf
     from hifipushie import images_frame
     spec = head_spec(age=30, folds={"lid_fold": 1.0, "nasolabial": 1.0})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["lid_fold"])
     q = ps[("lid_fold", ".L")]
     full, free = images_frame.prims_on(spec, ["body"]), images_frame.prims_on(sf.without(spec), ["body"])

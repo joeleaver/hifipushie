@@ -6,6 +6,7 @@ import os
 import sys
 
 from hifipushie import humanfit, likeness_pair, store
+from hifipushie import humanfit_solve
 
 L = os.environ["L"]
 
@@ -27,7 +28,7 @@ for op in ops:
     if "base" in op:
         base = json.load(open(op["base"]))
     if "nudge" in op:
-        base, rep = humanfit.nudge(base, op["nudge"], move=op["move"], radius=op.get("radius", 0.015))
+        base, rep = humanfit_solve.nudge(base, op["nudge"], move=op["move"], radius=op.get("radius", 0.015))
         print("nudge", op["nudge"], {k: v for k, v in rep.items() if k not in ("landmark",)})
     if "macros" in op or "solve" in op or "read" in op:
         from hifipushie import humanmacro as hm

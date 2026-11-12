@@ -12,6 +12,7 @@ headfit.N = 170
 import joint2 as J2  # noqa: E402
 import outl  # noqa: E402
 from hifipushie import humanfit, store  # noqa: E402
+from hifipushie import humanfit_views
 
 m = sys.argv[1]
 sp = store.load(m)
@@ -24,12 +25,12 @@ env = J2.envelope(st, cam, o)
 img = Image.open(v["image"]).convert("RGB")
 d = ImageDraw.Draw(img)
 d.line([tuple(p) for p in o], fill=(255, 0, 0), width=2)
-px = humanfit.project(cam, env["X"])
+px = humanfit_views.project(cam, env["X"])
 for p in px:
     d.ellipse([p[0] - 2, p[1] - 2, p[0] + 2, p[1] + 2], fill=(0, 200, 0))
 for k, p in (v.get("points") or {}).items():
     d.ellipse([p[0] - 4, p[1] - 4, p[0] + 4, p[1] + 4], outline=(0, 0, 255), width=2)
-L = humanfit.project(cam, st["L"][:68])
+L = humanfit_views.project(cam, st["L"][:68])
 for p in L:
     d.ellipse([p[0] - 2, p[1] - 2, p[0] + 2, p[1] + 2], fill=(230, 200, 0))
 print("points", v.get("points"), "cam yaw", cam.get("yaw"), "n contour", len(o), "n env", len(px))

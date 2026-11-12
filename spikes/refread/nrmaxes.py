@@ -5,10 +5,11 @@ import sys, time
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, face_ruler as fr, facenormals as fn, store
+from hifipushie import blockin_models, face_ruler_blockin
 
 m, vi = sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 0
-spec, rj = store.load(m), bi._refs(m)
-head = fr.model_head(spec)
+spec, rj = store.load(m), blockin_models._refs(m)
+head = face_ruler_blockin.model_head(spec)
 cam, box = rj["cameras"][vi], rj["blockin"]["boxes"][vi]
 shot = Image.open(f"/mnt/data/hifipushie/reruns/out/d_{m}_{vi}.png").convert("RGB")
 n = shot.size[0]

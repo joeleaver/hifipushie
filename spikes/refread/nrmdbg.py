@@ -3,10 +3,11 @@
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, face_ruler as fr, facenormals as fnm, store
+from hifipushie import blockin_models, face_ruler_blockin
 
 m = "tk_T06"
-rj = bi._refs(m)
-A = fr.model_head(store.load(m))
+rj = blockin_models._refs(m)
+A = face_ruler_blockin.model_head(store.load(m))
 for vi in range(3):
     cam, box = rj["cameras"][vi], rj["blockin"]["boxes"][vi]
     ib = [int(round(x)) for x in box]

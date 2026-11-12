@@ -91,8 +91,9 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
     from the exact surface."""
     import tempfile
     from . import scene
+    from . import scene_sync
     t = time.time()
-    scene.sync(name, resolution)
+    scene_sync.sync(name, resolution)
     log.append(f"scene synced in {time.time() - t:.1f}s")
     with tempfile.TemporaryDirectory(prefix="hifipushie-maps-") as tmp:
         jobs = []

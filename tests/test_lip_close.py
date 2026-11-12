@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, blockin_lips as bl, humans, onemesh  # noqa: E402
+from hifipushie import onemesh_head
 
 
 def _ok():
@@ -30,8 +31,8 @@ def _base(**hd):
 def test_lip_close_closes_gnm_neutral():
     if not _ok():
         return
-    open_ = bl.contact_gaps(onemesh.head_template(_base()), None, 1.0)
-    shut = bl.contact_gaps(onemesh.head_template(_base(lip_close=True)), None, 1.0)
+    open_ = bl.contact_gaps(onemesh_head.head_template(_base()), None, 1.0)
+    shut = bl.contact_gaps(onemesh_head.head_template(_base(lip_close=True)), None, 1.0)
     assert open_.max() > 1.0, open_            # GNM's neutral is parted
     assert shut.max() < 0.6 and shut.min() > -0.6, shut
 
@@ -39,8 +40,8 @@ def test_lip_close_closes_gnm_neutral():
 def test_closed_mouth_field_gets_the_seam():
     if not _ok():
         return
-    tpl = onemesh.template(_base(lip_close=True))
+    tpl = onemesh_head.template(_base(lip_close=True))
     sf = tpl.get("seal_field")
     assert sf is not None and list(sf.get("v") or []) == list(onemesh.CLOSED_SEAL_V), sf and sf.get("v")
     assert len(sf["drop"]) > 0 and len(sf["outer"]) >= 1
-    assert onemesh.template(_base()).get("seal_field") is None   # a parted mouth: none
+    assert onemesh_head.template(_base()).get("seal_field") is None   # a parted mouth: none

@@ -1,5 +1,6 @@
 from hifipushie import base
-g = base._gnm_data()
+from hifipushie import base_identity
+g = base_identity._gnm_data()
 for k, v in g.items():
     print(k, getattr(v, "shape", type(v)), getattr(v, "dtype", ""))
 import numpy as np

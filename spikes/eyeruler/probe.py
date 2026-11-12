@@ -2,10 +2,11 @@
 import sys
 import numpy as np
 from hifipushie import blockin_eyes as be, onemesh, store
+from hifipushie import onemesh_head
 
 for name in sys.argv[1:]:
     base = store.load(name)["base"]
-    ht = onemesh.head_template(base)
+    ht = onemesh_head.head_template(base)
     if name == sys.argv[1]:
         print("ht keys", sorted(ht.keys()))
         print("head keys", {k: (v if not isinstance(v, (dict, list)) else type(v).__name__) for k, v in base["head"].items()})

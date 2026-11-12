@@ -13,10 +13,11 @@ import gt
 what = sys.argv[1]
 if what == "lps":
     from hifipushie import base as basemod
+    from hifipushie import base_imls
     m = gt.read_obj(gt.ROOT / "lps/mcguire/x/head.OBJ")
     V, polys, puv = m["V"], m["poly"], [m["UV"][q] for q in m["polyuv"]]
     for _ in range(2):
-        V, quads = basemod._catmull_clark(V, polys)
+        V, quads = base_imls._catmull_clark(V, polys)
         nuv = []
         for uv in puv:
             c = uv.mean(0)

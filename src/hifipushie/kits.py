@@ -131,9 +131,9 @@ def expand(spec: dict) -> dict:
     """Return a copy of spec with every kit replaced by the elements it generates (cached by content,
     ignoring strokes, which kits never see: the face kit's raycasts cost more than everything else here).
     Prefab instances and arrays (assemble.py) are expanded first."""
-    from . import assemble
+    from . import assemble_expand
     from . import base_implied
-    spec = base_implied.inject(assemble.expand(spec))
+    spec = base_implied.inject(assemble_expand.expand(spec))
     kits = spec.get("kits") or {}
     if not kits:
         return spec

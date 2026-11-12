@@ -8,7 +8,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from hifipushie import assets, base, humanfit, humans, onemesh, paint, skin  # noqa: E402
+from hifipushie import assets, base, humanfit, humans, onemesh, paint  # noqa: E402
+from hifipushie import skin_build, skin_zones
 from hifipushie import paint_masks
 from hifipushie import base_identity
 
@@ -39,16 +40,16 @@ def test_lip_layers_cover_the_vermilion():
     g = base_identity._gnm_data()
     gid = np.maximum(np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])], 0)
     ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5
-    lys = skin.layers(sp)
+    lys = skin_build.layers(sp)
     for grp in ("upper_lip", "lower_lip"):
         sel = (np.asarray(g["groups"][grp]) > 0.5)[gid] & ext[gid] & (-n[:, 1] > 0.3)  # front-facing vermilion
         cover = np.zeros(len(P))
         for lname in ("skin:lips_upper", "skin:lips_lower"):
             o = lys[lname]["mask"][0]
-            stack = skin.zone(sp, o["zone"]["name"], grow=o["zone"].get("grow", 1.0))
+            stack = skin_zones.zone(sp, o["zone"]["name"], grow=o["zone"].get("grow", 1.0))
             cover = np.maximum(cover, paint_masks._outline_mask(sp, lname, stack[0]["outline"], P, n))
         # (the border's own vertices lie on the outline: 0.5 there by construction)
         assert (cover[sel] > 0.45).mean() > 0.85, (grp, float((cover[sel] > 0.45).mean()))
     # and the colour follows skin.lips
-    hi = skin.layers({**sp, "skin": {**sp["skin"], "lips": {"blood": 3.0}}})["skin:lips_upper"]["color"]
+    hi = skin_build.layers({**sp, "skin": {**sp["skin"], "lips": {"blood": 3.0}}})["skin:lips_upper"]["color"]
     assert hi[1] < lys["skin:lips_upper"]["color"][1] - 0.05  # redder (less green)

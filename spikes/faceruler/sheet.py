@@ -10,6 +10,7 @@ import arms
 import drv
 import gnmc
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_outline, face_ruler_solve
 
 G, R = os.environ["G"], os.environ["R"]
 
@@ -24,13 +25,13 @@ def pair(case):
 cA, cB, _, h = pair("s6_03")
 A = fr.gnm_head(cA)
 views = arms.pictures(cB)
-res = fr.read(A, views, rounds=1)
+res = face_ruler_solve.read(A, views, rounds=1)
 tiles = []
 for v in views:
     im = v["img"].copy()
     d = ImageDraw.Draw(im)
     _, ps = fr.clay(A, v["cam"], passes=True)
-    d.line([tuple(p) for p in fr._curve(ps["part"] >= 0)], fill=(0, 200, 0), width=2)
+    d.line([tuple(p) for p in face_ruler_outline._curve(ps["part"] >= 0)], fill=(0, 200, 0), width=2)
     for ob in res["obs"]:
         if ob["view"] != v["kind"]:
             continue
@@ -44,7 +45,7 @@ S = gnmc.grid([tiles], cols_labels=["front", "3/4", "profile"],
               title="fr_01 the face ruler reading s6_03 (nose): TARGET's pictures; green = the model's outline through the same camera, "
                     "yellow = outline reads, magenta / cyan = pupil, lip, brow reads (picture / model)", lw=0)
 S.save(f"{R}/fr_01_ruler_reads.png")
-rows = sorted(fr.read(A, views)["gaps"], key=lambda r: -abs(r["sd"]))[:6]
+rows = sorted(face_ruler_solve.read(A, views)["gaps"], key=lambda r: -abs(r["sd"]))[:6]
 print("fr_01 top rows:", [(r["measure"], round(r["gap"], 1)) for r in rows])
 
 # ---- fr_02

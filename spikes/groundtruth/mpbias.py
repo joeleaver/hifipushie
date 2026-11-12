@@ -8,6 +8,7 @@ import sys
 import numpy as np
 from PIL import Image
 from hifipushie import face_ruler as fr, likeness, store
+from hifipushie import face_ruler_blockin, face_ruler_camera, likeness_detect
 
 PAIRS = {"nose base width (31-35)": (31, 35, 0), "mouth width (48-54)": (48, 54, 0), "eyes outer (36-45)": (36, 45, 0), "eyes inner (39-42)": (39, 42, 0),
          "jaw width (4-12)": (4, 12, 0), "chin width (6-10)": (6, 10, 0), "upper lip height (51-62)": (51, 62, 1), "lower lip height (66-57)": (66, 57, 1),
@@ -16,15 +17,15 @@ for k in sys.argv[1:]:
     T = f"gt_{k}_AT" if not k.startswith("sc_") else k
     sp = store.load(T)
     rj = json.loads((store.HOME / T / "human_refs.json").read_text())
-    head = fr.model_head(sp)
+    head = face_ruler_blockin.model_head(sp)
     print(f"\n{k}: detector on the picture - detector on the truth's render, mm (front-ish views)\n")
     cols = []
     for v, cam in zip(rj["views"], rj["cameras"]):
-        if abs(fr.view_yaw(cam)) > 30:
+        if abs(face_ruler_camera.view_yaw(cam)) > 30:
             continue
         img = Image.open(v["image"]).convert("RGB")
         ren = fr.clay(head, cam)
-        P = likeness.detect([img, ren])
+        P = likeness_detect.detect([img, ren])
         if P[0] is None or P[1] is None:
             continue
         a, b = np.asarray(P[0])[likeness.MP68][:, :2], np.asarray(P[1])[likeness.MP68][:, :2]

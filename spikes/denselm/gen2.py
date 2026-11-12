@@ -114,14 +114,16 @@ def base_spec(dr: dict, voxel: float) -> dict:
 def _enames() -> list:
     if "en" not in _C:
         from hifipushie import base as basemod
-        _C["en"] = [str(x) for x in basemod._gnm_data()["expression_names"]]
-        _C["in"] = [str(x) for x in basemod._gnm_data()["identity_names"]]
+        from hifipushie import base_identity
+        _C["en"] = [str(x) for x in base_identity._gnm_data()["expression_names"]]
+        _C["in"] = [str(x) for x in base_identity._gnm_data()["identity_names"]]
     return _C["en"]
 
 
 def stage(name: str, sp: dict, voxel: float, with_hair: bool, log=print) -> tuple:
     """The dressed head stage of a base spec at a COARSE mesh (voxel; eyes / mouth boxes at half). -> (stage model, its spec)."""
     from hifipushie import scene, skin_look, store
+    from hifipushie import scene_sync
     st = skin_look.stage_spec(sp, "head")
     for k, p in st["parts"].items():
         if k in ("teeth", "tongue"):
@@ -141,7 +143,7 @@ def stage(name: str, sp: dict, voxel: float, with_hair: bool, log=print) -> tupl
     d.mkdir(parents=True, exist_ok=True)
     (d / "spec.json").write_text(json.dumps(st))
     t = time.time()
-    r = scene.sync(sn, resolution=256)
+    r = scene_sync.sync(sn, resolution=256)
     log(f"step: stage {sn} synced in {time.time() - t:.0f} s ({r['seconds']})")
     return sn, st
 
@@ -296,7 +298,8 @@ def make_poser(sp: dict, st0: dict, fv_set=None):
     """pose(c (170), teeth (80), e (383)) -> (the one mesh's vertices P, GNM's vertices as placed W, the 68 landmarks,
     the two eye centres) for a GNM-native base at its stage's placement, LINEAR in GNM's own bases (see main)."""
     from hifipushie import base as basemod, denselm, onemesh
-    g = basemod._gnm_data()
+    from hifipushie import base_identity
+    g = base_identity._gnm_data()
     tpl, h0 = st0["tpl"], st0["head"]
     P0 = np.asarray(tpl["P"], float)
     W0 = np.asarray(h0["gnm_world"], float)
@@ -368,6 +371,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
     from hifipushie import base as basemod, denselm, humanfit, likeness, onemesh, render, resources, scene, store
+    from hifipushie import base_identity, likeness_render, scene_sync
     t0 = time.time()
     dr = dressing(rng)
     sp = base_spec(dr, voxel)
@@ -378,11 +382,12 @@ def main():
     (out / "dressing.json").write_text(json.dumps(dr, indent=1))
     if dr.get("hair"):
         from hifipushie import hair
+        from hifipushie import hair_spec
         try:
-            hair.groom(name, replace=True, note="denselm", patch=dr["hair"]["patch"])
+            hair_spec.groom(name, replace=True, note="denselm", patch=dr["hair"]["patch"])
         except Exception as e_:  # noqa: BLE001
             print(f"step: groom {dr['hair']['kind']} failed ({str(e_)[:200]}): the default groom", flush=True)
-            hair.groom(name, replace=True, note="denselm")
+            hair_spec.groom(name, replace=True, note="denselm")
         sp = store.load(name)
         sp["hair"]["look"] = {**(sp["hair"].get("look") or {}), **hair.seen_look(dr["hair"]["color"])}
         (d / "spec.json").write_text(json.dumps(sp))
@@ -391,6 +396,7 @@ def main():
     hair_job = None
     if dr.get("hair"):
         from hifipushie import hair
+        from hifipushie import hair_spec
         hair_job = out / "hair_job.json"
         hair_job.write_text(json.dumps(hair.job(sn, st_spec)))
     t_stage = time.time() - t0
@@ -399,10 +405,10 @@ def main():
     tpl, h0 = st0["tpl"], st0["head"]
     P0 = np.asarray(tpl["P"], float)
     W0 = np.asarray(h0["gnm_world"], float)
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
-    Fq = likeness.model_mesh_from_state(st0)["F"]
+    Fq = likeness_render.model_mesh_from_state(st0)["F"]
     skin_v = (gid < 0) | gr["skin"][np.maximum(gid, 0)]
     F_skin = Fq[skin_v[Fq].all(1)]
     Q = np.asarray(g["quads"], int)

@@ -6,9 +6,11 @@ import tempfile
 
 import numpy as np
 
-from hifipushie import images, paint, skin, skin_marks as mk, store
+from hifipushie import images, paint, skin_marks as mk, store
+from hifipushie import skin_zones
 from hifipushie import images_frame, images_project
-from hifipushie.skin_features import freckle_options, stubble_options
+from hifipushie.skin_features_hair import stubble_options
+from hifipushie.skin_features_marks import freckle_options
 from test_skin import head_spec
 
 
@@ -34,11 +36,11 @@ def test_beard_zones_from_landmarks():
     """Where the beard grows follows the landmarks: chin and jaw yes, forehead / nose / lips no, the cheeks thinner than
     the chin, and moving the chin landmark moves the beard."""
     spec = head_spec(hair={"stubble": {"style": "short"}})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     V, N, _ = mk.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
     d = mk.beard_density(J, stubble_options({"amount": 1.0, "style": "short"}))(V, N)
-    io = skin.interocular(J)
+    io = skin_zones.interocular(J)
     at = lambda name, off=(0, 0, 0): d[_near(V, J[name] + io * np.asarray(off))]  # noqa: E731
     assert at("lm_chin", (0, 0, 0.15)) > 0.6
     assert at("lm_jaw_5.L") > 0.4
@@ -61,7 +63,7 @@ def test_stubble_count_adds_hairs():
     """hair.stubble.count: hairs per area x (density saturates at 1 where the beard is full, so it can't make a full beard
     denser: Garrett's chin / jaw coverage .2 vs the photo's .5, 2026-10-16). count 1 leaves the options (cache key) alone."""
     spec = head_spec()
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     assert "count" not in stubble_options({"amount": 1.0}) and stubble_options({"amount": 1.0, "count": 9})["count"] == 4.0
     n1 = mk.stubble_map(spec, "body", J, stubble_options({"amount": 1.0}))[2]["hairs"]
     n2 = mk.stubble_map(spec, "body", J, stubble_options({"amount": 1.0, "count": 2.0}))[2]["hairs"]
@@ -73,7 +75,7 @@ def test_stubble_map_deterministic_and_styles():
     """Same inputs, same map (content-cached, byte-identical when rebuilt); clean shaven shows almost no hair, a
     longer style more; grey puts hairs in the white channel only when asked; the shadow follows the dark roots."""
     spec = head_spec()
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
 
     def mapped(**kw):
         o = stubble_options({"amount": 1.0, **kw})
@@ -108,7 +110,7 @@ def test_fade_band_never_darker_than_full():
     joint Garrett a saturated red-brown fold line beside his own fold read as streaks beside the mouth)."""
     import colorsys
     spec = head_spec(hair={"stubble": {"style": "short"}})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     o = stubble_options({"amount": 1.0, "style": "short"})
     path, place, _ = mk.stubble_map(spec, "body", J, o)
     V, N, _ = mk.head_mesh(spec, "body", J)
@@ -151,7 +153,7 @@ def test_stubble_fade_is_fine_and_light():
     assert tone.min() >= 0.55 and tone.std() > 0.1
     from scipy.ndimage import gaussian_filter
     spec = head_spec(hair={"stubble": {"style": "short"}})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     o = stubble_options({"amount": 1.0, "style": "short", "grey": 0.5})
     path, place, _ = mk.stubble_map(spec, "body", J, o)
     V, N, _ = mk.head_mesh(spec, "body", J)
@@ -172,7 +174,7 @@ def test_freckles_no_repeat_and_sun():
     """Freckles are unique: two windows of the map 6 cm apart (the old swatch's period) don't match; they gather on
     the nose and cheeks, not under the chin."""
     spec = head_spec(features={"freckles": 1.0})
-    J = skin._joints(spec)
+    J = skin_zones._joints(spec)
     o = freckle_options({"amount": 1.0})
     path, place, st = mk.freckle_map(spec, "body", J, o)
     a = images.pixels(pathlib.Path(path))[..., 0]
@@ -186,7 +188,7 @@ def test_freckles_no_repeat_and_sun():
         assert abs(np.corrcoef(w.ravel(), v.ravel())[0, 1]) < 0.3
     V, N, _ = mk.head_mesh(spec, "body", J)
     d = mk.freckle_density(J, {**o, "clump": 0.0})(V.astype(float), N.astype(float))
-    io = skin.interocular(J)
+    io = skin_zones.interocular(J)
     nose = d[_near(V, J["lm_nose_bridge"] + io * np.array([0, 0, -0.3]))]
     under = d[_near(V, J["lm_chin"] + io * np.array([0, 0.5, -0.2]))]
     assert nose > 0.3 and under < 0.05, (nose, under)
@@ -198,8 +200,8 @@ def test_patchy_is_missing_hair_and_freckles_fade_out():
     cheek read as stains in four blind reads); freckles peak on the nose bridge and upper cheek and fade outward
     without stopping dead at the cheek's side (skin3 measured 0.01 of the peak there, refs 0.1-0.9)."""
     spec = head_spec(hair={"stubble": {"style": "patchy"}})
-    J = skin._joints(spec)
-    io = skin.interocular(J)
+    J = skin_zones._joints(spec)
+    io = skin_zones.interocular(J)
     V, N, _ = mk.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
     o = stubble_options({"amount": 1.0, "style": "patchy"})
@@ -224,8 +226,8 @@ def test_base_map_pores_by_zone_and_per_pixel():
     1-3 mm and fade to even at the map's edges (no seam); its relief is a non-detail height layer, so the export bakes
     it into the unique normal map, and its colour layers are per pixel (not _pre)."""
     spec = head_spec(age=30)
-    J = skin._joints(spec)
-    io = skin.interocular(J)
+    J = skin_zones._joints(spec)
+    io = skin_zones.interocular(J)
     W = mk.base_zones(J)
     pts = np.array([J["lm_nose_tip"] + io * np.array([0.05, 0.02, 0.05]), [0.0, J["lm_nose_bridge"][1] + 0.2 * io, J["lm_nose_bridge"][2] + 0.75 * io],
                     J["lm_lip_lower"]])

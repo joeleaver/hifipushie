@@ -124,8 +124,8 @@ class _TerrainMeasure:
         out += terrain_falls.report(self)
         from . import terrain_forms as forms_mod
         out += forms_mod.report_water(self)
-        from . import terrain_stream as stream_mod
-        out += stream_mod.report_flow(self)
+        from . import terrain_stream_water
+        out += terrain_stream_water.report_flow(self)
         if getattr(self, "ground_rms", None) is not None:
             out.append(f"ground texture (measured): gentle ground varies {self.ground_rms:.2f} m rms about its ~50 m "
                        f"trend ({self.ground_before:.2f} m before the undulation, swales and hummocks; plaster-smooth "
@@ -371,8 +371,8 @@ class _TerrainMeasure:
         (x0, y0), (x1, y1) = self.spec["extent"]
         span = (n - 1) * self.cell  # the square the grid covers (padded frames reach past the level)
         rivers = {}
-        from . import terrain_stream
-        wet = terrain_stream.wet_design(self) if getattr(self, "river_water_lines", None) else {"rivers": {}, "pools": []}
+        from . import terrain_stream_water
+        wet = terrain_stream_water.wet_design(self) if getattr(self, "river_water_lines", None) else {"rivers": {}, "pools": []}
         for nm, L in self.lines.items():
             if L.kind != "river":
                 continue

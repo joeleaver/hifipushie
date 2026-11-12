@@ -1,6 +1,7 @@
 import numpy as np
 from hifipushie import base, faceslide
-g = base._gnm_data()
+from hifipushie import base_identity
+g = base_identity._gnm_data()
 R = faceslide._lip_rings()
 up, lo = np.asarray(g["groups"]["upper_lip"]), np.asarray(g["groups"]["lower_lip"])
 for k, r in enumerate(R["rings"][:5]):

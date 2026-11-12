@@ -15,6 +15,7 @@ import numpy as np
 
 import garrett
 from hifipushie import humanfit, humanfit_map, humanmacro as hm, likeness_read as lr, store
+from hifipushie import humanfit_integrity, humanfit_solve
 
 D2 = os.environ.get("D2", "/mnt/data/hifipushie/refstudy2")
 REF = "rs_garrett_read3"   # whose human_refs.json (views + cameras) every copy carries
@@ -42,8 +43,8 @@ def info(tag, b, prev=None):
     st = humanfit.state(b)
     line = f"{tag}: evidence residual front / desk {r[0]} / {r[1]} mm"
     if prev is not None:
-        it = humanfit.integrity(b, st, humanfit.state(prev))
-        line += " | " + humanfit.verdict(it)[:260]
+        it = humanfit_integrity.integrity(b, st, humanfit.state(prev))
+        line += " | " + humanfit_integrity.verdict(it)[:260]
         r0, _ = evidence(prev)
         line += f" | residual change {r[0] - r0[0]:+.2f} / {r[1] - r0[1]:+.2f}"
     print(line)
@@ -62,7 +63,7 @@ def mk(src, dst, patch, idscale=None, macros=None):
         b["head"]["identity"] = {k: float(v) * idscale for k, v in idn.items()}
     if macros:   # macros moved in the IDENTITY (humanmacro's held directions: the other macros stay), in sigmas
         c = hm.apply(humanfit.identity(b), macros, held=True)
-        b = humanfit._with_identity(b, c)
+        b = humanfit_solve._with_identity(b, c)
     info(dst, b, sp["base"])
     store.save(dst, {**copy.deepcopy(sp), "base": b}, f"refstudy2: {src} + {json.dumps(patch)[:200]}" + (f" identity x{idscale}" if idscale else ""))
     for f in ("human_refs.json", lr.READ):

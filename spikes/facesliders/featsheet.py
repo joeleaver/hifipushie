@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 import sheet1  # noqa: F401
 import stage
 from hifipushie import likeness, store
+from hifipushie import likeness_detect
 from shot import light
 
 SCR = os.environ.get("SCR", "f5_feat")
@@ -31,7 +32,7 @@ def boxes(refs, regions):
     for vi, v in enumerate(refs["views"]):
         img = Image.open(v["image"]).convert("RGB")
         yaw = abs(float(v.get("yaw", 0.0)))
-        P = likeness.detect([img])[0] if yaw < 70 else None
+        P = likeness_detect.detect([img])[0] if yaw < 70 else None
         for rg in regions:
             if P is not None:
                 Q = np.asarray(P, float)[MP[rg], :2]

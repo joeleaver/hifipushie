@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import hair_read, likeness, store
+from hifipushie import hair_read_capture, likeness_detect
 from hifipushie import skin_project as sp
 
 m = sys.argv[1]
@@ -45,8 +46,8 @@ for v in kw.get("views", "v0,v1").split(","):
     if not os.path.exists(p):
         print("missing", p)
         continue
-    O = hair_read.render_as_picture(p, (W, H)).convert("RGB")
-    PR = np.asarray(likeness.detect([R])[0], float)[:, :2]
+    O = hair_read_capture.render_as_picture(p, (W, H)).convert("RGB")
+    PR = np.asarray(likeness_detect.detect([R])[0], float)[:, :2]
     u = float(np.linalg.norm(PR[33] - PR[263])) / 60.0
     B = {"forehead": bbox(PR, (9, 107, 336), w=24 * u, h=10 * u, dy=-8 * u),
          "cheek_R": bbox(PR, (116, 123, 147, 50), w=14 * u, h=14 * u),

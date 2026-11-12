@@ -2,7 +2,7 @@
 
 Points holds a set of surface points (mesh vertices or baked texels): position, normal, part, and on demand
   ao, sky     ambient occlusion and openness to the sky (0..1): measured by Cycles in the Blender scene
-              (scene.raytraced) and passed in through `cache`; asking for them otherwise is an error
+              (scene_inputs.raytraced) and passed in through `cache`; asking for them otherwise is an error
   curvature   mean curvature (1/m, 1/r on a sphere of radius r; convex > 0), from the part's own field
   thickness   how far (m) the part goes on behind the point, against the normal (`thickness`)
   hidden      1 where the point is buried inside another part

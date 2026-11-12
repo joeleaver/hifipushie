@@ -9,12 +9,13 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import hair, store
+from hifipushie import hair_head, hair_spec
 
 names = [a for a in sys.argv[1:] if "=" not in a]
 kw = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 for m in names:
     sp = store.load(m)
-    sc = hair.scalp(m, sp)
+    sc = hair_head.scalp(m, sp)
     L = sp["hair"]["locks"]
     A, E = np.meshgrid(np.arange(0, 360, 5.0), np.arange(-60, 90, 5.0))
     H = sc.point(A.ravel(), E.ravel(), 0.0) - sc.C
@@ -41,10 +42,11 @@ for m in names:
             dr.ellipse([q[0] - 2, q[1] - 2, q[0] + 2, q[1] + 2], fill="#e2c4ac")
         order = sorted(L.items(), key=lambda kv: "g1_" in kv[0] and abs(np.asarray(kv[1]["pts"])[0][0] % 360 - 0) < 0)
         for n, lk in order:
-            P = hair.lock_world(sc, lk, lk["pts"]) - sc.C
+            P = hair_spec.lock_world(sc, lk, lk["pts"]) - sc.C
             if lk.get("space") != "xyz" and len(P) >= 4:
                 from hifipushie import hair_cards as hc
-                P = hc.spine({**lk, "pts": P.tolist()}, 48)[0]
+                from hifipushie import hair_cards_mesh
+                P = hair_cards_mesh.spine({**lk, "pts": P.tolist()}, 48)[0]
             part = lk.get("space") != "xyz" and abs(P[0][0] - 0.0) < 0.012 and P[0][1] < -0.02 and P[0][2] > 0.04
             if kw.get("only") == "part" and not part and not lk.get("free"):
                 continue

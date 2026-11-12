@@ -2,10 +2,11 @@
 with another skin / other folds. Never onto an accepted model (a1, sr_*)."""
 import json, os, sys
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 src, dst = sys.argv[1:3]
 assert dst.startswith(("sf_", "_sf")), dst
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
-bi.fork(src, dst, replace=True)
+blockin_models.fork(src, dst, replace=True)
 sp = store.load(dst)
 if "skin" in kw:
     sp["skin"] = json.load(open(kw["skin"]))

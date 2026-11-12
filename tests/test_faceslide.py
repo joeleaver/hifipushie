@@ -157,7 +157,7 @@ def test_lip_seal_closes_along_the_width_and_opens_again():
     expression); an explicit mouth_gap wins."""
     if not _gnm_ok():
         return
-    from hifipushie import onemesh
+    from hifipushie import onemesh_head
     g = base_identity._gnm_data()
     b = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")["base"]
     b["head"].pop("mouth_gap", None)
@@ -167,7 +167,7 @@ def test_lip_seal_closes_along_the_width_and_opens_again():
         bt["head"]["lip_seal"] = seal
         if ex:
             bt["head"]["expression"] = ex
-        got[(seal, bool(ex))] = np.asarray(onemesh.head_template(bt)["carry"]["V"], float)
+        got[(seal, bool(ex))] = np.asarray(onemesh_head.head_template(bt)["carry"]["V"], float)
     g0, g1, g2 = (_contact_gaps(got[k]) for k in ((0.0, False), (1.0, False), (1.0, True)))
     assert g0.mean() > 0.002 and g1.max() < 0.0003 and g1.min() > -0.00005, (g0.mean(), g1.min(), g1.max())
     assert g2.mean() > 0.001  # opens again
@@ -186,7 +186,7 @@ def test_lip_seal_holds_across_identities():
     stretched past its limit) and the lips in contact."""
     if not _gnm_ok():
         return
-    from hifipushie import onemesh
+    from hifipushie import onemesh_head
     cases = [(s, sx) for s, sx in ((1, 0.0), (2, 1.0), (5, 0.0), (8, 1.0))]
     for seed, sex in cases:
         b = humans.spec(age=35, sex=sex, seed=seed, skin=False, source="human")["base"]
@@ -196,7 +196,7 @@ def test_lip_seal_holds_across_identities():
         st = humanfit.state(b)
         integ = humanfit_integrity.integrity(b, st)
         assert not [x for x in integ["broken"] if "lip" in x or "face" in x], (seed, integ["broken"])
-        gp = _contact_gaps(np.asarray(onemesh.head_template(b)["carry"]["V"], float))
+        gp = _contact_gaps(np.asarray(onemesh_head.head_template(b)["carry"]["V"], float))
         assert gp.max() < 0.0005, (seed, gp.max())
 
 

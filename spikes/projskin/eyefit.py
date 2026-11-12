@@ -4,6 +4,7 @@ photo's (ours smaller = too much drape), the slit depth by the photo's fold-line
 import copy, json, sys
 import numpy as np
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 src, d, dst = sys.argv[1:4]
 r = list(json.load(open(f"{d}/eyecmp.json")).values())[0]
 s = copy.deepcopy(store.load(src))
@@ -47,7 +48,7 @@ if os.environ.get("EYEFIT_DEPTH", "0") == "1":   # (off: a deeper slit did not d
     k = float(np.clip(np.median(ratios), 0.7, 2.0)) if ratios else 1.0
     lf["depth"] = round(float(lf.get("depth", 1.0)) * k, 2)
     print(f"depth x {k:.2f} -> {lf['depth']} (fold-line darkness photo / ours, median of {len(ratios)})")
-rj = copy.deepcopy(bi._refs(src))
+rj = copy.deepcopy(blockin_models._refs(src))
 if rj.get("blockin"):
     rj["blockin"] = {**rj["blockin"], "root": dst}
-bi._save(dst, s, "lid fold: one eyefit step (platform + darkness as they read against the photo)", rj)
+blockin_models._save(dst, s, "lid fold: one eyefit step (platform + darkness as they read against the photo)", rj)

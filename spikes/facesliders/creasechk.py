@@ -12,11 +12,12 @@ from hifipushie import base as basemod
 from hifipushie import faceslide, likeness_eyes as le
 from hifipushie import likeness_pair as lp
 from hifipushie import onemesh, store
+from hifipushie import onemesh_head
 
 rows = []
 for name in sys.argv[2:]:
     b0 = copy.deepcopy(store.load(name)["base"])
-    ht = onemesh.head_template(b0)
+    ht = onemesh_head.head_template(b0)
     V = np.asarray(ht["carry"]["V"], float)  # (its GNM-frame head, close to what the sliders see)
     T = faceslide.head_template(V)
     X = T["X"]

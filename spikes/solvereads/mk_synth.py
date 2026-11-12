@@ -12,6 +12,7 @@ from PIL import Image
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 import stage
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, resources, server, store
+from hifipushie import blockin_models, face_ruler_blockin, humanfit_views
 
 S = "/mnt/data/hifipushie/solvereads/synth"
 os.makedirs(S, exist_ok=True)
@@ -20,10 +21,10 @@ ex = {a.split("=")[0]: float(a.split("=")[1]) for a in sys.argv[3:]}
 T = f"sx_{tag}_T"
 base = "gg_A06"
 sp = copy.deepcopy(store.load(base))
-rj = copy.deepcopy(bi._refs(base))
+rj = copy.deepcopy(blockin_models._refs(base))
 bi.set_identity(sp, bi.identity(store.load(src)))
 if ex:
-    sp["base"]["head"]["expression"] = fr.expression_coeffs(ex)
+    sp["base"]["head"]["expression"] = face_ruler_blockin.expression_coeffs(ex)
 d = store._dir(T); d.mkdir(parents=True, exist_ok=True)
 (d / "spec.json").write_text(json.dumps(sp))
 rj["blockin"] = {**rj["blockin"], "root": T, "truth": {"identity_of": src, "expression": ex}}
@@ -42,7 +43,7 @@ for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
         im.convert("RGB").crop((x0, 0, x0 + int(w), int(h))).save(f)
     pts = {}
     if abs(float(v.get("yaw", 0))) >= 70:
-        P = humanfit.project(cam, L[list(CL.values())])
+        P = humanfit_views.project(cam, L[list(CL.values())])
         pts = {k: [round(float(p[0]), 1), round(float(p[1]), 1)] for k, p in zip(CL, P)}
     views.append({"image": f, "size": [int(w), int(h)], "yaw": v.get("yaw", 0), "points": pts})
     print("shot", f, flush=True)
@@ -53,7 +54,7 @@ for k in ("hair", "cloth"):
 holder = f"sx_{tag}_R"
 d = store._dir(holder); d.mkdir(parents=True, exist_ok=True)
 (d / "spec.json").write_text(json.dumps(hs))
-views = bi.with_anchor_points(views)
+views = blockin_models.with_anchor_points(views)
 (d / "human_refs.json").write_text(json.dumps({"views": views, "cameras": [None] * len(views)}))
 r = server.block_in_start(f"sx_{tag}_00", holder, sex="male", age=52, cameras="refit", replace=True, save=f"{S}/sx_{tag}_00.png")
 print("\n".join(x for x in r if isinstance(x, str)))

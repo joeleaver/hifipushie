@@ -13,7 +13,7 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
     """A small tree of the drawn wood only: the trunk's axis, the stoutest first-order limbs and, INSIDE the crown, a
     few branches off each (`stubs`: the stoutest forks, `stub_apart` m apart; each runs into the crown and ends in a
     mass like a limb: what is left standing when the plant is bare). Fattened, bends smoothed.
-    The same keys veg_mesh.tubes and veg_export.wind_nodes read; `src` = each node's node in the grown tree; `info` =
+    The same keys veg_mesh.tubes and veg_export_parts.wind_nodes read; `src` = each node's node in the grown tree; `info` =
     what was left out.
     inside: points -> depth inside the crown (m, positive inside): a limb runs on inside the crown while it stays
     `keep_in` m deep (to `reach_in` of its length), so it ends in a mass, never in the air or out the far side; one

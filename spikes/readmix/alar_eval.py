@@ -6,23 +6,24 @@ import json, os, sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, face_ruler_nose
 
 RM = os.environ["HIFIPUSHIE_READMIX"]
 res = {}
 for name in sys.argv[1:]:
-    head = fr.model_head(store.load(name))
-    rj = bi._refs(name)
+    head = face_ruler_blockin.model_head(store.load(name))
+    rj = blockin_models._refs(name)
     for v, cam in zip(rj["views"], rj["cameras"]):
-        if abs(fr.view_yaw(cam)) > fr.ALAR_TURN:
+        if abs(face_ruler_camera.view_yaw(cam)) > fr.ALAR_TURN:
             continue
         img = Image.open(v["image"]).convert("RGB")
-        prs = fr.alar_profiles(head, cam, img)
+        prs = face_ruler_nose.alar_profiles(head, cam, img)
         im = img.copy()
         d = ImageDraw.Draw(im)
         line = []
         for pr in prs:
             for feat, col in (("valley", (0, 255, 255)), ("edge", (255, 255, 0))):
-                f = [fr.alar_feature(pp, pr["t"], feat) for pp in pr["prof"]]
+                f = [face_ruler_nose.alar_feature(pp, pr["t"], feat) for pp in pr["prof"]]
                 ok = [x[0] for x in f if x is not None]
                 if ok:
                     res.setdefault((name, feat), []).append(float(np.median(ok)))
@@ -33,7 +34,7 @@ for name in sys.argv[1:]:
                         d.ellipse([q[0] - 2, q[1] - 2, q[0] + 2, q[1] + 2], fill=col)
             for p_ in pr["px"]:
                 d.ellipse([p_[0] - 2, p_[1] - 2, p_[0] + 2, p_[1] + 2], fill=(255, 0, 0))
-        print(f"{name} {v['name']} turn {abs(fr.view_yaw(cam)):.0f}: " + ("; ".join(line) or "NOTHING"))
+        print(f"{name} {v['name']} turn {abs(face_ruler_camera.view_yaw(cam)):.0f}: " + ("; ".join(line) or "NOTHING"))
         if prs:
             c = np.mean([pr["px"].mean(0) for pr in prs], 0)
             h = 18.0 / prs[0]["mm1"]

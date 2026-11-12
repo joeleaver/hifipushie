@@ -10,6 +10,7 @@ from PIL import Image
 import gt, rast
 from gmk import CL, PICS
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
+from hifipushie import blockin_models, face_ruler_camera, face_ruler_solve, humanfit_views
 
 tag = "lps"
 scan = gt.load_scan(tag)
@@ -31,7 +32,7 @@ for name, dist, lens, (w, h) in (("ph30", 0.30, 24.0, (1728, 2304)), ("ph40", 0.
         z = dist                                    # the camera's distance to the head's CENTRE (between eyes and mouth, mid-depth of the landmarks)
         cam = {"r": [0.0, 0.0, float(np.radians(1.5 * j[2]))], "t": [float(0.004 * j[3] - 0.03 * np.sin(np.radians(yaw))), float(0.004 * j[4] - 0.012), float(z)],
                "f": float(f), "size": [w, h], "centre": ctr.tolist(), "yaw": float(-(yaw + 2 * j[0]))}
-        cam = fr.cam_moved(cam, pitch=2 * j[1])
+        cam = face_ruler_solve.cam_moved(cam, pitch=2 * j[1])
         cam["r"] = [float(x) for x in cam["r"]]
         fn = PICS / f"{name}_{vn}.png"
         vis = rast.visibility(Vm, scan["F"], cam, ss=2)
@@ -39,16 +40,16 @@ for name, dist, lens, (w, h) in (("ph30", 0.30, 24.0, (1728, 2304)), ("ph40", 0.
                    lights=(((-0.50, -0.45, -0.74), 1.35), ((0.80, -0.10, -0.59), 0.55)), ambient=0.30).save(fn)
         pts = {}
         if yaw >= 70:
-            P = humanfit.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
+            P = humanfit_views.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
             pts = {kk: [round(float(p[0]), 1), round(float(p[1]), 1)] for kk, p in zip(CL, P)}
         views.append({"image": str(fn), "size": [w, h], "yaw": (yaw if yaw < 70 else -yaw), "points": pts, "name": vn, "lens_mm": lens})
         cams.append(cam)
-        print(f"{name} {vn}: turn {abs(fr.view_yaw(cam)):.1f} dist {z:.2f} m lens {lens:.0f} mm; {f / z:.0f} px / m")
-    views = bi.with_anchor_points(views)
+        print(f"{name} {vn}: turn {abs(face_ruler_camera.view_yaw(cam)):.1f} dist {z:.2f} m lens {lens:.0f} mm; {f / z:.0f} px / m")
+    views = blockin_models.with_anchor_points(views)
     print("  detector points:", [sum(1 for k in v["points"] if k.startswith("lm")) for v in views])
     ST = f"gt_{name}_AT"
     store._dir(ST).mkdir(parents=True, exist_ok=True)
     (store.HOME / ST / "spec.json").write_text(json.dumps(sp))
-    (store.HOME / ST / "human_refs.json").write_text(json.dumps({"views": views, "cameras": cams, "blockin": {"root": ST, "attach": "native", "placement": list(bi._placement(sp["base"]))}}))
-    e = bi.start(f"gt_{name}_A00", [copy.deepcopy(v) for v in views], sex="male", age=35, cameras="refit", replace=True)
+    (store.HOME / ST / "human_refs.json").write_text(json.dumps({"views": views, "cameras": cams, "blockin": {"root": ST, "attach": "native", "placement": list(blockin_models._placement(sp["base"]))}}))
+    e = blockin_models.start(f"gt_{name}_A00", [copy.deepcopy(v) for v in views], sex="male", age=35, cameras="refit", replace=True)
     print(f"  start gt_{name}_A00: {e['start']['cameras']}")

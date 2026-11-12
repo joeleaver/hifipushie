@@ -97,8 +97,9 @@ def overlay(img, r, path):
 
 if __name__ == "__main__":
     from hifipushie import likeness
+    from hifipushie import likeness_detect
     img = Image.open(sys.argv[1]).convert("RGB")
-    P = likeness.detect([img])[0]
+    P = likeness_detect.detect([img])[0]
     r = read(img, P)
     for k in ("alar_width", "alar_R", "alar_L"):
         print(k, round(r[k], 2))

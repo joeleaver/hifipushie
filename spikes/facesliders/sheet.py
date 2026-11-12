@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import faceslide, humanfit, humans, likeness
+from hifipushie import humanfit_views, likeness_render
 
 out = sys.argv[1]
 names = sys.argv[2].split(",") if len(sys.argv) > 2 and sys.argv[2] != "all" else list(faceslide.NAMES)
@@ -32,8 +33,8 @@ L0 = np.asarray(st0["L"])
 eyeL = L0[29] if view.startswith("nose") else L0[30] if view == "face" else 0.5 * (L0[42] + L0[45]) if not view.startswith("mouth") else 0.5 * (L0[51] + L0[57])
 cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0 if view.startswith("mouth") else 2200.0 if view == "face" else 4000.0, "size": [2000, 2000], "centre": eyeL.tolist(),
        "yaw": 0.0 if view in ("front", "mouth", "nose") else -20.0 if view == "face" else -30.0}
-c = humanfit.project(cam, eyeL[None])[0]
-print("eye L at", c, "eye R at", humanfit.project(cam, (0.5 * (L0[36] + L0[39]))[None])[0])
+c = humanfit_views.project(cam, eyeL[None])[0]
+print("eye L at", c, "eye R at", humanfit_views.project(cam, (0.5 * (L0[36] + L0[39]))[None])[0])
 if view == "face":
     box = (c[0] - 200, c[1] - 130, c[0] + 200, c[1] + 300)
 elif view.startswith("nose"):
@@ -51,13 +52,13 @@ def turned(P0, P1):
 
 
 def tile(st, label):
-    im, k = likeness.render(likeness.model_mesh_from_state(st), cam, box, px=PX, brows=False)
+    im, k = likeness_render.render(likeness_render.model_mesh_from_state(st), cam, box, px=PX, brows=False)
     im = im.convert("RGB")
     d = ImageDraw.Draw(im)
     Ls = np.asarray(st["L"])
     m = Ls[30] if view.startswith("nose") else 0.5 * (Ls[43] + Ls[44]) if not view.startswith("mouth") else 0.5 * (Ls[62] + Ls[66])
     for i in range(0, 16):
-        p = humanfit.project(cam, (m + np.array([0, 0, 1.0]) * i * 0.001)[None])[0]
+        p = humanfit_views.project(cam, (m + np.array([0, 0, 1.0]) * i * 0.001)[None])[0]
         x, y = (p[0] - box[0]) * k - 60, (p[1] - box[1]) * k
         d.line([(x, y), (x + (14 if i % 5 == 0 else 7), y)], fill=(200, 0, 0) if i == 0 else (40, 40, 40), width=1)
     d.text((6, 4), label, fill=(0, 0, 0))

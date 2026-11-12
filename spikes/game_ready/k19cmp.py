@@ -2,10 +2,11 @@
 import sys, json, numpy as np
 from scipy.spatial import cKDTree
 from hifipushie import store, spec as specm, base
+from hifipushie import base_measures
 glb = sys.argv[1]
 raw = json.load(open("/home/joe/dev/hifipushie/workspace/tp_k19/spec.json"))
 ex = specm.expand_mirror(raw)
-H = base.head_of(ex, ex["base"])
+H = base_measures.head_of(ex, ex["base"])
 print("head keys", sorted(k for k in H if not k.startswith("_"))[:40])
 Vk = None
 for k in ("V", "verts", "vertices", "v"):

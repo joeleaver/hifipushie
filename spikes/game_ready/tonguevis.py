@@ -6,6 +6,7 @@ import copy, pickle, sys
 import numpy as np
 from PIL import Image
 from hifipushie import faceshapes as fs
+from hifipushie import faceshapes_apply
 import mouthhits
 
 dump, glb, out = sys.argv[1:4]; rest = sys.argv[4:]
@@ -15,7 +16,7 @@ for kv in (rest[:rest.index("--")] if "--" in rest else rest):
     setattr(fs, k, tuple(float(x) for x in v.split(",")) if isinstance(old, tuple) else type(old)(float(v))); print(k, "->", getattr(fs, k))
 d = pickle.load(open(dump, "rb")); parts = copy.deepcopy(d["parts"])
 want = sorted({k for po in poses for k in mouthhits.SH[po]} | {"jawOpen"})
-fs.apply(d["spec"], parts, [n for n in fs.names_of(d["face_shapes"]) if n in want], [])
+faceshapes_apply.apply(d["spec"], parts, [n for n in faceshapes_apply.names_of(d["face_shapes"]) if n in want], [])
 _, _, TEX = mouthhits.load(glb)
 g = {"meshes": {}}; UVF = {}
 for pn in mouthhits.PARTS:

@@ -13,10 +13,11 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import humanfit, likeness, store
+from hifipushie import humanfit_views, likeness_detect, likeness_render
 
 
 def photo_read(img):
-    P = np.asarray(likeness.detect([img])[0], float)[:, :2]
+    P = np.asarray(likeness_detect.detect([img])[0], float)[:, :2]
     out = {}
     for side, (c, rim, up, lo, a, b) in {"R": (468, [469, 470, 471, 472], 159, 145, 33, 133),
                                           "L": (473, [474, 475, 476, 477], 386, 374, 263, 362)}.items():
@@ -28,19 +29,19 @@ def photo_read(img):
 
 def model_read(mesh, cam, img_size):
     W, H = cam["size"]
-    im, k, ps = likeness.render(mesh, cam, (0.0, 0.0, float(W), float(H)), px=int(max(W, H)), brows=False, passes=True)
+    im, k, ps = likeness_render.render(mesh, cam, (0.0, 0.0, float(W), float(H)), px=int(max(W, H)), brows=False, passes=True)
     st = mesh["state"]
     fwd = np.asarray(st["head"].get("forward", [0, -1, 0]), float)
     r = float(st["head"].get("eye_r", 0.012)) * 0.985
     out = {}
     for c in st["head"]["eyes"]:
         c = np.asarray(c, float)
-        pole = humanfit.project(cam, (c + r * fwd)[None])[0]
+        pole = humanfit_views.project(cam, (c + r * fwd)[None])[0]
         # the iris cap's rim: points at cos 0.86 from the pole, projected: radius as their mean distance
         u = np.cross(fwd, [0, 0, 1.0])
         u /= np.linalg.norm(u)
         ring = [c + r * (0.86 * fwd + 0.51 * (np.cos(t) * u + np.sin(t) * np.array([0, 0, 1.0]))) for t in np.linspace(0, 2 * np.pi, 16, endpoint=False)]
-        R_ = float(np.mean(np.linalg.norm(humanfit.project(cam, np.array(ring)) - pole, axis=1))) * k
+        R_ = float(np.mean(np.linalg.norm(humanfit_views.project(cam, np.array(ring)) - pole, axis=1))) * k
         x, y = int(round(pole[0] * k)), pole[1] * k
         col = np.flatnonzero(ps["part"][:, x] == 1)
         col = col[np.abs(col - y) < 4 * R_]
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     ref = sys.argv[2] if len(sys.argv) > 2 else "f6_M_mace"
     refs = json.loads((store.HOME / ref / "human_refs.json").read_text())
     img = Image.open(refs["views"][0]["image"]).convert("RGB")
-    mesh = likeness.model_mesh_from_state(humanfit.state(store.load(m)["base"]))
+    mesh = likeness_render.model_mesh_from_state(humanfit.state(store.load(m)["base"]))
     ph, md = photo_read(img), model_read(mesh, refs["cameras"][0], img.size)
     for s in ("R", "L"):
         p, q = ph.get(s), md.get(s)

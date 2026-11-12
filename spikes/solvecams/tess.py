@@ -4,6 +4,7 @@ nd_T00; tess_a1 is only READ). chain = n block_in_solve calls, each call's CAMER
 import sys
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, server, store
+from hifipushie import blockin_steps
 
 if sys.argv[1] == "start":
     r = server.block_in_start(sys.argv[2], "tess_a1", sex="female", replace=True)
@@ -14,7 +15,7 @@ else:
     dense = kw.get("dense", "0") == "1"
     for i in range(1, n + 1):
         out = f"{pre}{i:02d}"
-        rep = bi.solve_step(src, out=out, cameras=kw.get("cameras", "free"), dense=dense)
+        rep = blockin_steps.solve_step(src, out=out, cameras=kw.get("cameras", "free"), dense=dense)
         so = rep["solve"]
         rw = __import__("hifipushie.solve_report", fromlist=["x"]).rows()
         c = bi.identity(store.load(out))

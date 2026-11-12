@@ -9,6 +9,7 @@ from PIL import Image
 
 import sheet1
 from hifipushie import likeness
+from hifipushie import likeness_sides
 from hifipushie.likeness_eyes import frame
 
 L = os.environ["L"]
@@ -34,8 +35,8 @@ def prof(LAB, P, scale, origin, mmpx):
     return hs, out
 
 
-refs = likeness._refs("ll_garrett")
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs("ll_garrett")
+ph = likeness_sides.photo_sides(refs)[0]
 P = ph["side"].P
 seam = float((0.5 * (P[13] + P[14]) - P[2]) @ frame(P)[1]) * ph["mmpx"]
 res = {"photo": prof(lab(ph["img"]), P, 1.0, np.zeros(2), ph["mmpx"])}

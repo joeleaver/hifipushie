@@ -16,7 +16,7 @@ from .skin_project_make import make
 
 # ---------------------------------------------------------------- the model
 def layers(spec: dict, pj: dict, out: dict, part: str) -> None:
-    """spec["skin"]["projection"] as paint layers (skin_features.build calls it after the skin's own colour and hair
+    """spec["skin"]["projection"] as paint layers (skin_features_build.build calls it after the skin's own colour and hair
     paint, before scars, tattoos and make-up): the albedo over everything painted so far, and the fine relief."""
     if not pj or not pj.get("albedo"):
         return

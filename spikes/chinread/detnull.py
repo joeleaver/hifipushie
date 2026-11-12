@@ -5,12 +5,13 @@ import os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import face_ruler as fr, blockin as bi, likeness, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, likeness_detect, likeness_sides
 
 G = {"chin 7-9": range(7, 10), "brows 17-26": range(17, 27), "nose 27-35": range(27, 36), "eyes 36-47": range(36, 48), "mouth 48-67": range(48, 68)}
 acc = {}
 for T in sys.argv[1:]:
-    rj = bi._refs(T)
-    head = fr.model_head(store.load(T))
+    rj = blockin_models._refs(T)
+    head = face_ruler_blockin.model_head(store.load(T))
     for vi in (0, 1):
         v, cam = rj["views"][vi], rj["cameras"][vi]
         f = v["image"]
@@ -19,9 +20,9 @@ for T in sys.argv[1:]:
         img = Image.open(f).convert("RGB")
         P = np.asarray(fr._cam_points(cam, np.asarray(head["L"], float)[:68])[1], float)
         pts = {f"lm{i}": P[i].tolist() for i in range(17, 68)}
-        box = likeness._box(pts, img.size)
-        Pd = likeness.detect_region(img, box)
-        Pm = fr._detect_model(head, cam, box)
+        box = likeness_sides._box(pts, img.size)
+        Pd = likeness_detect.detect_region(img, box)
+        Pm = face_ruler_camera._detect_model(head, cam, box)
         if Pd is None or Pm is None:
             print(T, vi, "no detection")
             continue

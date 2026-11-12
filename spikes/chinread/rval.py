@@ -8,6 +8,7 @@ import os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import face_ruler as fr, blockin as bi, gnm_mm, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_jaw
 
 kind = sys.argv[1]
 truths = [a for a in sys.argv[2:] if "=" not in a]
@@ -20,14 +21,14 @@ for k, v in kw.items():
 MOVES = [("chin_width", 5.0), ("chin_width", -5.0), ("jaw_width", 6.0), ("jaw_width", -6.0), ("chin_length", 4.0), ("chin_length", -4.0),
          ("under_chin", 4.0), ("under_chin", -4.0)]
 def cloth_fn(h, v):
-    return fr._cloth_obs(h, v, fr.clay(h, v["cam"], passes=True)[1])
+    return face_ruler_jaw._cloth_obs(h, v, fr.clay(h, v["cam"], passes=True)[1])
 
 
-fn = {"ramp": fr._ramp_obs, "cloth": cloth_fn}[kind]
+fn = {"ramp": face_ruler_jaw._ramp_obs, "cloth": cloth_fn}[kind]
 
 
 def views_of(T):
-    rj = bi._refs(T)
+    rj = blockin_models._refs(T)
     out = []
     for vi in vsel:
         v, cam = rj["views"][vi], rj["cameras"][vi]
@@ -37,15 +38,15 @@ def views_of(T):
         img = Image.open(f).convert("RGB")
         if kind == "cloth":       # a collar laid in behind the jaw in true depth order (collar.py)
             import collar
-            img = collar.dress(img, fr.model_head(store.load(T)), cam, top=TOP)[0]
-        out.append({"img": img, "cam": cam, "kind": fr.kind_of(abs(fr.view_yaw(cam))), "style": "photo", "chin": {kind: True}, "name": os.path.basename(f)})
+            img = collar.dress(img, face_ruler_blockin.model_head(store.load(T)), cam, top=TOP)[0]
+        out.append({"img": img, "cam": cam, "kind": face_ruler_compare.kind_of(abs(face_ruler_camera.view_yaw(cam))), "style": "photo", "chin": {kind: True}, "name": os.path.basename(f)})
     return out
 
 
 tot = {}
 for T in truths:
     spec = store.load(T)
-    h0 = fr.model_head(spec)
+    h0 = face_ruler_blockin.model_head(spec)
     c0 = bi.identity(spec)
     vs = views_of(T)
     for v in vs:

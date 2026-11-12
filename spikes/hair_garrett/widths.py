@@ -10,14 +10,15 @@ import numpy as np
 from scipy import ndimage as ndi
 
 from hifipushie import hair_read, store
+from hifipushie import hair_read_capture
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 OUT = os.environ["TOUT"]
 views = [int(v) for v in kw.get("views", "0,1").split(",")]
 spec = store.load(m)
-fp = hair_read.frames(m, spec)
-fo = hair_read.frames(m, spec, images={i: f"{OUT}/s_{m}_v{i}.png" for i in views})
+fp = hair_read_capture.frames(m, spec)
+fo = hair_read_capture.frames(m, spec, images={i: f"{OUT}/s_{m}_v{i}.png" for i in views})
 
 
 def mask(f):

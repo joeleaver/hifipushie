@@ -5,13 +5,15 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import onemesh, store
+from hifipushie import onemesh_head, onemesh_native
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 G = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
 a = onemesh.asset()
 f = a["g_fade"].astype(float)
-nf = onemesh.neck_fade()
+nf = onemesh_native.neck_fade()
 pieces = {"left eye": G["left_eye"], "right eye": G["right_eye"], "lower teeth": G["lower_teeth_and_gums"],
           "upper teeth": G["upper_teeth_and_gums"], "tongue": G["tongue"], "sock": G["mouth_sock"]}
 for k, m in pieces.items():
@@ -21,11 +23,11 @@ T = g["template_vertex_positions"].astype(float)
 for name in sys.argv[1:]:
     b = store.load(name)["base"]
     b = {**b, "head": {k: v for k, v in b["head"].items() if k != "eye_radius"}}
-    ht = onemesh.head_template(b)
-    hd = onemesh.head_desc(b)
+    ht = onemesh_head.head_template(b)
+    hd = onemesh_head.head_desc(b)
     print(name, {k: (v if k not in ("identity", "bound") else "...") for k, v in hd.items()})
     Vp = ht["carry"]["V"]  # GNM frame, posed, after the hook
-    ci = basemod._gnm_coeffs(g["identity_names"], hd.get("identity"))
+    ci = base_identity._gnm_coeffs(g["identity_names"], hd.get("identity"))
     Vg = T + np.tensordot(ci, g["vertex_identity_basis"], 1)  # GNM's own
     for k, m in pieces.items():
         X0, X1 = Vg[m], Vp[m]

@@ -225,7 +225,7 @@ def solve(c0, cdn, hc_person=None, *, e=None, clear: float = 0.0, hold: float = 
 
 
 def _skin_rings() -> np.ndarray:
-    """Per row of onemesh.head_template's skin vertices: the lid ring of either eye (99 elsewhere)."""
+    """Per row of onemesh_head.head_template's skin vertices: the lid ring of either eye (99 elsewhere)."""
     if "sr" not in _C:
         from . import lidrings
         from . import base_identity
@@ -238,7 +238,7 @@ def _skin_rings() -> np.ndarray:
 
 
 def ball_clearance(ht: dict, rings=range(1, 8)) -> dict:
-    """The lid skin's stand-off from OUR eyeball on a shipped head (onemesh.head_template / base_gnm_head.gnm_head): {"min" (mm,
+    """The lid skin's stand-off from OUR eyeball on a shipped head (onemesh_head.head_template / base_gnm_head.gnm_head): {"min" (mm,
     the least over rings 1..7 of both lids, both eyes: under 0 the ball is through the skin), "upper" (the upper lid's
     least), "rings": {ring: least}, "landmarks" (the six lid landmarks' least: what the seat itself clears)}."""
     ring, up = _skin_rings()
@@ -288,11 +288,12 @@ def lid_step(base: dict, heights=None, cols=None, corners=None, donor_name: str 
     corners = (inner u, outer u); None = the donor's own fold heights. -> solve()'s dict + "structure0" / "structure" /
     "donor" (mean_structure), "ball0" / "ball" (ball_clearance), "clear", "tries", "scale"."""
     from . import blockin as bi, onemesh
+    from . import onemesh_head
 
     def head(c):
         b = copy.deepcopy(base)
         bi.set_identity({"base": b}, c)
-        ht = onemesh.head_template(b)
+        ht = onemesh_head.head_template(b)
         for kk in [k for k in onemesh._CACHE if isinstance(k, tuple) and k and k[0] == "head_t"]:
             onemesh._CACHE.pop(kk, None)
         return ht
@@ -339,11 +340,12 @@ def fold_step(base: dict, heights=None, cols=None, corners=None, brow: float | N
     FOLD_STEP. -> gnm_fold.fold()'s dict + "kind": "crisp", "structure0" / "structure", "ball0" / "ball", "standoff",
     "tries", "scale", "guarded", "heights", "crease" (raw mm at the pupil), "mm" (largest held measure's drift)."""
     from . import blockin as bi, gnm_fold as gf, gnm_mm, onemesh
+    from . import onemesh_head
 
     def head(c):
         b = copy.deepcopy(base)
         bi.set_identity({"base": b}, c)
-        ht = onemesh.head_template(b)
+        ht = onemesh_head.head_template(b)
         for kk in [k for k in onemesh._CACHE if isinstance(k, tuple) and k and k[0] == "head_t"]:
             onemesh._CACHE.pop(kk, None)
         return ht

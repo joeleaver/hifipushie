@@ -16,6 +16,7 @@ from PIL import Image
 import rs
 import stage
 from hifipushie import humanfit, humanmacro as hm, likeness as lk, store
+from hifipushie import humanfit_integrity, humanfit_solve, likeness_render
 
 PX = 768
 KS = ("browDownLeft", "browDownRight", "eyeSquintLeft", "eyeSquintRight", "eyeBlinkLeft", "mouthFrownLeft", "mouthPressLeft", "mouthPressRight")
@@ -76,7 +77,7 @@ def patched(b, p):
         else:
             h.pop("expression", None)
     if p.get("macros"):
-        b = humanfit._with_identity(b, hm.apply(humanfit.identity(b), p["macros"], held=True))
+        b = humanfit_solve._with_identity(b, hm.apply(humanfit.identity(b), p["macros"], held=True))
         h = b["head"]
     for k, v in (p.get("shape") or {}).items():
         if v is None:
@@ -87,7 +88,7 @@ def patched(b, p):
         h["pose"] = {**(h.get("pose") or {}), **p["pose"]}
     for lmk, mv in (p.get("nudge") or {}).items():   # a landmark moved by the IDENTITY alone (the rest held; the
         pm0 = list((b["head"].get("shape") or {}).get("push_more") or [])   # correction bump nudge adds is dropped)
-        nb, rep = humanfit.nudge(b, lmk, move=mv, force=True)
+        nb, rep = humanfit_solve.nudge(b, lmk, move=mv, force=True)
         print(f"  nudge {lmk} {mv}: by sliders {rep['by_sliders_mm']} mm, a bump would add {rep['by_correction_mm']} mm (dropped)")
         sh = nb["head"].get("shape") or {}
         if pm0:
@@ -99,8 +100,8 @@ def patched(b, p):
 
 
 def measure(b, cam, box, mm):
-    mesh = lk.model_mesh(b)
-    ours = np.asarray(lk.render(mesh, cam, box, px=PX)[0].convert("RGB").resize((PX, PX)))
+    mesh = likeness_render.model_mesh(b)
+    ours = np.asarray(likeness_render.render(mesh, cam, box, px=PX)[0].convert("RGB").resize((PX, PX)))
     d = rs.detect([ours])[0]
     return numbers(d, mm), d
 
@@ -132,7 +133,7 @@ if __name__ == "__main__":
         b2 = patched(b, p)
         m2, dm2 = measure(b2, cam, box, mm)
         show(f"+ {pf.split('/')[-1]}: {json.dumps({k: v for k, v in p.items() if k != 'save'})[:200]}", a, m2, dm2)
-        print("  plausibility", humanfit.plausibility(b2), "| integrity:", humanfit.verdict(humanfit.integrity(b2, humanfit.state(b2), humanfit.state(b)))[:160])
+        print("  plausibility", humanfit.plausibility(b2), "| integrity:", humanfit_integrity.verdict(humanfit_integrity.integrity(b2, humanfit.state(b2), humanfit.state(b)))[:160])
         if p.get("save"):
             b2["head"].pop("pose", None) if posed else None
             store.save(p["save"], {**copy.deepcopy(sp), "base": b2}, f"garrett3: {name} + {pf.split('/')[-1]} (eyes / lips / brows by the same detector on photo and render)")

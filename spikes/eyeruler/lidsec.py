@@ -15,6 +15,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin_eyes as be, eye_ruler as er, onemesh, store
+from hifipushie import onemesh_head
 
 G = os.environ["G"] + "/out"
 US = (-5.0, 0.0, 5.0)
@@ -93,7 +94,7 @@ def measure(P, r_mm):
 res = {}
 print(f"{'model':12s} {'u':>3s} {'gap':>6s} {'margin':>6s} {'crease h':>8s} {'shown':>6s} {'recede':>6s} {'bulge':>6s} {'depth':>6s} {'narrow':>6s} {'fold':>6s}")
 for name in sys.argv[1:]:
-    ht = onemesh.head_template(store.load(name)["base"])
+    ht = onemesh_head.head_template(store.load(name)["base"])
     c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)
     r = float(ht["eye_r"])
     fwd = np.asarray(ht["forward"], float)

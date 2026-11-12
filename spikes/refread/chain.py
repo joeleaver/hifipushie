@@ -5,6 +5,7 @@ anchors=.., normals=0|1, adapt=0|1, lids=.., lips=..); first=trust starts with t
 import sys, time
 import numpy as np
 from hifipushie import blockin as bi, resources, store
+from hifipushie import blockin_steps
 
 src, pre, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
 kw = {a: {"0": False, "1": True}.get(b, b) for a, b in (x.split("=", 1) for x in sys.argv[4:])}
@@ -17,7 +18,7 @@ for i in range(1, n + 1):
         src = out
         continue
     t = time.time()
-    rep = bi.solve_step(src, out=out, cameras=first if i == 1 else rest, **kw)   # (numpy, one process, ~2 GB: no heavy slot)
+    rep = blockin_steps.solve_step(src, out=out, cameras=first if i == 1 else rest, **kw)   # (numpy, one process, ~2 GB: no heavy slot)
     so = rep["solve"]
     c = bi.identity(store.load(out))
     print(f"== {src} -> {out} ({time.time() - t:.0f} s): reads {so['n']}")

@@ -177,9 +177,10 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             C = C[(de > 2.5) | np.isin(C[:, 3], [ks.index("tussock"), ks.index("tallgrass")])]
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
         from . import terrain_stream
-        if terrain_stream.config(T) is not None:  # (stream, lake and beach clutter: terrain_stream.all_clutter)
+        from . import terrain_stream_clutter
+        if terrain_stream.config(T) is not None:  # (stream, lake and beach clutter: terrain_stream_clutter.all_clutter)
             from scipy.spatial import cKDTree
-            SC = terrain_stream.all_clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
+            SC = terrain_stream_clutter.all_clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
             if len(SC):
                 de, _ = cKDTree(eyes[:, :2]).query(SC[:, :2])
                 SC = SC[(de < clutter) & (de > 1.2)]

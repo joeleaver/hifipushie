@@ -8,6 +8,7 @@
 Logs to $S/out/dress_<out>_<stage>.txt. Run through heavy.sh."""
 import json, sys, time
 from hifipushie import blockin as bi, blockin_brows as bb, hair, server, skin_read as sr, store
+from hifipushie import blockin_models, hair_seat, skin_read_fit
 
 S = "/mnt/data/hifipushie/nativedefault/out"
 src, out = sys.argv[1:3]
@@ -17,7 +18,7 @@ T66 = {"tie": "low", "side": 20, "tightness": 0.85, "neatness": 0.95, "front": {
        "wisps": {"amount": 1.0, "softness": 0.7}, "tail": {"length": 0.195, "wave": 0.6, "fullness": 0.43, "tousle": 0.55}}
 t0 = time.time()
 if "skin" in stages:
-    bi.fork(src, out, replace=True)
+    blockin_models.fork(src, out, replace=True)
     sp = store.load(out)
     sk = sp["skin"]
     gone = {k: sk.pop(k) for k in ("zones", "features", "folds", "fold_expressions", "makeup") if k in sk}
@@ -26,9 +27,9 @@ if "skin" in stages:
     e.pop("iris_size", None)
     e.update(pupil=0.33, canthus=0.8)
     assert not sp.get("strokes") and not sp.get("paint"), (sp.get("strokes"), sp.get("paint"))
-    bi._save(out, sp, f"nativedefault dress from {src}: plain skin (dropped {sorted(gone)}), pupil 0.33, canthus 0.8", bi._refs(out))
+    blockin_models._save(out, sp, f"nativedefault dress from {src}: plain skin (dropped {sorted(gone)}), pupil 0.33, canthus 0.8", blockin_models._refs(out))
     print("dropped from the skin:", json.dumps(gone))
-    res = sr.apply(out, groups=("tone", "lips", "eyes", "brows"), rounds=2, stubble=False, log=lambda s: None)
+    res = skin_read_fit.apply(out, groups=("tone", "lips", "eyes", "brows"), rounds=2, stubble=False, log=lambda s: None)
     open(f"{S}/dress_{out}_skin.txt", "w").write(res["text"])
     print(res["text"][-3000:])
     print("skin now:", json.dumps(store.load(out)["skin"]))
@@ -37,7 +38,7 @@ if "brows" in stages:
     open(f"{S}/dress_{out}_brows.txt", "w").write(r["text"])
     print(r["text"][-1500:])
 if "hair" in stages:
-    r = hair.tie_style(out, T66, carry_from="th_T66", look={"cycles_width": 1.8, "cycles_sat": 0.65}, note="nativedefault: th_T66's style words on the native head")
+    r = hair_seat.tie_style(out, T66, carry_from="th_T66", look={"cycles_width": 1.8, "cycles_sat": 0.65}, note="nativedefault: th_T66's style words on the native head")
     print("tie_style:", str({k: v for k, v in r.items() if k != "made"})[:600])
     print(server.groom_hair(out, groom={"seed": 0}, replace=True)[:1500])
     sp = store.load(out)

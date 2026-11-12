@@ -8,12 +8,13 @@ import sys
 import numpy as np
 
 from hifipushie import blockin as bi, face_ruler as fr, gnm_mm
+from hifipushie import blockin_models, face_ruler_compare, face_ruler_orbit
 
 G = os.environ["G"] + "/out"
 name = sys.argv[1]
 rounds = int(sys.argv[2]) if len(sys.argv) > 2 else 4
-rj = bi._refs(name)
-kinds = [fr.kind_of(v.get("yaw", 0)) for v in rj["views"]]
+rj = blockin_models._refs(name)
+kinds = [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj["views"]]
 print(name, "views:", kinds)
 out = {}
 subs = {"front + profile": ("front", "profile"), "front + 3/4": ("front", "3q"), "all three": ("front", "3q", "profile"),
@@ -22,9 +23,9 @@ for lab, use in subs.items():
     vi = [i for i, k in enumerate(kinds) if k in use]
     if len(vi) != len(use):
         continue
-    res = fr.compare(name, rounds=rounds, views=vi)
+    res = face_ruler_compare.compare(name, rounds=rounds, views=vi)
     print(f"\n=== {lab} ({res['n']})")
-    print(fr.orbit_text(res["orbit"]))
+    print(face_ruler_orbit.orbit_text(res["orbit"]))
     rows = {r["measure"]: r for r in res["rows"]}
     print("  measures: " + "; ".join(f"{m} {rows[m]['gap']:+.1f} +-{rows[m]['err']:.1f}" for m in gnm_mm.ORBIT))
     for n in res["notes"]:

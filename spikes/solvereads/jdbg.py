@@ -3,12 +3,13 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_jaw
 m, vi = sys.argv[1], int(sys.argv[2])
-spec, rj = store.load(m), bi._refs(m)
-head = fr.model_head(spec)
+spec, rj = store.load(m), blockin_models._refs(m)
+head = face_ruler_blockin.model_head(spec)
 cam = rj["cameras"][vi]
-print("jaw set", int(fr._jaw_set(head).sum()), "of", len(head["V"]), "head F", len(head["F"]))
-E, t, X, p, n2 = fr.jaw_contour(head, cam)
+print("jaw set", int(face_ruler_jaw._jaw_set(head).sum()), "of", len(head["V"]), "head F", len(head["F"]))
+E, t, X, p, n2 = face_ruler_jaw.jaw_contour(head, cam)
 print("contour points", len(E))
 im, ps = fr.clay(head, cam, passes=True)
 zb, mask = ps["zb"], ps["part"] >= 0

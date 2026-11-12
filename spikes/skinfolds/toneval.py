@@ -9,6 +9,7 @@ import copy, json, os, sys, time
 import numpy as np
 from PIL import Image
 from hifipushie import skin_read as sr, blockin as bi, store, resources, skin as skinmod
+from hifipushie import blockin_models, skin_read_fit, skin_read_frames
 
 head, tag, f_true, ev = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4])
 kw = dict(a.split("=") for a in sys.argv[5:])
@@ -23,20 +24,20 @@ truth = {"sex": 0, "age": 25, "tone": {"fitzpatrick": f_true, "blood": 0.6, "und
 start = {"sex": 0, "age": 25, "tone": {"fitzpatrick": f_prior}, "wrinkles": {"amount": 0}}
 key = f"{tag}_f{f_true:g}_ev{'m' if ev < 0 else 'p'}{abs(ev):.1f}".replace(".", "p") + ("_w" if white else "")
 tm, vm = f"sf_tt_{key}", f"sf_tv_{key}_p{f_prior:g}".replace(".", "p")
-nv = len(bi._refs(head)["views"])
+nv = len(blockin_models._refs(head)["views"])
 pics = [f"{G}/tone_{key}_{i}.png" for i in range(nv)]
 if not all(os.path.exists(p) for p in pics) or os.environ.get("FRESH"):
-    bi.fork(head, tm, replace=True)
+    blockin_models.fork(head, tm, replace=True)
     sp = store.load(tm); sp["skin"] = truth; sp["paint"] = {}
     store.save(tm, sp, "skinfolds tone validation: the truth")
-    rj = bi._refs(tm)
+    rj = blockin_models._refs(tm)
     with resources.heavy(f"skinfolds toneval truth {key}", gb=6):
-        sn = sr.stage(tm, log=lambda s: None)
+        sn = skin_read_frames.stage(tm, log=lambda s: None)
         for i, cam in enumerate(rj["cameras"]):
             w, h = cam["size"]
             s = max(w, h)
             x0, y0 = (w - s) / 2, (h - s) / 2
-            im = sr.shoot(sn, [sr.fitted_frame(cam, [x0, y0, x0 + s, y0 + s], "v")], VLIGHT, size=s)["v"]
+            im = skin_read_frames.shoot(sn, [skin_read_frames.fitted_frame(cam, [x0, y0, x0 + s, y0 + s], "v")], VLIGHT, size=s)["v"]
             bg = np.zeros((s, s, 4), np.uint8)
             lit = TINT * 2 ** ev                      # what a white card facing the key would read (about 1 x the light)
             bg[..., :3] = np.round(255 * sr._srgb(np.clip(0.5 * lit, 0, 1))); bg[..., 3] = 255
@@ -59,14 +60,14 @@ if not all(os.path.exists(p) for p in pics) or os.environ.get("FRESH"):
                 full = Image.fromarray(arr)
             full = full.crop((int(-x0), int(-y0), int(-x0) + w, int(-y0) + h))
             full.save(pics[i])
-bi.fork(head, vm, replace=True)
+blockin_models.fork(head, vm, replace=True)
 sp = store.load(vm); sp["skin"] = copy.deepcopy(start); sp["paint"] = {}
-rj = bi._refs(vm)
+rj = blockin_models._refs(vm)
 for i, v in enumerate(rj["views"]):
     v["image"] = pics[i]
-bi._save(vm, sp, "skinfolds tone validation: the start", rj)
+blockin_models._save(vm, sp, "skinfolds tone validation: the start", rj)
 t = time.time()
-res = sr.apply(vm, groups=("tone", "zones"), rounds=int(kw.get("rounds", 1)), brow_shape=False, log=lambda s: None)
+res = skin_read_fit.apply(vm, groups=("tone", "zones"), rounds=int(kw.get("rounds", 1)), brow_shape=False, log=lambda s: None)
 fit = res["skin"]
 L = lambda tn: sr.lab(sr._lin(np.asarray(skinmod.tone_rgb(tn), float)))  # noqa: E731
 lt, ls, lf = L(truth["tone"]), L(start["tone"]), L(fit.get("tone") or start["tone"])

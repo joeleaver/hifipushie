@@ -5,6 +5,7 @@ Variants: G = front, 3/4, "profile" with 8 clicks (yaw -90); C = front + 3/4 onl
 60 deg turned view (the detector finds the face in it), its clicks kept."""
 import copy, json, sys
 from hifipushie import store, server, blockin as bi
+from hifipushie import blockin_models
 
 V = sys.argv[1] if len(sys.argv) > 1 else "G"
 R = "/home/joe/dev/s0urc3/docs/img/garrett_ref_full/garrett_head_"
@@ -27,7 +28,7 @@ for k in ("hair", "cloth"):
 holder = "gg_R" if V == "G" else f"gg_R{V}"
 d = store._dir(holder); d.mkdir(parents=True, exist_ok=True)
 (d / "spec.json").write_text(json.dumps(sp))
-VIEWS = bi.with_anchor_points(VIEWS)   # the detector's lm17..67 on the front and the turned views: the solve's anchors' names
+VIEWS = blockin_models.with_anchor_points(VIEWS)   # the detector's lm17..67 on the front and the turned views: the solve's anchors' names
 (d / "human_refs.json").write_text(json.dumps({"views": VIEWS, "cameras": [None] * len(VIEWS)}))
 r = server.block_in_start(f"gg_{V}00", holder, sex="male", age=52, cameras="refit", replace=True,
                           save=f"/mnt/data/hifipushie/garrettgood/out/gg_{V}00.png")

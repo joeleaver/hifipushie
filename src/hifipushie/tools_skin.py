@@ -30,6 +30,7 @@ def skin(name: str, skin: dict | None = None, replace: bool = False, note: str =
     a list of names, or {layer: strength}. The reply names keys with no effect. Details: guide(topic="skin")."""
     from . import paint
     from . import skin as skinmod
+    from . import skin_params
     spec = store.load(name)
     patch = _spec_arg(skin) if skin is not None else {}
     cur = {} if replace else (spec.get("skin") or {})
@@ -40,15 +41,15 @@ def skin(name: str, skin: dict | None = None, replace: bool = False, note: str =
         new_spec, edited = skin_route.stack_edit(new_spec, json.loads(stack_edit) if isinstance(stack_edit, str) and stack_edit[:1] in "[{" else stack_edit)
         new = new_spec["skin"]
     tail = skin_route.after_skin(name, spec, new_spec, patch, edited)
-    p = skinmod.params(new_spec)
+    p = skin_params.params(new_spec)
     layers = [k[5:] for k in paint.layers(new_spec) if k.startswith("skin:")]
     v = store.save(name, new_spec, note=note or "skin")
     hx = lambda c: "#" + "".join(f"{int(round(x * 255)):02x}" for x in c)  # noqa: E731
-    if not skinmod.shaded(new_spec):  # skin.only without "shading": some layers, the part's own shading untouched
+    if not skin_params.shaded(new_spec):  # skin.only without "shading": some layers, the part's own shading untouched
         return (f"saved {name} v{v}: skin only {p['only']}: the skin part's shading and everything else are left as "
                 f"they are\n{len(layers)} layers: {', '.join(layers)}\n"
                 "sync + look (or look(paint_layer=\"skin:<layer>\")) to see them" + tail)
-    base = skinmod.part_base(new_spec)[1]
+    base = skin_params.part_base(new_spec)[1]
     t = new.get("tone")
     return (f"saved {name} v{v}: skin on part {p['part']!r}, melanin {p['tone']['melanin']:.2f} blood {p['tone']['blood']:.2f} "
             f"undertone {p['tone']['undertone']:+.1f}, age {p['age']:.0f}\n"
@@ -143,9 +144,9 @@ def skin_project(name: str, out: str = "", views: list[int] | None = None, remov
 def skin_reference() -> str:
     """Everything the `skin` description takes: zones, tone model, features, wrinkles, hair, scars, tattoos and
     make-up, with keys and defaults. Details: guide(topic="skin_reference")."""
-    from . import skin as skinmod
+    from . import skin_build
     from . import skin_makeup
-    return skinmod.reference() + "\n\n" + skin_makeup.reference() + "\n" + skin_route.after_reference()
+    return skin_build.reference() + "\n\n" + skin_makeup.reference() + "\n" + skin_route.after_reference()
 
 
 @mcp.tool(structured_output=False)

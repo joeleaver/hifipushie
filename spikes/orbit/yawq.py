@@ -7,9 +7,10 @@ import sys
 import numpy as np
 
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_compare, face_ruler_solve
 
 name = sys.argv[1]
-head, views, notes = fr.reference_views(name)
+head, views, notes = face_ruler_compare.reference_views(name)
 views = [v for v in views if v["kind"] in ("front", "profile")]
 
 
@@ -17,7 +18,7 @@ def run(lab, limbus=True, yaw_sd=6.0, drop=()):
     vs = [dict(v, limbus=limbus) for v in views]
     sd = {k: tuple(v) for k, v in fr.PHOTO_CAM_SD6.items()}
     sd["profile"] = sd["profile"][:4] + (yaw_sd, sd["profile"][5])
-    res = fr.read(head, vs, rounds=4, cam_sd=sd)
+    res = face_ruler_solve.read(head, vs, rounds=4, cam_sd=sd)
     g = {r["measure"]: r for r in res["gaps"]}
     pi = [i for i, v in enumerate(res["views"]) if v["kind"] == "profile"][0]
     lim = [round(ob["o"], 2) for ob in res["obs"] if ob["type"] == "limbus" and ob["name"].endswith(".x")]

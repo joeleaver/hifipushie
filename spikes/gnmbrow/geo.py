@@ -15,7 +15,8 @@ from PIL import Image
 
 import bm
 from hifipushie import blockin as bi, humanfit, likeness, lidfold, skin_look, store
-from hifipushie.skin import interocular
+from hifipushie import blockin_clay, blockin_models, humanfit_views, likeness_render
+from hifipushie.skin_zones import interocular
 
 
 def col_interp(pts, x):
@@ -62,19 +63,19 @@ def half(t, thickness, taper):
 
 def run(name, photo=None):
     spec = store.load(name)
-    rj = bi._refs(name)
-    vi = bi._front(rj)
+    rj = blockin_models._refs(name)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     st = humanfit.state(spec["base"])
     L = st["L"]
     V = np.asarray(st["tpl"]["P"], float)
-    mm = likeness._mm_per_px(cam, L[27:48])
+    mm = likeness_render._mm_per_px(cam, L[27:48])
     J = skin_look._J(spec)
     img = Image.open(v["image"]).convert("RGB")
-    Pm = np.asarray(bi.detect_view(img, v), float)[:, :2]
+    Pm = np.asarray(blockin_clay.detect_view(img, v), float)[:, :2]
     ph = bm.read(img, Pm) if photo is None else photo
     kph = lidfold.IRIS_MM / ph["iris_px"]              # the reader's mm (11.7 iris) per picture px
-    L2 = humanfit.project(cam, L)
+    L2 = humanfit_views.project(cam, L)
     ob = ((spec.get("skin") or {}).get("hair") or {}).get("brows") or {}
     if not isinstance(ob, dict):
         ob = {}
@@ -99,7 +100,7 @@ def run(name, photo=None):
             dv = (spine(t, float(o.get("fall", 1.0))) - vv) * h * 1000         # mm the vertex is BELOW the spine (+)... v down: spine - v > 0 = above
             hf = half(t, thick, float(o.get("taper", 0.82))) * h * 1000
             ok = (u > 0.02) & (u < 0.98) & (np.abs(dv) < 12) & (Q[:, 1] < c[1] + 0.012)
-            fr[key] = (humanfit.project(cam, Q[ok]), dv[ok], hf[ok])
+            fr[key] = (humanfit_views.project(cam, Q[ok]), dv[ok], hf[ok])
         for k, f in enumerate(bm.FR):
             x = pi[0] + f * (po[0] - pi[0])
             ylid = col_interp(lidp, x)

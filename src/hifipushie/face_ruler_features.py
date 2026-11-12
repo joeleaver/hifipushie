@@ -31,8 +31,9 @@ def _lid_obs(head, view, rv):
     against the model's margin ring read the same way (blockin_eyes.Reader.margins, the subject's left eye). Each
     moves with GNM's ring-0 vertices relative to the eye's centre. In the EYE's frame, so no camera column: its view
     is "eye frame". The eye step solved these alone and later steps undid them (lips 0.2 -> 1.8 mm, brows 1.8 mm)."""
-    from . import blockin_eyes as be, lidrings, onemesh
-    ht = onemesh.head_template(head["spec"]["base"])
+    from . import blockin_eyes as be, lidrings
+    from . import onemesh_head
+    ht = onemesh_head.head_template(head["spec"]["base"])
     mg = be.Reader(ht).margins(ht)
     gg = _gnm()["sp"]
     T = gg["T"]

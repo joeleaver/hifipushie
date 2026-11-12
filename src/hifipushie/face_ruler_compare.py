@@ -252,11 +252,12 @@ def compare(name: str, rounds: int = 3, cam_sd=face_ruler.PHOTO_CAM_SD7, hair: b
         # "held" = held at that mean (+- 1 %); a number = held at that girth in real mm (on a body-carried head: GNM's own
         # mm, for benchmarks; chin["neck_sig"] sets its sigma)
         from . import onemesh, solve_report as sr, store as _store
+        from . import onemesh_native
         b_ = _store.load(name)["base"]
         nat = onemesh.native(b_)
         tgt = sig_ = None
         if nat:
-            ns = onemesh.native_size(b_)
+            ns = onemesh_native.native_size(b_)
             given = not isinstance(nk, (bool, str))
             tgt = (float(nk) * 1e-3 if given else ns["neck"]) / ns["size"]
             sig_ = float((chin or {}).get("neck_sig") or (sr.NECK_SIG if (given or nk == "held") else ns["neck_sd"] / ns["neck"]))

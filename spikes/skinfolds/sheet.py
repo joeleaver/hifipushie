@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 import stage as g3stage
 import shots as S
 from hifipushie import skin_read as sr, blockin as bi, humanfit, resources, skin_look, store
+from hifipushie import blockin_clay, blockin_look, blockin_models, humanfit_views, skin_read_frames
 
 out, a1, srm, sfm, title = sys.argv[1:6]
 kw = dict(a.split("=") for a in sys.argv[6:])
@@ -48,9 +49,9 @@ def shots(m, jobs, old=False):
     if todo:
         with resources.heavy(f"skinfolds sheet {m}", gb=6):
             spec = store.load(m)
-            sn = sr.stage(m, old_look(spec) if old else spec, log=lambda s: None)
+            sn = skin_read_frames.stage(m, old_look(spec) if old else spec, log=lambda s: None)
             for k, (fr, lt, f) in todo.items():
-                a = sr.shoot(sn, [{**fr, "name": "v"}], lt, size=2 * T, samples=32)["v"]
+                a = skin_read_frames.shoot(sn, [{**fr, "name": "v"}], lt, size=2 * T, samples=32)["v"]
                 im = Image.fromarray(a)
                 im = Image.alpha_composite(Image.new("RGBA", im.size, (205, 205, 205, 255)), im).convert("RGB").resize((T, T), Image.LANCZOS)
                 im.save(f)
@@ -67,27 +68,27 @@ def label(im, text, font=FONT):
     return im
 
 
-rj = bi._refs(a1)
-boxes = sr.boxes(a1)
-front = bi._front(rj)
+rj = blockin_models._refs(a1)
+boxes = skin_read_frames.boxes(a1)
+front = blockin_clay._front(rj)
 L = humanfit.state(store.load(a1)["base"])["L"]
 jobs = {}
 for vi, (cam, box) in enumerate(zip(rj["cameras"], boxes)):
-    jobs[f"v{vi}"] = (sr.fitted_frame(cam, box, "v"), bi.photo_lighting(a1, LIGHT, vi))
+    jobs[f"v{vi}"] = (skin_read_frames.fitted_frame(cam, box, "v"), blockin_look.photo_lighting(a1, LIGHT, vi))
 cam = rj["cameras"][front]
-P = humanfit.project(cam, L)
+P = humanfit_views.project(cam, L)
 sq = lambda cx, cy, side: [cx - side / 2, cy - side / 2, cx + side / 2, cy + side / 2]  # noqa: E731
 eye_w = float(np.linalg.norm(P[45] - P[36]))
 crops = {"eyeR": sq(*(P[36:42].mean(0) + [0, 0.05 * eye_w]), 0.62 * eye_w), "eyeL": sq(*(P[42:48].mean(0) + [0, 0.05 * eye_w]), 0.62 * eye_w),
          "mouth": sq(*(0.5 * (P[33] + P[8]) - [0, 0.12 * eye_w]), 1.0 * eye_w)}
 rake_jobs = {}
 for k, cb in crops.items():
-    jobs[k] = (sr.fitted_frame(cam, cb, "v"), bi.photo_lighting(a1, LIGHT, front))
+    jobs[k] = (skin_read_frames.fitted_frame(cam, cb, "v"), blockin_look.photo_lighting(a1, LIGHT, front))
     # (the raking light from the eye's own side: from the other, the nose and brow put it in shadow)
     rk = copy.deepcopy(S.RAKE)
     if k == "eyeR":
         rk["lights"][0]["dir"][0] *= -1
-    rake_jobs[k + "_rk"] = (sr.fitted_frame(cam, cb, "v"), rk)
+    rake_jobs[k + "_rk"] = (skin_read_frames.fitted_frame(cam, cb, "v"), rk)
 spec = store.load(a1)
 for fr in g3stage.view_frames(spec, ("three_quarter_other", "profile_right", "low_angle")):
     jobs["u_" + fr["name"]] = (fr, skin_look.STUDIO)

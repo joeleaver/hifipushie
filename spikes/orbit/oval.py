@@ -18,16 +18,17 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin as bi, eye_ruler as er, face_ruler as fr, gnm_mm, humanfit, likeness, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_features, face_ruler_orbit, face_ruler_outline, face_ruler_solve, humanfit_views, likeness_detect, likeness_render
 
 G = os.environ["G"] + "/out"
 D = os.environ.get("D", "/mnt/data/hifipushie/faceruler/out")
 REFS = os.environ.get("REFS", "gd_T12")
 BOX = json.load(open(f"{D}/d_box.json"))["box"]
 mode, names = sys.argv[1], sys.argv[2:]
-rj = bi._refs(REFS)
-kinds = [fr.kind_of(v.get("yaw", 0)) for v in rj["views"]]
+rj = blockin_models._refs(REFS)
+kinds = [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj["views"]]
 specs = {n: store.load(n) for n in names}
-heads = {n: fr.model_head(specs[n]) for n in names}
+heads = {n: face_ruler_blockin.model_head(specs[n]) for n in names}
 sp = gnm_mm._space()
 Vg = {n: sp["T"] + np.tensordot(bi.identity(specs[n]), sp["IB"], 1) for n in names}
 rng = np.random.default_rng(11)
@@ -46,21 +47,21 @@ if mode == "limbus":
                 if k == "front":
                     continue
                 img = pic(b, k)
-                lum = fr._lum(img)
+                lum = face_ruler_orbit._lum(img)
                 from scipy import ndimage as ndi
-                valid = ndi.binary_erosion(fr.foreground(img), iterations=3)
+                valid = ndi.binary_erosion(face_ruler_outline.foreground(img), iterations=3)
                 if b not in IRIS:
                     fimg = pic(b, "front")
-                    Pd = np.asarray(likeness.detect([fimg])[0], float)[:, :2] + BOX[:2]
+                    Pd = np.asarray(likeness_detect.detect([fimg])[0], float)[:, :2] + BOX[:2]
                     fcam = rj["cameras"][kinds.index("front")]
-                    IRIS[b] = float(np.mean([e["iris"] for e in er.read(fimg, Pd, likeness._mm_per_px(fcam, humanfit.state(specs[b]["base"])["L"][27:48]), scale=1.0, origin=BOX[:2])]))
-                    print(b, "iris read on the front picture", round(IRIS[b], 2), "mm; model's", round(2000 * fr.limbus_model(heads[b])[0]["r"], 2))
-                la, lb = fr.limbus_model(heads[a], IRIS[b]), fr.limbus_model(heads[b], IRIS[b])
-                part = likeness.render(heads[a]["mesh"], cam, tuple(BOX), px=int(BOX[2] - BOX[0]), brows=False, passes=True)[2]["part"]
-                eye_c = np.asarray(cam["centre"], float) - humanfit._cam_rot(cam).T @ np.asarray(cam["t"], float)
+                    IRIS[b] = float(np.mean([e["iris"] for e in er.read(fimg, Pd, likeness_render._mm_per_px(fcam, humanfit.state(specs[b]["base"])["L"][27:48]), scale=1.0, origin=BOX[:2])]))
+                    print(b, "iris read on the front picture", round(IRIS[b], 2), "mm; model's", round(2000 * face_ruler_orbit.limbus_model(heads[b])[0]["r"], 2))
+                la, lb = face_ruler_orbit.limbus_model(heads[a], IRIS[b]), face_ruler_orbit.limbus_model(heads[b], IRIS[b])
+                part = likeness_render.render(heads[a]["mesh"], cam, tuple(BOX), px=int(BOX[2] - BOX[0]), brows=False, passes=True)[2]["part"]
+                eye_c = np.asarray(cam["centre"], float) - humanfit_views._cam_rot(cam).T @ np.asarray(cam["t"], float)
                 dist = [np.linalg.norm(q["X"] - eye_c) for q in la]
                 for j in (0, 1):
-                    rd = fr.limbus_read(lum, cam, la[j], BOX[:2], 1.0, far=dist[j] > min(dist) + 1e-6, valid=valid, part=part)
+                    rd = face_ruler_orbit.limbus_read(lum, cam, la[j], BOX[:2], 1.0, far=dist[j] > min(dist) + 1e-6, valid=valid, part=part)
                     if rd is None:
                         continue
                     tru = (fr._cam_points(cam, lb[j]["X"][None])[1][0] - fr._cam_points(cam, la[j]["X"][None])[1][0])
@@ -108,23 +109,23 @@ for i, a in enumerate(names):
             for k, cam in zip(kinds, rj["cameras"]):
                 if k not in use:
                     continue
-                cam2 = fr.cam_moved(cam, *offs[k]) if var == "off" else cam
+                cam2 = face_ruler_solve.cam_moved(cam, *offs[k]) if var == "off" else cam
                 img = pic(b, k)
                 v = {"img": img, "cam": cam2, "kind": k, "style": "dressed", "origin": BOX[:2], "scale": 1.0, "hair": True}
-                v["mask"], v["trust"] = fr.photo_masks(img, cam2, heads[a], origin=BOX[:2])
+                v["mask"], v["trust"] = face_ruler_outline.photo_masks(img, cam2, heads[a], origin=BOX[:2])
                 if k == "front":
                     try:
-                        P = np.asarray(likeness.detect([img])[0], float)[:, :2] + BOX[:2]
-                        mm = likeness._mm_per_px(cam2, humanfit.state(specs[a]["base"])["L"][27:48])
+                        P = np.asarray(likeness_detect.detect([img])[0], float)[:, :2] + BOX[:2]
+                        mm = likeness_render._mm_per_px(cam2, humanfit.state(specs[a]["base"])["L"][27:48])
                         eyes = er.read(img, P, mm, scale=1.0, origin=BOX[:2])
-                        v["extra"] = lambda h, vw, eyes=eyes: fr._iris_obs(h, vw, eyes)
+                        v["extra"] = lambda h, vw, eyes=eyes: face_ruler_features._iris_obs(h, vw, eyes)
                         iris_b = float(np.mean([e["iris"] for e in eyes]))
                     except Exception as e:  # noqa: BLE001
                         print("  no iris read:", b, e)
                 views.append(v)
             for v in views:
                 v["iris_mm"] = iris_b
-            res = fr.read(heads[a], views, rounds=4 if var != "known" else 3, cam_sd=None if var == "known" else fr.PHOTO_CAM_SD6)
+            res = face_ruler_solve.read(heads[a], views, rounds=4 if var != "known" else 3, cam_sd=None if var == "known" else fr.PHOTO_CAM_SD6)
             key = f"{var}/{sub}"
             row[key] = {r["measure"]: [r["gap"], r["err"]] for r in res["gaps"]}
             row[key + "_orbit"] = {r["row"]: [r["gap"], r["err"]] for r in res["orbit"]}

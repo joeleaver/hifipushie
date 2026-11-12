@@ -3,9 +3,10 @@ against the reference picture of the same view."""
 import sys, os
 from PIL import Image
 from hifipushie import faceid, blockin as bi
+from hifipushie import blockin_models
 G = os.environ.get("G", "/mnt/data/hifipushie/reruns") + "/out"
 ms = sys.argv[1:]
-rj = bi._refs(ms[0])
+rj = blockin_models._refs(ms[0])
 for vi, v in enumerate(rj["views"]):
     fs = [f"{G}/d_{m}_{vi}.png" for m in ms]
     ok = [(m, f) for m, f in zip(ms, fs) if os.path.exists(f)]

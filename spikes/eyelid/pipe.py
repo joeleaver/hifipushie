@@ -15,6 +15,7 @@ from scipy.spatial import cKDTree
 
 import lidmap as lm
 from hifipushie import blockin as bi, gnm_controls as gc, onemesh, store
+from hifipushie import onemesh_head
 
 g = gc.gnm()
 t = lm.topo()
@@ -46,7 +47,7 @@ for name in sys.argv[1:]:
     sp = store.load(name)
     c = bi.identity(sp)
     Vr = gc.vertices(c, expr(sp)) * 1000
-    ht = onemesh.head_template(sp["base"])
+    ht = onemesh_head.head_template(sp["base"])
     Vc = np.asarray(ht["carry"]["V"], float) * 1000
     ids = np.concatenate([t["loops"][k] for k in RINGS])
     rk = np.concatenate([[k] * len(t["loops"][k]) for k in RINGS])

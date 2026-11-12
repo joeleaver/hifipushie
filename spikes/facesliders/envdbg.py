@@ -6,8 +6,9 @@ import numpy as np
 import joint2
 import outl
 from hifipushie import base, humanfit, onemesh, store
+from hifipushie import base_identity
 
-g = base._gnm_data()
+g = base_identity._gnm_data()
 print(sorted(g["groups"].keys()))
 sp = store.load("fs_gj6")
 refs = json.loads((store.HOME / "fs_gj6" / "human_refs.json").read_text())

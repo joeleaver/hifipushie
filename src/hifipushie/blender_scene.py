@@ -2240,7 +2240,7 @@ def hair_export(job):
 
 
 def hair_strands_eval(job):
-    """A strands job (hair_strands.job) built in an empty scene: every evaluated strand dumped to an npz, and / or
+    """A strands job (hair_strands_job.job) built in an empty scene: every evaluated strand dumped to an npz, and / or
     written as a groom (Alembic, USD)."""
     import blender_strands
     for ob in list(bpy.data.objects):

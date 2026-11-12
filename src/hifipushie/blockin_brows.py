@@ -124,7 +124,7 @@ def default_thickness(spec: dict) -> float:
 def decal(J: dict, o: dict, side: int = 1):
     """The brow decal's frame as skin_features lays it (side +1 the subject's left, -1 the mirrored right): centre,
     right (toward the outer end), up, width, height (m)."""
-    from .skin import interocular
+    from .skin_zones import interocular
     a_, m_, b_ = (np.asarray(J[f"lm_brow_{k}.L"], float).copy() for k in ("inner", "mid", "outer"))
     io = interocular(J)
     width = 1.22 * float(np.linalg.norm(b_ - a_))

@@ -10,6 +10,7 @@ from scipy.optimize import least_squares
 
 import joint as J0
 from hifipushie import humanfit, humanfit_map as hm, store
+from hifipushie import humanfit_views
 
 name, vi = sys.argv[1], int(sys.argv[2])
 save = float(sys.argv[3]) if len(sys.argv) > 3 else None
@@ -30,21 +31,21 @@ def fit(yaw):
 
     def res(p):
         cam = cam_of(p)
-        Rc = humanfit._cam_rot(cam)
+        Rc = humanfit_views._cam_rot(cam)
         z = ((e["X"] - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"]))[:, 2]
         w = (z / cam["f"] * 1000) / e["sig"]
-        return np.r_[((humanfit.project(cam, e["X"]) - e["uv"]) * w[:, None]).ravel(), W_REG * p[:3]]
+        return np.r_[((humanfit_views.project(cam, e["X"]) - e["uv"]) * w[:, None]).ravel(), W_REG * p[:3]]
     sol = least_squares(res, np.r_[0.0, 0.0, 0.0, cam0["t"], cam0["f"]], loss="huber", f_scale=2.5)
     cam = cam_of(sol.x)
     r = res(sol.x)[:-3].reshape(-1, 2)
     return float(np.sqrt((r ** 2).sum(1).mean())), cam
 
 
-R0 = humanfit._cam_rot(cam0)
+R0 = humanfit_views._cam_rot(cam0)
 print("stored camera: yaw key", cam0.get("yaw"), "r", np.round(cam0["r"], 3), "view dir", np.round(R0.T @ [0, 0, 1], 3))
 for y in np.arange(20, 61, 5.0):
     rms, cam = fit(float(y))
-    d = humanfit._cam_rot(cam).T @ [0, 0, 1]
+    d = humanfit_views._cam_rot(cam).T @ [0, 0, 1]
     print(f"  base yaw {y:5.0f}: rms {rms:5.2f} sigmas, view dir {np.round(d, 3)}, r {np.round(cam['r'], 3)}")
 if save is not None:
     rms, cam = fit(save)

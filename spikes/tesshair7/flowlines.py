@@ -18,6 +18,7 @@ from scipy import ndimage as ndi
 
 import stage
 from hifipushie import hair, hair_cards as hc, store
+from hifipushie import hair_card_fit, hair_cards_mesh, hair_drawn, hair_groom, hair_head, hair_look, hair_spec
 
 out = sys.argv[1]
 names = [a for a in sys.argv[2:] if "=" not in a]
@@ -28,11 +29,11 @@ W, H = 1152, 1536
 BOX = [-(H - W) / 2, 0, W + (H - W) / 2, H]
 m0 = names[0]
 spec = store.load(m0)
-sc = hair.scalp(m0, spec)
+sc = hair_head.scalp(m0, spec)
 refs = json.loads((store.HOME / m0 / "human_refs.json").read_text())
 cam = refs["cameras"][vi]
 fm = stage.fitted_frame(cam, BOX, f"v{vi}")
-mm = float(hair._project_frame(fm, sc.C[None], N)[1][0]) / float(cam["f"]) * 1000.0 * max(cam["size"]) / N
+mm = float(hair_look._project_frame(fm, sc.C[None], N)[1][0]) / float(cam["f"]) * 1000.0 * max(cam["size"]) / N
 try:
     F = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", N // 22)
 except OSError:
@@ -47,19 +48,19 @@ def hairmask(im, bg_tol=26):
 
 
 # the seeds: off both banks of the (centre) parting, on the scalp, lifted 1 cm (the hair's surface, not the skin)
-g = hair.groom_params(spec)
-xp = hair._part_x(g) or 0.0
+g = hair_groom.groom_params(spec)
+xp = hair_groom._part_x(g) or 0.0
 y0 = -float(sc.r(0.0, 30.0)) * np.cos(np.radians(30.0))
 seeds, away = [], []
 for sd in (-1.0, 1.0):
     for dy in np.arange(0.012, 0.085, 0.012):
-        a_, e_ = hair.top_to_azel(sc, np.array([[xp + sd * 0.008, y0 + dy]]))
+        a_, e_ = hair_drawn.top_to_azel(sc, np.array([[xp + sd * 0.008, y0 + dy]]))
         p = sc.point(a_, e_, 0.008)[0]
-        q = sc.point(*hair.top_to_azel(sc, np.array([[xp + sd * 0.03, y0 + dy]])), 0.008)[0]
+        q = sc.point(*hair_drawn.top_to_azel(sc, np.array([[xp + sd * 0.03, y0 + dy]])), 0.008)[0]
         seeds.append(p)
         away.append(q)
-S2, zs = hair._project_frame(fm, np.asarray(seeds), N)
-A2, _ = hair._project_frame(fm, np.asarray(away), N)
+S2, zs = hair_look._project_frame(fm, np.asarray(seeds), N)
+A2, _ = hair_look._project_frame(fm, np.asarray(away), N)
 front = (np.asarray(seeds) - sc.C) @ (np.asarray(fm["eye"], float) - sc.C) > 0  # (banks the camera sees)
 
 
@@ -123,7 +124,7 @@ def bend(lines):
     return (round(float(np.median(b)), 1), round(float(np.median(a0)), 0), round(float(np.median([len(l) * 2 * mm for l in lines])), 0)) if b else (0, 0, 0)
 
 
-pic = hair.ref_square(Image.open(refs["views"][vi]["image"]).convert("RGB"), N)
+pic = hair_card_fit.ref_square(Image.open(refs["views"][vi]["image"]).convert("RGB"), N)
 lh = trace(pic, hairmask(pic))
 panels = [panel(pic, "HERS", lh)]
 print(f"view v{vi}  {mm:.2f} mm/px   bow off the chord mm | first heading deg below horizontal | length mm")
@@ -138,17 +139,17 @@ for m in names:
     for n_, lk in sp["hair"]["locks"].items():
         if lk.get("space") == "xyz" or lk.get("hairs") or not n_.startswith("tg1_"):
             continue
-        P = hair.lock_world(sc, lk, lk["pts"])
+        P = hair_spec.lock_world(sc, lk, lk["pts"])
         if abs(P[0][0] - sc.C[0] - xp) > 0.012 or (P[0] - sc.C)[1] > y0 + 0.09 or (P[0] - sc.C)[2] < 0.04:
             continue
-        P = hc.spine({**lk, "pts": P.tolist()}, 60)[0]
+        P = hair_cards_mesh.spine({**lk, "pts": P.tolist()}, 60)[0]
         if (P[0] - sc.C) @ (np.asarray(fm["eye"], float) - sc.C) <= 0:
             continue
         # (only the stretch the camera sees: up to where the lock passes behind the head)
         vis = (P - sc.C) @ (np.asarray(fm["eye"], float) - sc.C) > 0.02 * np.linalg.norm(np.asarray(fm["eye"], float) - sc.C)
         k_ = int(np.argmin(vis)) if not vis.all() else len(P)
         if k_ > 4:
-            truth.append(hair._project_frame(fm, P[:k_], N)[0])
+            truth.append(hair_look._project_frame(fm, P[:k_], N)[0])
     lo = trace(im, hairmask(im))
     print(f"  {m}", bend(lo))
     panels.append(panel(im, m.replace("th_", "") + (" (NEW)" if m == names[0] else ""), lo, truth))

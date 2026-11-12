@@ -24,6 +24,7 @@ from PIL import Image
 
 import stage
 from hifipushie import hair, render, resources, scene, skin_look, store
+from hifipushie import hair_head, hair_job
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -35,7 +36,7 @@ spec = store.load(m)
 like = kw.get("like")
 refs = json.loads((store.HOME / (like or m) / "human_refs.json").read_text())
 if like:
-    sc_a, sc_b = hair.scalp(like), hair.scalp(m, spec)
+    sc_a, sc_b = hair_head.scalp(like), hair_head.scalp(m, spec)
     CA, CB, KS = np.asarray(sc_a.C, float), np.asarray(sc_b.C, float), float(np.median(sc_b.R) / np.median(sc_a.R))
     print(f"like {like}: head x{KS:.3f}, centre moved {np.round((CB - CA) * 1000, 1)} mm", flush=True)
 
@@ -148,7 +149,7 @@ with resources.heavy(f"haircards shots {m}{TAG}", gb=8), tempfile.TemporaryDirec
         if kw.get("proxy") == "0":  # proxy=0: no shadow proxy (the cards cast their own shadow, as before round 19)
             job["shadow_proxy"] = False
     else:
-        job["hair"] = hair.job(sn, st)
+        job["hair"] = hair_job.job(sn, st)
         if kw.get("gshadow"):  # gshadow=opaque: the strand groom's own shadow made opaque (no transparent shadow), the
             job["groom_shadow"] = kw["gshadow"]  # strands cast explicitly (round 20: the source frames' groom cast ~none)
         if kw.get("gproxy"):  # gproxy=<obj>: the groom's shadow caster (gproxy.py: the cards' shadow-proxy recipe on the

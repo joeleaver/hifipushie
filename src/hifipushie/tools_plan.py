@@ -253,10 +253,11 @@ def style_check(name: str, colours: bool = True, save: str | None = None) -> str
     """Measure a model against its style sheet's rules (spec.style.sheet): face ratios, eye opening and, with
     colours=True, skin colour lit vs shadow from a render (save keeps it). PASS/FAIL per rule. Details:
     guide(topic="style_check")."""
-    from . import scene, stylesheet
+    from . import stylesheet
+    from . import scene_sync
     rows = stylesheet.check(name)
     if colours:
-        scene.sync(name)
+        scene_sync.sync(name)
         rows += stylesheet.colour_check(name, save=save)
     lines = []
     for r in rows:

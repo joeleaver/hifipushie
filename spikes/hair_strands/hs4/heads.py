@@ -1,6 +1,7 @@
 """heads.py [names]: the test heads for loose hair (humans.spec, saved + synced once each)."""
 import sys, time
 from hifipushie import humans, store, scene
+from hifipushie import scene_sync
 
 HEADS = {
     "hu_w30": dict(age=30, sex=0.0, tone=2, seed=8),
@@ -18,5 +19,5 @@ for n in sys.argv[1:] or HEADS:
         sp["base"]["body"]["race"] = race
     store.save(n, sp, "hair4 test head")
     print(n, "saved", round(time.time() - t), flush=True)
-    r = scene.sync(n)
+    r = scene_sync.sync(n)
     print(n, "synced", round(time.time() - t), str(r)[-300:], flush=True)

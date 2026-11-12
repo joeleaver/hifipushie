@@ -6,12 +6,13 @@ import copy, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi, onemesh, server, solve_report as sr, store
+from hifipushie import onemesh_native, onemesh_report
 
 OUT = "/mnt/data/hifipushie/nativedefault/out"
 F = lambda s: ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", s)  # noqa: E731
 src = "hb_r_woman"
 sp0 = store.load(src)
-ns = onemesh.native_size(sp0["base"])
+ns = onemesh_native.native_size(sp0["base"])
 c = bi.identity(sp0)
 L0 = sr.neck_girth(c)[0]
 t, sig = ns["neck"] / ns["size"], ns["neck_sd"] / ns["size"]
@@ -28,7 +29,7 @@ for dst, tgt, hold, lab in (("nd_w2", tp, 0.0, "AFTER, the DEFAULT: ANSUR's prio
     MODELS.append((dst, lab))
 reps = {}
 for nm, _ in MODELS:
-    reps[nm] = onemesh.attach_report(store.load(nm)["base"])
+    reps[nm] = onemesh_report.attach_report(store.load(nm)["base"])
     print("==", nm, "\n" + reps[nm]["text"])
 if "--norender" in sys.argv:
     sys.exit()

@@ -10,12 +10,13 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import headfit, humanmacro
 
 z = np.load(sys.argv[1], allow_pickle=True)
 C, A, names = z["c"], z["A"], [str(x) for x in z["names"]]
 age = float(sys.argv[2]) if len(sys.argv) > 2 else 30.0
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 nm = [str(x) for x in g["identity_names"]]
 comps = [i for i, x in enumerate(nm) if x.startswith("head")][:humanmacro.K]
 IB = np.asarray(g["vertex_identity_basis"])[comps].astype(float)

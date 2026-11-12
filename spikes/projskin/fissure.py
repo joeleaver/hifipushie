@@ -4,14 +4,15 @@ import sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, humanfit, likeness as lk, store
+from hifipushie import blockin_clay, blockin_expression, blockin_models, humanfit_views
 for m in sys.argv[1:]:
-    rj = bi._refs(m)
-    vi = bi._front(rj)
+    rj = blockin_models._refs(m)
+    vi = blockin_clay._front(rj)
     v, cam = rj["views"][vi], rj["cameras"][vi]
-    P = np.asarray(bi.detect_view(Image.open(v["image"]).convert("RGB"), v), float)[:, :2]
+    P = np.asarray(blockin_clay.detect_view(Image.open(v["image"]).convert("RGB"), v), float)[:, :2]
     P = P[np.asarray(lk.MP68)]
-    st = humanfit.state(bi.view_base(store.load(m)["base"], rj, vi))
-    M = humanfit.project(cam, st["L"][:68])
+    st = humanfit.state(blockin_expression.view_base(store.load(m)["base"], rj, vi))
+    M = humanfit_views.project(cam, st["L"][:68])
     L = st["L"]
     mmpx = 1000.0 * float(np.linalg.norm(L[39] - L[42])) / float(np.linalg.norm(M[39] - M[42]))
     out = []

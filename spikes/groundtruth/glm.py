@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 import gt, rast, draw
 from gmk import SHORT
 from hifipushie import denselm, face_ruler as fr, humanfit, store
+from hifipushie import face_ruler_camera, humanfit_views
 
 tag = sys.argv[1]
 kw = dict(a.split("=") for a in sys.argv[2:])
@@ -43,7 +44,7 @@ for v, cam in zip(rj["views"], rj["cameras"]):
     vis = rast.visibility(V, G["F"], cam)
     px = np.clip(P[gid].astype(int), 0, [cam["size"][0] - 1, cam["size"][1] - 1])
     zb = vis["z"][px[:, 1], px[:, 0]]
-    vn = gt.vertex_normals(V, G["F"]) @ humanfit._cam_rot(cam).T
+    vn = gt.vertex_normals(V, G["F"]) @ humanfit_views._cam_rot(cam).T
     seen = (np.abs(zb - Xc[gid, 2]) < 0.004) & (vn[gid, 2] < -0.15)
     d = (pred["xy"][:ns] - P[gid]) * mm[:, None]
     e = np.linalg.norm(d, axis=1)
@@ -58,11 +59,11 @@ for v, cam in zip(rj["views"], rj["cameras"]):
     for name, sel in (("seen", seen), ("used", used)):
         rows.append({"view": v["name"], "region": "ALL", "set": name, "n": int(sel.sum()), "mean": float(e[sel].mean()), "median": float(np.median(e[sel])),
                      "dx": float(d[sel, 0].mean()), "dy": float(d[sel, 1].mean()), "ratio": float(np.sqrt(((e[sel] / np.maximum(sg[sel], 1e-6)) ** 2).mean() / 2)),
-                     "share_used": float(used.sum() / max(seen.sum(), 1)), "turn": float(abs(fr.view_yaw(cam)))})
+                     "share_used": float(used.sum() / max(seen.sum(), 1)), "turn": float(abs(face_ruler_camera.view_yaw(cam)))})
     allv.append((v["name"], e, seen, used, reg))
     # is the network's nose WIDE, are its lips the average's? widths across mirror pairs and heights, network - truth (mm),
     # in the picture's plane (front-ish views only: a width is foreshortened in a turned one)
-    if abs(fr.view_yaw(cam)) < 30:
+    if abs(face_ruler_camera.view_yaw(cam)) < 30:
         mir = np.asarray(Lm["mirror"], int)[:ns]
         for r in ("nose", "lips", "mouth", "eyes", "chin", "cheeks"):
             jj = [j for j in np.flatnonzero((reg == r) & seen) if mir[j] > j and mir[j] < ns and seen[mir[j]]]
@@ -88,7 +89,7 @@ for v, cam in zip(rj["views"], rj["cameras"]):
     x0, y0, x1, y1 = denselm.box_of(q68)
     t = im.crop((int(x0), int(y0), int(x1), int(y1))).resize((900, 900), Image.LANCZOS)
     A = [r for r in rows if r["view"] == v["name"] and r["region"] == "ALL"]
-    tiles.append(draw.label(t, f"{v['name']} (turn {abs(fr.view_yaw(cam)):.0f}): seen {A[0]['mean']:.1f} mm, used {A[1]['mean']:.1f} mm ({100 * A[1]['share_used']:.0f} %)", sz=30))
+    tiles.append(draw.label(t, f"{v['name']} (turn {abs(face_ruler_camera.view_yaw(cam)):.0f}): seen {A[0]['mean']:.1f} mm, used {A[1]['mean']:.1f} mm ({100 * A[1]['share_used']:.0f} %)", sz=30))
 (gt.OUT / f"dense_{k}.json").write_text(json.dumps({"rows": rows, "widths": widths}))
 draw.vstack([draw.hstack(tiles[:3]), draw.hstack(tiles[3:])]).save(gt.OUT / f"dense_{k}.png")
 views = [v["name"] for v in rj["views"]]

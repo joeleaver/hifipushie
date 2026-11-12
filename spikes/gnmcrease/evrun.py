@@ -4,11 +4,12 @@ import sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, blockin_eyes as be, store
+from hifipushie import blockin_clay, blockin_models
 
 name, crease, out = sys.argv[1], sys.argv[2], sys.argv[3]
 iters = int(sys.argv[4]) if len(sys.argv) > 4 else 6
-rj = bi._refs(name)
-v = rj["views"][bi._front(rj)]
+rj = blockin_models._refs(name)
+v = rj["views"][blockin_clay._front(rj)]
 ev = be.photo_evidence(Image.open(v["image"]).convert("RGB"), v)
 print("evidence", {k: x for k, x in ev.items() if k != "columns"}, flush=True)
 s = be.solve(store.load(name)["base"], ev, iters=iters, crease=crease, log=lambda m: print(m, flush=True))

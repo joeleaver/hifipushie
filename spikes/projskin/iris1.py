@@ -5,23 +5,25 @@ import json, sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, face_ruler as fr, skin_project as sp, store
+from hifipushie import blockin_clay, blockin_models, face_ruler_camera, skin_project_eyes
 src = sys.argv[1]
-rj = bi._refs(src)
+rj = blockin_models._refs(src)
 from hifipushie import skin
+from hifipushie import skin_params
 targets = [a for a in sys.argv[2:] if "=" not in a]
 sp0 = store.load(targets[0] if targets else src)
 e0 = sp0["skin"].get("eyes") if isinstance(sp0["skin"].get("eyes"), dict) else {}
-yt = float(sp._lin(np.asarray(skin.tone_rgb(skin.params(sp0)["tone"]), float)) @ sp.Y)
+yt = float(sp._lin(np.asarray(skin.tone_rgb(skin_params.params(sp0)["tone"]), float)) @ sp.Y)
 profs, gains = [], []
 for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
-    if cam is None or abs(fr.view_yaw(cam)) > sp.IRIS_YAW:
+    if cam is None or abs(face_ruler_camera.view_yaw(cam)) > sp.IRIS_YAW:
         continue
     img = Image.open(v["image"]).convert("RGB")
-    p = sp.iris_profile(img, v)
+    p = skin_project_eyes.iris_profile(img, v)
     if p is None:
         print("view", vi, "NOT READ"); continue
     # the skin under the eye in this picture (MediaPipe's infraorbital points): its luminance against the model's tone = the gain
-    P = np.asarray(bi.detect_view(img, v), float)[:, :2]
+    P = np.asarray(blockin_clay.detect_view(img, v), float)[:, :2]
     a = sp._lin(np.asarray(img, float) / 255.0)
     ys = []
     for i in (230, 231, 232, 450, 451, 452):
@@ -30,7 +32,7 @@ for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
     g = yt / max(float(np.median(ys)), 1e-4)
     print("view", vi, {k: round(float(p[k]), 2) for k in ("radius_px", "pupil", "open")}, "gain", round(g, 3))
     profs.append(p); gains.append(np.ones(3) * g)
-r = sp.iris_read(profs, gains, e0)
+r = skin_project_eyes.iris_read(profs, gains, e0)
 print(r["text"] if r else "NOT READ")
 for m in [a for a in sys.argv[2:] if "=" not in a]:
     s = store.load(m)

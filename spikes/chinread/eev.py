@@ -13,13 +13,14 @@ from PIL import Image
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 import stage
 from hifipushie import blockin as bi, face_ruler as fr, gnm_mm, resources, solve_report as sr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_jaw
 
 S = "/mnt/data/hifipushie/chinread/synth"
 tag = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 light, engine = kw.get("light", "top"), kw.get("engine", "cycles")
 T = f"cz_{tag}_T"
-spec, rj = store.load(T), bi._refs(T)
+spec, rj = store.load(T), blockin_models._refs(T)
 lt = copy.deepcopy(stage.FRONT_LIGHT)
 if light == "soft":
     lt["lights"][0].update({"dir": [0.0, -0.97, 0.24], "energy": 2.2, "angle": 60}); lt["lights"][1]["energy"] = 1.2; lt["world"]["strength"] = 0.9
@@ -71,15 +72,15 @@ for nm, unit, amt in MOVES:
         c = c0 + r / (r @ r) * amt
     M = f"cz_{tag}_M" + ("" if unit is None else nm[:2] + nm[-2:])
     sp = model(M, c, views)
-    head = fr.model_head(sp)
+    head = face_ruler_blockin.model_head(sp)
     for vi in (0, 1):
         cam = rj["cameras"][vi]
         fm = f"{S}/{M}_cy{light}_{vi}.png"
         ms = shot(M, cam, fm, stage.photo_light(M, vi), "eevee")
         a = np.asarray(ms, float) / 255.0
-        v = {"img": photos[vi], "cam": cam, "kind": fr.kind_of(abs(fr.view_yaw(cam))), "style": "photo", "chin": {"ramp": True},
+        v = {"img": photos[vi], "cam": cam, "kind": face_ruler_compare.kind_of(abs(face_ruler_camera.view_yaw(cam))), "style": "photo", "chin": {"ramp": True},
              "ramp_lum": a @ np.array([0.299, 0.587, 0.114])}
-        ob = fr._ramp_obs(head, v)
+        ob = face_ruler_jaw._ramp_obs(head, v)
         o = np.array([x["o"] for x in ob])
         line = f"{tag} {light} {v['kind']:5s} model {nm} {amt:+g}: n {len(o):2d}"
         if len(o):

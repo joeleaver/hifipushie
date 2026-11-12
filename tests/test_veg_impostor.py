@@ -6,7 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import veg_export, veg_impostor as vi
+from hifipushie import veg_impostor as vi
+from hifipushie import veg_export_files, veg_export_glb
 from hifipushie import vegetation_grow
 
 
@@ -112,7 +113,7 @@ def test_export_one_quad_with_its_recipe():
     imp = {**A, "kind": vi.KIND, "normal": A["normal"],
            "seasons": {"winter": {"image": np.zeros_like(A["image"]), "normal": A["normal"]}}}
     with tempfile.TemporaryDirectory() as tmp:
-        p = veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", imp, ("summer", "winter"))
+        p = veg_export_glb.write_impostor(T, str(Path(tmp) / "i.glb"), "b", imp, ("summer", "winter"))
         raw = open(p, "rb").read()
         G = json.loads(raw[20:20 + struct.unpack("<I", raw[12:16])[0]])
         pr = G["meshes"][0]["primitives"][0]
@@ -121,7 +122,7 @@ def test_export_one_quad_with_its_recipe():
         hi = m["extras"]["hifipushie_impostor"]
         assert hi["kind"] == vi.KIND and hi["frames"] == 4 and abs(hi["size"] - A["size"]) < 1e-6 and m["extras"]["receive_shadows"] is False
         assert G["meshes"][0]["extras"]["cull_margin_m"] > 0 and "OBJECT" in hi["normal"].upper()
-        sj = veg_export.seasons_json(p)
+        sj = veg_export_files.seasons_json(p)
         assert sj["contract"]["version"] >= 6 and sj["impostor"]["kind"] == vi.KIND
         for se in ("summer", "winter"):
             sl = sj["seasons"][se]["impostor"]

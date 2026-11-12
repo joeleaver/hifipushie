@@ -11,6 +11,7 @@ import numpy as np
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 import stage
 from hifipushie import blockin as bi, face_ruler as fr, gnm_mm, humanfit, resources, server, store
+from hifipushie import blockin_models, face_ruler_camera, face_ruler_solve, humanfit_views
 
 S = "/mnt/data/hifipushie/chinread/synth"
 os.makedirs(S, exist_ok=True)
@@ -23,7 +24,7 @@ pitch = float(kw.get("pitch", 0))
 T = f"cz_{tag}_T"
 base = "gg_A06"
 sp = copy.deepcopy(store.load(base))
-rj = copy.deepcopy(bi._refs(base))
+rj = copy.deepcopy(blockin_models._refs(base))
 if src == "mean":
     c = bi.identity(store.load("gg_G00"))
 elif src.startswith("rand:"):
@@ -39,14 +40,14 @@ d = store._dir(T); d.mkdir(parents=True, exist_ok=True)
 cams = []
 for vi, cam in enumerate(rj["cameras"]):
     if yaws:
-        y0 = fr.view_yaw(cam)
-        c1 = fr.cam_moved(cam, yaw=yaws[vi] - abs(y0))
-        if abs(abs(fr.view_yaw(c1)) - yaws[vi]) > 1.0:
-            c1 = fr.cam_moved(cam, yaw=-(yaws[vi] - abs(y0)))
+        y0 = face_ruler_camera.view_yaw(cam)
+        c1 = face_ruler_solve.cam_moved(cam, yaw=yaws[vi] - abs(y0))
+        if abs(abs(face_ruler_camera.view_yaw(c1)) - yaws[vi]) > 1.0:
+            c1 = face_ruler_solve.cam_moved(cam, yaw=-(yaws[vi] - abs(y0)))
         cam = c1
     if pitch:
         p0 = fr._cam_points(cam, np.asarray(humanfit.state(sp["base"])["L"], float)[[27, 8]])[1]
-        c1 = fr.cam_moved(cam, pitch=pitch)
+        c1 = face_ruler_solve.cam_moved(cam, pitch=pitch)
         p1 = fr._cam_points(c1, np.asarray(humanfit.state(sp["base"])["L"], float)[[27, 8]])[1]
         if (p1[1, 1] - p1[0, 1]) > (p0[1, 1] - p0[0, 1]) and False:
             pass
@@ -77,10 +78,10 @@ for vi, (v, cam) in enumerate(zip(rj["views"], cams)):
             im = stage.shoot(T, [stage.fitted_frame(cam, [w / 2 - h / 2, 0.0, w / 2 + h / 2, float(h)], f"v{vi}")], lt, size=int(h), hair_on=False)[f"v{vi}"]
         x0 = int(round((h - w) / 2))
         im.convert("RGB").crop((x0, 0, x0 + int(w), int(h))).save(f)
-    yw = abs(fr.view_yaw(cam))
+    yw = abs(face_ruler_camera.view_yaw(cam))
     pts = {}
     if yw >= 60:
-        P = humanfit.project(cam, L[list(CL.values())])
+        P = humanfit_views.project(cam, L[list(CL.values())])
         pts = {k: [round(float(p[0]), 1), round(float(p[1]), 1)] for k, p in zip(CL, P)}
     views.append({"image": f, "size": [int(w), int(h)], "yaw": (v.get("yaw", 0) if not yaws else (yaws[vi] if yaws[vi] < 60 else -90)), "points": pts})
     print("shot", f, "camera yaw", round(yw, 1), flush=True)
@@ -95,7 +96,7 @@ if kw.get("start", "1") == "1":
     holder = f"cz_{tag}_R"
     d = store._dir(holder); d.mkdir(parents=True, exist_ok=True)
     (d / "spec.json").write_text(json.dumps(hs))
-    views = bi.with_anchor_points(views)
+    views = blockin_models.with_anchor_points(views)
     (d / "human_refs.json").write_text(json.dumps({"views": views, "cameras": [None] * len(views)}))
     # the truth keeps the detector points too (differential anchors on the truth's own model: the null)
     rj["views"] = views

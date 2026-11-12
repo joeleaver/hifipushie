@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import gt, rast
 from hifipushie import likeness
+from hifipushie import likeness_detect
 
 tag = sys.argv[1]
 kw = dict(a.split("=") for a in sys.argv[2:])
@@ -32,14 +33,15 @@ if "C" in s and s["C"] is not None:
 else:
     tex = np.asarray(Image.open(gt.ROOT / s["info"]["texture"]).convert("RGB"))
     im = rast.shade(vis, Vw, F, rast.texture_lookup(vis, s["FUV"], tex), ambient=0.6, lights=(((-0.3, -0.3, -0.9), 0.45),))
-P = likeness.detect([im])[0]
+P = likeness_detect.detect([im])[0]
 if P is None:
     im.save(gt.OUT / f"align0_{tag}.png")
     raise SystemExit("no face detected: see the picture; try turn=")
 P68 = np.asarray(P)[likeness.MP68][:, :2]
 # back onto the surface: the pixel's depth -> camera frame -> world
 from hifipushie import humanfit
-Rc = humanfit._cam_rot(cam)
+from hifipushie import humanfit_views
+Rc = humanfit_views._cam_rot(cam)
 pts = []
 for x, y in P68:
     xi, yi = int(round(x)), int(round(y))

@@ -11,16 +11,17 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin as bi, eye_ruler as er, face_ruler as fr, gnm_mm, humanfit, likeness, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_features, face_ruler_outline, face_ruler_solve, likeness_detect, likeness_render
 
 G = os.environ["G"] + "/out"
 REFS = os.environ.get("REFS", "gd_T12")
 BOX = json.load(open(f"{G}/d_box.json"))["box"]
 names = sys.argv[1:]
-rj = bi._refs(REFS)
-kinds = [fr.kind_of(v.get("yaw", 0)) for v in rj["views"]]
+rj = blockin_models._refs(REFS)
+kinds = [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj["views"]]
 VAR = ("clay+cam", "dressed+cam", "dressed+hair+cam")
 specs = {n: store.load(n) for n in names}
-heads = {n: fr.model_head(specs[n]) for n in names}
+heads = {n: face_ruler_blockin.model_head(specs[n]) for n in names}
 sp = gnm_mm._space()
 Vg = {n: sp["T"] + np.tensordot(bi.identity(specs[n]), sp["IB"], 1) for n in names}
 rows = []
@@ -37,17 +38,17 @@ for i, a in enumerate(names):
                     img = Image.open(f"{G}/d_{b}_{k}.png").convert("RGB")
                     v = {"img": img, "cam": cam, "kind": k, "style": "dressed", "origin": BOX[:2], "scale": 1.0,
                          "hair": "hair" in var}
-                    v["mask"], v["trust"] = fr.photo_masks(img, cam, heads[a], origin=BOX[:2])   # as a photo is read
+                    v["mask"], v["trust"] = face_ruler_outline.photo_masks(img, cam, heads[a], origin=BOX[:2])   # as a photo is read
                     if k == "front":
                         try:
-                            P = np.asarray(likeness.detect([img])[0], float)[:, :2] + BOX[:2]
-                            mm = likeness._mm_per_px(cam, humanfit.state(specs[a]["base"])["L"][27:48])
+                            P = np.asarray(likeness_detect.detect([img])[0], float)[:, :2] + BOX[:2]
+                            mm = likeness_render._mm_per_px(cam, humanfit.state(specs[a]["base"])["L"][27:48])
                             eyes = er.read(img, P, mm, scale=1.0, origin=BOX[:2])
-                            v["extra"] = lambda h, vw, eyes=eyes: fr._iris_obs(h, vw, eyes)
+                            v["extra"] = lambda h, vw, eyes=eyes: face_ruler_features._iris_obs(h, vw, eyes)
                         except Exception as e:  # noqa: BLE001
                             print("  no iris read:", b, e)
                 views.append(v)
-            res = fr.read(heads[a], views, rounds=4 if "cam" in var else 3, cam_sd=fr.CAM_SD if "cam" in var else None)
+            res = face_ruler_solve.read(heads[a], views, rounds=4 if "cam" in var else 3, cam_sd=fr.CAM_SD if "cam" in var else None)
             row[var] = {r["measure"]: [r["gap"], r["err"]] for r in res["gaps"]}
             row[var + "_n"] = len(res["obs"])
         rows.append(row)

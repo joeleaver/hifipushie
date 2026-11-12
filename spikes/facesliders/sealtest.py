@@ -6,6 +6,7 @@ import sys
 import numpy as np
 
 from hifipushie import faceslide, humanfit, onemesh, store
+from hifipushie import humanfit_integrity, onemesh_head
 
 name = sys.argv[1]
 seals = [float(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 else [0.0, 0.25, 0.5, 1.0]
@@ -32,7 +33,7 @@ for s in seals:
     b["head"].pop("interior", None)
     st = humanfit.state(b)
     st0 = st0 or st
-    integ = humanfit.integrity(b, st)
-    gp = gaps(np.asarray(onemesh.head_template(b)["carry"]["V"], float))
+    integ = humanfit_integrity.integrity(b, st)
+    gp = gaps(np.asarray(onemesh_head.head_template(b)["carry"]["V"], float))
     print(f"seal {s}: gap mm max {gp.max():.2f} mean {gp.mean():.2f} | ok {integ['ok']} broken {integ['broken']} "
           f"warnings {[w[:80] for w in integ['warnings']][:3]}")

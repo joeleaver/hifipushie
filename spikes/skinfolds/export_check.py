@@ -8,13 +8,14 @@ import json, os, sys, time
 from pathlib import Path
 import numpy as np
 from hifipushie import asset, render, skin_read as sr, store
+from hifipushie import asset_export, skin_read_frames
 
 model, tag = sys.argv[1:3]
 kw = dict(a.split("=") for a in sys.argv[3:])
 G = os.environ["G"] + "/out"
 spec = store.load(model)
 for label in ("folds", "nofolds"):
-    st = sr.stage_spec(spec)
+    st = skin_read_frames.stage_spec(spec)
     if label == "nofolds":
         st["skin"] = {k: v for k, v in st["skin"].items() if k != "folds"}
     name = f"sf_x_{tag}_{label}"
@@ -28,7 +29,7 @@ for label in ("folds", "nofolds"):
     for ln in info["log"]:
         if "quality" in ln or "error" in ln or "body" in ln:
             print("   ", ln[:300])
-    im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS)
+    im = asset_export.preview(Path(info["glb"]), render.DEFAULT_VIEWS)
     data = im.data if hasattr(im, "data") else im
     open(f"{G}/export_{tag}_{label}_preview.png", "wb").write(data)
     print("   preview", f"{G}/export_{tag}_{label}_preview.png")

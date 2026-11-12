@@ -5,6 +5,7 @@ WARNING over CREASE_ROUGH. LIGHT."""
 import copy, sys
 import numpy as np
 from hifipushie import blockin as bi, gnm_fold as gf, store
+from hifipushie import blockin_models
 CREASE_ROUGH = (0.08, 0)
 SEATED_FLIPS = 2           # turning-direction flips allowed along the seated crease ring   # d2_rms mm, sign changes
 src, dst = sys.argv[1:3]
@@ -27,7 +28,7 @@ for key in ("R", "L"):
 sr = gf.seated_roughness(gf.vertices() / 1000.0, lf)
 for key, r in sr.items():
     print(f"eye {key}: SEATED crease line roughness {r}" + ("  WARNING: the seated crease wobbles" if r["sign_changes"] > SEATED_FLIPS else ""))
-rj = copy.deepcopy(bi._refs(src))
+rj = copy.deepcopy(blockin_models._refs(src))
 if rj.get("blockin"):
     rj["blockin"] = {**rj["blockin"], "root": dst}
-bi._save(dst, s, "lid fold crease as one smooth arc", rj)
+blockin_models._save(dst, s, "lid fold crease as one smooth arc", rj)

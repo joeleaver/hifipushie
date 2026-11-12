@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from hifipushie import hair, hair_read, humanfit, store
+from hifipushie import hair_head, hair_read_capture, humanfit_views
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -18,7 +19,7 @@ prev = kw.get("prev")
 RD = kw.get("refdir", "/home/joe/dev/s0urc3/docs/img/garrett_ref_full")
 BACKS = {"y125": kw.get("ref_y125", f"{RD}/garrett_head_three_quarter_rear.png"), "y180": kw.get("ref_y180", f"{RD}/garrett_head_back.png")}
 spec = store.load(m)
-sc = hair.scalp(m, spec)
+sc = hair_head.scalp(m, spec)
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
 W, H = refs["cameras"][0]["size"]
 T = 520  # tile px
@@ -29,7 +30,7 @@ def tile(model, view):
     p = f"{OUT}/s_{model}_{view}.png"
     if not os.path.exists(p):
         return None
-    return hair_read.render_as_picture(p, (W, H))
+    return hair_read_capture.render_as_picture(p, (W, H))
 
 
 def ref(view):
@@ -44,13 +45,13 @@ def head_box(view, pad=1.25):
     if view[0] == "v":
         cam = refs["cameras"][int(view[1:])]
         A, E = np.meshgrid(np.arange(0, 360, 4.0), np.arange(-40, 90, 4.0))
-        uv = humanfit.project(cam, sc.point(A.ravel(), E.ravel(), 0.0))
+        uv = humanfit_views.project(cam, sc.point(A.ravel(), E.ravel(), 0.0))
         x0, y0 = uv.min(0)
         x1, y1 = uv.max(0)
     else:
         cam = refs["cameras"][0]
         A, E = np.meshgrid(np.arange(0, 360, 4.0), np.arange(-40, 90, 4.0))
-        uv = humanfit.project(cam, sc.point(A.ravel(), E.ravel(), 0.0))
+        uv = humanfit_views.project(cam, sc.point(A.ravel(), E.ravel(), 0.0))
         x0, y0 = uv.min(0)
         x1, y1 = uv.max(0)
     s = pad * max(x1 - x0, y1 - y0)
@@ -60,7 +61,7 @@ def head_box(view, pad=1.25):
 
 def at(view, az, el, h=0.01, size_mm=75.0):
     cam = refs["cameras"][int(view[1:])]
-    uv = humanfit.project(cam, sc.point(np.array([az]), np.array([el]), h))[0]
+    uv = humanfit_views.project(cam, sc.point(np.array([az]), np.array([el]), h))[0]
     from hifipushie import hair_read as hr
     eye, _ = hr.cam_eye(cam)
     d = np.linalg.norm(sc.C - eye)

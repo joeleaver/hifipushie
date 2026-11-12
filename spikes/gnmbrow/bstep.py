@@ -3,8 +3,9 @@ import json
 import sys
 
 from hifipushie import blockin as bi
+from hifipushie import blockin_steps
 
-rep = bi.step(sys.argv[1], json.loads(sys.argv[3]), out=sys.argv[2], seen=sys.argv[4] if len(sys.argv) > 4 else "gnmbrow",
+rep = blockin_steps.step(sys.argv[1], json.loads(sys.argv[3]), out=sys.argv[2], seen=sys.argv[4] if len(sys.argv) > 4 else "gnmbrow",
               why=sys.argv[5] if len(sys.argv) > 5 else "")
-print(bi.step_text(rep))
+print(blockin_steps.step_text(rep))
 print("done", sys.argv[2])

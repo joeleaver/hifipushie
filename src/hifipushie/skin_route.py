@@ -80,12 +80,12 @@ def plan_read(spec: dict, project: bool | None, painting: bool, read_only: bool)
 
 def _live(spec: dict, J: dict) -> tuple[dict, dict]:
     """What shows on a stacked face: the layers but the coloured "_pre" ones (composited into the base the stack paints
-    over; skin.layers' comment has the lever checks), and the base's channels but its colour."""
-    from . import skin
+    over; skin_build.layers' comment has the lever checks), and the base's channels but its colour."""
+    from . import skin_build, skin_params
     sk = spec["skin"]   # (its map layers and the joints: they don't depend on these keys, and cost most of a build)
     light = {**spec, "skin": {**sk, "stack": {**sk["stack"], "layers": []}}}
-    ls = {k: v for k, v in skin._build(light, J).items() if not (v.get("_pre") and "color" in v)}
-    base = (skin.part_base(spec) or (None, {}))[1]
+    ls = {k: v for k, v in skin_build._build(light, J).items() if not (v.get("_pre") and "color" in v)}
+    base = (skin_params.part_base(spec) or (None, {}))[1]
     return ls, {k: v for k, v in base.items() if k != "color"}
 
 
@@ -120,10 +120,10 @@ def no_effect(old: dict, new: dict, patch: dict) -> str:
     """The keys of this patch that change nothing on a stacked face, by diffing what shows with and without each."""
     if not ((new.get("skin") or {}).get("stack")) or not patch:
         return ""
-    from . import skin
+    from . import skin_zones
     dead, body, late = [], [], []
     t0 = time.monotonic()
-    J = skin._joints(new)
+    J = skin_zones._joints(new)
     now = json.dumps(_live(new, J), sort_keys=True, default=str)
     for path in _leaves(patch):
         was, is_ = _get(old.get("skin"), path), _get(new.get("skin"), path)

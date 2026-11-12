@@ -7,6 +7,7 @@ import os, shutil, sys
 from PIL import Image, ImageDraw
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 from hifipushie import blockin as bi, resources
+from hifipushie import blockin_clay, blockin_models
 
 G = os.environ.get("G", "/mnt/data/hifipushie/refread") + "/out"
 OLD = "/mnt/data/hifipushie/reruns/out"
@@ -20,8 +21,8 @@ def shot(m, vi, cam, ib, tex):
         shutil.copy(f"{OLD}/{os.path.basename(f)}", f)
     if not os.path.exists(f):
         import stage
-        rj = bi._refs(m)
-        order = [i for i in range(len(rj["views"])) if i != bi._front(rj)] + [bi._front(rj)]
+        rj = blockin_models._refs(m)
+        order = [i for i in range(len(rj["views"])) if i != blockin_clay._front(rj)] + [blockin_clay._front(rj)]
         with resources.heavy(f"judging shot {m} {vi}", gb=6):
             im = stage.shoot(m, [stage.fitted_frame(cam, [float(x) for x in ib], f"v{vi}")], stage.photo_light(m, vi), size=1040,
                              hair_on=False, tex=order if tex else None)[f"v{vi}"]
@@ -33,11 +34,11 @@ def shot(m, vi, cam, ib, tex):
 
 HEAD = 34
 rows, heads = [], None
-nv = len(bi._refs(cols[0][1])["views"])
+nv = len(blockin_models._refs(cols[0][1])["views"])
 for vi in range(nv):
     row, hd = [], []
     for k, (title, m) in enumerate(cols):
-        rj = bi._refs(m)
+        rj = blockin_models._refs(m)
         v, cam, box = rj["views"][vi], rj["cameras"][vi], rj["blockin"]["boxes"][vi]
         ib = [int(round(x)) for x in box]
         ph = Image.open(v["image"]).convert("RGB").crop(tuple(ib)).resize((N, N), Image.LANCZOS)

@@ -10,8 +10,9 @@ from PIL import Image, ImageDraw
 
 import lipborder as LB
 from hifipushie import base as basemod, humanfit, likeness, onemesh, store
+from hifipushie import base_identity, humanfit_views, likeness_detect
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 grp = lambda k: np.asarray(g["groups"][k], float) > 0.5  # noqa: E731
 EXT = grp("skin_exterior")
 Q = np.asarray(g["quads"], int)
@@ -42,7 +43,7 @@ def model_border_px(st, cam):
     out = {}
     for k, loop in (("up", UP_LOOP), ("lo", LO_LOOP)):
         ids = of[loop]
-        out[k] = humanfit.project(cam, P[ids[ids >= 0]])
+        out[k] = humanfit_views.project(cam, P[ids[ids >= 0]])
     return out
 
 
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     refs = json.loads((store.HOME / name / "human_refs.json").read_text())
     v, cam = refs["views"][0], refs["cameras"][0]
     img = Image.open(v["image"]).convert("RGB")
-    P = likeness.detect([img])[0]
+    P = likeness_detect.detect([img])[0]
     r = LB.read(img, P)
     st = humanfit.state(spec["base"])
     mb = model_border_px(st, cam)

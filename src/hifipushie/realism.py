@@ -84,7 +84,7 @@ def looks_humanoid(spec: dict) -> bool:
 
 def audit(spec: dict) -> list[str]:
     """Warnings about perfection, most important first."""
-    from .assemble import expand as assemble
+    from .assemble_expand import expand as assemble
     out = []
     if looks_humanoid(spec) and not spec.get("base"):
         out.append("HUMANOID WITHOUT A BASE: a realistic human starts from spec['base'] (body {'source': "

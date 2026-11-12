@@ -7,6 +7,7 @@ import sys
 import numpy as np
 from PIL import Image
 from hifipushie import hair, hair_cards as hc, render, store
+from hifipushie import hair_cards_atlas, hair_look
 
 HR, SP = os.environ["HR"], os.environ["SP"]
 out = os.path.join(HR, "hc_14_atlas_baked_raw.png")
@@ -16,13 +17,13 @@ r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python", os.pa
                    capture_output=True, text=True)
 print("\n".join(x for x in r.stdout.splitlines() if x.startswith("@@")), r.stderr[-800:] if r.returncode else "")
 baked = np.asarray(Image.open(out).convert("RGBA").resize((1024, 1024), Image.LANCZOS), np.float32) / 255
-ours = hc.atlas(dict(hc.STRANDS), hair.LOOK)
+ours = hair_cards_atlas.atlas(dict(hc.STRANDS), hair.LOOK)
 bg = np.array([0.55, 0.6, 0.7])
 comp = lambda c: c[..., :3] * c[..., 3:] + bg * (1 - c[..., 3:])
 Image.fromarray((np.concatenate([comp(ours["color"]), comp(baked)], 1) * 255).astype(np.uint8)).save(
     os.path.join(HR, "hc_14_atlas_numpy_vs_baked.png"))
 print("coverage baked", round(float(baked[..., 3].mean()), 2), "numpy", round(float(ours["color"][..., 3].mean()), 2))
-orig = hc.atlas
+orig = hair_cards_atlas.atlas
 
 
 def patched(S, look):
@@ -37,10 +38,10 @@ def patched(S, look):
     return at
 
 
-hc.atlas = patched
+hair_cards_atlas.atlas = patched
 for name in sys.argv[1:]:
     spec = store.load(name)
     spec["hair"]["style"] = "cards"
     views = ("front", "side", "back", "close_front")
-    hair.look(name, views=views, size=640, save=os.path.join(HR, f"hc_15_{name}_cards_baked.png"), spec=spec, clay=False)
+    hair_look.look(name, views=views, size=640, save=os.path.join(HR, f"hc_15_{name}_cards_baked.png"), spec=spec, clay=False)
     print(name, "cards with the baked atlas rendered")

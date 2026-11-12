@@ -326,14 +326,15 @@ def test_hairline_is_a_band_that_thins_out():
     assert 0.002 < np.abs(z).max() < 0.012 and (z > 0).any() and (z < 0).any()
     assert np.allclose(hair_flow_gather._zig(ga, np.linspace(0, 0.08, 5)), 0)  # (no phases: the straight line)
     # the strand job: a lock's density / fine / rim reach Blender as per-lock attributes
-    from hifipushie import hair_cards as hc, hair_strands as hs
+    from hifipushie import hair_cards as hc
+    from hifipushie import hair_strands_guides
     lk = dict(next(iter(band.values())), name="tg0_0")
     lk["inputs"] = {"Width": lk["width"], "Thickness": lk["thickness"], "Taper": lk["taper"], "Belly": lk["belly"],
                     "Root": lk["root"], "Cup": lk["cup"]}
     lk["pts"] = hair_spec.lock_world(sc, lk, lk["pts"]).tolist()
     lk["space"] = "world"
     try:
-        G = hs.lock_guides([lk], sc.C, hc.strands_of({"hair": {"groom": {"tied": {}}}}))
+        G = hair_strands_guides.lock_guides([lk], sc.C, hc.strands_of({"hair": {"groom": {"tied": {}}}}))
     except Exception:  # noqa: BLE001 (the lock's world form differs between versions: the attribute names are the point)
         G = None
     if G is not None:

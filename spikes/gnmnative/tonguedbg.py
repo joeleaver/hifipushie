@@ -2,12 +2,13 @@
 import numpy as np
 
 from hifipushie import base, faceshapes, humans
+from hifipushie import base_gnm_parts, faceshapes_apply
 from hifipushie.spec import empty_spec
 
 sp = {**empty_spec(), **humans.spec(age=30, sex=1.0, source="human", skin=False, outfit_kind="none")}
 sp["base"]["head"].pop("lip_seal", None)
 sp["base"]["head"]["lip_close"] = True
-face = faceshapes.face_of(sp)
+face = faceshapes_apply.face_of(sp)
 dV, cf = face._tongue_out()
 G = face._setup()
 g = G["g"]
@@ -19,7 +20,7 @@ front = tg[V[tg, 2] > np.percentile(V[tg, 2], 92)]
 print("front set mean GNM mm", (V[front].mean(0) * 1000).round(1), "lips z", (G["X0"][[51, 57], 2] * 1000).round(1), "move mm", (dV[front].mean(0) * 1000).round(1))
 dW = face._by_index(dV)
 print("world move of the front set mm", (dW[front].mean(0) * 1000).round(1), "out", face.out.round(2))
-mp = base.gnm_mouth(face.head)
+mp = base_gnm_parts.gnm_mouth(face.head)
 tgv = mp["tongue"]["verts"]
 D = face.displacements(tgv, tgv, np.zeros_like(tgv), "tongue", ["tongueOut", "jawOpen"])
 tip = np.argmax(tgv @ face.out)

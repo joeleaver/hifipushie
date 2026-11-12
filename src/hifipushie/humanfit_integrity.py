@@ -62,18 +62,19 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
     """{"ok", "broken": [...], "warnings": [...], "numbers"}: see the module docstring. Compared against the same body
     with a plain head (no identity, features, pose or style), so a child's small head isn't 'compressed'."""
     from . import onemesh
+    from . import onemesh_head
     st = st or state(base)
     tpl, ht = st["tpl"], st["head"]
     key = ("integrity_ref", json.dumps(onemesh.body_params(base), sort_keys=True, default=float))
     ref = onemesh._CACHE.get(key)
     if ref is None:
-        ref = onemesh._CACHE[key] = onemesh.template({"body": dict(base["body"]), "head": {"dimorphism": 0}})
+        ref = onemesh._CACHE[key] = onemesh_head.template({"body": dict(base["body"]), "head": {"dimorphism": 0}})
     if ht.get("lips_zipped"):  # closed lips are zipped, and the weld depends on the shape: both heads unzipped here
-        tpl = onemesh.template({**base, "head": {**(base.get("head") or {}), "zip_lips": False}})
+        tpl = onemesh_head.template({**base, "head": {**(base.get("head") or {}), "zip_lips": False}})
         key = key + (base["head"].get("mouth_gap"),)
         ref = onemesh._CACHE.get(key)
         if ref is None:
-            ref = onemesh._CACHE[key] = onemesh.template({"body": dict(base["body"]), "head": {
+            ref = onemesh._CACHE[key] = onemesh_head.template({"body": dict(base["body"]), "head": {
                 "dimorphism": 0, "mouth_gap": base["head"].get("mouth_gap"), "zip_lips": False}})
     P, P0 = np.asarray(tpl["P"], float), np.asarray(ref["P"], float)
     Lf, Sf = np.asarray(tpl["L"]), np.asarray(tpl["S"])
@@ -97,7 +98,7 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
             return ", ".join(f"{k} {v}" for k, v in w_.items() if v) or "head"
         Pp = None
         if prev is not None:
-            ptpl = prev["tpl"] if not ht.get("lips_zipped") else onemesh.template(
+            ptpl = prev["tpl"] if not ht.get("lips_zipped") else onemesh_head.template(
                 {**prev["base"], "head": {**(prev["base"].get("head") or {}), "zip_lips": False}})
             if np.asarray(ptpl["P"]).shape == P.shape:
                 Pp = np.asarray(ptpl["P"], float)

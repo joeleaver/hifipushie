@@ -76,7 +76,7 @@ def test_no_test_file_reads_a_name_it_never_binds():
 
 
 def test_no_function_deletes_a_name_it_never_binds():
-    """`del name` of a local the function does not bind is an UnboundLocalError when the line runs (onemesh._carried
+    """`del name` of a local the function does not bind is an UnboundLocalError when the line runs (onemesh_head._carried
     imported retopo and ended with `del retopo`; a caller rewrite dropped the import and kept the del)."""
     bad = []
     for p in sorted(SRC.glob("*.py")):

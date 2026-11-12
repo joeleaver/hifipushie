@@ -19,6 +19,7 @@ import featsheet
 from featsheet import boxes
 from fidelity import crop_render, lum
 from hifipushie import humanfit, likeness, store
+from hifipushie import likeness_render
 
 BP_LO, BP_HI = float(os.environ.get("BP_LO", "0.6")), float(os.environ.get("BP_HI", "3.0"))
 
@@ -37,7 +38,7 @@ if __name__ == "__main__":
     out = sys.argv[2] if len(sys.argv) > 2 else f"/mnt/data/hifipushie/faces6/out/fid2_{m}.png"
     refs = json.loads((store.HOME / m / "human_refs.json").read_text())
     st = humanfit.state(store.load(m)["base"])
-    raw = likeness.model_mesh_from_state(st)
+    raw = likeness_render.model_mesh_from_state(st)
     bx = boxes(refs, ["nose", "lips", "eyes"])
     blend = featsheet.render_model(m, bx)
     T = 260
@@ -53,10 +54,10 @@ if __name__ == "__main__":
         ph = img.crop(tuple(int(round(b)) for b in box)).resize((side, side), Image.LANCZOS)
         bl = blend[f"v{vi}_{rg}"].resize((side, side), Image.LANCZOS)
         fa = crop_render(raw, cam, box, img)
-        cl = likeness.render(raw, cam, box, px=side * 2, brows=False)[0].resize((side, side), Image.LANCZOS)
-        _, k, ps = likeness.render(raw, cam, box, px=side, brows=False, passes=True)
+        cl = likeness_render.render(raw, cam, box, px=side * 2, brows=False)[0].resize((side, side), Image.LANCZOS)
+        _, k, ps = likeness_render.render(raw, cam, box, px=side, brows=False, passes=True)
         msk = ps["part"] == 0
-        mmpx = likeness._mm_per_px(cam, raw["L"][27:48])
+        mmpx = likeness_render._mm_per_px(cam, raw["L"][27:48])
         Ls = {"photo": lum(ph), "blender": lum(bl), "fast": lum(fa), "clay": lum(cl)}
         Ln = {k_: v / np.median(v[msk]) for k_, v in Ls.items()}
         B = {k_: bandpass(v, mmpx) for k_, v in Ln.items()}

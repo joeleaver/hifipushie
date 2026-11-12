@@ -9,18 +9,19 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import likeness, store
+from hifipushie import likeness_render, likeness_sides
 
 name = sys.argv[1]
 view = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-refs = likeness._refs(name)
-ph = likeness.photo_sides(refs)[view]
+refs = likeness_sides._refs(name)
+ph = likeness_sides.photo_sides(refs)[view]
 cam = ph["cam"]
 img = np.asarray(ph["img"].convert("RGB"), float)
 H, W = img.shape[:2]
 bg = np.median(np.r_[img[:20, :20].reshape(-1, 3), img[:20, -20:].reshape(-1, 3)], axis=0)
 fg_ph = np.linalg.norm(img - bg, axis=2) > 28
-mesh = likeness.model_mesh(store.load(name)["base"])
-im_m, k, ps = likeness.render(mesh, cam, (0, 0, W, H), px=max(W, H), brows=False, passes=True)
+mesh = likeness_render.model_mesh(store.load(name)["base"])
+im_m, k, ps = likeness_render.render(mesh, cam, (0, 0, W, H), px=max(W, H), brows=False, passes=True)
 fg_md = np.isfinite(ps["zb"])
 fg_md = np.asarray(Image.fromarray(fg_md.astype(np.uint8) * 255).resize((W, H))) > 127
 
@@ -57,7 +58,7 @@ def profile(fg, chin_y, mmpx, cx):
 P = ph["side"].P
 chin = P[152]
 res = {"photo": profile(fg_ph, chin[1], ph["mmpx"], P[152][0])}
-md = likeness.model_sides(store.load(name)["base"], [ph], refit=False)[0]
+md = likeness_sides.model_sides(store.load(name)["base"], [ph], refit=False)[0]
 Pm = md["side"].P
 res["model"] = profile(fg_md, Pm[152][1], md["mmpx"], Pm[152][0])
 for k_, r in res.items():

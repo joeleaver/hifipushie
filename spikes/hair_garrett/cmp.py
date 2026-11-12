@@ -4,12 +4,13 @@ import os
 import sys
 
 from hifipushie import hair_read
+from hifipushie import hair_read_compare
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 OUT = os.environ["TOUT"]
 tag = kw.get("tag", "")
 views = [int(v) for v in kw.get("views", "0,1,2").split(",")]
-r = hair_read.compare(m, {i: f"{OUT}/s_{m}{tag}_v{i}.png" for i in views})
+r = hair_read_compare.compare(m, {i: f"{OUT}/s_{m}{tag}_v{i}.png" for i in views})
 print(r["text"])
 open(f"{OUT}/cmp_{m}{tag}.txt", "w").write(r["text"])

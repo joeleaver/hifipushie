@@ -16,6 +16,7 @@ import stage  # noqa: E402
 import tour  # noqa: E402,F401
 
 from hifipushie import blockin as bi, humanfit, render, resources, store  # noqa: E402
+from hifipushie import blockin_clay, blockin_expression, blockin_focus, blockin_models, humanfit_views
 
 bi.FEATURES.setdefault("face", {"lm": list(range(0, 68)), "pairs": [], "lines": [], "stages": (), "squint_mm": 6.0, "pad": 1.25})
 
@@ -53,21 +54,21 @@ def main():
     T = int(kw.get("tile", 640))
     feats = [f for f in kw.get("features", "eyes,mouth,face").split(",") if f]
     spec = store.load(m)
-    rj = bi._refs(m)
+    rj = blockin_models._refs(m)
     VI = [int(x) for x in kw["views"].split(",")] if kw.get("views") else list(range(len(rj["views"])))
     frames, boxes = [], {}
     if feats:
-        meshes = bi._per_view(spec["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
+        meshes = blockin_expression._per_view(spec["base"], rj, VI, lambda b: blockin_clay.presented_mesh(b, rj=rj))
         for vi in VI:
             cam = rj["cameras"][vi]
-            L2 = humanfit.project(cam, meshes[vi]["state"]["L"])
+            L2 = humanfit_views.project(cam, meshes[vi]["state"]["L"])
             for f in feats:
-                b = [float(x) for x in bi._feature_box(f, L2)]
+                b = [float(x) for x in blockin_focus._feature_box(f, L2)]
                 boxes[f"{f}_v{vi}"] = (vi, b)
                 frames.append(stage.fitted_frame(cam, b, f"{f}_v{vi}"))
     if kw.get("extra", "1") == "1":
         frames += own_frames(spec)
-    light = stage.photo_light(m, bi._front(rj)) if kw.get("light", "photo") == "photo" else stage.FRONT_LIGHT
+    light = stage.photo_light(m, blockin_clay._front(rj)) if kw.get("light", "photo") == "photo" else stage.FRONT_LIGHT
     with resources.heavy(f"gnmnative shots {m}", gb=6):
         own = stage.shoot(m, frames, light, size=T, hair_on=False)
     for k, im in own.items():

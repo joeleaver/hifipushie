@@ -13,6 +13,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from hifipushie import base, makehuman
+from hifipushie import base_identity
 
 REF = {"age": 25, "sex": 0.5, "weight": 0.5, "muscle": 0.5}
 R = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])  # GNM (Y up, facing +Z) -> Z up, facing -Y
@@ -36,7 +37,7 @@ def similarity(A, B):
 
 
 def main():
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     V = g["template_vertex_positions"].astype(float)
     J = g["template_joint_positions"].astype(float)
     lm = np.array([sum(float(w) * V[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]])
@@ -99,8 +100,8 @@ def main():
     # dense pairs: points spread over GNM's outer skin (face between the landmarks, cranium, ears' surround, neck)
     # with the nearest MakeHuman vertex after the global alignment. A few mm off anatomically, which the delta
     # transfer cancels; they carry what no landmark sees (cheek fullness, brow ridge, the neck's girth).
-    names = [str(n) for n in base._gnm_data()["groups"]]
-    ext = base._gnm_data()["groups"]["skin_exterior"][skin] > 0.5
+    names = [str(n) for n in base_identity._gnm_data()["groups"]]
+    ext = base_identity._gnm_data()["groups"]["skin_exterior"][skin] > 0.5
     Vg = V[skin]
     cand_g = np.flatnonzero(ext & (Vg[:, 1] > 0.15) & (X[:, 0] > -1e-4))
     sel = [int(cand_g[np.argmax(X[cand_g][:, 2])])]

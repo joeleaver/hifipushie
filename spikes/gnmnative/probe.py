@@ -4,8 +4,9 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
 from hifipushie import base
+from hifipushie import base_identity
 
-g = base._gnm_data()
+g = base_identity._gnm_data()
 V = g["template_vertex_positions"].astype(float)
 Q = g["quads"]
 n = len(V)

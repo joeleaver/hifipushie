@@ -5,12 +5,13 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod, lidfold, sdf, store
+from hifipushie import base_measures
 from hifipushie.spec import compile_prims, expand_mirror
 
 spec = store.load(sys.argv[1])
 s = expand_mirror(spec)
 cfg = lidfold.config(s)
-head = basemod.head_of(s, s["base"])
+head = base_measures.head_of(s, s["base"])
 prims = compile_prims(spec)
 base = [p for p in prims if p.kind == "base" and p.part == "body"]
 c = lidfold.curves(head, cfg, field=lambda X: sdf.field_at(base, X, clip=False))[0]

@@ -237,8 +237,9 @@ def gnm() -> dict:
     if "g" in _C:
         return _C["g"]
     from hifipushie import base as basemod, face_ruler as fr, gnm_mm
+    from hifipushie import base_identity, face_ruler_blockin
     sp = gnm_mm._space()
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     gr = sp["gr"]
     W = fr._world
     T = W(sp["T"])
@@ -252,7 +253,7 @@ def gnm() -> dict:
     E = W(np.asarray(g["expression_basis"])[ei].astype(np.float64))
     # + two whole-expression directions the local sets cannot make with 6 components an eye: the lids CLOSED
     # (the sampler's wink prototypes: a scan taken with the eyes shut, like the Lee Perry-Smith head)
-    E = np.concatenate([E, W(fr._expr_fields(("wink_left", "wink_right")).astype(np.float64))])
+    E = np.concatenate([E, W(face_ruler_blockin._expr_fields(("wink_left", "wink_right")).astype(np.float64))])
     esd += [1.0, 1.0]
     Q = np.asarray(g["quads"], int)
     ext = gr["skin_exterior"] & ~gr["mouth_sock"] & ~gr["eyes"]

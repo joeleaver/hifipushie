@@ -9,19 +9,20 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import faceparse, hair, humanfit, store
+from hifipushie import hair_card_fit, hair_head, humanfit_views
 
 m = sys.argv[1]
 OUT = os.environ["TOUT"]
 spec = store.load(m)
 t = time.time()
-sc = hair.scalp(m, spec)
+sc = hair_head.scalp(m, spec)
 print(f"scalp {time.time() - t:.1f} s; lm {len(sc.lm)}")
-refs = hair.human_refs(m)
+refs = hair_card_fit.human_refs(m)
 A, E = np.meshgrid(np.arange(0, 360, 2.0), np.arange(-60, 90, 2.0))
 P = sc.point(A.ravel(), E.ravel(), 0.0)
 for i, cam in enumerate(refs["cameras"]):
     img = Image.open(refs["views"][i]["image"]).convert("RGB")
-    uv = humanfit.project(cam, P)
+    uv = humanfit_views.project(cam, P)
     x0, y0 = uv.min(0)
     x1, y1 = uv.max(0)
     s = 1.3 * max(x1 - x0, y1 - y0)

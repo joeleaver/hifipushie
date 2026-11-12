@@ -154,7 +154,8 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
 
 def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, triangles: int | None = None) -> tuple[dict, dict]:
     """One plant's arrays (an npz) and its part of the Blender job; also its counts."""
-    from . import veg_bark, veg_export, veg_leaf, veg_style
+    from . import veg_bark, veg_leaf, veg_style
+    from . import veg_export_parts
     s = tree["spec"]
     st = veg_style.sheet(s)
     if st:
@@ -163,7 +164,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     if s.get("season") == "autumn" and not lf.get("evergreen", str(lf.get("shape", "")).startswith("needle")):
         lf = {**lf, "color": lf.get("autumn", [0.78, 0.56, 0.16])}  # (veg_export.AUTUMN)
     if s.get("season") == "spring":
-        lf = veg_export.spring_leaves(s)
+        lf = veg_export_parts.spring_leaves(s)
     if tree.get("clump"):  # a small plant's own season states
         from . import veg_small
         stt = veg_small.season_state(s)
@@ -177,19 +178,19 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     tw = veg_leaf.place(tree)
     at_b = None
     if triangles:  # the budgeted plant, exactly as export_plant(triangles=) writes it
-        from . import veg_export
+        from . import veg_export_parts
         if foliage != "cards":
             raise ValueError("a triangle budget is for cards (what the export draws): foliage='cards'")
         ct = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
-        bud = veg_export.budget(tree, triangles, tile, ct)
+        bud = veg_export_parts.budget(tree, triangles, tile, ct)
         M = bud["wood"]
         if bud.get("boughs"):  # cards of the tree's own boughs
             from . import veg_bough
             at_b = veg_bough.atlas(tree, lf, bark.get("twig_color") or [0.45, 0.4, 0.35], bud["boughs"])
             tw = veg_bough.place(tree, bud["boughs"], at_b)
         else:
-            lf, cap_c, back_c = veg_export.cluster_leaves(lf, bud["keep"])
-            tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
+            lf, cap_c, back_c = veg_export_parts.cluster_leaves(lf, bud["keep"])
+            tw = veg_export_parts.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
     arrays = {"V": M["V"], "F": M["F"], "tan": M["tan"], "radius": M["radius"], "uv": M["uv"], "dead": M["dead"]}
     info = {"triangles": int(len(M["F"])), "twigs": int(len(tw["pos"])), "foliage": foliage, "leaf_triangles": 0}
     at = None

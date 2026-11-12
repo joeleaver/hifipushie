@@ -4,9 +4,10 @@ import json, sys
 import numpy as np
 from PIL import Image
 from hifipushie import likeness, store
+from hifipushie import likeness_detect
 rj = json.loads((store.HOME / sys.argv[1] / "human_refs.json").read_text())
 im = Image.open(rj["views"][0]["image"]).convert("RGB")
-P = np.asarray(likeness.detect([im])[0], float)
+P = np.asarray(likeness_detect.detect([im])[0], float)
 ir = []
 for c0 in (468, 473):
     pts = P[c0 + 1:c0 + 5, :2]

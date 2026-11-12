@@ -94,6 +94,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     sculpts = {}
     idx_extra, iris_mm, neck = {}, None, None
     from . import onemesh
+    from . import onemesh_native
     if onemesh.native(sp["base"]):
         # (nativedefault) on a GNM-native head these keys do NOTHING (onemesh drops them): refused, not silently ignored
         bad = [k for k in (moves or {}) if k in blockin.NATIVE_REFUSE]
@@ -123,7 +124,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             if not onemesh.native(sp["base"]):
                 raise ValueError("neck_mm: a body-carried head's neck is the BODY's (GNM's own neck is faded out under the "
                                  "jaw): change the body, or switch the head ({\"attach\": \"native\"})")
-            nm_ = sr.neck_move(c, v * 1e-3 / onemesh.native_size(sp["base"])["size"])
+            nm_ = sr.neck_move(c, v * 1e-3 / onemesh_native.native_size(sp["base"])["size"])
             c = c + nm_["dc"]
             neck = nm_
             if nm_["cost"] > 2.0:
@@ -293,6 +294,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     # stands elsewhere: the solve would read every outline through cameras of another head (its camera freedom is a
     # few per cent). Measured, then DEMANDED: the step that carries them is one call
     from . import onemesh
+    from . import onemesh_native
     sp_src = store.load(src)
     cam_notes = []
     cf = cameras_fit(sp_src["base"], rj0)
@@ -413,7 +415,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         rep["solve"]["size"] = {k: v for k, v in size_info.items()}
     if onemesh.native(sp_src["base"]):
         from . import solve_report as sr
-        ns = onemesh.native_size(sp_src["base"])
+        ns = onemesh_native.native_size(sp_src["base"])
         g0, g1 = sr.neck_girth(c0)[0] * ns["size"], sr.neck_girth(c0 + dc)[0] * ns["size"]
         held = (c.get("tie") or {}).get("neck")
         sg = float((c.get("tie") or {}).get("neck_sig") or 0.0)

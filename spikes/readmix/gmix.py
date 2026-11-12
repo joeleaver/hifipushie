@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw
 import gt, rast, draw
 from gmk import SHORT
 from hifipushie import denselm, face_ruler as fr, humanfit, likeness, store
+from hifipushie import face_ruler_camera, humanfit_views, likeness_detect, likeness_sides
 
 RM = Path(os.environ.get("HIFIPUSHIE_READMIX", "/mnt/data/hifipushie/readmix"))
 kw = dict(a.split("=") for a in sys.argv[1:] if "=" in a)
@@ -93,18 +94,18 @@ for tag in tags:
         Xc, P = fr._cam_points(cam, V)
         _, q68 = fr._cam_points(cam, L68)
         # the camera's yaw in the correspondence's convention (+ = the camera on the subject's left (+X))
-        eye_dir = -humanfit._cam_rot(cam).T @ np.array([0.0, 0.0, 1.0])       # from the head toward the camera, world
+        eye_dir = -humanfit_views._cam_rot(cam).T @ np.array([0.0, 0.0, 1.0])       # from the head toward the camera, world
         yawc = float(np.degrees(np.arctan2(eye_dir[0], -eye_dir[1])))
-        turn = abs(fr.view_yaw(cam))
+        turn = abs(face_ruler_camera.view_yaw(cam))
         vis = rast.visibility(V, G["F"], cam)
-        vn = gt.vertex_normals(V, G["F"]) @ humanfit._cam_rot(cam).T
+        vn = gt.vertex_normals(V, G["F"]) @ humanfit_views._cam_rot(cam).T
 
         def seen_at(p2, z, nz):
             px = np.clip(p2.astype(int), 0, [cam["size"][0] - 1, cam["size"][1] - 1])
             return (np.abs(vis["z"][px[:, 1], px[:, 0]] - z) < 0.004) & (nz < -0.15)
         # (i) MediaPipe
-        box = likeness._box({f"lm{i}": q68[i] for i in range(68)}, img.size)
-        Pd = likeness.detect_region(img, box)
+        box = likeness_sides._box({f"lm{i}": q68[i] for i in range(68)}, img.size)
+        Pd = likeness_detect.detect_region(img, box)
         mp_rows = []
         if Pd is not None:
             for pt in CORR["points"]:

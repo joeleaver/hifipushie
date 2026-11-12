@@ -6,10 +6,11 @@ a slit has every point near 0). Also the sag profile resampled at 9 stations alo
 import sys, numpy as np
 from PIL import Image
 from hifipushie import likeness
+from hifipushie import likeness_detect
 C = {"in_lo": [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308],
      "out_lo": [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291],
      "in_up": [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308]}
-fs = sys.argv[1:]; L = likeness.detect([Image.open(f).convert("RGB") for f in fs])
+fs = sys.argv[1:]; L = likeness_detect.detect([Image.open(f).convert("RGB") for f in fs])
 for f, l in zip(fs, L):
     name = "/".join(f.split("/")[-4:]) if "offload" in f else f.split("/")[-1]
     if l is None: print(name, "no face"); continue

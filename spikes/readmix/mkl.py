@@ -5,6 +5,7 @@ far and stay there)."""
 import copy, json, sys
 import numpy as np
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 
 k, sex, age = sys.argv[1], sys.argv[2], float(sys.argv[3])
 rj = json.loads((store.HOME / f"gt_{k}_AT" / "human_refs.json").read_text())
@@ -12,5 +13,5 @@ vv = [copy.deepcopy(v) for v in rj["views"]]
 for v, cam in zip(vv, rj["cameras"]):
     w, h = cam["size"]
     v["lens_mm"] = round(float(cam["f"]) / float(np.hypot(w, h)) * 43.27, 1)
-e = bi.start(f"rm_{k}_L00", vv, sex=sex, age=age, cameras="refit", replace=True)
+e = blockin_models.start(f"rm_{k}_L00", vv, sex=sex, age=age, cameras="refit", replace=True)
 print(k, [v["lens_mm"] for v in vv], e["start"]["cameras"])

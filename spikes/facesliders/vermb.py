@@ -3,8 +3,9 @@ exterior skin's lip vertices next to non-lip skin) lies at the landmarks' x, aga
 import numpy as np
 
 from hifipushie import base
+from hifipushie import base_identity
 
-g = base._gnm_data()
+g = base_identity._gnm_data()
 X = np.asarray(g["template_vertex_positions"], float)
 lm = np.array([sum(float(w) * X[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]])
 ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5

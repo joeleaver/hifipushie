@@ -13,12 +13,13 @@ import sys
 import numpy as np
 
 from hifipushie import hair, hair_read as hr, hair_strands as hs, store
+from hifipushie import hair_head, hair_job, hair_read_capture, hair_read_measures, hair_strands_eval
 from screen import Flat
 
 
 def samples(sc, f):
-    hn = hr.hairness(f["image"], f["hair"], f["bg"], f["mm"])
-    o = hr.outline_rays(f["skull"], hn["solid"], hn["a"], f["bg"], f["c"], f["mm"])
+    hn = hair_read_measures.hairness(f["image"], f["hair"], f["bg"], f["mm"])
+    o = hair_read_measures.outline_rays(f["skull"], hn["solid"], hn["a"], f["bg"], f["c"], f["mm"])
     th = np.radians(o["ang"])
     uv = np.stack([f["c"][0] + np.sin(th) * o["skull_px"], f["c"][1] - np.cos(th) * o["skull_px"]], 1)
     _, hit, G = hr.onto_scalp(sc, f["cam"], uv, step=0.0015)
@@ -34,10 +35,10 @@ def main(m, out, regions=("front", "top"), patch=None):
     if patch:
         spec = copy.deepcopy(spec)
         merge(spec["hair"], json.load(open(patch)))
-    sc = hair.scalp(m, spec)
-    sd = hair.job(m, spec)["strands"]
-    fl = Flat(m, spec, hs.strands_of_model(sd), sc, sd)
-    fp = {f["i"]: f for f in hr.frames(m, spec)}
+    sc = hair_head.scalp(m, spec)
+    sd = hair_job.job(m, spec)["strands"]
+    fl = Flat(m, spec, hair_strands_eval.strands_of_model(sd), sc, sd)
+    fp = {f["i"]: f for f in hair_read_capture.frames(m, spec)}
     rows = []
     for ci in (0, 1, 2):
         sp, so = samples(sc, fp[ci]), samples(sc, fl.frame(ci))

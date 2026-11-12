@@ -210,15 +210,16 @@ ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur", "vertex")
 def layers(spec: dict) -> dict:
     """The spec's paint layers with material layers expanded into their sub-layers (materials.py), in order, with
     the spec's paint style applied (`style_layer`)."""
-    from . import materials, skin
+    from . import materials
+    from . import skin_build, skin_zones
     st = (spec.get("style") or {}).get("paint") or {}
     out = {}
     own = spec.get("paint") or {}
-    src = {**skin.layers(spec), **own} if spec.get("skin") else own  # the skin's layers lie under the model's own
-    zoned = skin.uses_zones(src)
+    src = {**skin_build.layers(spec), **own} if spec.get("skin") else own  # the skin's layers lie under the model's own
+    zoned = skin_zones.uses_zones(src)
     for name, ly in src.items():
         if zoned:
-            ly = skin.expand_zones(spec, ly, f"paint {name!r}")
+            ly = skin_zones.expand_zones(spec, ly, f"paint {name!r}")
         if "material" in ly:
             if st:
                 ly = dict(ly)
@@ -311,7 +312,7 @@ TILE_VARY = (1.618, 0.07)  # the second copy's size (x the tile's), and the patc
 
 
 # ---- hand-painted masks -----------------------------------------------------------------------------------------
-# A mask a person painted in the Blender scene (a colour attribute "hp_paint:<layer>", see scene.pull) is kept as a
+# A mask a person painted in the Blender scene (a colour attribute "hp_paint:<layer>", see scene_sync.pull) is kept as a
 # point cloud on the surface (world position, normal, value 0..1, the spacing it was painted at), content-addressed
 # under workspace/_painted/<id>.npz, so it survives re-meshing and every spec in history keeps its own.
 def painted_path(pid: str) -> Path:

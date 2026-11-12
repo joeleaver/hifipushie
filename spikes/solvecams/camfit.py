@@ -5,6 +5,7 @@ cameras before identity moves (dense: pitch, distance)."""
 import sys
 import numpy as np
 from hifipushie import face_ruler as fr, store
+from hifipushie import face_ruler_compare, face_ruler_solve
 import common as C
 
 args = [a for a in sys.argv[1:] if "=" not in a]
@@ -14,21 +15,21 @@ truth = args[0]
 rt = C.refs(truth); Lt = C.landmarks(truth)
 for name in args[1:]:
     rj = C.refs(name)
-    head, views, notes = fr.reference_views(name, lids=True, lips=True, parse="auto", dense=dense)
+    head, views, notes = face_ruler_compare.reference_views(name, lids=True, lips=True, parse="auto", dense=dense)
     sd = {k: tuple(v[:6]) + (float(kw.get("dist", fr.PHOTO_CAM_DIST_DENSE if dense else v[6])),) for k, v in fr.PHOTO_CAM_SD7.items()}
     done = np.zeros((len(views), 7))
     e0 = [C.cam_err(v["cam"], tc, Lt) for v, tc in zip(views, rt["cameras"])]
     for r in range(n):
         for v in views:
             v["extra_obs"] = v["extra"](head, v)
-        obs = fr.observe(head, views)
+        obs = face_ruler_solve.observe(head, views)
         if only:
             obs = [ob for ob in obs if ob["type"] in only.split("+")]
-        o_ = fr.solve(obs, head, views=views, tau=0.02, cam_sd=sd, cam_done=done if r else None, adapt=True)
+        o_ = face_ruler_solve.solve(obs, head, views=views, tau=0.02, cam_sd=sd, cam_done=done if r else None, adapt=True)
         th = np.clip(np.asarray(o_["cam"], float).reshape(len(views), 7), -np.asarray(fr.CAM_STEP), np.asarray(fr.CAM_STEP))
         done += th
         for v, t_ in zip(views, th):
-            v["cam"] = fr.cam_moved(v["cam"], *t_)
+            v["cam"] = face_ruler_solve.cam_moved(v["cam"], *t_)
     e1 = [C.cam_err(v["cam"], tc, Lt) for v, tc in zip(views, rt["cameras"])]
     print(f"== {name} (dense {dense}, only {only}): cameras only, {n} rounds; reads {len(obs)}")
     for v, a, b in zip(views, e0, e1):

@@ -5,9 +5,11 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import onemesh, store
+from hifipushie import onemesh_head
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 G = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
 T = g["template_vertex_positions"].astype(float)
 Q = np.asarray(g["quads"])
@@ -40,7 +42,7 @@ for n, d, mx in rows[:10]:
 # lower-face comps that move the tongue most (the jaw carries it)
 for name in sys.argv[1:]:
     b = store.load(name)["base"]
-    ht = onemesh.head_rest(b)
+    ht = onemesh_head.head_rest(b)
     W = ht["gnm_world"]
     fwd = np.asarray(ht["forward"], float)
     lmw = np.asarray(ht["lm68"], float)

@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import humanmacro, likeness
+from hifipushie import likeness_render
 
 out = sys.argv[1]
 first = int(sys.argv[2]) if len(sys.argv) > 2 else 0
@@ -29,7 +30,7 @@ for k in range(first, first + count):
         V = humanmacro.head(c)
         mesh = {"V": V, "F": T.astype(np.int64), "eyes": []}
         for cam in cams:
-            im, _ = likeness.render(mesh, cam, box, px=220, brows=False)
+            im, _ = likeness_render.render(mesh, cam, box, px=220, brows=False)
             tiles.append(im.convert("RGB"))
     c = np.zeros(humanmacro.K)
     c[k] = 1.0

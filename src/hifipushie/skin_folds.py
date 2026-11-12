@@ -200,7 +200,7 @@ def geometry_key(skin: dict) -> dict | None:
     try:
         cfg = options(skin.get("folds"))
     except (SpecError, TypeError, ValueError):
-        return None        # (said by skin.params where the skin is validated)
+        return None        # (said by skin_params.params where the skin is validated)
     cfg = {k: v for k, v in cfg.items() if any(q["amount"] > 0 for q in v["sides"].values())}
     return {"folds": cfg, "part": skin.get("part", "body"), "v": VERSION} if cfg else None
 
@@ -388,7 +388,7 @@ def paths(spec: dict | None, part: str, J: dict, cfg: dict | None = None, names=
     toward the fold's plus side, "t": 0..1 along, "amount": (m,) (the side's amount, 0 outside its extent, eased at the
     ends), "width", "roll"}}. cfg = options(skin["folds"]): the measured shift is applied; None: the landmark paths
     themselves (what the reader measures from), amount 1."""
-    from .skin import interocular
+    from .skin_zones import interocular
     io = interocular(J)
     S = S or surface(spec, part, J)
     out = {}
@@ -824,7 +824,7 @@ def expression(spec: dict, parts: dict, log: list) -> dict:
 
 
 def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
-    """The folds' layers (skin_features.build calls this after the wrinkles): groove, roll, shade."""
+    """The folds' layers (skin_features_build.build calls this after the wrinkles): groove, roll, shade."""
     cfg = options(p.get("folds"))
     if not cfg or not ctx.get("face") or "lm_jaw_1.L" not in J:
         return

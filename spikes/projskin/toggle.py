@@ -3,6 +3,7 @@ and unlit into out/toggle/<tag>/. Changes: stack:<layer>=<opacity> | stack:fine=
 | none. A test for "which layer draws this"."""
 import copy, json, os, runpy, sys
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 m, tag, ch = sys.argv[1:4]
 s = copy.deepcopy(store.load(m))
 if ch != "none":
@@ -21,8 +22,8 @@ if ch != "none":
     elif kind == "skin":
         s["skin"][name] = json.loads(v)
 cp = "ps_tg_" + tag
-rj = copy.deepcopy(bi._refs(m))
-bi._save(cp, s, f"toggle {ch}", rj)
+rj = copy.deepcopy(blockin_models._refs(m))
+blockin_models._save(cp, s, f"toggle {ch}", rj)
 out = f"/mnt/data/hifipushie/projskin/out/toggle/{tag}"
 rest = sys.argv[4:]
 for flat in ("0", "1"):

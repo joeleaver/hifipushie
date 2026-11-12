@@ -4,15 +4,16 @@ import copy
 import numpy as np
 
 from hifipushie import base, faceslide, gnmloops, humans, onemesh
+from hifipushie import base_identity, onemesh_head
 
-g = base._gnm_data()
+g = base_identity._gnm_data()
 b = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")["base"]
 b["head"].pop("mouth_gap", None)
 V = {}
 for s in (0.0, 1.0):
     bt = copy.deepcopy(b)
     bt["head"]["lip_seal"] = s
-    V[s] = np.asarray(onemesh.head_template(bt)["carry"]["V"], float)
+    V[s] = np.asarray(onemesh_head.head_template(bt)["carry"]["V"], float)
 Q = gnmloops._raw()["quads"]
 lips = (np.asarray(g["groups"]["upper_lip"]) > 0.5) | (np.asarray(g["groups"]["lower_lip"]) > 0.5)
 Q = Q[lips[Q].any(1) & np.asarray(g["skin"], bool)[Q].all(1)]

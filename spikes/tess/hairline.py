@@ -8,15 +8,16 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import hair, humanfit, store
+from hifipushie import hair_head, humanfit_views
 
 name, tj, vi = sys.argv[1], sys.argv[2], int(sys.argv[3])
 x0, x1, yb = int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
 refs = json.loads((store.HOME / name / "human_refs.json").read_text())
 cam = refs["cameras"][vi]
-R = humanfit._cam_rot(cam)
+R = humanfit_views._cam_rot(cam)
 eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
 w, h = cam["size"]
-sc = hair.scalp(name)
+sc = hair_head.scalp(name)
 mask = np.asarray(Image.open(tj.replace(".json", "_mask.png")).convert("L")) > 127
 pts = []
 for x in range(x0, x1 + 1, 12):

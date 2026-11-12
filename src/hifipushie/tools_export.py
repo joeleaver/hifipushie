@@ -150,10 +150,11 @@ def sync(name: str, resolution: int = 256, hair_only: bool = False, cloth_only: 
     what changed is redone; runs inside a live Blender session when one has it open. hair_only / cloth_only: just
     the hair locks / garments. Details: guide(topic="sync")."""
     from . import scene
+    from . import scene_sync
     if cloth_only:
         from . import cloth
         log: list = []
-        changes = scene.pull(name, log)
+        changes = scene_sync.pull(name, log)
         r = cloth.sync(name, log)
         return (f"garments synced into {scene.blend_path(name)}: {', '.join(r['garments']) or 'none simulated'} "
                 f"({len(r['made'])} objects replaced) in {r['seconds']}s"
@@ -161,11 +162,11 @@ def sync(name: str, resolution: int = 256, hair_only: bool = False, cloth_only: 
     if hair_only:
         from . import hair_look
         log: list = []
-        changes = scene.pull(name, log)
+        changes = scene_sync.pull(name, log)
         r = hair_look.sync(name)
         return (f"hair synced into {scene.blend_path(name)}: {r['made']} locks in {r['seconds']}s"
                 + (f"\npulled first: {json.dumps(changes)}" if changes else "") + ("\n" + "\n".join(log) if log else ""))
-    r = scene.sync(name, resolution)
+    r = scene_sync.sync(name, resolution)
     return (f"{r['blend']} synced in {sum(r['seconds'].values()):.1f}s ({', '.join(f'{k} {v}s' for k, v in r['seconds'].items())})\n"
             + "\n".join(r["log"]))
 
@@ -175,9 +176,9 @@ def pull(name: str) -> str:
     """Take back what a person changed in the model's Blender scene (moved instances, exposed paint numbers, garment
     colour and sculpt) without re-syncing; reports instances now cutting into something. Details:
     guide(topic="pull")."""
-    from . import scene
+    from . import scene_sync
     log = []
-    changes = scene.pull(name, log)
+    changes = scene_sync.pull(name, log)
     return (json.dumps(changes) if changes else "nothing changed in the scene") + ("\n" + "\n".join(log) if log else "")
 
 

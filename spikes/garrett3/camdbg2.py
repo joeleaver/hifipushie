@@ -10,13 +10,14 @@ from PIL import Image, ImageDraw
 import sheet1
 import stage
 from hifipushie import humanfit, store
+from hifipushie import humanfit_views
 
 D3 = os.environ.get("D3")
 name = sys.argv[1]
 r = json.loads((store.HOME / name / "human_refs.json").read_text())
 v, cam = r["views"][1], r["cameras"][1]
 st = humanfit.state(store.load(name)["base"])
-P = humanfit.project(cam, st["L"][:68])
+P = humanfit_views.project(cam, st["L"][:68])
 crop = sheet1.crop_of(v)
 k = 768 / (crop[2] - crop[0])
 Q = (P - [crop[0], crop[1]]) * k

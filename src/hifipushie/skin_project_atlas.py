@@ -35,7 +35,7 @@ def vertex_uv(tpl: dict) -> tuple:
                 c.append(t)
     out = [np.asarray(cand[int(i)], float) if int(i) in cand else None for i in fid]
     new = np.flatnonzero(fid >= nraw)
-    if len(new):  # the lids' extra edge loops (onemesh._with_loops): each new vertex is the mean of its parents
+    if len(new):  # the lids' extra edge loops (onemesh_head._with_loops): each new vertex is the mean of its parents
         from . import gnmloops
         par = np.asarray(gnmloops.plan()["parents"], int)
         gid = np.asarray(a["gnm_id"], int)

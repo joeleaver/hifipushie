@@ -5,8 +5,9 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from hifipushie import base as basemod, likeness
+from hifipushie import base_identity, likeness_render
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 TPL = np.asarray(g["template_vertex_positions"], float)
 NV = len(TPL)
 IB = np.asarray(g["vertex_identity_basis"], np.float32)
@@ -94,9 +95,9 @@ def render(V, view="front", px=220, light=None, half=0.105, centre=None, cap=Tru
     elif light is not None:
         lt = light
     if passes:
-        im, _, ps = likeness.render(mesh, cam, (0, 0, px, px), px=px, brows=brows, light=lt, passes=True)
+        im, _, ps = likeness_render.render(mesh, cam, (0, 0, px, px), px=px, brows=brows, light=lt, passes=True)
         return im, ps
-    im, _ = likeness.render(mesh, cam, (0, 0, px, px), px=px, brows=brows, light=lt)
+    im, _ = likeness_render.render(mesh, cam, (0, 0, px, px), px=px, brows=brows, light=lt)
     return im
 
 

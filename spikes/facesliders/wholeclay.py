@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import humanfit, likeness, store
+from hifipushie import humanfit_views, likeness_render
 
 T = int(os.environ.get("T", "360"))
 SHADE = os.environ.get("SHADE", "1") == "1"
@@ -20,9 +21,9 @@ BROW_MM = float(os.environ.get("BROW_MM", "4"))   # drawn brows' thickness (0: n
 def draw_brows(im, mesh, cam, box, k):
     if BROW_MM <= 0:
         return im
-    L = humanfit.project(cam, mesh["L"])
+    L = humanfit_views.project(cam, mesh["L"])
     d = ImageDraw.Draw(im)
-    wpx = max(1, int(round(BROW_MM / likeness._mm_per_px(cam, mesh["L"]) * k)))
+    wpx = max(1, int(round(BROW_MM / likeness_render._mm_per_px(cam, mesh["L"]) * k)))
     for a, b in ((17, 22), (22, 27)):
         d.line([((L[i, 0] - box[0]) * k, (L[i, 1] - box[1]) * k) for i in range(a, b)], fill=(70, 52, 40), width=wpx,
                joint="curve")
@@ -38,7 +39,8 @@ def haircap(mesh, st):
     """per-vertex colour: skin, and hair over GNM's scalp (outside its hockey_mask face region, not the ears, above the
     ears' bottom), softened along the mask's own gradient."""
     from hifipushie import base as basemod, onemesh
-    g = basemod._gnm_data()
+    from hifipushie import base_identity
+    g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
     ok = gid >= 0
     hm_ = np.zeros(len(gid))
@@ -106,7 +108,7 @@ if __name__ == "__main__":
     for m in models:
         sp = store.load(m)
         st = humanfit.state(sp["base"])
-        meshes[m] = likeness.model_mesh_from_state(st)
+        meshes[m] = likeness_render.model_mesh_from_state(st)
         if HAIRCAP:
             meshes[m]["C"] = haircap(meshes[m], st)
         L = st["L"]
@@ -121,7 +123,7 @@ if __name__ == "__main__":
     ref_st = humanfit.state(store.load(cm)["base"])
     for i, (vi, lt) in enumerate(rowsdef):
         cam = refs["cameras"][vi]
-        P = humanfit.project(cam, ref_st["L"])
+        P = humanfit_views.project(cam, ref_st["L"])
         c = 0.5 * (P.min(0) + P.max(0))
         side = 1.35 * float(np.max(P.max(0) - P.min(0)))
         box = (c[0] - side / 2, c[1] - side / 2 - 0.05 * side, c[0] + side / 2, c[1] + side / 2 - 0.05 * side)
@@ -136,7 +138,7 @@ if __name__ == "__main__":
                 im, _, _ = lit_render(meshes[m], cam, img, box=box, px=2 * T)
                 k = 2 * T / max(box[2] - box[0], box[3] - box[1])
             else:
-                im, k = likeness.render(meshes[m], cam, box, px=2 * T, brows=False, **kw)[:2]
+                im, k = likeness_render.render(meshes[m], cam, box, px=2 * T, brows=False, **kw)[:2]
             im = draw_brows(im, meshes[m], cam, box, k)
             sheet.paste(im.resize((T, T), Image.LANCZOS), ((j + 1) * T, y + 16))
     sheet.save(out)

@@ -16,8 +16,9 @@ from hifipushie import headfit
 
 headfit.N = 170
 from hifipushie import base as basemod, humanfit, store  # noqa: E402
+from hifipushie import base_identity
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 TPL = np.asarray(g["template_vertex_positions"], float)
 IB = np.asarray(g["vertex_identity_basis"], float)
 names = [str(x) for x in g["identity_names"]]

@@ -4,23 +4,24 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import skin_read as sr, skin_folds as sf, skin as skinmod, humanfit, store
+from hifipushie import humanfit_views, skin_read_folds, skin_read_frames, skin_zones
 
 m = sys.argv[1]
 vi = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 K = 3
-f = sr.capture(m, views=[vi], log=lambda s: None)[0]
-st = sr.stage_spec(store.load(m))
-J = skinmod._joints(st)
+f = skin_read_frames.capture(m, views=[vi], log=lambda s: None)[0]
+st = skin_read_frames.stage_spec(store.load(m))
+J = skin_zones._joints(st)
 nominal = sf.paths(st, "body", J, None)
 im = Image.fromarray((np.clip(sr._srgb(f["P"]), 0, 1) * 255).astype(np.uint8)).resize((sr.N * K, sr.N * K), Image.LANCZOS)
 d = ImageDraw.Draw(im)
 box = f["box"]; k = sr.N / (box[2] - box[0])
 for (name, sd), q in nominal.items():
     fd = sf.FOLDS[name]
-    p0 = (humanfit.project(f["cam"], q["P"]) - np.asarray(box[:2])) * k
-    v = (humanfit.project(f["cam"], q["P"] + 0.001 * q["across"]) - np.asarray(box[:2])) * k - p0
+    p0 = (humanfit_views.project(f["cam"], q["P"]) - np.asarray(box[:2])) * k
+    v = (humanfit_views.project(f["cam"], q["P"] + 0.001 * q["across"]) - np.asarray(box[:2])) * k - p0
     d.line([tuple(p * K) for p in p0], fill=(255, 230, 0), width=1)
-    r = sr._fold_view(f, q, fd)
+    r = skin_read_folds._fold_view(f, q, fd)
     if r is None:
         continue
     for i in range(0, len(p0), 2):

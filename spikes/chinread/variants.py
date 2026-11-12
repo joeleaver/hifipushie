@@ -6,10 +6,11 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import face_ruler as fr, blockin as bi, gnm_mm, solve_report as sr, store
+from hifipushie import blockin_look, blockin_models, face_ruler_blockin
 
 m, out = sys.argv[1], sys.argv[2]
 var = [("as solved", [])] + [(a.split("=")[0], [(x.split(":")[0], float(x.split(":")[1])) for x in a.split("=")[1].split(",")]) for a in sys.argv[3:]]
-rj = bi._refs(m)
+rj = blockin_models._refs(m)
 spec = store.load(m)
 c0 = bi.identity(spec)
 rw = sr.rows()
@@ -31,7 +32,7 @@ rows_ = []
 for vi in (0, 1):
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    h0 = fr.model_head(spec)
+    h0 = face_ruler_blockin.model_head(spec)
     P = fr._cam_points(cam, np.asarray(h0["L"], float)[:68])[1]
     cx, cy = P[[48, 54, 8]].mean(0)
     s = 1.35 * (P[8, 1] - P[33, 1])
@@ -39,8 +40,8 @@ for vi in (0, 1):
     tiles = [("REFERENCE", img.crop(tuple(int(x) for x in box)))]
     for lab, mv in var:
         c = moved(c0, mv)
-        h = fr.model_head(spec, c, h0["kappa"])
-        im, lt, ps = bi.lit_render(h["mesh"], cam, img)
+        h = face_ruler_blockin.model_head(spec, c, h0["kappa"])
+        im, lt, ps = blockin_look.lit_render(h["mesh"], cam, img)
         k = im.size[1] / img.size[1]
         tiles.append((lab + f"  |c| {np.linalg.norm(c):.1f} max {np.abs(c).max():.1f}", im.crop(tuple(int(x * k) for x in box))))
         print(vi, lab, "chin_width", round(float(rw["R"][rw["names"].index("chin_width")] @ c), 1), "jaw_width", round(float(rw["R"][rw["names"].index("jaw_width")] @ c), 1), flush=True)

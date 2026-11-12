@@ -62,7 +62,7 @@ def _unit(v):
 # ---- the surface ---------------------------------------------------------------------------------------------------
 
 def head_box(J: dict) -> tuple[np.ndarray, np.ndarray]:
-    from .skin import interocular
+    from .skin_zones import interocular
     io = interocular(J)
     jx = abs(J["lm_jaw_0.L"][0])
     lo = np.array([-jx - 0.45 * io, J["lm_nose_tip"][1] - 0.15 * io, J["lm_chin"][2] - 1.7 * io])
@@ -116,7 +116,7 @@ def head_curvature(spec: dict, part: str, J: dict, h: float = 0.01):
     nasolabial bulge, the chin), < 0 hollow (under the cheekbone, beside the nose). Cached with the mesh."""
     from . import sdf, store
     from . import images_frame
-    from .skin import interocular
+    from .skin_zones import interocular
     V, N, F = head_mesh(spec, part, J)
     prims = images_frame.prims_on(spec, [part])
     key = hashlib.sha1(json.dumps([sorted(sdf.fingerprint(p) for p in prims), len(V), np.asarray(V[:20]).round(5).tolist(), h,
@@ -173,7 +173,7 @@ def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000, keep_all:
 def sphere(J: dict, lat: tuple, lon: float, px_m: float) -> dict:
     """The wrap: centre inside the head at the mouth's height, latitude range `lat` (deg), `lon` deg round, pixels
     ~px_m at the surface. Returns {"img": the image dict's placement keys, "fr": images_project.wrap_coords' frame, W, H}."""
-    from .skin import interocular
+    from .skin_zones import interocular
     io = interocular(J)
     # (deep in the head, behind the mouth: a centre in the mouth itself mapped the tongue and teeth over the face)
     o = np.array([0.0, J["lm_jaw_1.L"][1] + 0.2 * io,
@@ -325,7 +325,7 @@ def beard_zones(J: dict):
     face's landmarks: moustache (over the mouth's line, between the corners), chin and soul_patch (under it, between
     the corners), jaw (beside the mouth below its line), cheeks (beside it above), neck (under the jaw's edge).
     `hair.stubble.zones` weighs the growth by them; skin_read reads the picture's beard shadow by them."""
-    from .skin import interocular
+    from .skin_zones import interocular
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     mc, ll = L("lm_mouth_corner.L"), L("lm_lip_lower")
@@ -358,7 +358,7 @@ def beard_density(J: dict, o: dict, curv=None):
     nostril's level mid-cheek, up to the moustache's corner), the neckline follows the jaw's underside and fades down
     the neck, the cheek's rounded front and the nasolabial bulge are thinner (convex), the moustache, chin and jaw
     full, the lower lip's corners sparse beside a denser soul patch."""
-    from .skin import interocular
+    from .skin_zones import interocular
     from .paint_patterns import noise
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
@@ -468,7 +468,7 @@ def beard_density(J: dict, o: dict, curv=None):
 def beard_direction(J: dict, P: np.ndarray, Nrm: np.ndarray) -> np.ndarray:
     """The way hair grows (a world vector; projected on the skin later): down, out from the philtrum on the moustache,
     toward the throat under the chin."""
-    from .skin import interocular
+    from .skin_zones import interocular
     io = interocular(J)
     mc = np.asarray(J["lm_mouth_corner.L"], float)
     nb = np.asarray(J["lm_nose_base"], float)
@@ -537,7 +537,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         pxm = _px_m(A)
         # (grey comes in first on the chin and round the mouth, last on the upper cheeks: a uniform share read as
         # "chalk scratches" evenly over the jaw, skin3's 6th blind read)
-        from .skin import interocular
+        from .skin_zones import interocular
         io = interocular(J)
         chin = np.exp(-(((P - (np.asarray(J["lm_chin"], float) + [0.0, 0.0, 0.3 * io])) / (np.array([0.55, 0.6, 0.45]) * io)) ** 2).sum(1))
         # (r16: 0.6 + 0.8 x chin left the moustache and the beard's top nearly all dark hairs, black pepper over a pale chin
@@ -605,7 +605,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         support = np.clip(Ba / (0.5 * K * HAIRS_PER_M2), 0, 1)
         Bs = np.clip(avg * support / 0.7, 0, 1) ** 1.2   # full at ~70% of a full dark beard; thin edges fade faster
         # the shadow carries the shafts' grain: gaps between them lighter, the shafts darker (the layer's opacity is
-        # raised to match: skin_features._stubble_map), so the mean stays the measured beard-minus-cheek darkening
+        # raised to match: skin_features_hair._stubble_map), so the mean stays the measured beard-minus-cheek darkening
         Bs = Bs * (SUB_GAP + (1 - SUB_GAP) * np.clip(SUB_DASH * Sd, 0, 1))
     else:
         Bs = np.zeros((H, W), np.float32)
@@ -621,7 +621,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
 def freckle_density(J: dict, o: dict):
     """Where freckles gather: what faces the sun (above and in front) on the nose, the malar cheeks, the forehead,
     less on the upper lip and chin; clusters from a low noise."""
-    from .skin import interocular
+    from .skin_zones import interocular
     from .paint_patterns import noise
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
@@ -748,7 +748,7 @@ BASE_PX = 0.00008   # m a pixel at the face: pores 0.13-0.35 mm across are 2-4 p
 
 def base_zones(J: dict):
     """weights(P) -> {zone: 0..1} for the pore zones and the colour gains, from the face's landmarks."""
-    from .skin import interocular
+    from .skin_zones import interocular
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     nb, tip, nos, lid = L("lm_nose_bridge"), L("lm_nose_tip"), L("lm_nostril.L"), L("lm_lid_lower.L")

@@ -8,11 +8,12 @@ import time
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import faceslide, gnmloops, humanmacro
 
 n = int(sys.argv[1])
 seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 names = [str(x) for x in g["identity_names"]]
 comps = [i for i, x in enumerate(names) if x.startswith("head")][:humanmacro.K]
 V0 = g["template_vertex_positions"].astype(float)

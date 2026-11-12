@@ -9,6 +9,7 @@ from PIL import Image
 import lidcmp as L
 import rs
 from hifipushie import humanfit, store
+from hifipushie import humanfit_integrity
 
 
 def setup(name):
@@ -40,7 +41,7 @@ for pf in sys.argv[2:]:
     m2, dm2 = L.measure(b2, cam, box, mm)
     L.show(f"+ {pf.split('/')[-1]}: {json.dumps({k: v for k, v in p.items() if k != 'save'})[:200]}", a, m2, dm2)
     print("  plausibility", humanfit.plausibility(b2), "| integrity:",
-          humanfit.verdict(humanfit.integrity(b2, humanfit.state(b2), humanfit.state(b)))[:160])
+          humanfit_integrity.verdict(humanfit_integrity.integrity(b2, humanfit.state(b2), humanfit.state(b)))[:160])
     if p.get("save"):
         store.save(p["save"], {**copy.deepcopy(sp), "base": b2}, f"tess: {name} + {pf.split('/')[-1]} (like with like)")
         (store.HOME / p["save"] / "human_refs.json").write_text((store.HOME / name / "human_refs.json").read_text())

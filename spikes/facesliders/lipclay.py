@@ -20,6 +20,7 @@ import lipshade as LS
 import rs
 import sheet1
 from hifipushie import faceatlas, likeness, likeness_shape as ls, store
+from hifipushie import likeness_render
 
 PX = 640
 STEP = {"c": 1.0, "s": 0.5}
@@ -39,8 +40,8 @@ def setup(name, vi):
     refs = __import__("json").loads((store.HOME / name / "human_refs.json").read_text())
     v, cam = refs["views"][vi], refs["cameras"][vi]
     crop = [int(round(x)) for x in sheet1.crop_of(v)]
-    mesh = likeness.model_mesh(sp["base"])
-    im, k, ps = likeness.render(mesh, cam, crop, px=PX, passes=True)
+    mesh = likeness_render.model_mesh(sp["base"])
+    im, k, ps = likeness_render.render(mesh, cam, crop, px=PX, passes=True)
     ph = Image.open(v["image"]).convert("RGB").crop(tuple(crop)).resize(im.size, Image.LANCZOS)
     Y = ls._lin(ph)
     a = np.asarray(ph)
@@ -60,9 +61,9 @@ def setup(name, vi):
 
 
 def model_read(S, base):
-    mesh = likeness.model_mesh(base)
+    mesh = likeness_render.model_mesh(base)
     c0, w = S["light"]
-    im, k, ps = likeness.render(mesh, S["cam"], S["crop"], px=PX, passes=True, light=(c0, w))
+    im, k, ps = likeness_render.render(mesh, S["cam"], S["crop"], px=PX, passes=True, light=(c0, w))
     pred = np.where(ps["part"] >= 0, c0 + ps["nrm"] @ np.asarray(w), 0.0)
     P = rs.detect([np.asarray(im.convert("RGB"))])[0]
     if P is None:

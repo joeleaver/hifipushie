@@ -109,8 +109,8 @@ def measure_human(name: str, since: int | None = None, picture: bool = True):
     sp, b = _human_base(name)
     st = humanfit.state(b)
     text = humanfit_integrity.verdict(humanfit_integrity.integrity(b, st)) + "\n" + humanfit_integrity.table(st["measures"])
-    from . import onemesh
-    text += "\n" + onemesh.attach_report(b)["text"]  # (headbody) head size, heads tall, the neck at the seam ring
+    from . import onemesh_report
+    text += "\n" + onemesh_report.attach_report(b)["text"]  # (headbody) head size, heads tall, the neck at the seam ring
     st0 = None
     if since is not None:
         old = json.loads((store.HOME / name / "history" / f"{int(since):04d}.json").read_text())
@@ -239,8 +239,8 @@ def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = 
     if s.get("left"):
         txt += "LEFT as the refs model had it (ours, not GNM's): " + "; ".join(s["left"]) + "\n"
     if s["attach"] == "native":
-        from . import onemesh
-        txt += onemesh.attach_report(store.load(name)["base"])["text"] + "\n"
+        from . import onemesh_report
+        txt += onemesh_report.attach_report(store.load(name)["base"])["text"] + "\n"
     out[1] = txt + out[1]
     return out
 

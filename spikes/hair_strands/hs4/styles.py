@@ -7,6 +7,7 @@ Each style is its own model hu_s_<style> (a copy of its test head with the groom
 import json, os, shutil, sys, time
 import numpy as np
 from hifipushie import hair, store, hair_loose
+from hifipushie import hair_export, hair_head, hair_look, hair_spec
 
 HR, OUT = os.environ["HR"], os.environ["OUT"]
 BROWN = {"gap": "#1c110c", "lit": "#5c3b28", "sheen": "#8a6044", "vary": 0.45, "root": 0.1}
@@ -80,7 +81,7 @@ def model(style, regrow=True):
         spec["hair"] = {**h, "locks": (spec.get("hair") or {}).get("locks") or {}}
         store.save(name, spec, "hair4 style")
         t = time.time()
-        r = hair.groom(name, replace=True)
+        r = hair_spec.groom(name, replace=True)
         print(style, "groomed", r["grown"], round(time.time() - t, 1), "s", flush=True)
     else:
         spec["hair"] = {**spec["hair"], "strands": h["strands"], "look": h["look"]}
@@ -92,9 +93,9 @@ def plot(style):
     from PIL import Image, ImageDraw
     name = model(style)
     spec = store.load(name)
-    sc = hair.scalp(name, spec)
+    sc = hair_head.scalp(name, spec)
     col = hair_loose.collider(name, spec, sc)
-    locks = hair.resolve(spec, sc)
+    locks = hair_spec.resolve(spec, sc)
     S, W = 900, 420
     img = Image.new("RGB", (W * 3, S), (235, 235, 235))
     dr = ImageDraw.Draw(img)
@@ -140,8 +141,8 @@ def look(style, engine="eevee"):
     name = model(style, regrow=False)
     t = time.time()
     out = f"{HR}/hu_{style}_strands{'_cycles' if engine == 'cycles' else ''}.png"
-    sheet, sec, fr = hair.look(name, clay=False, engine=engine, save=out, **kw())
-    print(style, engine, sec, "s", out, "bare", hair.look.mass_share, [l for l in fr if "strands" in l][:1], flush=True)
+    sheet, sec, fr = hair_look.look(name, clay=False, engine=engine, save=out, **kw())
+    print(style, engine, sec, "s", out, "bare", hair_look.look.mass_share, [l for l in fr if "strands" in l][:1], flush=True)
 
 
 def export(style):
@@ -152,11 +153,11 @@ def export(style):
             tiers = a[6:].split(",")
     out = f"{OUT}/{style}"
     t = time.time()
-    r = hair.export_hair(name, out, tiers=tiers)
+    r = hair_export.export_hair(name, out, tiers=tiers)
     print(style, "export", round(time.time() - t), "s", flush=True)
-    chk = hair.check_tiers(name, r, save=f"{HR}/hu_{style}_tiers.png", solid=False,
+    chk = hair_look.check_tiers(name, r, save=f"{HR}/hu_{style}_tiers.png", solid=False,
                            views=("bust_front", "bust_three_quarter", "bust_back", "close_side"))
-    print(hair.tiers_text(chk), flush=True)
+    print(hair_look.tiers_text(chk), flush=True)
 
 
 if __name__ == "__main__":

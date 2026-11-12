@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, gnmloops, humans, onemesh  # noqa: E402
+from hifipushie import onemesh_head
 from hifipushie import base_identity, base_imls, base_surface
 from hifipushie.spec import expand_mirror  # noqa: E402
 
@@ -67,9 +68,9 @@ def test_one_mesh_unchanged_by_the_loops():
     try:
         for on in (False, True):
             gnmloops.ENABLED = on
-            onemesh._CACHE.pop(("tpl", onemesh._tkey(sp["base"])), None)
+            onemesh._CACHE.pop(("tpl", onemesh_head._tkey(sp["base"])), None)
             base._CACHE.clear()
-            out[on] = (onemesh.template(sp["base"]), base_surface.surface(e, sp["base"]))
+            out[on] = (onemesh_head.template(sp["base"]), base_surface.surface(e, sp["base"]))
     finally:
         gnmloops.ENABLED = True
         base._CACHE.clear()

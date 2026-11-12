@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin as bi, denselm, face_ruler as fr, likeness, solve_report as sr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera
 
 models = sys.argv[1:] or [f"cz_{t}_T" for t in ("c", "d", "e", "f", "g", "h")]
 L = denselm.landmarks()
@@ -15,14 +16,14 @@ reg = L["region"][:L["n_skin"]]
 rw = sr.rows()
 print(f"{'head':10s} true chin_w jaw_w (mm) | x scale pred / true: chin   lips  mouth  cheeks  nose   eyes | y scale chin")
 for m in models:
-    rj = bi._refs(m)
+    rj = blockin_models._refs(m)
     spec = store.load(m)
-    head = fr.model_head(spec)
+    head = face_ruler_blockin.model_head(spec)
     v, cam = rj["views"][0], rj["cameras"][0]
     img = Image.open(v["image"]).convert("RGB")
     _, q68 = fr._cam_points(cam, np.asarray(head["L"], float)[:68])
     pr = denselm.predict(img, q68)
-    fr._dense_obs(head, {"cam": cam, "kind": "front"}, pr)
+    face_ruler_camera._dense_obs(head, {"cam": cam, "kind": "front"}, pr)
     hv = head["dense_v"]
     _, Q = fr._cam_points(cam, head["V"][hv])
     P = pr["xy"][:len(hv)]

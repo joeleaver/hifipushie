@@ -7,19 +7,20 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import hair, hair_loose, hair_strands as hs, store
+from hifipushie import hair_groom, hair_head, hair_spec, hair_strands_eval, hair_strands_job
 
 name = sys.argv[1]
 count = int(sys.argv[2]) if len(sys.argv) > 2 else 60000
 spec = store.load(name)
-sc = hair.scalp(name, spec)
-g = hair.groom_params(spec)
+sc = hair_head.scalp(name, spec)
+g = hair_groom.groom_params(spec)
 col = hair_loose.collider(name, spec, sc)
 tmp = Path(tempfile.mkdtemp(dir="/mnt/data/hifipushie/hair_garrett/tmp"))
-locks = hair.resolve(spec, sc)
-sd = hs.job(sc, g, spec, [k for k in locks if not k["name"].endswith("band")], tmp, count=count, col=col)
+locks = hair_spec.resolve(spec, sc)
+sd = hair_strands_job.job(sc, g, spec, [k for k in locks if not k["name"].endswith("band")], tmp, count=count, col=col)
 print("groups", [(gr["name"], gr["locks"], gr["strands"], [s[0] for s in gr["stack"]]) for gr in sd["groups"]])
 out = str(tmp / "ev.npz")
-print(hs.evaluate(sd, out=out))
+print(hair_strands_eval.evaluate(sd, out=out))
 D = dict(np.load(out, allow_pickle=False))
 print({k: v.shape for k, v in D.items()})
 cnt = D["counts"]

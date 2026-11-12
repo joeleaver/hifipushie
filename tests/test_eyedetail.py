@@ -1,8 +1,9 @@
-"""eyedetail: the face stage's local refinement (scene.refine_box's exact box cut) and the lash ribbons (lashes.py)
+"""eyedetail: the face stage's local refinement (scene_objects.refine_box's exact box cut) and the lash ribbons (lashes.py)
 on a synthetic eye: a ball behind a skin sheet with an almond hole."""
 import numpy as np
 
-from hifipushie import lashes, scene
+from hifipushie import lashes
+from hifipushie import scene_objects
 
 
 def _plane(n=21):
@@ -24,7 +25,7 @@ def _area(V, F):
 def test_box_split_is_exact():
     V, N, F = _plane()
     lo, hi = np.array([-0.33, -0.27, -1.0]), np.array([0.41, 0.5, 1.0])
-    V2, N2, fi, fo = scene._box_split(V, N, F, lo, hi)
+    V2, N2, fi, fo = scene_objects._box_split(V, N, F, lo, hi)
     assert abs(_area(V2, fi) - 0.74 * 0.77) < 1e-9
     assert abs(_area(V2, fi) + _area(V2, fo) - 4.0) < 1e-9
     assert np.all(V2[np.unique(fi)] >= lo - 1e-12) and np.all(V2[np.unique(fi)] <= hi + 1e-12)

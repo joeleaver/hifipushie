@@ -114,9 +114,10 @@ class Field:
         if gcfg is not None and (getattr(T, "river_water_lines", None) or
                                  any(not lk.get("sea") for lk in (getattr(T, "lakes", None) or {}).values())):
             from . import terrain_stream
+            from . import terrain_stream_streams
             scfg = terrain_stream.config(T)
             if scfg is not None:
-                st_ = terrain_stream.Streams(T, scfg)
+                st_ = terrain_stream_streams.Streams(T, scfg)
                 self.streams = st_ if st_.any else None
         self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg, self.streams) if gcfg is not None else None
         if self.edits is not None and any("lip" in s["rock"] for s in getattr(self, "styles", [])):

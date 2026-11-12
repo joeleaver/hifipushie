@@ -3,6 +3,7 @@ tier: strands | the tier | cap only | cards only | no normal map | unlit base co
 import os, sys
 from PIL import Image, ImageDraw
 from hifipushie import hair, store
+from hifipushie import hair_look
 name, out = sys.argv[1], sys.argv[2]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
 tier = kw.get("tier", "hero")
@@ -14,7 +15,7 @@ rows = []
 for m in modes:
     spec = store.load(name)
     spec["hair"]["style"] = "strands" if m == "strands" else "cards"
-    sheet, sec, _ = hair.look(name, views=views, size=size, spec=spec, clay=False,
+    sheet, sec, _ = hair_look.look(name, views=views, size=size, spec=spec, clay=False,
                               budget=None if m == "strands" else tier, debug=None if m in ("strands", "cards") else m)
     rows.append((f"{m}  {sec}s", sheet.crop((0, 22, size * len(views), 22 + size))))
     print(m, sec, flush=True)

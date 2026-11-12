@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import lidfold, likeness
+from hifipushie import likeness_detect
 
 G = "/mnt/data/hifipushie/gnmcrease/out/"
 tags = sys.argv[1:] or sorted(p.split("d_")[1][:-9] for p in glob.glob(G + "d_*_face.png"))
@@ -22,7 +23,7 @@ for t in ["photo"] + tags:
     im = Image.open(p).convert("RGB")
     if t != "photo" and os.environ.get("PHOTORES", "1") == "1":
         im = im.resize((int(im.width * 0.146 / 0.277), int(im.height * 0.146 / 0.277)), Image.LANCZOS)   # the photo's mm / px
-    P = likeness.detect([im])[0]
+    P = likeness_detect.detect([im])[0]
     if P is None:
         print(t, "no face"); continue
     cols = lidfold.read_lid(im, np.asarray(P, float), fractions=(0.4, 0.5, 0.6))

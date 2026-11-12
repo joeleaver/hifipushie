@@ -10,17 +10,18 @@ import numpy as np
 DEPTH = 6.0  # mm behind the contact (the lips' depth: past ~10 mm a corner reaches the mouth's cavity)
 
 from hifipushie import base, onemesh, store
+from hifipushie import base_imls, base_surface, onemesh_head
 from hifipushie.spec import expand_mirror
 
 
 def check(sp, log=print, old=False):
     e = expand_mirror(sp)
-    tpl = onemesh.template(sp["base"])
+    tpl = onemesh_head.template(sp["base"])
     S = tpl.get("seal_field")
     if old:  # the field as it was before base._sealed_field
         tpl["seal_field"] = None
         base._CACHE.clear()
-    sf = base.surface(e, sp["base"])
+    sf = base_surface.surface(e, sp["base"])
     if old:
         tpl["seal_field"] = S
     if not S:
@@ -37,7 +38,7 @@ def check(sp, log=print, old=False):
                       0.5 * (np.interp(x, U[:, 0], U[:, 2]) + np.interp(x, L[:, 0], L[:, 2]))])
         d = np.arange(-3.0, DEPTH + 0.01, 0.25)  # mm, + = back into the head (+y)
         pts = c[None] + np.c_[np.zeros_like(d), d * 0.001, np.zeros_like(d)]
-        f = base._sd_body(pts, sf)
+        f = base_imls._sd_body(pts, sf)
         inside = f < 0
         first = int(np.argmax(inside)) if inside.any() else None
         holes = [] if first is None else [float(v) for v in d[first:][~inside[first:]]]

@@ -153,6 +153,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
     Same keys as dress(): "crown" = the blades (slot foliage), "heads" = balls + stalks (slot heads: shown only in the
     seasons their layers show in), "wood" = the plant's own stalks."""
     from . import veg_export, veg_small
+    from . import veg_export_parts
     s = tree["spec"]
     cs = {**veg_style.CLUMP, **(st.get("clump") or {})}
     full = int(cs["budget"])
@@ -165,7 +166,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
     flowery = {p_ for p_, sp_ in parts.items() if (sp_.get("twig") or {}).get("flower")}
     is_head = np.array([owner[int(c)] in flowery for c in tw["card"]], bool) if len(tw["pos"]) else np.zeros(0, bool)
     up = np.array([0, 0, 1.0])
-    wn = veg_export.wind_nodes(tree)
+    wn = veg_export_parts.wind_nodes(tree)
     W = veg_mesh.tubes(tree, sides=(4, 6))
     wood = {"V": W["V"], "F": W["F"], "N": veg_export._normals(W["V"], W["F"]), "uv": W["uv"], "node": W["node"], "tan": W["tan"],
             "radius": W["radius"], "dead": W["dead"],

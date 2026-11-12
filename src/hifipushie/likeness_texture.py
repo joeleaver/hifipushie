@@ -315,8 +315,9 @@ def make(name: str, base: dict | None = None, views=None, opacity: float = 0.9, 
     tone = None
     if match and spec.get("skin"):
         from . import skin
+        from . import skin_params
         try:
-            tone = skin.tone_rgb(skin.params(spec)["tone"])
+            tone = skin.tone_rgb(skin_params.params(spec)["tone"])
         except Exception:  # noqa: BLE001
             tone = None
     part = (spec.get("skin") or {}).get("part", "body")

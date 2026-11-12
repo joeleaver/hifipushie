@@ -6,6 +6,7 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_gnm_parts, base_measures
 from hifipushie import sdf, store
 from hifipushie import spec as specmod
 
@@ -17,10 +18,10 @@ for p in prims:
     by.setdefault(p.part, []).append(p)
 print({k: [(p.name, p.kind, p.op) for p in v][:8] for k, v in by.items()})
 e = specmod.expand_mirror(sp)
-head = basemod.head_of({"joints": e["joints"]}, sp["base"])
-print("mouth mode", basemod.mouth_mode(sp["base"], head), "| lips off GNM", round(1000 * head["mouth_off"], 3), "mm | note:",
-      basemod.mouth_note(sp["base"], head))
-mp = basemod.gnm_mouth(head)
+head = base_measures.head_of({"joints": e["joints"]}, sp["base"])
+print("mouth mode", base_gnm_parts.mouth_mode(sp["base"], head), "| lips off GNM", round(1000 * head["mouth_off"], 3), "mm | note:",
+      base_gnm_parts.mouth_note(sp["base"], head))
+mp = base_gnm_parts.gnm_mouth(head)
 M, o, up, side = mp["frame"]
 print("gap mm", round(mp["gap"] * 1000, 2), "sock centroid behind M mm", round(float((M - mp["sock"]["verts"].mean(0)) @ o) * 1000, 1))
 bag = next((p for p in prims if p.name == "gnm_mouth_bag"), None)

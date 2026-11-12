@@ -2,7 +2,8 @@
 side: group scores, then every row's diff per model."""
 import sys
 from hifipushie import blockin as bi
-T = {m: bi.table(m) for m in sys.argv[1:]}
+from hifipushie import blockin_table
+T = {m: blockin_table.table(m) for m in sys.argv[1:]}
 for m, t in T.items():
     cnt = {g: (sum(r["ok"] for r in rs if not r.get("flag")), sum(1 for r in rs if not r.get("flag"))) for g, rs in t.items()}
     print(m, "; ".join(f"{g} {a}/{b}" for g, (a, b) in cnt.items()), "| total", sum(a for a, _ in cnt.values()), "/", sum(b for _, b in cnt.values()))

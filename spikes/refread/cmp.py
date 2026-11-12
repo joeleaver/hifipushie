@@ -4,6 +4,7 @@ keys: anchors=differential|absolute|none, parse=0|1|auto, normals=0|1, cameras=f
 import sys, time
 import numpy as np
 from hifipushie import face_ruler as fr, blockin as bi, store
+from hifipushie import blockin_models, face_ruler_compare
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -22,12 +23,12 @@ if "cmax" in kw:
     args["cmax"] = float(kw["cmax"]) or None
 rounds = int(args.pop("rounds", 3))
 c0 = bi.identity(store.load(m))
-root = (bi._refs(m).get("blockin") or {}).get("root")
+root = (blockin_models._refs(m).get("blockin") or {}).get("root")
 off = c0 - bi.identity(store.load(root)) if root else None
 t = time.time()
-cam0 = None if cams == "refit" else (bi._refs(m).get("blockin") or {}).get("cam_done")
-c = fr.compare(m, rounds=rounds, prior_off=off, cam_sd=cam_sd, cam_first=2 if cams == "refit" else 0,
-               cam_done0=cam0 if cam0 is not None else np.zeros((len(bi._refs(m)["views"]), 6)), **args)
+cam0 = None if cams == "refit" else (blockin_models._refs(m).get("blockin") or {}).get("cam_done")
+c = face_ruler_compare.compare(m, rounds=rounds, prior_off=off, cam_sd=cam_sd, cam_first=2 if cams == "refit" else 0,
+               cam_done0=cam0 if cam0 is not None else np.zeros((len(blockin_models._refs(m)["views"]), 6)), **args)
 dc = np.asarray(c["dc"], float)
 print(f"{m} {args} cameras={cams}: {time.time() - t:.0f} s")
 print("reads", c["n"])

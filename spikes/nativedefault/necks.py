@@ -9,6 +9,7 @@ _S = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [os.path.join(_S, "garrett3"), os.path.join(_S, "tour")]
 import stage  # noqa: E402
 from hifipushie import blockin as bi, humanfit, onemesh, render, resources, server, skin_read, store  # noqa: E402
+from hifipushie import blockin_models, onemesh_report, skin_read_frames
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -17,14 +18,14 @@ out = f"/mnt/data/hifipushie/nativedefault/out/{m}/dressed"
 os.makedirs(out, exist_ok=True)
 spec = store.load(m)
 L = np.asarray(humanfit.state(spec["base"])["L"], float)
-r = onemesh.attach_report(spec["base"])
+r = onemesh_report.attach_report(spec["base"])
 chin = L[8]
 tgt = np.array([0.0, chin[1] + 0.06, chin[2] - 0.5 * r["chin_over_pit"] - 0.015])
 frames = []
 for nm, d in (("neck_front", [0, -1, 0.0]), ("neck_side", [1, 0.0, 0.0]), ("neck_34", [0.66, -0.75, 0.05])):
     d = np.asarray(d, float) / np.linalg.norm(d)
     frames.append(render.camera_frame({"eye": (tgt + d * 1.4).tolist(), "target": tgt.tolist(), "fov": float(kw.get("fov", 10.0)), "name": nm}, len(frames)))
-light = skin_read.photo_light(kw.get("light", m), 0)
+light = skin_read_frames.photo_light(kw.get("light", m), 0)
 with resources.heavy(f"nativedefault necks {m}", gb=8):
     ims = stage.shoot(m, frames, light, size=T, hair_on=bool(spec.get("hair")))
     for k, im in ims.items():
@@ -37,7 +38,7 @@ with resources.heavy(f"nativedefault necks {m}", gb=8):
     if kw.get("figure", "1") == "1":
         for v in ("front", "side"):
             server.look(m, views=[v], size=1100, resolution=260, save=f"{out}/figure_{v}.png"); print(f"{out}/figure_{v}.png")
-rj = bi._refs(m)
+rj = blockin_models._refs(m)
 for vi, v in enumerate(rj["views"]):
     img = Image.open(v["image"]).convert("RGB")
     W, H = img.size

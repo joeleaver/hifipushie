@@ -9,6 +9,7 @@ import copy, json, os, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi, skin_layers as sl, skin_project as sp, store
+from hifipushie import blockin_models, skin_project_atlas, skin_project_make, skin_project_model
 
 OUT = "/mnt/data/hifipushie/projskin/out"
 cmd = sys.argv[1]
@@ -33,7 +34,7 @@ def maps_sheet(r, path, crop=(500, 330, 1700, 1530), T=560):
     S = Image.new("RGB", (cols * T, rows * (T + 46)), (20, 20, 20))
     d = ImageDraw.Draw(S)
     for i, (lab, col) in enumerate(tiles):
-        im = Image.fromarray(sp.image(at, (np.clip(sp._srgb(col), 0, 1) * 255).astype(np.uint8))).crop(crop).resize((T, T), Image.LANCZOS)
+        im = Image.fromarray(skin_project_atlas.image(at, (np.clip(sp._srgb(col), 0, 1) * 255).astype(np.uint8))).crop(crop).resize((T, T), Image.LANCZOS)
         x, y = (i % cols) * T, (i // cols) * (T + 46)
         S.paste(im, (x, y + 46))
         d.text((x + 8, y + 8), lab + ("  (x 2 for the eye)" if lab.split()[0] in ("pigment", "redness", "shade") else ""), fill=(255, 255, 255), font=font(22))
@@ -50,11 +51,11 @@ if cmd == "apply":
                         meas=r["meas"], freckles=r["freckles"].astype(np.float32))
 elif cmd == "truth":
     truth, dst = sys.argv[2:4]
-    spec, rj = copy.deepcopy(store.load(truth)), bi._refs(truth)
+    spec, rj = copy.deepcopy(store.load(truth)), blockin_models._refs(truth)
     d = store._dir(truth)
     photos = {vi: np.asarray(Image.open(d / "refs" / f"truth_v{vi}.png").convert("RGB")) for vi in range(len(rj["views"]))}
-    r = sp.make(truth, spec=spec, photos=photos, delight=False, parse=None, mirror=False, log=lambda s: None)
-    a = sp.apply(truth, out=dst, made={**r, "raw": r["raw"], "albedo": r["raw"]}, opacity=0.0)
+    r = skin_project_make.make(truth, spec=spec, photos=photos, delight=False, parse=None, mirror=False, log=lambda s: None)
+    a = skin_project_model.apply(truth, out=dst, made={**r, "raw": r["raw"], "albedo": r["raw"]}, opacity=0.0)
     s2 = store.load(dst)
     s2["skin"]["projection"]["delight"] = True       # (the true albedo has no light in it)
     store.save(dst, s2, "the TRUE albedo as the atlas (map-recovery truth)", checked=False)
@@ -75,8 +76,8 @@ elif cmd == "compare":
 elif cmd == "edit":
     src, dst = sys.argv[2:4]
     spec = sl.edit(store.load(src), *sys.argv[4:])
-    rj = copy.deepcopy(bi._refs(src))
+    rj = copy.deepcopy(blockin_models._refs(src))
     if rj.get("blockin"):
         rj["blockin"] = {**rj["blockin"], "root": dst}
-    bi._save(dst, spec, f"{src} edited: {' '.join(sys.argv[4:])}", rj)
+    blockin_models._save(dst, spec, f"{src} edited: {' '.join(sys.argv[4:])}", rj)
     print(dst, [(l["name"], l["opacity"]) for l in spec["skin"]["stack"]["layers"]])

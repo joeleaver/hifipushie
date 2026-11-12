@@ -9,7 +9,9 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import faceslide, humans, onemesh
+from hifipushie import onemesh_head
 
 OUT = Path(basemod.__file__).with_name("face_sliders_baked.npz")
 b0 = humans.spec(age=40, sex=0.5, seed=None, skin=False, source="human")["base"]
@@ -20,10 +22,10 @@ def head(shape):
     if shape:
         b.setdefault("head", {})["shape"] = shape
     onemesh._CACHE.pop("never", None)
-    return onemesh.head_template(b)
+    return onemesh_head.head_template(b)
 
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 skin_ids = np.flatnonzero(g["skin"])
 h0 = head(None)
 assert h0.get("skin_index") is None, "the template's lips must not be zipped for the bake"

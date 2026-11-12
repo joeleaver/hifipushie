@@ -6,6 +6,7 @@ goes to solve_step (anchors=none, chin=..., hold=auto ...)."""
 import sys, time
 import numpy as np
 from hifipushie import blockin as bi, gnm_mm, solve_report as sr, store
+from hifipushie import blockin_steps
 
 src, pre, n = sys.argv[1], sys.argv[2], int(sys.argv[3])
 kw = dict(a.split("=", 1) for a in sys.argv[4:])
@@ -66,7 +67,7 @@ prev = None
 for i in range(i0, i0 + n):
     out = f"{pre}{i:02d}"
     t = time.time()
-    rep = bi.solve_step(src, out=out, cameras=first if i == i0 else cams, **extra)
+    rep = blockin_steps.solve_step(src, out=out, cameras=first if i == i0 else cams, **extra)
     so = rep["solve"]
     c = bi.identity(store.load(out))
     c0 = bi.identity(store.load(src))

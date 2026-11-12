@@ -3,15 +3,16 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial import cKDTree
 from hifipushie import rig, sdf, store
+from hifipushie import rig_humanoid, rig_model
 from hifipushie.spec import compile_prims
 SP = Path(__file__).parent; OUT = SP / "curve"; OUT.mkdir(exist_ok=True)
 spec = store.load("troll"); prims = [p for p in compile_prims(spec) if p.part == "body"]
 z = np.load(SP / "troll" / "high.npz"); HV, HF = z["verts"], z["faces"]
-bones = rig.humanoid(spec)
+bones = rig_humanoid.humanoid(spec)
 seg = rig._segments(bones); ids = list(seg)
 A = np.array([seg[i][0] for i in ids]); B = np.array([seg[i][1] for i in ids])
 nm = [bones[i]["name"].split(":")[-1] for i in ids]
-near = np.argmin(np.stack([rig._seg_dist(HV, A[q], B[q]) for q in range(len(ids))], 1), 1)
+near = np.argmin(np.stack([rig_model._seg_dist(HV, A[q], B[q]) for q in range(len(ids))], 1), 1)
 reg = np.array(["hands" if "Hand" in nm[q] else "head" if nm[q] in ("Head", "Neck") else "rest" for q in near])
 def blender(job):
     p = OUT / "job.json"; p.write_text(json.dumps(job))

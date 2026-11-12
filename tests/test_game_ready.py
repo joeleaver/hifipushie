@@ -1624,13 +1624,14 @@ def _bump_part():
 
 def test_scene_auto_refine_brings_the_part_mesh_onto_the_kept_face():
     """(r68) a kept approved face on a part meshed at the body's voxel was a bake source 1 mm median (3-6 mm at the
-    alae) off the export: scene.face_refine boxes over the kept face's points take the scene mesh to within
+    alae) off the export: scene_objects.face_refine boxes over the kept face's points take the scene mesh to within
     scene.FACE_GAP_MAX_MM median there. Fails without the boxes."""
     from hifipushie import scene, sdf, store
+    from hifipushie import scene_objects
     ps = _bump_part()
 
     def mesh(v, lo=None, hi=None):
-        fr = scene._frame(ps, v)
+        fr = scene_objects._frame(ps, v)
         if lo is not None:
             a = np.floor(np.asarray(lo) / v) * v
             fr = (a, v, np.ceil((np.asarray(hi) - a) / v).astype(int) + 1)
@@ -1641,24 +1642,24 @@ def test_scene_auto_refine_brings_the_part_mesh_onto_the_kept_face():
     Vf, Ff, _ = mesh(0.0004, [-0.03, -0.1, -0.025], [0.03, -0.06, 0.025])
     P = Vf[(np.abs(Vf[:, 0]) < 0.014) & (np.abs(Vf[:, 2]) < 0.014) & (Vf[:, 1] < -0.07)]
     V, F, N = mesh(0.007)
-    before = scene.face_gap(P, V, F)
-    boxes = scene.face_refine(P, 0.007)
+    before = scene_objects.face_gap(P, V, F)
+    boxes = scene_objects.face_refine(P, 0.007)
     assert len(boxes) == 1 and boxes[0]["voxel"] == scene.FACE_REFINE_VOXEL
     for r in boxes:
-        V, F, N, nf = scene.refine_box(ps, V, F, N, 0.007, r)
+        V, F, N, nf = scene_objects.refine_box(ps, V, F, N, 0.007, r)
         assert nf > 0
-    after = scene.face_gap(P, V, F)
+    after = scene_objects.face_gap(P, V, F)
     assert before["median"] > scene.FACE_GAP_MAX_MM, before
     assert after["median"] < scene.FACE_GAP_MAX_MM, after
-    assert scene.face_refine(P, scene.FACE_REFINE_VOXEL) == []  # (a part already that fine: nothing to do)
+    assert scene_objects.face_refine(P, scene.FACE_REFINE_VOXEL) == []  # (a part already that fine: nothing to do)
 
 
 def test_point_mesh_distance_is_exact_on_a_triangle():
-    from hifipushie import scene
+    from hifipushie import scene_objects
     V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0.0]])
     F = np.array([[0, 1, 2]])
     P = np.array([[0.2, 0.2, 0.5], [2, 0, 0], [-1, -1, 0], [0.5, 0.5, 1.0], [0.5, -1, 0]])
-    d = scene.point_mesh_distance(P, V, F)
+    d = scene_objects.point_mesh_distance(P, V, F)
     assert np.allclose(d, [0.5, 1.0, np.sqrt(2), 1.0, 1.0]), d
 
 

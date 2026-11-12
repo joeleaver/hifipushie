@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw
 
 import perc
 from hifipushie import humanfit, humanfit_map, lidfold, likeness, store
+from hifipushie import humanfit_views, likeness_render
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces5"))
 OUT = F / "out" / "lid"
@@ -53,9 +54,9 @@ def shot(V):
     cam = cam_for(Ww)
     mesh = {"V": Ww, "F": perc.F_SKIN, "eyes": [(Ww, f, col) for f, col in perc.EYE_PARTS], "L": perc.WLM @ Ww}
     y0 = PX // 4
-    im, _ = likeness.render(mesh, cam, (0, y0, PX, y0 + PX // 2), px=PX, brows=False)
+    im, _ = likeness_render.render(mesh, cam, (0, y0, PX, y0 + PX // 2), px=PX, brows=False)
     X = (Ww[VID] * W[..., None]).sum(1)
-    P = humanfit.project(cam, X)[:, :2] - np.array([0, y0])
+    P = humanfit_views.project(cam, X)[:, :2] - np.array([0, y0])
     return im, P
 
 

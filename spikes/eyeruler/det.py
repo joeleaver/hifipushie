@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin_brows as bb, eye_ruler as er, humanfit, likeness, store
+from hifipushie import humanfit_views, likeness_detect
 
 G = os.environ["G"] + "/out"
 bx = json.load(open(G + "/box.json"))
@@ -36,10 +37,10 @@ for tag in ["photo"] + list(MODELS):
         P = q["P"]
     else:
         im = Image.open(f"{G}/s_{tag}.png").convert("RGB")
-        P = np.asarray(likeness.detect([im])[0], float)[:, :2] / K + box[:2]
+        P = np.asarray(likeness_detect.detect([im])[0], float)[:, :2] / K + box[:2]
     L = None
     if tag != "photo":
-        L = humanfit.project(cam, humanfit.state(store.load(MODELS[tag])["base"])["L"])
+        L = humanfit_views.project(cam, humanfit.state(store.load(MODELS[tag])["base"])["L"])
     for s in (0, 1):
         e = v["read"][s]
         e["frame"] = er.frames(v["read"][0]["c"], v["read"][1]["c"])[s]

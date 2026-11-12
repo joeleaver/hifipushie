@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from hifipushie import humanfit, humans, server, store, stylesheet
+from hifipushie import humanfit_integrity
 from hifipushie.spec import expand_mirror
 
 OUT = Path("/home/joe/dev/hifipushie/workspace/human_renders")
@@ -28,7 +29,7 @@ def main():
             J = expand_mirror(sp)["joints"]
             s_ = humanfit.state(sp["base"])
             m = s_["measures"]
-            it = humanfit.integrity(sp["base"], s_)
+            it = humanfit_integrity.integrity(sp["base"], s_)
             nz = J["lm_nose_tip"]["pos"]
             hh = m["head_height"] / 100
             server.look(name, views=["front", "side"], size=520, resolution=300, save=str(f1))
@@ -37,7 +38,7 @@ def main():
             sl = json.dumps(((sp["base"].get("style") or {})), sort_keys=True) if st else "{}"
             cells.append((st or "realistic (no style)", Image.open(f1), Image.open(f2),
                           f"{m['stature']:.0f} cm, {m['heads']:.1f} heads; eye_width/face_width {m['eye_width'] / m['face_width']:.3f}; "
-                          + humanfit.verdict(it).split("\n")[0], sl))
+                          + humanfit_integrity.verdict(it).split("\n")[0], sl))
         except Exception as e:  # noqa: BLE001
             print(f"{st}: FAILED {e!r}"[:600], flush=True)
         print(f"  {st}: {time.time() - t:.0f} s", flush=True)

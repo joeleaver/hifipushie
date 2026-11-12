@@ -156,11 +156,12 @@ def test_face_normals(T, field=None):
 
 def test_clutter(T):
     from hifipushie import terrain_stream as ts
+    from hifipushie import terrain_stream_clutter
     from hifipushie import terrain_materials, terrain_tile_jobs
     base = terrain_tile_jobs.build_field(T)[0]
     field = getattr(base, "base", base)
     mats = terrain_materials.Materials(T, base)
-    C = ts.clutter(T, mats, field)
+    C = terrain_stream_clutter.clutter(T, mats, field)
     kinds = {k: i for i, k in enumerate(ts.KINDS)}
     big = T.falls[1]
     pc, R = np.array(big["pool"]["xyz"][:2]), big["pool"]["radius"]

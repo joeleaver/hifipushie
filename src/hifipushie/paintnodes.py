@@ -12,7 +12,7 @@ Noise: our fbm and Blender's Noise Texture have different value distributions, a
 ours, so Blender's is remapped through a quantile curve (noise_quantiles.json) before any range is applied.
 
 Round trip: a spec-level layer's opacity and colour, and the main numbers of its own mask entries (ranges,
-noise scale, within, axis from/to), are named Value / RGB nodes ("hp:<json path>"); scene.pull reads them back.
+noise scale, within, axis from/to), are named Value / RGB nodes ("hp:<json path>"); scene_sync.pull reads them back.
 """
 
 from __future__ import annotations
@@ -277,8 +277,8 @@ def compile(spec: dict) -> dict:
     pre = {n: ly for n, ly in every.items() if ly.get("_pre")}
     pre_attrs, pre_layers = {}, []
     if pre:  # composited per vertex into the part's base (paint_apply.precomposite): five measured scalars
-        from . import skin
-        part, base = skin.part_base(spec)
+        from . import skin_params
+        part, base = skin_params.part_base(spec)
         base = _pre_base(spec, part, base)
         pk = hashlib.sha1(json.dumps([pre, base], sort_keys=True, default=str).encode()).hexdigest()[:12]
         pre_attrs[part] = [c.attr("pre", part, k, key=("pre", part, k, pk), parts=(part,)) for k in range(5)]
@@ -388,10 +388,10 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
         if kind == "pre":
             _, ppart, comp = fb
             if "pre" not in decals:
-                from . import skin
+                from . import skin_params
                 full = np.zeros((len(pos), 5), np.float32)
                 if len(idx):
-                    base = _pre_base(spec, ppart, skin.part_base(spec)[1])
+                    base = _pre_base(spec, ppart, skin_params.part_base(spec)[1])
                     full[idx] = paint_apply.precomposite(spec, paint_apply._View(pts, idx), base, paint_apply.pre_layers(spec))
                 decals["pre"] = full
             val = decals["pre"][:, comp].copy()

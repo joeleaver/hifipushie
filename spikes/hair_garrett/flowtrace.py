@@ -18,6 +18,7 @@ from scipy import ndimage as nd
 from skimage.color import rgb2lab
 
 from hifipushie import hair, hair_read as hr, store
+from hifipushie import hair_head, hair_job, hair_read_capture
 from texmeas import orient
 
 FALL = {"top": (0, 1, -0.15), "front": (0, 1, -0.15), "crown": (0, 1, -0.3), "sides": (0, 0.7, -0.7),
@@ -111,7 +112,7 @@ def binned(S, b):
 
 
 def ours(m, spec, sc, samples, b):
-    locks = {i: lk for i, lk in enumerate(hair.job(m, spec)["locks"])}
+    locks = {i: lk for i, lk in enumerate(hair_job.job(m, spec)["locks"])}
     A = np.asarray([[s[0], s[1]] for s in samples], float)
     D = np.asarray([s[2:5] for s in samples], float)
     rows = []
@@ -143,9 +144,9 @@ def ours(m, spec, sc, samples, b):
 
 def main(m, out, views=(0, 1, 2), b=6.0):
     spec = store.load(m)
-    sc = hair.scalp(m, spec)
+    sc = hair_head.scalp(m, spec)
     S = {}
-    for f in hr.frames(m, spec, views=list(views)):
+    for f in hair_read_capture.frames(m, spec, views=list(views)):
         t = trace_view(sc, f)
         print(f"view {f['i']}: {len(t['az'])} seeds, run median {np.median(t['run']):.1f} mm", flush=True)
         for k, v in t.items():

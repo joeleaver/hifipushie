@@ -6,12 +6,13 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import likeness
+from hifipushie import likeness_detect
 
 im = Image.open(sys.argv[1]).convert("RGB")
 T = im.height
 for i, lab in enumerate(("photo", "start", "end")):
     t = im.crop((i * T, 0, i * T + T, T)).resize((2 * T, 2 * T), Image.LANCZOS)
-    d = likeness.detect([t])[0]
+    d = likeness_detect.detect([t])[0]
     if d is None:
         print(lab, "no face")
         continue

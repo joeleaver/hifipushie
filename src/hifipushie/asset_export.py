@@ -313,8 +313,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         # maps: as tiling maps in the shading json alone, neither plain glTF viewers nor blender_game apply them, and
         # the lower lip shipped as one smooth, unbroken highlight (game_ready.md r64). The tiling maps still ship, as
         # an optional close-up extra (normal only: their tint / roughness are in the maps already).
-        from . import skin as skinmod
-        skin_recipe = skinmod.export_recipe(spec, out_dir, name, baked=asset.BAKE_SKIN_DETAIL)
+        from . import skin_build
+        skin_recipe = skin_build.export_recipe(spec, out_dir, name, baked=asset.BAKE_SKIN_DETAIL)
         ctx["bake_detail"] = asset.BAKE_SKIN_DETAIL or not (skin_recipe and skin_recipe["detail"])
         if skin_recipe and skin_recipe["detail"]:
             log.append("skin: micro detail " + ("baked into the part's maps; also written as tiling normal maps (close-up "
@@ -529,7 +529,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                     extras={"hifipushie_skin": skin_recipe})
     if lash:
         looks.setdefault(lash[0], {})["double_sided"] = True
-    from .skin_features import eye_base
+    from .skin_features_eyes import eye_base
     ek = eye_base(spec)
     if ek:  # the eyes' tear film: a clear coat over the matte iris and sclera (the catchlight)
         for pn in parts:
@@ -932,7 +932,7 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
     driven as an engine drives them. engine="cycles": the old path-traced look of the importer's materials (lighting,
     samples, denoise apply to it only).
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
-    walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene.look
+    walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene_sync.look
     takes), so the preview compares with the painted look; default a neutral studio under Standard. cameras:
     perspective panels as look takes them (model coordinates, Z up), for close-ups of the textures.
     poses: [{shape name: weight}] (face shapes, the GLB's morph targets): one Blender run renders the views once per

@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw
 import gates
 import wholeclay as WC
 from hifipushie import humanfit, humanmacro as hm_, likeness, store
+from hifipushie import humanfit_views, likeness_render
 
 F = os.environ.get("F", "/mnt/data/hifipushie/faces6")
 TS = int(os.environ.get("TS", "150"))
@@ -39,13 +40,13 @@ def mesh_for(b, c120):
     bb = copy.deepcopy(b)
     bb["head"]["identity"] = {f"head_{i:03d}": round(float(v), 5) for i, v in enumerate(c)}
     st = humanfit.state(bb)
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     mesh["C"] = WC.haircap(mesh, st)
     return mesh, st
 
 
 def tile(mesh, st, cam, box, T):
-    im, k = likeness.render(mesh, cam, box, px=2 * T, brows=False, ao=True, shadow=8.0)[:2]
+    im, k = likeness_render.render(mesh, cam, box, px=2 * T, brows=False, ao=True, shadow=8.0)[:2]
     return WC.draw_brows(im, mesh, cam, box, k).resize((T, T), Image.LANCZOS)
 
 
@@ -80,7 +81,7 @@ if __name__ == "__main__":
     boxes = []
     for vi in (0, 1):
         cam = refs["cameras"][vi]
-        P = humanfit.project(cam, ref_st["L"])
+        P = humanfit_views.project(cam, ref_st["L"])
         c = 0.5 * (P.min(0) + P.max(0))
         side = 1.45 * float(np.max(P.max(0) - P.min(0)))
         boxes.append((cam, (c[0] - side / 2, c[1] - side * 0.56, c[0] + side / 2, c[1] + side * 0.44)))

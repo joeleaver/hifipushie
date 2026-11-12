@@ -3,8 +3,9 @@ does the detector tell a known expression (the benchmark's _x pictures) from the
 import sys
 from PIL import Image
 from hifipushie import likeness
+from hifipushie import likeness_detect
 ims = sys.argv[1:]
-D = likeness.detect_info([Image.open(f).convert("RGB") for f in ims])
+D = likeness_detect.detect_info([Image.open(f).convert("RGB") for f in ims])
 keys = sorted({k for d in D if d for k, v in (d.get("bs") or {}).items() if v > 0.08})
 print(" " * 22 + "  ".join(f.split("/")[-1][-12:-4] for f in ims))
 for k in keys:

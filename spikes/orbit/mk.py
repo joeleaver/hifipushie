@@ -10,6 +10,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin as bi, blockin_eyes as be, blockin_lid as bl, face_ruler as fr, gnm_mm, onemesh, store
+from hifipushie import blockin_steps, blockin_table, face_ruler_solve, onemesh_head
 
 src, dst = sys.argv[1:3]
 assert dst.startswith("ob_"), "scratch models are ob_*"
@@ -26,12 +27,12 @@ d.mkdir(parents=True, exist_ok=True)
 (d / "spec.json").write_text(json.dumps(sp))
 rj = json.loads((store._dir(src) / "human_refs.json").read_text())
 if "mm:eyes_forward" in moves:      # as block_in_step: the cameras follow the face (the head hangs on its eyes)
-    dd = bi.eye_follow(store.load(src)["base"], sp["base"])
+    dd = blockin_steps.eye_follow(store.load(src)["base"], sp["base"])
     for cam in rj["cameras"]:
         cam["centre"] = (np.asarray(cam["centre"], float) + dd).tolist()
     print(f"cameras follow the face: {1000 * dd.round(5)} mm")
 for vi, deg in yaws.items():
-    rj["cameras"][vi] = fr.cam_moved(rj["cameras"][vi], yaw=deg)
+    rj["cameras"][vi] = face_ruler_solve.cam_moved(rj["cameras"][vi], yaw=deg)
 (d / "human_refs.json").write_text(json.dumps(rj, indent=1))
 print(f"{dst} = {src} + {moves}" + (f", cameras turned {yaws}" if yaws else ""))
 print(f"  |dc| {np.linalg.norm(dc):.2f} (|c| {np.linalg.norm(c0):.2f} -> {np.linalg.norm(c1):.2f})")
@@ -41,16 +42,17 @@ print("  measures moved: " + ", ".join(f"{n} {r1[n] - r0[n]:+.2f}" for n in gnm_
 o0, o1 = gnm_mm.orbit(g["T"] + np.tensordot(c0, g["IB"], 1)), gnm_mm.orbit(g["T"] + np.tensordot(c1, g["IB"], 1))
 print("  orbit as seen (GNM mm): " + ", ".join(f"{k} {o0[k]:.1f} -> {o1[k]:.1f}" for k in o0))
 b0 = store.load(src)["base"]
-h0, h1 = onemesh.head_template(b0), onemesh.head_template(sp["base"])
+h0, h1 = onemesh_head.head_template(b0), onemesh_head.head_template(sp["base"])
 V0, V1 = np.asarray(h0["verts"], float), np.asarray(h1["verts"], float)
 ring, up = bl._skin_rings()
 n = len(ring)
-dd_ = bi.eye_follow(b0, sp["base"])
+dd_ = blockin_steps.eye_follow(b0, sp["base"])
 D = np.linalg.norm(V1[:n] - V0[:n] - dd_, axis=1) * 1000          # (against the face: the cameras' frame)
 print(f"  the face (landmarks off the eyes) moved {1000 * dd_.round(5)} mm in the shipped head: taken out below")
 from hifipushie import base as basemod  # noqa: E402
-gr = basemod._gnm_data()["groups"]
-sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+from hifipushie import base_identity
+gr = base_identity._gnm_data()["groups"]
+sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
 face = np.asarray(gr["hockey_mask"])[sk] > 0.5
 print(f"  shipped head, skin move (mm): lid rings 0-7 rms {np.sqrt((D[ring <= 7] ** 2).mean()):.2f}; orbit rings 8-14 {np.sqrt((D[(ring > 7) & (ring < 99)] ** 2).mean()):.2f}; "
       f"the face beyond {np.sqrt((D[face & (ring == 99)] ** 2).mean()):.2f} (max {D[face & (ring == 99)].max():.2f}); the rest of the head "
@@ -68,7 +70,7 @@ print(f"  eye ruler rows on the mesh: upper margin moved max {np.nanmax(np.abs(m
 s0, s1 = bl.mean_structure(c0), bl.mean_structure(c1)
 print("  lid structure (raw): " + ", ".join(f"{k} {s0[k]:.2f} -> {s1[k]:.2f}" for k in s0))
 if "table" in sys.argv:
-    t0, t1 = bi.table(src), bi.table(dst)
-    print("  block-in table passes:", bi.passes(t0), "->", bi.passes(t1))
-    for x in bi.table_delta(t0, t1):
+    t0, t1 = blockin_table.table(src), blockin_table.table(dst)
+    print("  block-in table passes:", blockin_table.passes(t0), "->", blockin_table.passes(t1))
+    for x in blockin_table.table_delta(t0, t1):
         print("    " + x)

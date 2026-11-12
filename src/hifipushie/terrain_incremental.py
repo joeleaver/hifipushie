@@ -98,7 +98,7 @@ class Fingerprint:
 
     # T: the terrain object (what the export reads of it is passed as roots of its own); _bx: CliffField's void boxes,
     # made lazily from the volumes (which count per tile)
-    # report_reaches: terrain_stream.Streams' per-river arrays for the report (the tiles read its grids)
+    # report_reaches: terrain_stream_streams.Streams' per-river arrays for the report (the tiles read its grids)
     SKIP_ATTRS = {"T", "_bx", "report_reaches"}
 
     def __init__(self, roots: dict, frames: list[Frame], vols: list, vol_pad: float):

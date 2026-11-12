@@ -350,6 +350,7 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
     """A GLB of the tile's LODs (`which`; None = all, LOD 0 the scene + MSFT_lod): one mesh a LOD, slot `foliage`
     (opaque, double sided, no texture: albedo = baseColorFactor per season variant x COLOR_0)."""
     from . import veg_export, veg_style
+    from . import veg_export_parts
     p = b["p"]
     which = list(range(len(b["lods"]))) if which is None else list(which)
     buf = bytearray()
@@ -431,7 +432,7 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
             "extras": {"hifipushie_plant": {"name": name, "species": "sward", "grade": "sward", "height_m": round(float(max(M["V"][:, 2].max() for M in b["lods"])), 3),
                                             "lods": lod_info, "wind": veg_export.WIND_RECIPE, "variants": seasons, "contract": veg_export.CONTRACT,
                                             "style": {"name": p["style_name"], "kind": "sward blades"}, "sward": sward,
-                                            "snow_numbers": veg_export.snow_numbers({}, None)}}}
+                                            "snow_numbers": veg_export_parts.snow_numbers({}, None)}}}
     js = json.dumps(gltf, separators=(",", ":"), default=float).encode()
     js += b" " * (-len(js) % 4)
     out = Path(path)
@@ -447,14 +448,14 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
 
 def export(T: dict, out_dir: str, stem: str, seasons=("summer", "spring", "autumn", "winter", "snow")) -> dict:
     """<stem>.glb (all LODs), <stem>_LOD<k>.glb, <stem>_seasons.json (+ the `sward` numbers in it)."""
-    from . import veg_export
+    from . import veg_export_files
     b = T["built"]
     out = Path(out_dir)
     full = write_glb(str(out / f"{stem}.glb"), stem, b, seasons)
     files = [full["path"]]
     for li in range(len(b["lods"])):
         files.append(write_glb(str(out / f"{stem}_LOD{li}.glb"), stem, b, seasons, which=[li])["path"])
-    sj = veg_export.seasons_json(full["path"])
+    sj = veg_export_files.seasons_json(full["path"])
     if sj:
         d = json.loads(Path(sj["path"]).read_text())
         d["sward"] = full["sward"]

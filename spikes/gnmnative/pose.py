@@ -5,11 +5,13 @@ The posed model is a scratch look model: every component follows from the one ex
 import sys
 
 from hifipushie import blockin as bi
+from hifipushie import blockin_models
 from hifipushie import faceshapes, store
+from hifipushie import faceshapes_gnm
 
 src, dst = sys.argv[1:3]
 sp = store.load(src)
-face = faceshapes.GnmFace(sp)
+face = faceshapes_gnm.GnmFace(sp)
 ex = dict(sp["base"]["head"].get("expression") or {})
 said = []
 for a in sys.argv[3:]:
@@ -21,9 +23,9 @@ for a in sys.argv[3:]:
         for n, c in face.shape_coeffs(k).items():
             ex[n] = ex.get(n, 0.0) + v * c
     said.append(a)
-bi.fork(src, dst, replace=True)
+blockin_models.fork(src, dst, replace=True)
 sp = store.load(dst)
 sp["base"]["head"]["expression"] = {k: round(float(v), 5) for k, v in ex.items() if abs(v) > 1e-6}
-bi._save(dst, sp, f"gnmnative pose of {src}: {' '.join(said)}", bi._refs(dst))
+blockin_models._save(dst, sp, f"gnmnative pose of {src}: {' '.join(said)}", blockin_models._refs(dst))
 print(dst, "posed:", " ".join(said), f"({len(sp['base']['head']['expression'])} expression components, largest "
       f"{max(abs(v) for v in sp['base']['head']['expression'].values()):.2f}); mouth:", "GNM's own" if face.gnm_mouth else "the kit's")

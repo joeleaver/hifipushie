@@ -7,6 +7,7 @@ import copy, json, sys
 import numpy as np
 import stage
 from hifipushie import blockin as bi, face_ruler as fr, resources, store
+from hifipushie import blockin_models, face_ruler_blockin
 import gt
 
 kw = dict(a.split("=") for a in sys.argv[1:])
@@ -14,7 +15,7 @@ amount, cls = float(kw.get("amount", 0.3)), kw.get("cls", "happy")
 sp = copy.deepcopy(store.load("sc_a_T"))
 rt = json.loads((store.HOME / "sc_a_AT" / "human_refs.json").read_text())
 X = "gt_exs_X"                                   # the smiling model (only to shoot it)
-sp["base"]["head"]["expression"] = fr.expression_coeffs({cls: amount})
+sp["base"]["head"]["expression"] = face_ruler_blockin.expression_coeffs({cls: amount})
 store._dir(X).mkdir(parents=True, exist_ok=True)
 (store.HOME / X / "spec.json").write_text(json.dumps(sp))
 i = [v["name"] for v in rt["views"]].index("f")
@@ -27,10 +28,10 @@ x0 = int(round((h - w) / 2))
 im.convert("RGB").crop((x0, 0, x0 + w, h)).save(fn)
 views = copy.deepcopy(rt["views"])
 views[i] = {"image": str(fn), "size": [w, h], "yaw": 0, "points": {}, "name": "f"}
-views = bi.with_anchor_points(views)
+views = blockin_models.with_anchor_points(views)
 ST = "gt_exs_AT"
 store._dir(ST).mkdir(parents=True, exist_ok=True)
 (store.HOME / ST / "spec.json").write_text(json.dumps(store.load("sc_a_T")))
 (store.HOME / ST / "human_refs.json").write_text(json.dumps({"views": views, "cameras": rt["cameras"], "blockin": {"root": ST, "attach": "native"}}))
-e = bi.start("gt_exs_A00", [copy.deepcopy(v) for v in views], sex="male", age=35, cameras="refit", replace=True)
+e = blockin_models.start("gt_exs_A00", [copy.deepcopy(v) for v in views], sex="male", age=35, cameras="refit", replace=True)
 print("shot", fn, "start gt_exs_A00:", e["start"]["cameras"])

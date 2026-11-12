@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
 from hifipushie import rig, sdf, store, surface
+from hifipushie import rig_humanoid, rig_model, rig_skin, rig_twist
 from hifipushie.spec import compile_prims
 
 SP = Path(__file__).parent
@@ -26,13 +27,13 @@ HF = remap[z["faces"]]
 HF = HF[(HF >= 0).all(1)]
 HV = z["verts"][keep].astype(np.float64)
 HN = z["normals"][keep].astype(np.float64)
-bones = rig.humanoid(spec)
+bones = rig_humanoid.humanoid(spec)
 seg = rig._segments(bones)
 ids = list(seg)
 A = np.array([seg[i][0] for i in ids])
 B = np.array([seg[i][1] for i in ids])
 segnames = [bones[i]["name"].split(":")[-1] for i in ids]
-D = np.stack([rig._seg_dist(HV, A[q], B[q]) for q in range(len(ids))], 1)
+D = np.stack([rig_model._seg_dist(HV, A[q], B[q]) for q in range(len(ids))], 1)
 near = D.argmin(1)
 REGION = np.array(["hands" if "Hand" in segnames[q] else "head" if segnames[q] in ("Head", "Neck") else "rest"
                    for q in near])
@@ -173,10 +174,10 @@ def errors(V, T):
     return out
 
 
-turns = rig.test_pose(bones)
+turns = rig_twist.test_pose(bones)
 _heads = np.array([b["head"] for b in bones])
 _Jh = np.arange(len(bones))[:, None]
-_PH = rig.pose(bones, _heads, _Jh, np.ones_like(_Jh, float), turns)
+_PH = rig_model.pose(bones, _heads, _Jh, np.ones_like(_Jh, float), turns)
 AT = {b["name"].split(":")[-1]: _PH[i] for i, b in enumerate(bones)}
 VIEWS = [("front", [0, -1, 0], None, 1.15, False), ("front wire", [0, -1, 0], None, 1.15, True),
          ("R shoulder", [0, -1, 0], "RightArm", 0.32, True), ("L elbow", [1, 0, 0], "LeftForeArm", 0.26, True),
@@ -188,8 +189,8 @@ def posed_row(name, V, L, S, out_dir, size=480, rings=()):
     """Skin with the rig weights, pose with the test pose, render the views; returns the images."""
     out_dir = Path(out_dir)
     T = tris(V, L, S)
-    J, W = rig.rig_weights(spec, bones, V, T)
-    PV = rig.pose(bones, V, J, W, turns)
+    J, W = rig_skin.rig_weights(spec, bones, V, T)
+    PV = rig_model.pose(bones, V, J, W, turns)
     np.savez(out_dir / f"{name}_posed.npz", verts=PV, loops=L, sizes=S)
     c = 0.5 * (PV.min(0) + PV.max(0))
     vs = []

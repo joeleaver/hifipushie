@@ -2,10 +2,11 @@
 sx_<tag>2_R (holder) and the class-mean start sx_<tag>2_00; scored against the same truth sx_<tag>_T."""
 import copy, json, sys
 from hifipushie import blockin as bi, server, store
+from hifipushie import blockin_models
 tag = sys.argv[1]
 S = "/mnt/data/hifipushie/solvereads/synth"
 src = f"sx_{tag}_R"
-rj = bi._refs(src)
+rj = blockin_models._refs(src)
 holder = f"sx_{tag}2_R"
 d = store._dir(holder); d.mkdir(parents=True, exist_ok=True)
 (d / "spec.json").write_text(json.dumps(store.load(src)))

@@ -7,6 +7,7 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi, humanfit, store
+from hifipushie import blockin_models, humanfit_views
 
 SHOTS = os.environ.get("SHOTS", "/mnt/data/hifipushie/solvereads/out:/mnt/data/hifipushie/garrettgood/out:/mnt/data/hifipushie/reruns/out:/mnt/data/hifipushie/refread/out").split(":")
 N = int(os.environ.get("SIZE", "560"))
@@ -33,7 +34,7 @@ def tile(f, crop=None):
     return im.resize((N, N), Image.LANCZOS)
 
 
-rj = bi._refs(cols[0][1])
+rj = blockin_models._refs(cols[0][1])
 nv = len(rj["views"])
 ncol = 1 + len(kinds) * len(cols)
 blockh = HEAD + N * nv
@@ -44,7 +45,7 @@ d.text((10, 10), title, fill=(0, 0, 0), font=big)
 L = np.asarray(humanfit.state(store.load(cols[0][1])["base"])["L"], float)
 crops = []
 for cam, box in zip(rj["cameras"], rj["blockin"]["boxes"]):
-    P = humanfit.project(cam, L[:68])
+    P = humanfit_views.project(cam, L[:68])
     mm = float(cam["t"][2]) / cam["f"] * 1000
     c = 0.5 * (P[33] + P[8]) + [0, 10 / mm]
     r = 58 / mm
@@ -78,7 +79,7 @@ for blk in range(2 if chin else 1):
             if fj is None:
                 continue
             j = tile(fj, cr)
-            bm = (bi._refs(m).get("blockin") or {}).get("boxes")       # the blend: the photo cropped by THIS model's own box
+            bm = (blockin_models._refs(m).get("blockin") or {}).get("boxes")       # the blend: the photo cropped by THIS model's own box
             phm = ph
             if bm and [round(x) for x in bm[vi]] != [round(x) for x in box]:
                 phm = Image.open(v["image"]).convert("RGB").crop(tuple(int(round(x)) for x in bm[vi]))

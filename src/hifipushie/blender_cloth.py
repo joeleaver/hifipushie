@@ -836,7 +836,7 @@ def _render_textured(job, d):
 
 
 def read(folder):
-    """What a person changed on the garments in the scene (for scene.pull): per cloth object whose mesh moved from
+    """What a person changed on the garments in the scene (for scene_sync.pull): per cloth object whose mesh moved from
     what the sync wrote (`hp_npz`) its vertices in <folder>/cloth_<name>.npz, and material colour/roughness changed
     from `hp_set`."""
     import os
@@ -895,7 +895,7 @@ def main():
 
 
 def show(entries: list) -> list:
-    """Garments in the scene (scene.sync): each {"name", "key", "npz" (verts, faces, uv), "color" sRGB hex,
+    """Garments in the scene (scene_sync.sync): each {"name", "key", "npz" (verts, faces, uv), "color" sRGB hex,
     "thickness", "roughness"} becomes a mesh object in the collection "cloth" with its pattern uv, a Principled
     material and a Solidify (the cloth's thickness, outward). Garments no longer in the spec are removed."""
     coll = bpy.data.collections.get("cloth")

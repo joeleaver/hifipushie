@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 import gt, rast, hsrd
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
+from hifipushie import blockin_models, face_ruler_camera, face_ruler_solve, humanfit_views
 
 Image.MAX_IMAGE_PIXELS = None
 SHORT = {"lps": "lps", "HSR0040-Body-023": "h40", "HSR0112-Body-018": "h112", "HSR0042-Body-045": "h42"}
@@ -31,7 +32,7 @@ def canon(cam, ctr):
     decomposition R = rotvec(r) CAM0 Rz(yaw)): the same camera."""
     from scipy.spatial.transform import Rotation
     from scipy.optimize import minimize_scalar
-    R = humanfit._cam_rot(cam)
+    R = humanfit_views._cam_rot(cam)
     t = np.asarray(cam["t"], float) + R @ (np.asarray(ctr, float) - np.asarray(cam["centre"], float))
 
     def rv(y):
@@ -42,7 +43,7 @@ def canon(cam, ctr):
     y0 = ys[np.argmin([np.linalg.norm(rv(y)) for y in ys])]
     y = minimize_scalar(lambda y: np.linalg.norm(rv(y)), bounds=(y0 - 6, y0 + 6), method="bounded").x
     out = {"r": [float(x) for x in rv(y)], "t": [float(x) for x in t], "f": float(cam["f"]), "size": list(cam["size"]), "centre": [float(x) for x in ctr], "yaw": float(y)}
-    assert np.allclose(humanfit._cam_rot(out), R, atol=1e-8)
+    assert np.allclose(humanfit_views._cam_rot(out), R, atol=1e-8)
     return out
 
 
@@ -56,7 +57,7 @@ if __name__ == "__main__":
     S = (fj["S"]["s"], np.asarray(fj["S"]["R"]), np.asarray(fj["S"]["t"]))
     sex, age = scan["info"]["sex"], float(scan["info"].get("age", 35))
     T = f"gt_{k}_T"
-    bi.start(T, [], sex=sex, age=age, replace=True)
+    blockin_models.start(T, [], sex=sex, age=age, replace=True)
     sp = store.load(T)
     bi.set_identity(sp, cstar)
     (store.HOME / T / "spec.json").write_text(json.dumps(sp))
@@ -81,7 +82,7 @@ if __name__ == "__main__":
             z = f / PXM
             cam = {"r": [0.0, 0.0, float(np.radians(1.5 * j[2]))], "t": [float(40 * j[3] * z / f - 0.075 * np.sin(np.radians(yaw))), float((40 * j[4] - 60) * z / f), float(z)],
                    "f": float(f), "size": [w, h], "centre": ctr.tolist(), "yaw": float(-(yaw + 2 * j[0]))}
-            cam = fr.cam_moved(cam, pitch=pitch + 2 * j[1])
+            cam = face_ruler_solve.cam_moved(cam, pitch=pitch + 2 * j[1])
             cam["r"] = [float(x) for x in cam["r"]]
             fn = PICS / f"{k}_{vn}.png"
             vis = rast.visibility(Vm, scan["F"], cam, ss=2)
@@ -97,7 +98,7 @@ if __name__ == "__main__":
         rig = json.loads((gt.WORK / tag / "rig.json").read_text())
         # which side is "+yaw" for the pipeline: the benchmark's camera at yaw +45, as an azimuth round the head
         c45 = rast.look_cam(ctr, yaw=45.0)
-        pos = -humanfit._cam_rot(c45).T @ np.asarray(c45["t"]) + ctr - ctr
+        pos = -humanfit_views._cam_rot(c45).T @ np.asarray(c45["t"]) + ctr - ctr
         side = float(np.sign(np.arctan2(pos[0], -pos[1])))             # model world: left = +X, forward = -Y
         ctr_rig = gt.apply(gt.inverse(RM), ctr[None])[0]
         chosen = {}
@@ -142,14 +143,14 @@ if __name__ == "__main__":
                                          "lens_true_mm": cam["f"] / w * 36.0, "outside_px_share": float(1 - inside.mean())}))
     for (vn, yaw, fn, extra), cam in zip(names, cams):
         pts = {}
-        ty = abs(fr.view_yaw(cam))
+        ty = abs(face_ruler_camera.view_yaw(cam))
         if yaw >= 70:
-            P = humanfit.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
+            P = humanfit_views.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
             pts = {kk: [round(float(p[0]), 1), round(float(p[1]), 1)] for kk, p in zip(CL, P)}
         nominal = yaw if extra is None else int(5 * round(ty / 5))       # a real photo's turn is told as a person would: to 5 deg
         views.append({"image": str(fn), "size": [w, h], "yaw": (nominal if nominal < 70 else -nominal), "points": pts, "name": vn, **({"truth": extra} if extra else {})})
-        print(f"  {vn:4s} turn {ty:5.1f} pitch {fr.view_pitch(cam):+5.1f} dist {cam['t'][2]:.2f} m lens {cam['f'] / w * 36:.0f} mm  {extra or ''}")
-    views = bi.with_anchor_points(views)
+        print(f"  {vn:4s} turn {ty:5.1f} pitch {face_ruler_camera.view_pitch(cam):+5.1f} dist {cam['t'][2]:.2f} m lens {cam['f'] / w * 36:.0f} mm  {extra or ''}")
+    views = blockin_models.with_anchor_points(views)
     for v in views:
         n = sum(1 for kk in v["points"] if kk.startswith("lm"))
         print(f"  {v['name']:4s} detector points {n}; clicks {len(v['points']) - n}")
@@ -162,13 +163,13 @@ if __name__ == "__main__":
         store._dir(ST).mkdir(parents=True, exist_ok=True)
         (store.HOME / ST / "spec.json").write_text(json.dumps(sp))
         (store.HOME / ST / "human_refs.json").write_text(json.dumps({"views": [views[i] for i in ii], "cameras": [cams[i] for i in ii],
-                                                                     "blockin": {"root": ST, "attach": "native", "placement": list(bi._placement(sp["base"]))}}))
+                                                                     "blockin": {"root": ST, "attach": "native", "placement": list(blockin_models._placement(sp["base"]))}}))
         for lens in ((False, True) if tag != "lps" else (False,)):
             S0 = f"gt_{k}_{s}{'L' if lens else ''}00"
             vv = [copy.deepcopy(views[i]) for i in ii]
             if lens:        # the variant that TELLS the pipeline each picture's lens (a head cropped out of a full-figure photo is a long lens)
                 for v in vv:
                     v["lens_mm"] = round(v["truth"]["lens_true_mm"])
-            e = bi.start(S0, vv, sex=sex, age=age, cameras="refit", replace=True)
+            e = blockin_models.start(S0, vv, sex=sex, age=age, cameras="refit", replace=True)
             print(f"start {S0}: {e['start']['cameras']}")
     print("done", tag)

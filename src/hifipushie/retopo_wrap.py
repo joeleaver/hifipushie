@@ -124,8 +124,8 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     inner lip rolls) closed by GNM's own oral cavity, placed as the head places its skin, so a parted or opened mouth
     shows a mouth, not the inside of the head. Not with zipped lips (a closed mouth has no loop)."""
     from . import base_identity
-    from . import onemesh
-    h = onemesh.head(s, spec["base"])
+    from . import onemesh_head
+    h = onemesh_head.head(s, spec["base"])
     if h.get("lips_zipped"):
         return V, L, S, gnm
     g = base_identity._gnm_data()

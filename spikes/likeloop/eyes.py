@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 import sheet1
 from hifipushie import likeness, likeness_pair, store
+from hifipushie import likeness_detect, likeness_sides
 from hifipushie import likeness_eyes, likeness_lips
 
 REGION = os.environ.get("REGION", "eyes")   # "lips": likeness_lips and the mouth box
@@ -21,8 +22,8 @@ NAME = "ll_garrett"
 
 
 def photo():
-    refs = likeness._refs(NAME)
-    ph = likeness.photo_sides(refs)[0]
+    refs = likeness_sides._refs(NAME)
+    ph = likeness_sides.photo_sides(refs)[0]
     return refs, ph
 
 
@@ -36,7 +37,7 @@ def src_side(src, refs, ph):
         return m["render"], m["box"], m["md"]["side"].P
     crop = sheet1.crop_of(refs["views"][0])
     im = Image.open(f"{L}/out/{arg}_front_big.png").convert("RGB")
-    P = likeness.detect([im])[0]
+    P = likeness_detect.detect([im])[0]
     s = (crop[2] - crop[0]) / im.size[0]
     return im, crop, None if P is None else P * s + [crop[0], crop[1]]
 

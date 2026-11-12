@@ -20,6 +20,7 @@ import gt
 import rast
 from gmk import SHORT
 from hifipushie import denselm, face_ruler as fr, humanfit, store
+from hifipushie import humanfit_views
 
 tag = sys.argv[1]
 scans = sys.argv[2:] or ["HSR0040-Body-023", "HSR0112-Body-018"]
@@ -52,7 +53,7 @@ for t in scans:
         Xc, P = fr._cam_points(cam, V)
         _, q68 = fr._cam_points(cam, L68)
         vis = rast.visibility(V, G["F"], cam)
-        vn = gt.vertex_normals(V, G["F"]) @ humanfit._cam_rot(cam).T
+        vn = gt.vertex_normals(V, G["F"]) @ humanfit_views._cam_rot(cam).T
         pred = denselm.predict(img, q68)
         Ls = pred.get("set") or denselm.landmarks()
         ids_all = np.asarray(Ls.get("gnm_all", Ls["gnm"]), int)

@@ -15,6 +15,7 @@ import garrett3
 import measured as ms
 import structure
 from hifipushie import headfit, humanfit, humanfit_map, humanmacro as hm, likeness_read as lr, store
+from hifipushie import humanfit_integrity, humanfit_solve, humanfit_views
 
 D2 = os.environ.get("D2")
 NECK_CM = 31.9
@@ -46,7 +47,7 @@ def neck_to(b, cm):
     under the jaw (macro neck_width): unmeasured in the photo (collar), so it goes to the population's mean."""
     c0 = humanfit.identity(b)
     z = hm.read(c0)["neck_width"]
-    nb = humanfit._with_identity(b, hm.apply(c0, {"neck_width": -z}, held=True))
+    nb = humanfit_solve._with_identity(b, hm.apply(c0, {"neck_width": -z}, held=True))
     print(f"neck girth (body) {humanfit.state(nb)['measures']['neck_circ']:.1f} cm (om_garrett {cm}); head's neck_width macro {z:+.2f} -> "
           f"{hm.read(humanfit.identity(nb))['neck_width']:+.2f} sigma")
     return nb
@@ -72,14 +73,14 @@ def main(scale=1.25):
     b["head"]["identity"] = {k: float(v) * scale for k, v in b["head"]["identity"].items()}
     cams = rep["cameras"]
     # the hood, fitted on the upper lids of the pictures WITH the pose on; half of it kept as identity
-    bh, rh = humanfit.fit_hood(b, vs, cams)
+    bh, rh = humanfit_views.fit_hood(b, vs, cams)
     asked = float(rh.get("asked_mm", rh.get("amount", 0.0)) or 0.0)
     print("fit_hood:", {k: v for k, v in rh.items() if k in ("amount_before", "asked_mm", "amount", "note", "rms_px_before", "refused")})
     b["head"].pop("pose", None)
     save("rs2_n0", sp, b, vs, cams, "MAP: eyes 1.0, no lid-opening regions, measured widths + brow height, shape words, expression as pose")
     b = neck_to(b, NECK_CM)
     c = hm.apply(humanfit.identity(b), {"chin_projection": 1.2, "jaw_angle": 2.0}, held=True)
-    b = humanfit._with_identity(b, c)
+    b = humanfit_solve._with_identity(b, c)
     b["head"]["shape"] = {"planes": 2.3, "lean": {"under_jaw": 0.006, "jowl": 0.0025},
                           "chin": {"cleft": 0.004, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.018},
                           "nose_tip": {"up": 5, "round": 0.5}, "hood": round(max(min(asked, 5.0), 0.0) * 0.5 / 1000, 5)}
@@ -94,10 +95,10 @@ def main(scale=1.25):
         if z1["lip_fullness"] < z0["lip_fullness"]:
             break
     print("age axis x1: macros that move most:", sorted(((round(z1[k] - z0[k], 2), k) for k in z0), key=lambda t: -abs(t[0]))[:8])
-    ba = humanfit._with_identity(b, hm.apply(c0 + 0.8 * sg * ax[:len(c0)], {"lip_fullness": -0.5}, held=True))
+    ba = humanfit_solve._with_identity(b, hm.apply(c0 + 0.8 * sg * ax[:len(c0)], {"lip_fullness": -0.5}, held=True))
     ba["head"]["shape"]["hollow"] = {"amount": 0.002, "radius": 0.03}
-    it = humanfit.integrity(ba, humanfit.state(ba), humanfit.state(b))
-    print("age step:", humanfit.verdict(it)[:200])
+    it = humanfit_integrity.integrity(ba, humanfit.state(ba), humanfit.state(b))
+    print("age step:", humanfit_integrity.verdict(it)[:200])
     save("rs2_n4", sp, ba, vs, cams, "n3 + age: headfit age axis x0.8, lip_fullness -0.5, mid-cheek thinning 2 mm / 30 mm")
 
 

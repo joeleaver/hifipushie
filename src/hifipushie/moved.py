@@ -86,6 +86,13 @@ def families() -> dict:
     return out
 
 
+def files(*modules: str) -> list:
+    """The source files of these modules, each with every module it was split into: for a key that hashes code by
+    file name (a cache listing "skin.py" must go on hashing skin's code after skin.py is split)."""
+    fam = families()
+    return [f"{x}.py" for m in modules for x in (m, *fam.get(m, ()))]
+
+
 # ---------------------------------------------------------------- a script pointed at the new modules
 def _bound_otherwise(tree: ast.Module, name: str) -> bool:
     """`name` is also a variable, an argument or a def in the script (then `name.x` may not be the module)."""
@@ -101,7 +108,7 @@ def _bound_otherwise(tree: ast.Module, name: str) -> bool:
     return False
 
 
-def repoint(path, write: bool = False) -> list:
+def repoint(path, write: bool = False, fam: dict | None = None) -> list:
     """The script's uses of names that moved, as report lines "file:line: old -> new"; with write=True the script is
     rewritten (each `alias.NAME` to `<module>.NAME`, with the module imported where the alias was; a
     `from hifipushie.x import a, b` statement split by where a and b are now). What cannot be done safely is reported
@@ -109,7 +116,7 @@ def repoint(path, write: bool = False) -> list:
     path = Path(path)
     src = path.read_text()
     tree = ast.parse(src)
-    fam = families()
+    fam = families() if fam is None else fam
     lines = src.split("\n")
     report, edits, inserts, replaces = [], [], {}, []
     alias = {}          # bound name -> package module
@@ -197,10 +204,10 @@ def main(argv=None) -> int:
     if not paths:
         print("usage: bin/repoint <script.py> ... [--write]\n" + __doc__.split("\n\n")[1])
         return 2
-    total = 0
+    total, fam = 0, families()
     for p in paths:
         try:
-            rep = repoint(p, write)
+            rep = repoint(p, write, fam)
         except (OSError, SyntaxError, UnicodeDecodeError) as e:
             print(f"{p}: not read ({type(e).__name__}: {e})")
             continue

@@ -11,22 +11,23 @@ from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
 from hifipushie import hair, hair_read, humanfit, store
+from hifipushie import hair_head, hair_read_capture, hair_read_measures, hair_read_read, hair_read_start, humanfit_views
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 OUT = os.environ["TOUT"]
 au = int(kw["authority"]) if "authority" in kw else None
 spec = store.load(m)
-fs = hair_read.frames(m, spec)
-r = hair_read.read(m, spec, authority=au, fs=fs)
+fs = hair_read_capture.frames(m, spec)
+r = hair_read_read.read(m, spec, authority=au, fs=fs)
 print(r["text"])
-s = hair_read.start(r, spec)
+s = hair_read_start.start(r, spec)
 print(s["text"])
 json.dump({"read": {k: v for k, v in r.items() if k != "text"}, "start": s["hair"]}, open(f"{OUT}/read_{m}.json", "w"),
           indent=1, default=float)
-sc = hair.scalp(m, spec)
+sc = hair_head.scalp(m, spec)
 for f, v in zip(fs, r["views"]):
-    hn = hair_read.hairness(f["image"], f["hair"], f["bg"], f["mm"])
+    hn = hair_read_measures.hairness(f["image"], f["hair"], f["bg"], f["mm"])
     im = np.asarray(f["image"], float).copy()
     e = hn["solid"] ^ ndi.binary_erosion(hn["solid"], iterations=2)
     k = f["skull"] ^ ndi.binary_erosion(f["skull"], iterations=2)
@@ -38,7 +39,7 @@ for f, v in zip(fs, r["views"]):
     hl = np.array(v.get("hairline") or [], float).reshape(-1, 3)
     if len(hl):
         P = sc.point(hl[:, 0], hl[:, 1], 0.0)
-        uv = humanfit.project(f["cam"], P)
+        uv = humanfit_views.project(f["cam"], P)
         for u_, v_ in uv[::2]:
             d.ellipse([u_ - 2, v_ - 2, u_ + 2, v_ + 2], fill=(40, 90, 255))
     p = v.get("parting") or {}

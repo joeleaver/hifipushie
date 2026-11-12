@@ -6,6 +6,7 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
+from hifipushie import blockin_look, blockin_models, face_ruler_blockin, humanfit_views
 
 SHOTS = os.environ.get("SHOTS", "/mnt/data/hifipushie/chinread/out:/mnt/data/hifipushie/solvereads/out:/mnt/data/hifipushie/garrettgood/out:/mnt/data/hifipushie/reruns/out:/mnt/data/hifipushie/refread/out").split(":")
 N = int(os.environ.get("SIZE", "560"))
@@ -29,22 +30,22 @@ def cut(im, box, cr):
     return im.resize((N, N), Image.LANCZOS)
 
 
-rj0 = bi._refs(cols[0][1])
+rj0 = blockin_models._refs(cols[0][1])
 nv = len(rj0["views"])
 # tiles per model and view: (blend, clay), full and chin
 data = {}
 crops = {}
 for lab, m in cols:
-    rj = bi._refs(m)
+    rj = blockin_models._refs(m)
     spec = store.load(m)
-    head = fr.model_head(spec)
+    head = face_ruler_blockin.model_head(spec)
     L = np.asarray(head["L"], float)
     for vi, (v, cam, box) in enumerate(zip(rj["views"], rj["cameras"], rj["blockin"]["boxes"])):
         img = Image.open(v["image"]).convert("RGB")
-        clay, lt, _ = bi.lit_render(head["mesh"], cam, img)
+        clay, lt, _ = blockin_look.lit_render(head["mesh"], cam, img)
         if clay.size != img.size:
             clay = clay.resize(img.size, Image.LANCZOS)
-        P = humanfit.project(cam, L[:68])
+        P = humanfit_views.project(cam, L[:68])
         mm = float(cam["t"][2]) / cam["f"] * 1000
         c = 0.5 * (P[33] + P[8]) + [0, 10 / mm]
         r = 58 / mm

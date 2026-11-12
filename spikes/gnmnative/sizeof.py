@@ -56,10 +56,11 @@ for name in sys.argv[2:]:
             e0 = float((sp_["base"]["head"].get("identity") or {}).get("eyes_000", 0.0))
             # the model's limbus at GNM's MEAN eye (eyes_000 = 0) against the picture's: the head's size the iris implies
             from hifipushie import base as basemod
-            if basemod.eye_native(sp_) is not None:
+            from hifipushie import base_implied
+            if base_implied.eye_native(sp_) is not None:
                 sp2 = json.loads(json.dumps(sp_))
                 sp2["base"]["head"]["identity"].pop("eyes_000", None)
-                mean_mm = 2000 * basemod.eye_native(sp2)["limbus"]
+                mean_mm = 2000 * base_implied.eye_native(sp2)["limbus"]
                 txt += f"; IRIS CHECK: picture {ic['photo_mm']:.2f} mm at the model, GNM's mean limbus here {mean_mm:.2f} mm: the iris says the head is {100 * (mean_mm / ic['photo_mm'] - 1):+.1f} % against this size (+- 7 %; eyes_000 now {e0:+.2f})"
     except Exception as e:  # noqa: BLE001
         txt += f"; iris check failed: {str(e)[:60]}"

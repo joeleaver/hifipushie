@@ -1,6 +1,6 @@
 """The block-in's LIPS step (gnmdetail, 2026-10-10; Joe: "still don't have her ... lip line, I know GNM CAN make those
 shapes"). Like the eye step (blockin_eyes.py): one MAP solve over GNM's identity (170) + its lower-face EXPRESSION
-(lower_face_region 0..NL-1), on the head as it ships (onemesh.head_template), driven by what the front picture shows,
+(lower_face_region 0..NL-1), on the head as it ships (onemesh_head.head_template), driven by what the front picture shows,
 the rest of the face held. Result: base.head.identity + the lower-face comps in base.head.expression; lip_seal and
 mouth_gap cleared (GNM's own expression closes the lips).
 
@@ -48,7 +48,7 @@ def _names():
 
 
 def border_loops():
-    """Head rows (onemesh.head_template's verts: GNM's skin rows) of the upper / lower vermilion border, ordered by x:
+    """Head rows (onemesh_head.head_template's verts: GNM's skin rows) of the upper / lower vermilion border, ordered by x:
     GNM's upper_lip / lower_lip groups' vertices next to exterior skin outside both lips."""
     from . import base_identity
     g = base_identity._gnm_data()
@@ -232,15 +232,16 @@ def lip_read(name: str) -> dict:
     borders' miss (rms, and mean offset + = the model's outside the picture's), the seam's miss, the Cupid's bow (mm,
     both), the neutral's contact gaps (max / median / min mm) and its inner rolls' smallest gap (- = crossing)."""
     from PIL import Image
-    from . import onemesh, store
+    from . import store
+    from . import onemesh_head
     from . import blockin_clay, blockin_expression, blockin_models
     rj = blockin_models._refs(name)
     vi = blockin_clay._front(rj)
     v = rj["views"][vi]
     ev = photo_evidence(Image.open(v["image"]).convert("RGB"), v)
     base = store.load(name)["base"]
-    hn = onemesh.head_template(base)
-    hv = onemesh.head_template(blockin_expression.view_base(base, rj, vi))
+    hn = onemesh_head.head_template(base)
+    hv = onemesh_head.head_template(blockin_expression.view_base(base, rj, vi))
     to_world, _ = head_to_world(base, hn)
     q = lip_reads(hv, ev, to_world, rj["cameras"][vi])
     qn = lip_reads(hn)
@@ -262,10 +263,11 @@ def read_text(r: dict) -> str:
 
 def _head(base, c, ex: dict):
     from . import blockin as bi, onemesh
+    from . import onemesh_head
     b = copy.deepcopy(base)
     bi.set_identity({"base": b}, c)
     b["head"]["expression"] = {k: round(float(v), 6) for k, v in ex.items() if abs(v) > 1e-7}
-    ht = onemesh.head_template(b)
+    ht = onemesh_head.head_template(b)
     for kk in [k for k in onemesh._CACHE if isinstance(k, tuple) and k and k[0] == "head_t"]:
         onemesh._CACHE.pop(kk, None)
     return ht

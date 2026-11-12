@@ -130,8 +130,9 @@ def fold_read(c: Context) -> dict:
     """The checklist: {fold: {"readable", "why", "sides": {side: {"present", "picture", "ours", "diff" (the picture's
     valley over ours, log luminance), "excess" (ours over the picture's), "share", "extent" [t0, t1], "shift" [mm at
     N_SHIFT stations], "confidence", "views"}}}}; + "fields": the fine-line zones."""
-    from . import skin as skinmod, skin_folds as sf
-    J = skinmod._joints(c.st)
+    from . import skin_folds as sf
+    from . import skin_zones
+    J = skin_zones._joints(c.st)
     part = (c.st.get("skin") or {}).get("part", "body")
     native = {f["view"]: f.get("mm_native", f["mm"]) for f in c.frames}
     out = {}
@@ -361,8 +362,8 @@ def _lid_read(c: Context, nominal: dict) -> dict:
         # OUR lid margin through the same camera (the upper lid's landmarks): the path's height over OUR lashes
         h_own = None
         try:
-            from . import skin as skinmod
-            Jl = skinmod._joints(c.st)
+            from . import skin_zones
+            Jl = skin_zones._joints(c.st)
             Mg = humanfit_views.project(f["cam"], np.array([Jl[k_ + sd] for k_ in ("lm_eye_inner", "lm_lid_upper_in", "lm_lid_upper", "lm_lid_upper_out", "lm_eye_outer")])) - o
             mt, mh = (Mg @ ex) * np.sign(span), -(Mg @ ey)
             om = np.argsort(mt)

@@ -2,6 +2,7 @@ import json, os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin_brows as bb, eye_ruler as er, likeness
+from hifipushie import likeness_detect
 G = os.environ["G"] + "/out"
 bx = json.load(open(G + "/box.json")); K, box = bx["K"], bx["box"]
 q = bb._inputs("gd_T12")
@@ -11,7 +12,7 @@ for tag in sys.argv[1:]:
         eyes = er.read(q["img"], q["P"], q["mm"], debug=True)
     else:
         im = Image.open(f"{G}/s_{tag}.png").convert("RGB")
-        P = np.asarray(likeness.detect([im])[0], float)[:, :2] / K + box[:2]
+        P = np.asarray(likeness_detect.detect([im])[0], float)[:, :2] / K + box[:2]
         eyes = er.read(im, P, q["mm"], scale=K, origin=box[:2], debug=True)
     t = []
     for e in eyes:

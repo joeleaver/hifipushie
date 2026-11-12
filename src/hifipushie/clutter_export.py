@@ -209,6 +209,7 @@ def _export_litter(cfg: dict, out: Path, stem: str, progress=None) -> dict:
     """A debris patch: LOD 0 an octagon lifted a little in the middle (8 triangles), LOD 1 a quad; one RGBA picture
     per season (all variants in it); no normal map (a flat lie: the vertex normal is the ground's up)."""
     from . import veg_export
+    from . import veg_export_parts
     f = cfg["form"]
     nv = cfg["variants"]
     grid = 1 if nv == 1 else 2
@@ -277,7 +278,7 @@ def _export_litter(cfg: dict, out: Path, stem: str, progress=None) -> dict:
          "slot_list": [{"slot": "litter", "on": on, "hidden_in": ["snow"], "channels": ["NORMAL", "POSITION", "TEXCOORD_0"]}],
          "slots": {"litter": state("summer")}, "default": "summer", "variants": [],
          "seasons": {se: {"litter": state(se)} for se in ("spring", "summer", "autumn", "winter", "snow")},
-         "snow": {**veg_export.snow_numbers({}, None), "coverage": 0.0, "hidden": True, "note": "a debris patch is not snowed on: it is hidden under snow (slot_list hidden_in)"}, "impostor": None, "alpha_mips": clutter.ALPHA_MIPS,
+         "snow": {**veg_export_parts.snow_numbers({}, None), "coverage": 0.0, "hidden": True, "note": "a debris patch is not snowed on: it is hidden under snow (slot_list hidden_in)"}, "impostor": None, "alpha_mips": clutter.ALPHA_MIPS,
          "clutter": {"size_m": 1.0, "what_scale_means": "instance scale = the patch's width in metres", "height_m": f["dome"], "sink_m": 0.0,
                      "pivot": "the ground: lay it ON the surface, turned to the ground's normal (a decal with a mesh); draw after the terrain with a small depth bias, or lift it 1 cm",
                      "size_range_m": cfg["size_range"], "place": cfg["place"], "variants": variants,
@@ -296,6 +297,7 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     <stem>.glb (every variant's LOD 0 in a row, to look at), <stem>_seasons.json (the plant contract's shape: grade
     "clutter", kind, slots, lods, variants, sizes, recipes). Returns the json."""
     from . import veg_export
+    from . import veg_export_parts
     from .terrain_style import _srgb_lin as _lin
     cfg = resolve(spec)
     out = Path(out_dir)
@@ -362,7 +364,7 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
         if leaf:
             st["alphaCutoff"] = 0.5
         return st
-    snow = veg_export.snow_numbers({}, None)
+    snow = veg_export_parts.snow_numbers({}, None)
     snow.pop("variant", None)
     channels = ["NORMAL", "POSITION", "TANGENT", "TEXCOORD_0"] + (["TEXCOORD_1", "TEXCOORD_2", "_WIND"] if leaf else [])
     J = {"contract": {"version": veg_export.CONTRACT, "changes": veg_export.CONTRACT_LOG,

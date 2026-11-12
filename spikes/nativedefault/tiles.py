@@ -19,6 +19,7 @@ import stage  # noqa: E402
 import tour  # noqa: E402,F401
 
 from hifipushie import blockin as bi, humanfit, resources, skin_read, store  # noqa: E402
+from hifipushie import blockin_clay, blockin_expression, blockin_focus, blockin_models, humanfit_views, skin_read_frames
 
 F = bi.FEATURES
 F.setdefault("face", {"lm": list(range(0, 68)), "pairs": [], "lines": [], "stages": (), "squint_mm": 6.0, "pad": 1.25})
@@ -37,14 +38,14 @@ def head_box(L2):
 
 
 def boxes_of(m, feats):
-    spec, rj = store.load(m), bi._refs(m)
+    spec, rj = store.load(m), blockin_models._refs(m)
     VI = list(range(len(rj["views"])))
-    meshes = bi._per_view(spec["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
+    meshes = blockin_expression._per_view(spec["base"], rj, VI, lambda b: blockin_clay.presented_mesh(b, rj=rj))
     out = {}
     for vi in VI:
-        L2 = humanfit.project(rj["cameras"][vi], meshes[vi]["state"]["L"])
+        L2 = humanfit_views.project(rj["cameras"][vi], meshes[vi]["state"]["L"])
         for f in feats:
-            out[(f, vi)] = [float(x) for x in (head_box(L2) if f == "head" else bi._feature_box(f, L2))]
+            out[(f, vi)] = [float(x) for x in (head_box(L2) if f == "head" else blockin_focus._feature_box(f, L2))]
     return out
 
 
@@ -56,7 +57,7 @@ def main():
     os.makedirs(out, exist_ok=True)
     feats = [f for f in kw.get("feats", "eyes,eyeR,eyeL,nose,mouth,chin,mouth_chin,chin_jaw,brow_forehead,face").split(",") if f]
     hair_on = kw.get("hair", "1") == "1"
-    rj = bi._refs(m)
+    rj = blockin_models._refs(m)
     VI = [int(x) for x in kw["views"].split(",")] if kw.get("views") else list(range(len(rj["views"])))
     B = boxes_of(kw.get("boxes", m), feats + ["head"])
     sfx = kw.get("suffix", "")
@@ -64,7 +65,7 @@ def main():
     spec = store.load(m)
     for vi in VI:
         cam = rj["cameras"][vi]
-        light = skin_read.photo_light(lm, int(kw.get("vlight", vi)))   # vlight=0: the front picture's light on every view
+        light = skin_read_frames.photo_light(lm, int(kw.get("vlight", vi)))   # vlight=0: the front picture's light on every view
         print(f"view {vi}: light of {lm}, exposure {light.get('exposure'):+.2f} EV (measured: {light.get('measured')})")
         fr = [stage.fitted_frame(cam, B[(f, vi)], f"{f}_v{vi}") for f in feats]
         with resources.heavy(f"nativedefault tiles {m} v{vi}", gb=6):

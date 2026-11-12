@@ -17,12 +17,13 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import base as basemod, faceatlas, faceid, faceslide, likeness, store
+from hifipushie import base_identity, likeness_render
 
 OUT = Path(os.environ.get("OUT", "/mnt/data/hifipushie/faces4/out/perc"))
 OUT.mkdir(parents=True, exist_ok=True)
 VIEWS = [float(v) for v in os.environ.get("VIEWS", "0,-30,30").split(",")]
 PX = 256
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 TPL = np.asarray(g["template_vertex_positions"], float)
 N = len(TPL)
 IB = np.asarray(g["vertex_identity_basis"], float)
@@ -89,7 +90,7 @@ def render(V, yaw):
     cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.8], "f": PX / 2 * 0.8 / half, "size": [PX, PX],
            "centre": list(map(float, cen)), "yaw": yaw}
     mesh = {"V": W, "F": F_SKIN, "eyes": [(W, f, col) for f, col in EYE_PARTS], "L": L}
-    im, _ = likeness.render(mesh, cam, (0, 0, PX, PX), px=PX, brows=True)
+    im, _ = likeness_render.render(mesh, cam, (0, 0, PX, PX), px=PX, brows=True)
     return im
 
 

@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 
 from . import asset
-from . import assemble, sdf, store, surface
+from . import sdf, store, surface
+from . import assemble_expand
 from .spec import compile_prims
 from .asset_hidden import _deep_hidden
 
@@ -49,7 +50,7 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
     prims = compile_prims(spec)
     full = {ps[0].part: ps for ps in sdf.streams(prims)}
     lo, voxel, shape = sdf.frame(prims, resolution)
-    pls = assemble.placements(spec) if instancing else {}
+    pls = assemble_expand.placements(spec) if instancing else {}
     by_pf: dict[str, list] = {}
     for inst, pl in pls.items():
         by_pf.setdefault(pl["use"], []).append(inst)
@@ -63,7 +64,7 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
                        + (" (export: unique)" if mode == "unique" else ""))
             continue
         bake = next((i for i in insts if not pls[i]["mirror"]), insts[0])
-        shared[pf] = {"bake": bake, "instances": {i: assemble.world_of(pls[i]) for i in insts}, "parts": []}
+        shared[pf] = {"bake": bake, "instances": {i: assemble_expand.world_of(pls[i]) for i in insts}, "parts": []}
     owner = {inst: pf for pf, d in shared.items() for inst in d["instances"]}
     xs, origin = {}, {}
     for pn, ps in full.items():
@@ -85,13 +86,13 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
     frames = {}
     for key, ps in xs.items():
         if key == origin[key]:
-            from . import scene as scenemod
-            pv, _ = scenemod.part_voxel(ps, voxel)
+            from . import scene_objects
+            pv, _ = scene_objects.part_voxel(ps, voxel)
             if (voxels or {}).get(key):
                 pv = min(pv, float(voxels[key]))
             # a part finer than the model's voxel (a shirt collar's 6 mm sheet, a strap) on its own grid, as the
             # scene meshes it: at the model's 7.8 mm the collar came out as shreds
-            frames[key] = (lo, voxel, shape) if pv >= voxel else scenemod._frame(ps, pv)
+            frames[key] = (lo, voxel, shape) if pv >= voxel else scene_objects._frame(ps, pv)
             continue
         # a prefab is meshed in a box of its own, finer if it's small (`resolution` voxels across it)
         pf = key.split("/")[0]

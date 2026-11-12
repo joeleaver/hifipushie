@@ -14,6 +14,7 @@ from scipy import ndimage as ndi
 
 import stage
 from hifipushie import hair, store
+from hifipushie import hair_card_fit, hair_head, hair_look
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -23,7 +24,7 @@ N = 1536
 W, H = 1152, 1536
 BOX = [-(H - W) / 2, 0, W + (H - W) / 2, H]
 spec = store.load(m)
-sc = hair.scalp(m, spec)
+sc = hair_head.scalp(m, spec)
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
 A, E = np.meshgrid(np.arange(0, 360, 1.0), np.arange(float(sc.EL[0]) + 2, 90, 1.0))
 P = sc.point(A.ravel(), E.ravel(), 0.0)
@@ -42,16 +43,16 @@ res = {}
 for i in (0, 1, 2):
     cam = refs["cameras"][i]
     fm = stage.fitted_frame(cam, BOX, f"v{i}")
-    uv, z = hair._project_frame(fm, P, N)
+    uv, z = hair_look._project_frame(fm, P, N)
     sk = np.zeros((N, N), bool)
     q = np.round(uv).astype(int)
     ok = (q[:, 0] >= 0) & (q[:, 0] < N) & (q[:, 1] >= 0) & (q[:, 1] < N)
     sk[q[ok, 1], q[ok, 0]] = True
     sk = ndi.binary_fill_holes(ndi.binary_closing(sk, iterations=6))
-    c, zc = hair._project_frame(fm, sc.C[None], N)
+    c, zc = hair_look._project_frame(fm, sc.C[None], N)
     c = c[0]
     mm = float(zc[0]) / float(cam["f"]) * 1000.0  # (the square is the picture's own pixels)
-    pic = hair.ref_square(Image.open(refs["views"][i]["image"]).convert("RGB"), N)
+    pic = hair_card_fit.ref_square(Image.open(refs["views"][i]["image"]).convert("RGB"), N)
     hers = hairmask(pic)
     f_ours = f"{tiles}/s_{m}_v{i}.png"
     ours = hairmask(Image.open(f_ours).resize((N, N))) if os.path.exists(f_ours) else None

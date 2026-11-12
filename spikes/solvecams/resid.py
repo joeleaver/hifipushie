@@ -3,6 +3,7 @@ whether or not the chain used them): per type and view n, rms mm, rms in sigmas 
 import json, sys
 import numpy as np
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_compare, face_ruler_solve
 import common as C
 
 fr.DENSE = True
@@ -10,10 +11,10 @@ out = {}
 for name in sys.argv[2:]:
     rj = C.refs(name)
     b0 = rj.get("blockin") or {}
-    head, views, notes = fr.reference_views(name, lids=True, lips=True, parse="auto", kinds=b0.get("kinds"), readers=b0.get("readers"))
+    head, views, notes = face_ruler_compare.reference_views(name, lids=True, lips=True, parse="auto", kinds=b0.get("kinds"), readers=b0.get("readers"))
     for v in views:
         v["extra_obs"] = v["extra"](head, v)
-    obs = fr.observe(head, views)
+    obs = face_ruler_solve.observe(head, views)
     r = {}
     for ob in obs:
         r.setdefault(f"{ob['type']} {ob['view']}", []).append((ob["o"], ob["sig"]))

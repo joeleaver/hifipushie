@@ -1,3 +1,4 @@
 import sys
 from hifipushie import hair
-print(hair.groom(sys.argv[1], note="hair: wisps rooted inside the hairline"))
+from hifipushie import hair_spec
+print(hair_spec.groom(sys.argv[1], note="hair: wisps rooted inside the hairline"))

@@ -17,6 +17,7 @@ import rock_round  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 from hifipushie import terrain, terrain_mesh, terrain_swatch as ts  # noqa: E402
+from hifipushie import terrain_model, terrain_tile_views, terrain_tiles
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -45,11 +46,11 @@ def main():
                                                                     "scan:rock_wall_02"]
     rev = sys.argv[sys.argv.index("--old-rev") + 1] if "--old-rev" in sys.argv else "HEAD"
     V = json.loads((Path(__file__).parent / "rock_views.json").read_text())
-    T = terrain.load(rock_round.ROOT / rock_round.SPECS[name])
+    T = terrain_model.load(rock_round.ROOT / rock_round.SPECS[name])
     cfg = V[name]["near"]
     o = out / f"{name}_near"
     if "--render-only" not in sys.argv:
-        terrain_mesh.preview_tiles(T, o, cfg["center"], cfg.get("radius", 40.0), 8.0, {**(cfg.get("cfg") or {}),
+        terrain_tiles.preview_tiles(T, o, cfg["center"], cfg.get("radius", 40.0), 8.0, {**(cfg.get("cfg") or {}),
                                                                                       "detail": True})
     M = json.loads((o / "manifest.json").read_text())
     stats = {}
@@ -63,7 +64,7 @@ def main():
         tag = src.replace(":", "_")
         for v in views:
             v["out"] = str(o / f"{tag}_{v['name']}.png")
-        terrain_mesh.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, textured="detail")
+        terrain_tile_views.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, textured="detail")
         print(src, "done", flush=True)
     (out / "stats.json").write_text(json.dumps(stats, indent=1))
     # one sheet per view: every swatch side by side, labelled

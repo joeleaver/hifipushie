@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import likeness, likeness_eyes as le
+from hifipushie import likeness_detect, likeness_measure, likeness_sides
 from hifipushie import likeness_pair as lp
 from hifipushie import store
 
@@ -28,8 +29,8 @@ def angle(P, c, a, b):
     return float(np.degrees(np.arccos(np.clip(u @ v / np.linalg.norm(u) / np.linalg.norm(v), -1, 1))))
 
 
-refs = likeness._refs("fs_garrett")
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs("fs_garrett")
+ph = likeness_sides.photo_sides(refs)[0]
 if var == "photo":
     img, P, mmpx = ph["img"].crop(tuple(int(round(v)) for v in ph["box"])), None, ph["mmpx"]
     side = ph["side"]
@@ -40,9 +41,9 @@ elif var.startswith("png="):
     im = Image.open(var[4:]).convert("RGB")
     crop = sheet1.crop_of(refs["views"][0])
     s = im.size[0] / (crop[2] - crop[0])
-    d = likeness.detect([im])[0]
+    d = likeness_detect.detect([im])[0]
     Pr = np.asarray(d["P"] if isinstance(d, dict) else d, float)[:, :2]
-    side = likeness.Side(Pr / s + np.array(crop[:2]), None, "detector")
+    side = likeness_measure.Side(Pr / s + np.array(crop[:2]), None, "detector")
     mmpx = ph["mmpx"]
     img = im.resize((int(im.size[0] / s), int(im.size[1] / s)))
     off = np.array(crop[:2])

@@ -9,7 +9,7 @@
   fold_form_gate, FOLD_FORM_MAX_MM), sculpt refusal + EXPRESSION_PRESETS, hair budget in card faces
   (hair.BUDGET_UNIT, card_allowance, asset_budget.hair_budget), single-sided cards need back faces, review input gate
   (reviewgate), heavy-job declaration, git guard hooks, doc sizes, incremental == cold, gate-measure self-tests.
-- Rule 5 (new): asset_gates.same_view / game_light_view / MixedViewTransform; scene.look and asset_export.preview refuse the game
+- Rule 5 (new): asset_gates.same_view / game_light_view / MixedViewTransform; scene_sync.look and asset_export.preview refuse the game
   rig (GAME_LIGHT lights) under any view but its own; face_light_check(..., views=(stage, shipped)) is REQUIRED and
   raises on a mix. Test: test_mixed_view_transforms_are_refused.
 - Rule 12 (new): known-answer self-tests for asset_gates.face_light_check and cloth_check.seams (validated.GATE_MEASURES).

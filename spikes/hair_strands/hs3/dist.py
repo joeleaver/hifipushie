@@ -4,6 +4,7 @@ import json, os, sys
 from pathlib import Path
 from PIL import Image, ImageDraw
 from hifipushie import hair
+from hifipushie import hair_look
 name, d, out = sys.argv[1], Path(sys.argv[2]), sys.argv[3]
 kw = dict(a.split("=", 1) for a in sys.argv[4:])
 rep = json.loads((d / f"{name}_hair.json").read_text())
@@ -13,7 +14,7 @@ rows = []
 for tier, dist in (("hero", 0.62), ("main", 1.5), ("npc", 3.0), ("far", 8.0)):
     if tier not in rep["tiers"]:
         continue
-    imgs, _, _ = hair.look_glb(name, rep["tiers"][tier]["glb"], views=views, size=size, alpha=kw.get("alpha", "test"), dist=dist)
+    imgs, _, _ = hair_look.look_glb(name, rep["tiers"][tier]["glb"], views=views, size=size, alpha=kw.get("alpha", "test"), dist=dist)
     rows.append((f"{tier} at {dist} m ({rep['tiers'][tier]['triangles']} triangles), alpha {kw.get('alpha', 'test')}", imgs))
 img = Image.new("RGB", (size * len(views), len(rows) * (size + 18)), (30, 31, 35))
 dr = ImageDraw.Draw(img)

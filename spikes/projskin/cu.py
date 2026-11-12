@@ -8,13 +8,14 @@ import numpy as np
 from PIL import Image
 import stage
 from hifipushie import blockin as bi, humanfit, skin_project, store
+from hifipushie import blockin_clay, blockin_expression, blockin_focus, blockin_look, blockin_models, humanfit_views, skin_project_model
 
 m, out = sys.argv[1:3]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
 ref, T, hair = kw.get("ref", m), int(kw.get("size", 700)), kw.get("hair", "1") == "1"
 own = kw.get("own", m)
 os.makedirs(out, exist_ok=True)
-rj = bi._refs(ref)
+rj = blockin_models._refs(ref)
 F = bi.FEATURES
 F.setdefault("cu_mouth", {"lm": list(range(48, 68)) + [33, 8], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.25})
 F.setdefault("cu_eye", {"lm": list(range(42, 48)), "pairs": [], "lines": [], "stages": (), "squint_mm": 1.0, "pad": 1.9})
@@ -24,13 +25,14 @@ F.setdefault("cu_eyes", {"lm": list(range(42, 48)) + [22, 23, 24, 25, 26], "pair
 F.setdefault("cu_forehead", {"lm": list(range(17, 27)), "pairs": [], "lines": [], "stages": (), "squint_mm": 3.0, "pad": 1.1})   # brows to above the hairline
 F.setdefault("cu_eyesR", {"lm": list(range(36, 42)) + [17, 18, 19, 20, 21], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.35})
 VI = [int(x) for x in kw.get("views", "0,1").split(",")][: len(rj["views"])]
-meshes = bi._per_view(store.load(ref)["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
+meshes = blockin_expression._per_view(store.load(ref)["base"], rj, VI, lambda b: blockin_clay.presented_mesh(b, rj=rj))
 rp = store._dir(own) / "skin_projection" / "report.json"
 rep = json.loads(rp.read_text()) if rp.exists() else None
 pose = json.loads(kw["pose"]) if kw.get("pose") else None
 try:   # the eyes' mean axis (eye -> eye_front joints): the catchlight is aimed by it
     from hifipushie import skin as _skin
-    _J = _skin._joints(store.load(m))
+    from hifipushie import skin_zones
+    _J = skin_zones._joints(store.load(m))
     _GAZE = sum((_J[f"eye_front{s_}"] - _J[f"eye{s_}"]) / np.linalg.norm(_J[f"eye_front{s_}"] - _J[f"eye{s_}"]) for s_ in (".L", ".R"))
     _GAZE = _GAZE / np.linalg.norm(_GAZE)
 except Exception as _e:   # (no eye joints: the camera-relative window)
@@ -39,16 +41,16 @@ flat = kw.get("flat") == "1"
 shots, first = [], None   # every view's close-ups, each under its own view's light: ONE Blender for the run
 for vi in VI:
     cam = rj["cameras"][vi]
-    L2 = humanfit.project(cam, meshes[vi]["state"]["L"])
+    L2 = humanfit_views.project(cam, meshes[vi]["state"]["L"])
     frames = []
     for f in ((("cheek",) if "only" not in kw else tuple(kw["only"].split(","))) if kw.get("rake") == "1" else tuple(kw.get("only", "mouth,eye,eyes").split(","))):
-        b = [float(x) for x in bi._feature_box("cu_" + f, L2)]
+        b = [float(x) for x in blockin_focus._feature_box("cu_" + f, L2)]
         if f == "forehead":   # the brows sit at the box's centre: lift it so the hairline is in (brows at ~3/4 down)
             sh = 0.27 * (b[3] - b[1]); b = [b[0], b[1] - sh, b[2], b[3] - sh]
         frames.append(stage.fitted_frame(cam, b, f"{f}_v{vi}"))
         Image.open(rj["views"][vi]["image"]).convert("RGB").crop(tuple(int(round(x)) for x in b)).resize((T, T), Image.LANCZOS).save(f"{out}/{f}_v{vi}_ref{('_' + kw['tag']) if kw.get('tag') else ''}.png")
     lt = ((rep or {}).get("views") or {}).get(str(vi), {}).get("light")
-    light = skin_project.stage_light(lt) if lt else bi.photo_lighting(ref, stage.FRONT_LIGHT, vi)
+    light = skin_project_model.stage_light(lt) if lt else blockin_look.photo_lighting(ref, stage.FRONT_LIGHT, vi)
     if kw.get("rake") == "1":   # a RAKING light: one low sun from the subject's side, across the cheek (relief)
         light = {"lights": [{"dir": [0.85, -0.25, -0.1], "energy": 3.5, "color": [1, 1, 1], "angle": 4},
                             {"dir": [0.0, -1.0, 0.1], "energy": 0.15, "color": [1, 1, 1], "angle": 40, "shadow": False, "specular": 0.0}],

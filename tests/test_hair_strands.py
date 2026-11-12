@@ -14,6 +14,7 @@ from hifipushie import hair_cards as hc
 from hifipushie import hair_cards_atlas, hair_cards_budget, hair_cards_clumps, hair_cards_mass, hair_cards_mesh
 from hifipushie import hair_checks as hk
 from hifipushie import hair_strands as hs
+from hifipushie import hair_strands_eval, hair_strands_guides, hair_strands_job
 
 
 def _lock(name, P, width=0.03, free=1.0, core=None):
@@ -67,7 +68,7 @@ def test_lock_grey_reaches_the_strands():
     """A lock's own grey (greying temples, sideburns) is the share of grey strands it grows (hp_gr per guide)."""
     locks = _hanging(2)
     locks[0]["inputs"]["Grey"] = 0.4
-    G = hs.lock_guides(locks, np.zeros(3), hc.strands_of({}))
+    G = hair_strands_guides.lock_guides(locks, np.zeros(3), hc.strands_of({}))
     assert np.allclose(G["free"]["gr"], [0.4, 0.0])
 
 
@@ -106,8 +107,8 @@ def test_short_hair_is_drawn_on_the_cap():
          "sub": np.zeros(1, np.float32), "rand": np.array([0.9], np.float32), "radius": np.zeros(1, np.float32),
          "obj": np.array([0], np.int32), "names": np.array(["hair_guides_free"])}
     S = {**hc.strands_of({}), "soft": 0.008}
-    c0 = hs.cap_chart(sc, g, line, S, D, float(hair_head.Scalp.EL[0]), 256)
-    c1 = hs.cap_chart(sc, g, line, S, D, float(hair_head.Scalp.EL[0]), 256, short=True)
+    c0 = hair_strands_eval.cap_chart(sc, g, line, S, D, float(hair_head.Scalp.EL[0]), 256)
+    c1 = hair_strands_eval.cap_chart(sc, g, line, S, D, float(hair_head.Scalp.EL[0]), 256, short=True)
     assert np.abs(c1["id"] - c0["id"]).max() > 0.2  # the strand's own id is in the short chart only
     assert (np.abs(c1["id"] - 0.9) < 0.05).sum() >= 8 and (np.abs(c0["id"] - 0.9) < 0.05).sum() == 0
 
@@ -214,7 +215,7 @@ def test_strands_key_is_the_content():
             np.savez(d / f"{nm}.npz", pts=np.arange(30, dtype=np.float32).reshape(10, 3), n=np.arange(4))
         sd = {"scalp": str(d / "s.npz"), "collide": str(d / "c.npz"), "look": {"lit": "#%06x" % i}, "physical": {"count": 5},
               "groups": [{"name": "hair_guides", "guides": str(d / "g.npz"), "stack": [["x", {"a": 1.0}]]}], "e0": -70.0}
-        keys.append(hs.key(sd))
+        keys.append(hair_strands_job.key(sd))
         time.sleep(2.1)
     assert keys[0] == keys[1], keys
 
@@ -394,14 +395,14 @@ def test_wisp_opens_and_is_sparse():
     toward the tip and goes round, and it gets fewer strands for its section than a ribbon would (Tess, 2026-10-09)."""
     S = {**hc.STRANDS, "wave": 0.0}
     wisp = _lock("tf0", [[0.06, -0.08, 0.0], [0.06, -0.08, -0.04], [0.06, -0.08, -0.08], [0.06, -0.08, -0.12]], width=0.005)
-    G = hs.lock_guides([wisp], np.zeros(3), S)["free"]
+    G = hair_strands_guides.lock_guides([wisp], np.zeros(3), S)["free"]
     side = np.linalg.norm(np.asarray(G["side"], float).reshape(-1, 3), axis=1)
     out = np.linalg.norm(np.asarray(G["out"], float).reshape(-1, 3), axis=1)
     assert side[-1] > 2.0 * side[0], (side[0], side[-1])  # opens toward the tip
     assert out[-1] > 0.8 * side[-1]  # round, not a ribbon
     hs.WISP_FAN, old = 0.0, hs.WISP_FAN
     try:
-        G0 = hs.lock_guides([wisp], np.zeros(3), S)["free"]
+        G0 = hair_strands_guides.lock_guides([wisp], np.zeros(3), S)["free"]
     finally:
         hs.WISP_FAN = old
     assert float(np.sum(G["weight"])) < 0.5 * float(np.sum(G0["weight"]))  # sparser than the old comb
@@ -420,7 +421,7 @@ def test_lock_density_scales_its_strand_share():
     P = [[0.0, -0.09, 0.05], [0.0, -0.06, 0.08], [0.0, -0.02, 0.1], [0.0, 0.03, 0.1]]
     a = _lock("a", P, free=0.0)
     b = dict(_lock("b", P, free=0.0), strands={"density": 0.5})
-    G = hs.lock_guides([a, b], np.zeros(3), S)["head"]
+    G = hair_strands_guides.lock_guides([a, b], np.zeros(3), S)["head"]
     w, d = np.asarray(G["weight"], float), np.asarray(G["density"], float)
     assert abs(w[1] / w[0] - 1.0) < 1e-6 and d.tolist() == [1.0, 0.5], (w, d)
 
@@ -435,11 +436,11 @@ def test_hair_age_runs_on_through_the_tie():
     Q = [[0.0, 0.03, 0.1], [0.0, 0.06, 0.05], [0.0, 0.07, 0.0], [0.0, 0.07, -0.08]]
     g = _lock("tg1_0", P, free=0.0)
     t = _lock("tt0", Q, free=1.0)
-    G = hs.lock_guides([g, t], np.zeros(3), S)
+    G = hair_strands_guides.lock_guides([g, t], np.zeros(3), S)
     gl = float(np.linalg.norm(np.diff(np.asarray(P), axis=0), axis=1).sum())
     assert G["head"]["a0"].tolist() == [0.0] and abs(float(G["head"]["a1"][0]) - gl) < 0.01
     assert abs(float(G["free"]["a0"][0]) - gl) < 1e-6 and float(G["free"]["a1"][0]) > gl + 0.15
-    G2 = hs.lock_guides([dict(_lock("loose3", Q, free=1.0))], np.zeros(3), S)  # loose hair: its own root
+    G2 = hair_strands_guides.lock_guides([dict(_lock("loose3", Q, free=1.0))], np.zeros(3), S)  # loose hair: its own root
     assert G2["free"]["a0"].tolist() == [0.0]
     lk = hair.full_look({})
     assert lk["variation"] > 0 and lk["sun"] > 0 and lk["highlights"] == 0 and lk["fly_light"] > 0
@@ -474,11 +475,11 @@ def test_single_hair_locks_get_their_own_object():
     P = [[0.06, -0.08, 0.0], [0.06, -0.08, -0.04], [0.06, -0.08, -0.08], [0.06, -0.08, -0.12]]
     a = _lock("tt0", P, width=0.03)
     w = dict(_lock("tf0", P, width=0.002), hairs=2)
-    G1, G2 = hs.lock_guides([a], np.zeros(3), S), hs.lock_guides([a, w], np.zeros(3), S)
+    G1, G2 = hair_strands_guides.lock_guides([a], np.zeros(3), S), hair_strands_guides.lock_guides([a, w], np.zeros(3), S)
     assert set(G1) == {"free"} and set(G2) == {"free", "wisp"}
     assert all(np.array_equal(G1["free"][k], G2["free"][k]) for k in G1["free"])
     assert G2["wisp"]["hairs"].tolist() == [2] and float(G2["wisp"]["weight"].sum()) == 0.0
-    st = hs.stacks(S, 0.0, 8.0, 0.0, 0.05, n_wisp=1.0)[hs.WISPS]
+    st = hair_strands_job.stacks(S, 0.0, 8.0, 0.0, 0.05, n_wisp=1.0)[hs.WISPS]
     assert st[0][1]["Amount"] == 1.0 and st[0][1]["Clump"] == 0.0 and st[0][1]["Fine"] == 1.0 and st[0][1]["Flyaway"] == 0.0
 
 
@@ -486,12 +487,12 @@ def test_halo_and_free_dials_only_when_asked():
     """halo = 0 and no strands.free: the stacks are the old ones exactly (the strand cache's key); halo adds the lens
     inputs, less of it on hair that left the head; strands.free overrides dials for that hair alone."""
     S = {**hc.STRANDS}
-    st = hs.stacks(S, 8.0, 8.0, 0.0, 0.05)
+    st = hair_strands_job.stacks(S, 8.0, 8.0, 0.0, 0.05)
     assert not any(k in st["hair_guides"][0][1] for k in ("Halo", "Fine"))
-    sh = hs.stacks({**S, "halo": 0.5}, 8.0, 8.0, 0.0, 0.05)
+    sh = hair_strands_job.stacks({**S, "halo": 0.5}, 8.0, 8.0, 0.0, 0.05)
     assert abs(sh["hair_guides"][0][1]["Halo"] - 0.05) < 1e-9
     assert sh["hair_guides_free"][0][1]["Halo"] < 0.5 * sh["hair_guides"][0][1]["Halo"]
-    sf = hs.stacks({**S, "free": {"loose": 0.0}}, 8.0, 8.0, 0.0, 0.05)
+    sf = hair_strands_job.stacks({**S, "free": {"loose": 0.0}}, 8.0, 8.0, 0.0, 0.05)
     assert sf["hair_guides"] == st["hair_guides"]
     assert [g for g, _ in sf["hair_guides_free"]].count("Hair Curves Noise") == 0
     assert [g for g, _ in st["hair_guides_free"]].count("Hair Curves Noise") == 1
@@ -502,8 +503,8 @@ def test_lock_own_clump_tips_roots():
     P = [[0.06, -0.08, 0.0], [0.06, -0.08, -0.04], [0.06, -0.08, -0.08], [0.06, -0.08, -0.12]]
     a = _lock("tt0", P)
     b = dict(_lock("tt1", P), strands={"clump": 0.6, "tips": 1.0, "roots": 0.0})
-    G0 = hs.lock_guides([a], np.zeros(3), S)["free"]
-    G = hs.lock_guides([a, b], np.zeros(3), S)["free"]
+    G0 = hair_strands_guides.lock_guides([a], np.zeros(3), S)["free"]
+    G = hair_strands_guides.lock_guides([a, b], np.zeros(3), S)["free"]
     assert "clx" not in G0  # (no lock asks: the old file)
     assert np.allclose(G["clx"], [0.0, 2.0]) and np.allclose(G["ts"], [1.0, 2.0]) and np.allclose(G["rs"], [1.0, 0.0])
 
@@ -543,8 +544,8 @@ def test_all_even_roots_are_full_length_children():
     """strands.even 1 (Joe: density is uniform, the style is only direction): the even layer is the whole hair, children
     of the dense lock guides at full length (no cover-layer trim); below 1 it stays the trimmed cover layer."""
     S = {**hc.STRANDS}
-    part = hs.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0)["hair_even"]
-    full = hs.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0, even_all=True)["hair_even"]
+    part = hair_strands_job.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0)["hair_even"]
+    full = hair_strands_job.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0, even_all=True)["hair_even"]
     assert [g for g, _ in part].count("Trim Hair Curves") == 1
     assert [g for g, _ in full].count("Trim Hair Curves") == 0
     assert full[0][1]["Part by Mesh Islands"] is True
@@ -555,12 +556,12 @@ def test_banks_split_the_even_layer_at_the_part():
     """Each bank of the part is its own even object (Blender's mesh-island parting still averaged guides across the
     part: children on the line fell down the forehead): hair_even_r is the same stack on the right bank's mask."""
     S = {**hc.STRANDS}
-    st = hs.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0, even_all=True, banks=True)
+    st = hair_strands_job.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0, even_all=True, banks=True)
     assert st["hair_even"][0][1]["Density Mask"] == {"attribute": "hp_density_even_l"}
     assert st["hair_even_r"][0][1]["Density Mask"] == {"attribute": "hp_density_even_r"}
     assert [g for g, _ in st["hair_even"]] == [g for g, _ in st["hair_even_r"]]
     G = {"counts": np.array([2, 3], np.int32), "pts": np.arange(15, dtype=float).reshape(5, 3), "names": np.array(["a", "b"])}
-    sub = hs._guides_subset(G, np.array([False, True]))
+    sub = hair_strands_guides._guides_subset(G, np.array([False, True]))
     assert sub["counts"].tolist() == [3] and sub["pts"].shape == (3, 3) and sub["names"].tolist() == ["b"]
 
 
@@ -570,6 +571,6 @@ def test_split_zone_long_everywhere_short_none():
     were bundles of identical strands, Garrett E2-E3)."""
     d = np.full((4, 3), 0.03)
     fa = np.full((4, 3), 40.0)
-    long_ = hs._split_zone(None, {"loose": {"length": 0.45}}, None, None, d, fa)
-    crop = hs._split_zone(None, {"loose": {"length": {"front": 0.045, "top": 0.04, "sides": 0.02}}}, None, None, d, fa)
+    long_ = hair_strands_guides._split_zone(None, {"loose": {"length": 0.45}}, None, None, d, fa)
+    crop = hair_strands_guides._split_zone(None, {"loose": {"length": {"front": 0.045, "top": 0.04, "sides": 0.02}}}, None, None, d, fa)
     assert long_.min() == 1.0 and crop.max() == 0.0

@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin_brows as bb, blockin_eyes as be, likeness, lidfold
+from hifipushie import likeness_detect
 
 G = os.environ["G"] + "/out"
 bx = json.load(open(G + "/box.json"))
@@ -16,7 +17,7 @@ mm = q["mm"] / K
 Pp = (q["P"] - box[:2]) * K
 for tag in sys.argv[1:]:
     im = Image.open(f"{G}/s_{tag}.png").convert("RGB")
-    P = likeness.detect([im])[0]
+    P = likeness_detect.detect([im])[0]
     print(tag, "detected" if P is not None else "NOT detected")
     P = Pp if P is None else np.asarray(P, float)[:, :2]
     lb = be.limbus(im, P)

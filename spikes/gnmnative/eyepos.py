@@ -5,10 +5,11 @@ import sys
 import numpy as np
 
 from hifipushie import onemesh, store
+from hifipushie import onemesh_head
 
 for name in sys.argv[1:]:
     b = store.load(name)["base"]
-    ht = onemesh.head_rest(b)
+    ht = onemesh_head.head_rest(b)
     e = np.array(ht["eyes"]) * 1000
     lm = np.asarray(ht["lm68"]) * 1000
     cl, cr = 0.5 * (lm[42] + lm[45]), 0.5 * (lm[36] + lm[39])

@@ -6,6 +6,7 @@ import numpy as np
 
 import rs
 from hifipushie import humanfit
+from hifipushie import humanfit_views
 
 rng = np.random.default_rng(4)
 UP, LO = [37, 38, 43, 44], [40, 41, 46, 47]
@@ -24,7 +25,7 @@ for d, (tag, V, cam) in zip(det, meta):
     if d is None:
         continue
     L = rs.landmarks(V)
-    P = humanfit.project(cam, L[:68])
+    P = humanfit_views.project(cam, L[:68])
     Q = d["P"][rs.LM_FROM_MP[:68], :2]
     mm = cam["t"][2] / cam["f"] * 1000
     dv = -(Q - P)[:, 1] * mm                       # + = the detector's point is higher in the picture

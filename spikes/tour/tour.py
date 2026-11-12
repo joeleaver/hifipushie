@@ -7,6 +7,7 @@ looks at each and writes, per feature: what differs, and WHAT IS HERE THAT THE M
 import os, sys
 from PIL import Image
 from hifipushie import blockin as bi
+from hifipushie import blockin_focus, blockin_models
 
 bi.FEATURES.setdefault("chin", {"lm": [6, 7, 8, 9, 10, 56, 57, 58], "pairs": [(8, 152), (57, 17)], "lines": [],
                                 "stages": (), "squint_mm": 3.0, "pad": 1.6})
@@ -19,13 +20,13 @@ if __name__ == "__main__":
     os.makedirs(out, exist_ok=True)
     T = int(kw.get("tile", 480))
     feats = kw.get("features", "eyes,brow_forehead,nose,mouth,chin,chin_jaw,cheeks,ears").split(",")
-    nv = len(bi._refs(m)["views"])
+    nv = len(blockin_models._refs(m)["views"])
     KEEP = (0, 1, 2, 4)   # photo | clay | overlay | raking
     for f in feats:
         for vi in range(nv):
             tmp = f"{out}/_{f}_{vi}.png"
             try:
-                bi.focus(m, f, tmp, views=[vi], T=T)
+                blockin_focus.focus(m, f, tmp, views=[vi], T=T)
             except Exception as e:  # noqa: BLE001
                 print(f"{f} view {vi}: skipped ({str(e)[:80]})")
                 continue

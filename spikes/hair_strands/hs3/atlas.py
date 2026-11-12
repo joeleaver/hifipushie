@@ -4,18 +4,19 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from hifipushie import hair, store, hair_cards as hc, hair_strands as hs
+from hifipushie import hair_cards_atlas, hair_groom, hair_head, hair_spec, hair_strands_eval, hair_strands_job
 name, out = sys.argv[1], sys.argv[2]
 spec = store.load(name)
-sc = hair.scalp(name, spec)
-g = hair.groom_params(spec)
+sc = hair_head.scalp(name, spec)
+g = hair_groom.groom_params(spec)
 S = hc.strands_of(spec)
 lk = {**hair.LOOK, **(spec["hair"].get("look") or {})}
 tmp = Path(tempfile.mkdtemp())
-locks = hair.resolve(spec, sc)
-sd = hs.job(sc, g, spec, [k for k in locks if not k["name"].endswith("band")], tmp)
-D = hs.strands_of_model(sd)
-chart = hs.cap_chart(sc, g, hair.hairline(sc, g), S, D, sd["e0"], int(S["atlas"]))
-at = hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=hs.key(sd))
+locks = hair_spec.resolve(spec, sc)
+sd = hair_strands_job.job(sc, g, spec, [k for k in locks if not k["name"].endswith("band")], tmp)
+D = hair_strands_eval.strands_of_model(sd)
+chart = hair_strands_eval.cap_chart(sc, g, hair_groom.hairline(sc, g), S, D, sd["e0"], int(S["atlas"]))
+at = hair_cards_atlas.atlas(S, lk, lines=hair_strands_eval.tile_lines(S), cap=chart, key=hair_strands_job.key(sd))
 print("coverage", at["coverage"], at["color"].shape)
 c = at["color"]
 bg = np.full_like(c[..., :3], 0.55)

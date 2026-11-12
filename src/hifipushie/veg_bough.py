@@ -182,7 +182,7 @@ def fit(tree: dict, triangles: int) -> tuple[int, int]:
         # How many: what the triangles buy, and never more than `FULL` of the cut: more cards
         # only stack layers (a 20k spruce, card layers per covered pixel in the file: all 1695 boughs 6.6; 937 of
         # them grown to the same cover 4.7; a stand of the first cost 1.6x the anime spruce's GPU time in Godot).
-        # The triangles this leaves go to the wood (veg_export._budget).
+        # The triangles this leaves go to the wood (veg_export_parts._budget).
         form = cheap
         t_fine = max(t - extra(tree), tris(form))  # (the limb layer, where the species has one, comes first)
         n = max(min(t_fine // tris(form), max(int(FULL * mr), min(mr, FULL_LEAST))), 1)  # (a thin crown keeps all its boughs)

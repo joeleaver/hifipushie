@@ -15,6 +15,7 @@ from PIL import Image
 from scipy.optimize import least_squares
 
 from hifipushie import blockin as bi, denselm, face_ruler as fr, humanfit, likeness, store
+from hifipushie import face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_solve, likeness_detect, likeness_sides
 
 tag = sys.argv[1]
 heads = sys.argv[2] if len(sys.argv) > 2 else "abcdeg"
@@ -30,7 +31,7 @@ for h in heads:
         continue
     rj = json.loads((store.HOME / name / "human_refs.json").read_text())
     spec = store.load(name)
-    head = fr.model_head(spec)
+    head = face_ruler_blockin.model_head(spec)
     Wg = np.asarray(humanfit.state(spec["base"])["head"]["gnm_world"], float)      # GNM's own pieces (eyeballs) as placed
     gidm = np.asarray(head["gid"], int)
     atm = np.full(int(gidm.max()) + 1, -1)
@@ -54,7 +55,7 @@ for h in heads:
         P = pr["xy"][:len(ids_all)][keep]
         d = (P - Q) * mm1
         sg = pr["sigma"][:len(ids_all)][keep] * mm1
-        kind = KIND.get(vn, fr.kind_of(fr.view_yaw(cam)))
+        kind = KIND.get(vn, face_ruler_compare.kind_of(face_ruler_camera.view_yaw(cam)))
         key = (kind, "hard top, dark skin" if h == "e" else "hair" if h == "g" else "plain")
         a = acc.setdefault(key, {"d": [], "sg": [], "reg": []})
         a["d"].append(d), a["sg"].append(sg), a["reg"].append(reg)
@@ -62,19 +63,19 @@ for h in heads:
         use = np.isin(reg, ("lids", "eyes", "brows", "nose", "lips", "mouth", "chin", "cheeks", "forehead")) & (sg < 4.0)
 
         def res(p):
-            c2 = fr.cam_moved(cam, dx=p[0], dy=p[1], sc=p[2], roll=p[3], yaw=p[4], pitch=p[5], dist=p[6])
+            c2 = face_ruler_solve.cam_moved(cam, dx=p[0], dy=p[1], sc=p[2], roll=p[3], yaw=p[4], pitch=p[5], dist=p[6])
             _, q = fr._cam_points(c2, X[use])
             return (((P[use] - q) * mm1) / np.maximum(sg[use], 0.3)[:, None]).ravel()
         s = least_squares(res, np.zeros(7), x_scale=[1, 1, 1, 1, 2, 2, 20], bounds=([-30, -30, -20, -20, -40, -40, -120], [30, 30, 20, 20, 40, 40, 160])).x
         dist_true = float(np.linalg.norm(np.asarray(cam["t"], float)))
         dn = pr.get("distance")
-        cams.append({"head": h, "view": vn, "kind": kind, "yaw_true": round(abs(fr.view_yaw(cam)), 1), "yaw_err": round(float(s[4]), 2), "pitch_err": round(float(s[5]), 2),
+        cams.append({"head": h, "view": vn, "kind": kind, "yaw_true": round(abs(face_ruler_camera.view_yaw(cam)), 1), "yaw_err": round(float(s[4]), 2), "pitch_err": round(float(s[5]), 2),
                      "dist_err_pct": round(float(np.expm1(0.01 * s[6]) * 100), 1), "scale_pct": round(float(s[2]), 2), "dist_true_m": round(dist_true, 2),
                      "dist_head_m": None if dn is None else round(dn[0], 2)})
         if kind in ("front", "3q"):      # LIPS and NOSE BASE head to head with MediaPipe, on the standard points both have
             Lt = np.asarray(head["L"], float)[:68]
             o68 = pr["xy"][Ls["lm68"]]
-            mp = likeness.detect_region(img, likeness._box({str(i): p_ for i, p_ in enumerate(q68)}, img.size))
+            mp = likeness_detect.detect_region(img, likeness_sides._box({str(i): p_ for i, p_ in enumerate(q68)}, img.size))
             row = {"head": h, "view": vn, "kind": kind}
             for nm, sel in (("lips_outer", range(48, 60)), ("lips_inner", range(60, 68)), ("nose_base", range(31, 36))):
                 sel = list(sel)

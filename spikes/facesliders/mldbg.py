@@ -7,6 +7,7 @@ import numpy as np
 import joint2
 import outl
 from hifipushie import humanfit, store
+from hifipushie import humanfit_views
 
 m = sys.argv[1]
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
@@ -15,5 +16,5 @@ vi = 2
 o = outl.profile_auto(refs["views"][vi])
 sl = joint2.outline_rows(st, refs["cameras"][vi], o, [], "profile")
 print("trace", len(o), "matched", len(sl["p"]))
-uv = humanfit.project(refs["cameras"][vi], sl["X"])
+uv = humanfit_views.project(refs["cameras"][vi], sl["X"])
 print("photo", joint2.mentolabial(sl["p"]), "model", joint2.mentolabial(uv))

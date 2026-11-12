@@ -627,8 +627,8 @@ def write_grass(out_dir, layers=None):
         if not lay:
             continue
         if P.get("gen") in ("cobble", "silt"):
-            from . import terrain_stream
-            S = (terrain_stream.cobble_swatch if P["gen"] == "cobble" else terrain_stream.silt_swatch)(seed=P["seed"])
+            from . import terrain_stream_water
+            S = (terrain_stream_water.cobble_swatch if P["gen"] == "cobble" else terrain_stream_water.silt_swatch)(seed=P["seed"])
         else:
             S = sand_swatch(seed=P["seed"]) if P.get("gen") == "sand" else \
                 grass_swatch(seed=P["seed"], blades=P["blades"], length=P["length"], dry=P["dry"], clump=P["clump"])

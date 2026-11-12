@@ -10,6 +10,7 @@ near corners > 0.55. -> out/lipbias.json + a table."""
 import json, os, sys
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import face_ruler_compare
 
 RM = os.environ["HIFIPUSHIE_READMIX"]
 UP_LM, LO_LM, SEAM_LM = (49, 50, 51, 52, 53), (55, 56, 57, 58, 59), (60, 61, 62, 63, 64, 65, 66, 67)
@@ -17,7 +18,7 @@ UP_MP = (185, 40, 39, 37, 0, 267, 269, 270, 409)
 LO_MP = (146, 91, 181, 84, 17, 314, 405, 321, 375)
 rows = []
 for name in sys.argv[1:]:
-    head, views, notes = fr.reference_views(name, lips=True, lids=False, mp=True, hair_edge=False, alar=False)
+    head, views, notes = face_ruler_compare.reference_views(name, lips=True, lids=False, mp=True, hair_edge=False, alar=False)
     v = next(v for v in views if v["kind"] == "front")
     v["extra_obs"] = v["extra"](head, v)
     L = np.asarray(head["L"], float)

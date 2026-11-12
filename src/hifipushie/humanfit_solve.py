@@ -66,8 +66,8 @@ def _with_identity(base: dict, c: np.ndarray) -> dict:
     out = copy.deepcopy(base)
     hd = out.setdefault("head", {})
     # everything the head's identity is made of is written out (the seed and features are in it already)
-    from . import onemesh
-    cur = onemesh.head_desc(base)
+    from . import onemesh_head
+    cur = onemesh_head.head_desc(base)
     idn = dict(cur.get("identity") or {})
     for i, v in zip(g["comps"], c):
         idn[str(g["names"][i])] = round(float(v), 4)

@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
 from hifipushie import asset, facepose, faceshapes, render, store
+from hifipushie import faceshapes_apply
 
 CT = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
 NK = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
@@ -30,7 +31,7 @@ def glb_meshes(path: Path) -> dict:
     jl = struct.unpack("<I", raw[12:16])[0]
     doc = json.loads(raw[20:20 + jl])
     binp = raw[20 + jl + 8:]
-    sparse = faceshapes.read_glb(path)
+    sparse = faceshapes_apply.read_glb(path)
 
     def acc(i):
         a = doc["accessors"][i]
@@ -55,7 +56,7 @@ def glb_posed(ms: dict, w: dict) -> dict:
 
 def main(model: str, glb: str, out: str, weights: dict):
     spec = store.load(model)
-    face = faceshapes.face_of(spec)
+    face = faceshapes_apply.face_of(spec)
     ms = glb_meshes(Path(glb))
     w = facepose.weights(weights)
     sheet_rows, numbers = [], {}

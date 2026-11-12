@@ -26,6 +26,7 @@ from scipy.spatial import cKDTree
 
 import lidmap as lm
 from hifipushie import blockin as bi, gnm_controls as gc, onemesh, store
+from hifipushie import onemesh_head
 
 g = gc.gnm()
 t = lm.topo()
@@ -137,7 +138,7 @@ def main():
     if "scale" in kw:
         sc = float(kw["scale"])
     else:
-        ht = onemesh.head_template(sp["base"])
+        ht = onemesh_head.head_template(sp["base"])
         sk = lm.skin_ids()
         loc = -np.ones(len(g["T"]), int)
         loc[sk] = np.arange(len(sk))

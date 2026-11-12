@@ -95,3 +95,18 @@ def test_bin_repoint_runs_without_the_environment(tmp_path):
     assert r.returncode == 0 and "blockin.step -> blockin_steps.step" in r.stdout, r.stdout + r.stderr
     spec = importlib.util.spec_from_file_location("moved_alone", SRC / "moved.py")
     assert spec is not None
+
+
+def test_no_script_in_the_repo_names_a_moved_name():
+    """The repo's own scripts too (spikes/, examples/, bin/). Slow tests import helpers from spikes/; the splits
+    rewrote the package and the tests but not those scripts, and seven slow test files failed on a moved name for two
+    days before one ran (C428). A split runs bin/repoint over them; this test says when one was left behind."""
+    fam = moved.families()
+    left = []
+    for d in ("spikes", "examples", "bin"):
+        for p in sorted((ROOT / d).rglob("*.py")):
+            try:
+                left += [line for line in moved.repoint(p, fam=fam) if " -> " in line]
+            except (SyntaxError, UnicodeDecodeError):
+                pass
+    assert not left, "scripts that name a function where it used to be (bin/repoint <script> --write):\n  " + "\n  ".join(left[:20])

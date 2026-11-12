@@ -30,6 +30,7 @@ import outl  # noqa: E402
 import lipborder as LB  # noqa: E402
 import lipborder_model as LBM  # noqa: E402
 from hifipushie import base as basemod, humanfit, humanfit_map as hm, likeness, onemesh, store  # noqa: E402
+from hifipushie import base_identity, humanfit_solve, humanfit_views, likeness_detect, likeness_render
 
 hm.INFLATE = float(os.environ.get("INFLATE", "1.0"))
 hm.CUT = float(os.environ.get("CUT", "99"))
@@ -51,7 +52,7 @@ PROF_REJECT = float(os.environ.get("PROF_REJECT", "3.0"))
 LIP_SLIDERS = ("lip_tubercle", "mouth_corner", "lip_lower_width", "mh_lowerlip_width", "mh_lowerlip_middle",
                "mh_lowerlip_volume", "mh_lowerlip_ext", "mh_mouth_angles", "lip_upper_height", "lip_lower_height",
                "lip_upper_roll", "lip_lower_roll", "lip_bow")
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 EN = [str(x) for x in g["expression_names"]]
 _EB = np.asarray(g["expression_basis"], float)
 EXPR = ([(f"left_eye_region_{k:03d}", f"right_eye_region_{k:03d}") for k in range(NEYE)]
@@ -63,7 +64,7 @@ NC = 170
 
 def spec_with(spec, c):
     sp = copy.deepcopy(spec)
-    b = humanfit._with_identity(sp["base"], c)
+    b = humanfit_solve._with_identity(sp["base"], c)
     b["head"]["sliders"] = {k: v for k, v in (b["head"].get("sliders") or {}).items() if k not in LIP_SLIDERS}
     if os.environ.get("NOSEAL"):
         b["head"].pop("lip_seal", None)
@@ -118,13 +119,14 @@ def silhouette_env(st, cam, o):
     the lips' vertices, 7-25 mm off, and those rows were rejected: the lips' depth went unseen.)"""
     from scipy.spatial import cKDTree
     from hifipushie import likeness, likeness_shape as lsh
+    from hifipushie import likeness_detect, likeness_render
     tpl = st["tpl"]
     P = np.asarray(tpl["P"], float)
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     x0, x1 = o[:, 0].min() - 120, o[:, 0].max() + 60
     y0, y1 = o[:, 1].min() - 10, o[:, 1].max() + 10
     side = max(x1 - x0, y1 - y0)
-    im, k, ps = likeness.render(mesh, cam, (x0, y0, x0 + side, y0 + side), px=int(side), brows=False, passes=True)
+    im, k, ps = likeness_render.render(mesh, cam, (x0, y0, x0 + side, y0 + side), px=int(side), brows=False, passes=True)
     part, zb = ps["part"], ps["zb"]
     if os.environ.get("SILDBG"):
         im.save(os.environ["SILDBG"])
@@ -172,7 +174,7 @@ def fit_cam_pose(cam, X, uv, wt):
 
     def res(p):
         c = {**cam, "r": p[:3], "t": p[3:6]}
-        return ((humanfit.project(c, X) - uv) * wt[:, None]).ravel()
+        return ((humanfit_views.project(c, X) - uv) * wt[:, None]).ravel()
     sol = least_squares(res, np.r_[cam["r"], cam["t"]], x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3], loss="soft_l1",
                         f_scale=3.0)
     return {**cam, "r": [float(v) for v in sol.x[:3]], "t": [float(v) for v in sol.x[3:6]]}
@@ -230,7 +232,7 @@ def contact_rows(st):
 
 
 def proj_jac(cam, X):
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
     z = Xc[:, 2]
     J = np.zeros((len(X), 2, 3))
@@ -309,13 +311,13 @@ def system(st, views, cams, x, x_lin, border, nview):
                 Rr, ss = _carry(st)
                 XEp = ss * EB[:, np.maximum(gidv, 0)] @ Rr.T * fade[None, :, None]
                 Xp = env["X"] + np.tensordot(dc, env["B"], 1) + np.tensordot(ev, XEp, 1)
-                rp0 = ((humanfit.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mm0
+                rp0 = ((humanfit_views.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mm0
                 ok = np.abs(rp0) < rej
                 cam = cams[vi] = fit_cam_pose(cam, np.r_[X, Xp[ok]], np.r_[e["uv"], env["p"][ok]],
                                              np.r_[mm0 / e["sig"], np.full(ok.sum(), mm0 / PROF_SIG)])
         J, z = proj_jac(cam, X)
         wt = (z / cam["f"] * 1000) / e["sig"]
-        r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
+        r = (e["uv"] - humanfit_views.project(cam, X)) * wt[:, None]
         a = np.linalg.norm(r, axis=1)
         hw = np.where(a > 2.5, np.sqrt(2.5 / np.maximum(a, 1e-9)), 1.0)
         A = np.zeros((len(X) * 2, n))
@@ -340,7 +342,7 @@ def system(st, views, cams, x, x_lin, border, nview):
                 Xp = env["X"] + np.tensordot(dc, env["B"], 1) + np.tensordot(ev, XEp, 1)
                 Jp, zp = proj_jac(cam, Xp)
                 mmpx = zp / cam["f"] * 1000
-                rp = ((humanfit.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mmpx / PROF_SIG
+                rp = ((humanfit_views.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mmpx / PROF_SIG
                 ap = np.abs(rp)
                 # matches more than PROF_REJECT mm off are dropped (lashes crossing the contour at the eye, envelope
                 # picks on the brow / under the chin: 9.6 mm rms at the start with them in)
@@ -384,7 +386,7 @@ def system(st, views, cams, x, x_lin, border, nview):
             for k, poly in (("up", border["upper"][border["keep"]]), ("lo", border["lower"][border["keep"]])):
                 Xb, XBb, XEb = bm[k]
                 Xb = Xb + np.tensordot(dc, XBb, 1) + np.tensordot(ev, XEb, 1)
-                px = humanfit.project(cam, Xb)
+                px = humanfit_views.project(cam, Xb)
                 # only model samples within the traced span (the corners are the detector's)
                 lo_x, hi_x = poly[:, 0].min(), poly[:, 0].max()
                 inn = (px[:, 0] > lo_x) & (px[:, 0] < hi_x)
@@ -417,7 +419,7 @@ def main(src, dst):
     if USE_BORDER:
         fr = [v for v in views if abs(float(v.get("yaw", 0.0))) < 20]
         img = Image.open((fr[0] if fr else refs["views"][0])["image"]).convert("RGB")
-        border = LB.read(img, likeness.detect([img])[0])
+        border = LB.read(img, likeness_detect.detect([img])[0])
     c0 = humanfit.identity(spec["base"])
     x = np.r_[c0, np.zeros(NE * nv)]
     n = len(x)

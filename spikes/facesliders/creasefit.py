@@ -20,6 +20,7 @@ import lipfit as LF  # noqa: E402  (sets headfit.N = 170)
 import lidgnm as LG  # noqa: E402
 import perc  # noqa: E402
 from hifipushie import humanfit, humanfit_map as hm, lidfold, likeness, store  # noqa: E402
+from hifipushie import likeness_detect
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces5"))
 model = sys.argv[1]
@@ -90,7 +91,7 @@ def main():
     # the photo's own read (front view, iris scale) for the record
     v0 = refs["views"][0]
     ph = Image.open(v0["image"]).convert("RGB")
-    Pp = likeness.detect([ph])[0]
+    Pp = likeness_detect.detect([ph])[0]
     rph = lidfold.read_lid(ph, np.asarray(Pp, float)[:, :2])
     print("photo read_lid mid columns:", [(c["tps"], c["dark"]) for eye in rph for c in eye], flush=True)
     # (a) the points (the face held as the pictures show it)

@@ -6,9 +6,10 @@ import sys
 import numpy as np
 
 from hifipushie import faceslide, onemesh, store
+from hifipushie import onemesh_head
 
 b0 = copy.deepcopy(store.load(sys.argv[1])["base"])
-V = np.asarray(onemesh.head_template(b0)["carry"]["V"], float)
+V = np.asarray(onemesh_head.head_template(b0)["carry"]["V"], float)
 T = faceslide.head_template(V)
 faceslide._left_fields(T)
 Hc, H0, u, up_ = faceslide._CACHE["last_crease"]
