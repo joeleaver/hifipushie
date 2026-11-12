@@ -107,10 +107,14 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         views = rj["views"]
         cams = rj["cameras"]
     else:
-        views = refs = with_anchor_points(refs)
         b = dict(body or {})
+        body_sex = b.pop("sex", None)
+        sx = sex if sex is not None else body_sex
+        if sx is None:  # (0.5 was filled in here and read as male below, without a word; asked before the detector runs)
+            raise ValueError("block-in start: say the sex (sex='male' | 'female' | 0..1): the base is that sex's class "
+                             "mean, and nothing reads it from the pictures")
+        views = refs = with_anchor_points(with_sizes(refs))
         a = float(age if age is not None else b.pop("age", 30))
-        sx = b.pop("sex", sex if sex is not None else 0.5)
         from .spec import empty_spec
         sp = {**empty_spec(), **humans.spec(age=a, sex=sx, source="human", **{k: v for k, v in b.items() if k in ("weight", "muscle", "height")})}
         cams = None
@@ -248,6 +252,20 @@ def class_blend(ethnicity, male: bool) -> dict:
     c = sum(v_ * E[en.index(k_)] for k_, v_ in w.items())
     return {"c": np.asarray(c, float), "weights": {k_: round(v_, 3) for k_, v_ in w.items()}, "source": "GIVEN",
             "say": "GIVEN: " + " + ".join(f"{v_:.2f} {k_}" for k_, v_ in w.items())}
+
+
+def with_sizes(views: list) -> list:
+    """Each view's "size" [w, h] in pixels, read from its picture when the caller gave none. The tool's own example and
+    check_references' next line give {"image", "yaw", "lens_mm"}; the camera fit reads v["size"] (humanfit_map), so a
+    start called as documented ended in a bare KeyError: 'size' after the detector had run."""
+    from PIL import Image
+    out = []
+    for v in views:
+        if isinstance(v, dict) and v.get("size") is None and v.get("image"):
+            with Image.open(v["image"]) as im:
+                v = {**v, "size": [int(im.width), int(im.height)]}
+        out.append(v)
+    return out
 
 
 def with_anchor_points(views: list) -> list:

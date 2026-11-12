@@ -20,15 +20,16 @@ branch and the rig block), tools_export.py (the answer's first line). Tests: tes
 
 ## Open faults (worst first)
 1. LODs: the chain shirt goes through the generic LOD decimation. LOD1 (3,244 triangles) reads; LOD2 kinks the chest
-   and the yoke; LOD3 (950) tears the fronts and the collar. Fix: a re-grid per LOD from the garment's own drape
-   (garment_export.fit_budget at each LOD's share of the budget), never decimation.
+   and the yoke; LOD3 (950) tears the fronts and the collar. AGREED with the garment session (2026-11-12): export_garment
+   writes <garment>_LOD1..3.glb at step 10 (garment_export.fit_budget at each LOD's share, weights by garment_bend.skin)
+   and the character's export takes those files; garment_asset then reads one file per LOD. Not started.
 2. Skin shows through both sleeves at the forearm in small patches. It is in the garment's own step-10 look too (the
    build / hang), carried here, not made here. The layers audit: "body through cloth_shirt: 144 vertices, worst 21.3 mm".
 3. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
 4. The record keeps no NAMES for step 10's gate rows (garment_record._row keeps "id"; step 10 writes "row"), so the
-   WARNING can only count them. The garment thread's file: told.
-5. export_garment's "next:" does not name export_asset, and find_tool("export the dressed character as one GLB") still
-   leads with export_garment. Agent-surface fixes: next.
+   WARNING can only count them. The garment session asked for the fix on the LOD branch: one key, the other removed.
+5. export_garment's "next:" does not name export_asset (same branch, asked for by the garment session), and
+   find_tool("export the dressed character as one GLB") still leads with export_garment.
 6. Not proven: a character with a head, skin and hair AND a chain garment (no such model has a step-10 garment yet);
    one garment over another (the spec's "over"); an alpha-cut base map (carried as alpha_cutoff 0.5, no real case).
 
@@ -47,4 +48,5 @@ branch and the rig block), tools_export.py (the answer's first line). Tests: tes
 - Equal to the garment's file: garment_asset.read(<garment glb>) against garment_asset.read(<character glb>), matched on
   position + uv together (554 seam vertices share a position).
 
-NEXT: fault 1 (LOD re-grids), then fault 5 with the review's other agent-surface fixes.
+NEXT (waits for Joe's word on usage, 84 % of the week on 2026-11-12): one branch for faults 1, 4 and 5; the garment
+session has none of garment_export*, garment_bend*, garment_glb, garment_game in flight.
