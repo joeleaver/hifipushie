@@ -418,14 +418,14 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
-    chain_w, chain_looks, left_out = {}, {}, []
+    chain_w, chain_looks, left_out, chain_lods = {}, {}, [], {}
     if spec.get("cloth"):  # garments. A chain garment (one with a garment record) ships as export_garment wrote it at
         # step 10 (garment_asset, C434: the old route re-simulated its draft and shipped that); any other garment is
         # the old simulation's (cloth.py): its settled mesh, the flat pattern as the uv
         from . import cloth as clothmod
         from . import garment_asset
         chain = garment_asset.records(name, spec)
-        gparts, chain_w, chain_looks, left_out = garment_asset.parts(name, chain, out_dir, log.append)
+        gparts, chain_w, chain_looks, left_out, chain_lods = garment_asset.parts(name, chain, out_dir, log.append)
         for g_, why_ in left_out:
             log.append(f"NOT IN THIS EXPORT: garment {g_}: {why_}")
         old_ = {g_: v_ for g_, v_ in spec["cloth"].items() if g_ not in chain}
@@ -796,10 +796,20 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 rr_, mesh_r = r_part, {"head": above[kk_], "body": below[min(kk_, len(below) - 1)]}
             else:
                 rr_ = r
-            lp, lr, rep_l = lods_part.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, rr_, skip=cards,
+            own_ = {pn: v for pn, v in chain_lods.get(k, {}).items() if pn in parts}  # (C439) a chain garment's LOD is
+            # its own file (export_garment's re-grid at a coarser grid), never a decimation of its LOD0
+            lp, lr, rep_l = lods_part.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of and pn not in own_},
+                                             rigged, rr_, skip=cards,
                                              cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None,
                                              mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods),
                                              ribbons=[pn for pn in cards if report[pn].get("lashes")])
+            if own_:
+                from . import garment_asset
+                log.append(f"LOD{k}: " + garment_asset.take_lods(own_, parts, lp, lr, rep_l, rigged and rigged["bones"]))
+            for pn in chain_w:  # (a garment with LOD files, but none for this LOD: more LODs asked than its role has)
+                if pn in parts and pn not in own_ and any(pn in v_ for v_ in chain_lods.values()):
+                    log.append(f"WARNING LOD{k}: {pn} has no LOD{k} file of its own: DECIMATED from LOD0 like any part "
+                               "(export_garment writes one file per LOD of its role)")
             if layer_stack:
                 rb_ = below[min(kk_, len(below) - 1)] if ratio_of is not None else r
                 pu_ = lods_under.push_under_layers(lp, layer_stack, masks=under_masks, face_deep=(
