@@ -44,7 +44,8 @@ layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4
   (gn.retract, 6 Jacobi PBD sweeps), stop at LM_DROP 0.1 % gain, a round stops when the projection leaves E within 1 %.
   rep["lm_factors"] counts factors. Tests all pass at their numbers (stiff strip pull max 1.52 mm vs 1.50; width 1.04).
 - Bench (machine load 60-140 on 24 cores from other jobs: walls ~3-4x inflated, compare factor counts): 1.5k ~11+4
-  factors, 6k 13 factors (was 60+ passes, 2 caps). 24k: see the run log /mnt/data/hifipushie/n1b/b24k_v3.log.
+  factors, 6k 13 factors (was 60+ passes, 2 caps). 24k: 10 factors, 1 round (was 166 factors), hard_ok, links 0.0 %,
+  0 inside; wall 601 s at load 135 (pd 75, lm 516, project 0.6): NOT timed idle. Log /mnt/data/hifipushie/n1b/b24k_v3.log.
 - Dead ends (measured): contact rows in PD's matrix (isotropic rows stick nodes where they touch: LM start E 10-25x
   UP); CG preconditioned by a stale LM factor (26 of 29 passes no convergence in 40); chord steps with the last factor
   (zigzag, step 1 / 1/16, no fewer factors); lower LM link weights (LM stalls); node-level / geometric ND orderings

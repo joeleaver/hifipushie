@@ -216,7 +216,7 @@ def test_the_solver_reads_no_roles_or_wear_state():
         assert not bad, f"{f.name} reads a role or wear state: {bad}"
 
 
-WALL_24K = 240.0  # s: N1b measured (STATE step5_rewrite); the target is ~60 (N1b's deliverable, not yet met)
+WALL_24K = 240.0  # s: a guess for an idle machine (N1b's 24k run was timed only at load 135: 601 s); the target is ~60
 
 
 def test_garment_sized_network_solves_in_time():
