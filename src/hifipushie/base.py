@@ -65,8 +65,8 @@ def source(b: dict) -> dict:
         from . import makehuman
         return makehuman.body(body)
     if body.get("source") == "human":  # one human mesh (onemesh.py): MakeHuman's body and GNM's head, stitched once
-        from . import onemesh
-        return onemesh.template(b)
+        from . import onemesh_head
+        return onemesh_head.template(b)
     if body.get("source") not in (None, "template"):
         raise ValueError('base body: {"source": "makehuman" | "human", ...} or the template (default)')
     return retopo.load_template(b.get("template", "male_stylized"))
@@ -78,8 +78,8 @@ def _source_key(b: dict) -> str:
         # head a process evaluated gave every later head of that body its head / landmark / eye joints (solvecams,
         # 2026-10-12: after block_in_start + a new identity in ONE process the build stood 14 mm and 4 % off the
         # model the solve reads; a long-lived MCP server does exactly that)
-        from . import onemesh
-        return onemesh._tkey(b)
+        from . import onemesh_head
+        return onemesh_head._tkey(b)
     return json.dumps([b.get("template", "male_stylized"), b.get("body")], sort_keys=True, default=float)
 
 

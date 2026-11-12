@@ -40,7 +40,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 ## What still reaches the old clothes code (measured after cut 2; each cut assumes the ones above it)
 | cut | frees | what it needs first |
 |---|---|---|
-| a character's use of the old sims: asset_export._export -> cloth.export_part, scene.sync / pull, server.sync, server._garment_sheets | about 700 lines | decide how a dressed character is exported; export_asset reads clothes only from the old sims |
+| a character's use of the old sims: asset_export._export -> cloth.export_part, scene_sync.sync / pull, server.sync, server._garment_sheets | about 700 lines | decide how a dressed character is exported; export_asset reads clothes only from the old sims |
 | the chain build's calls into the old build: chain_garment.load_garment -> cloth.build(place_only=True), pattern_form.form_source / form_refine | up to 5,300 lines | a small flat-mesh core in their place; changes what the build runs, so the garment thread decides and BUILD_VERSION moves |
 | the design-sheet drafter (design_schema, design_targets, pattern_draft, pattern_jacket, pattern_styles, garment_design): reached only through cloth.pieces / cloth.validate for a garment with a "design" sheet | not measured | the regression garments cf_shirt and wf_simon re-made as own drafts; their error texts still name the deleted tools |
 | the old sim backend: cloth_job and blender_cloth keep cloth.place, cloth._build and cloth_made | not measured | zozo_hang uses cloth_job for job plumbing only: split that off |

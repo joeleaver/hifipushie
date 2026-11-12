@@ -20,7 +20,8 @@ def fit(r: dict, groups=skin_read.DEFAULT_GROUPS, stubble: bool | None = None, l
     "residual": the regions' read before / after as the forward model has it}. groups: what may change (GROUPS).
     stubble: whether a beard shadow may be ADDED to a face that has none (default: unless skin.sex says female)."""
     from scipy.optimize import least_squares
-    from . import skin as skinmod, skin_marks
+    from . import skin_marks
+    from . import skin_params
     c: Context = r["ctx"]
     sk0 = copy.deepcopy(c.spec.get("skin") or {})
     sk = copy.deepcopy(sk0)
@@ -311,7 +312,7 @@ def fit(r: dict, groups=skin_read.DEFAULT_GROUPS, stubble: bool | None = None, l
         else:
             S = min(top, 1.0)
             zones = {z: round(float(np.clip(v[z] / top, 0, 1.5)), 2) if seen[z] else round(zw0[z], 2) for z in bz}
-            from .skin_features import stubble_options
+            from .skin_features_hair import stubble_options
             d0 = stubble_options({"amount": 1.0, **o})["density"]
             o2 = {**o, "zones": {z: w for z, w in zones.items() if abs(w - 1) > 0.03}, "density": round(float(np.clip(d0 * S, 0.02, 1.0)), 3)}
             if not o2["zones"]:
@@ -339,7 +340,7 @@ def fit(r: dict, groups=skin_read.DEFAULT_GROUPS, stubble: bool | None = None, l
         hb = (sk1.get("hair") or {}).get("brows", 1.0)
         hb = {"amount": float(hb)} if isinstance(hb, (int, float)) else dict(hb or {})
         from . import paint
-        p = skinmod.params({**c.spec, "skin": sk1})
+        p = skin_params.params({**c.spec, "skin": sk1})
         from .skin_features import hair_default
         col0 = np.asarray(paint.colour(hb["color"]) if "color" in hb else hair_default(p["tone"], p["age"]), float)[:3]
         g = float(hb.get("grey", 0.0))

@@ -141,7 +141,7 @@ class _Seat:
 
 def build(spec, p, J, layer, T, ctx) -> None:
     from .skin_features import _hex, _opt, _zones, hair_default
-    from .skin import interocular
+    from .skin_zones import interocular
     mk = resolve(p["makeup"])
     bad = set(mk) - set(ITEMS)
     if bad:

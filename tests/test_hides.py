@@ -99,15 +99,15 @@ def test_clay_build():
 
 
 def test_scene_objects():
-    from hifipushie import scene
+    from hifipushie import scene_objects
     store.save("foot_scene", foot_spec(True), checked=False)
-    objs, _, _ = scene.objects("foot_scene", 160)
+    objs, _, _ = scene_objects.objects("foot_scene", 160)
     o = {x["key"]: x for x in objs}["body"]
     assert o["src_mesh"] and ":" in o["hash"] and o["mesh"] != o["src_mesh"]
     a, b = np.load(o["src_mesh"]), np.load(o["mesh"])
     assert len(b["verts"]) < len(a["verts"]) and len(b["faces"]) < len(a["faces"])
     assert len(np.unique(b["faces"])) == len(b["verts"]), "loose vertices (Blender drops them: inputs misalign)"
-    objs2, _, _ = scene.objects("foot_scene", 160)  # cached by content: the same file, both kept
+    objs2, _, _ = scene_objects.objects("foot_scene", 160)  # cached by content: the same file, both kept
     o2 = {x["key"]: x for x in objs2}["body"]
     assert o2["mesh"] == o["mesh"] and Path(o["src_mesh"]).exists()
 

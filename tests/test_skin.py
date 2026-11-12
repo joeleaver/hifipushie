@@ -6,6 +6,7 @@ import colorsys
 import numpy as np
 
 from hifipushie import paint, skin, skin_measure, skin_swatch
+from hifipushie import skin_build, skin_params, skin_zones
 from hifipushie import paint_apply, paint_check, paint_patterns
 from hifipushie.spec import SpecError
 
@@ -61,7 +62,7 @@ def test_tone():
 
 def test_zones_and_layers():
     spec = head_spec(tone={"fitzpatrick": 5}, age=30)
-    names = skin.zone_names()
+    names = skin_zones.zone_names()
     assert {"cheek", "cheek.L", "cheek.R", "forehead", "nose", "lips", "beard", "under_eye.L"} <= set(names)
     L = paint.layers(spec)
     assert all(k.startswith("skin:") for k in L) and "skin:midface_red" in L and "skin:micro_pores" in L
@@ -69,14 +70,14 @@ def test_zones_and_layers():
     paint_check.validate(spec)
     # a zone is where it says: the left cheek spot holds the point under the left eye, not the right one
     from hifipushie.surface import Points
-    J = skin._joints(spec)
-    io = skin.interocular(J)
+    J = skin_zones._joints(spec)
+    io = skin_zones.interocular(J)
     pts = np.array([J["lm_lid_lower.L"] + io * np.array([0.12, 0.1, -0.6]), J["lm_lid_lower.R"] + io * np.array([-0.12, 0.1, -0.6]),
                     J["lm_nose_bridge"] + io * np.array([0, 0.2, 0.9])])
     P = Points(spec, pts, np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
     view = paint_apply._View(P, np.arange(3))
     for z, want in (("cheek.L", [1, 0, 0]), ("cheek.R", [0, 1, 0]), ("cheek", [1, 1, 0]), ("forehead", [0, 0, 1])):
-        ly = skin.expand_zones(spec, {"color": [1, 0, 0], "zone": z})
+        ly = skin_zones.expand_zones(spec, {"color": [1, 0, 0], "zone": z})
         m = paint_apply.layer_mask(spec, "t", ly, view)
         assert (m > 0.5).astype(int).tolist() == want, (z, m)
     # the model's own paint can address zones, and sits over the skin's layers
@@ -84,7 +85,7 @@ def test_zones_and_layers():
     L = paint.layers(spec)
     assert list(L)[-1] == "blush" and "spot" in str(L["blush"])
     try:
-        skin.expand_zones(spec, {"color": [1, 0, 0], "zone": "elbow.L"})
+        skin_zones.expand_zones(spec, {"color": [1, 0, 0], "zone": "elbow.L"})
         assert False, "no arm joints here"
     except SpecError as e:
         assert "elbow" in str(e)
@@ -108,9 +109,9 @@ def test_only_some_groups():
     spec["blobs"]["eye.L"]["part"] = "eyes"
     full["blobs"]["eye.L"]["part"] = "eyes"
     L = paint.layers(spec)
-    assert L and all(skin.group_of(k) == "eyes" for k in L), list(L)
+    assert L and all(skin_params.group_of(k) == "eyes" for k in L), list(L)
     assert {"skin:eye_L", "skin:eye_R"} <= set(L) and all(v["part"] == "eyes" for v in L.values())
-    assert skin.part_base(spec) is None and not skin.shaded(spec) and skin.shaded(full)
+    assert skin_params.part_base(spec) is None and not skin_params.shaded(spec) and skin_params.shaded(full)
     assert L["skin:eye_L"] == paint.layers(full)["skin:eye_L"]  # the same picture as the whole description's
     paint_check.validate(spec)
     # the rims are on the skin: ordinary layers (nothing is composited into a base that isn't the description's)
@@ -125,7 +126,7 @@ def test_only_some_groups():
     CL = paint.layers(cs)
     assert CL["skin:eye_canthus_L"]["part"] == "eyes" and CL["skin:eye_canthus_L"]["mix"] == "multiply"
     assert CL["skin:eye_canthus_L"]["mask"][0]["spot"]["at"][0][0] > 0 > CL["skin:eye_canthus_R"]["mask"][0]["spot"]["at"][0][0]
-    assert skin.group_of("skin:eye_canthus_L") == "eyes" and skin.group_of("skin:canthus") == "eye_rims"
+    assert skin_params.group_of("skin:eye_canthus_L") == "eyes" and skin_params.group_of("skin:canthus") == "eye_rims"
     assert CL["skin:canthus"].get("_pre")
     paint_check.validate(cs)
     # every layer of a full description belongs to a group, and the groups add up to it
@@ -136,7 +137,7 @@ def test_only_some_groups():
             got |= set(paint.layers(head_spec(tone={"fitzpatrick": 2}, age=52, only=[g])))
     assert got == names, (names - got, got - names)
     both = head_spec(only=["shading", "lips"])
-    assert skin.part_base(both) is not None and all(skin.group_of(k) == "lips" for k in paint.layers(both))
+    assert skin_params.part_base(both) is not None and all(skin_params.group_of(k) == "lips" for k in paint.layers(both))
     for bad in (["iris"], [], "skin"):
         try:
             paint.layers(head_spec(only=bad))
@@ -151,14 +152,14 @@ def test_description_drives_layers():
     light, dark = head_spec(tone={"fitzpatrick": 1}), head_spec(tone={"fitzpatrick": 6})
     assert col(light, "skin:lips_lower").sum() > col(dark, "skin:lips_lower").sum()
     for s in (light, dark):  # lips and cheeks are redder than the base on any tone
-        base = skin_measure.lab(np.array([[skin.part_base(s)[1]["color"]]]))[0, 0]
+        base = skin_measure.lab(np.array([[skin_params.part_base(s)[1]["color"]]]))[0, 0]
         for n in ("skin:lips_lower", "skin:midface_red"):
             assert skin_measure.lab(np.array([[col(s, n)]]))[0, 0, 1] > base[1], n
     flat = paint.layers(head_spec(tone={"fitzpatrick": 2}, variation=0, detail=0))
     assert "skin:midface_red" not in flat and "skin:micro_pores" not in flat and "skin:lips_lower" in flat
-    b = skin.part_base(head_spec(tone={"fitzpatrick": 2}, oil=1.0))[1]
-    assert b["subsurface"] > 0 and b["coat"] > skin.part_base(head_spec(tone={"fitzpatrick": 2}, oil=0.0))[1]["coat"]
-    assert skin.part_base(head_spec(age=80))[1]["roughness"] > skin.part_base(head_spec(age=25))[1]["roughness"]
+    b = skin_params.part_base(head_spec(tone={"fitzpatrick": 2}, oil=1.0))[1]
+    assert b["subsurface"] > 0 and b["coat"] > skin_params.part_base(head_spec(tone={"fitzpatrick": 2}, oil=0.0))[1]["coat"]
+    assert skin_params.part_base(head_spec(age=80))[1]["roughness"] > skin_params.part_base(head_spec(age=25))[1]["roughness"]
 
 
 def test_spot_and_tile():
@@ -250,13 +251,13 @@ def test_features_and_shader_budget(tmp=None):
             assert "skin:wrinkle_forehead" not in young and "skin:wrinkle_crepe" not in young and "skin:age_spots" not in young
             # the pre layers composite to a base: the cheek ends up redder than the forehead, lipstick on the lips
             from hifipushie.surface import Points
-            J = skin._joints(spec)
-            io = skin.interocular(J)
+            J = skin_zones._joints(spec)
+            io = skin_zones.interocular(J)
             pts = np.array([J["lm_lid_lower.L"] + io * np.array([0.12, 0.1, -0.6]), J["lm_nose_bridge"] + io * np.array([0, 0.2, 0.9]),
                             J["lm_lip_lower"] + [0, 0, 0.004]])
             P = Points(spec, pts, np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
             plain = head_spec(tone={"fitzpatrick": 3}, age=60)
-            base = skin.part_base(plain)[1]
+            base = skin_params.part_base(plain)[1]
             c = paint_apply.precomposite(plain, paint_apply._View(P, np.arange(3)), base, paint_apply.pre_layers(plain))
             assert c.shape == (3, 5) and c[0, 0] / c[0, 1] > c[1, 0] / c[1, 1], c  # r/g: cheek vs forehead
             c2 = paint_apply.precomposite(spec, paint_apply._View(P, np.arange(3)), base, paint_apply.pre_layers(spec))
@@ -264,7 +265,7 @@ def test_features_and_shader_budget(tmp=None):
             from hifipushie import paintnodes
             prog = paintnodes.compile(spec)
             assert len(prog["pre"]["body"]) == 5 and all(not ly["name"] in pre for ly in prog["layers"])
-            rec = skin.export_recipe(spec, d, "t")
+            rec = skin_build.export_recipe(spec, d, "t")
             assert rec["detail"] and all((store.HOME / x["normal"]).exists() or os.path.exists(os.path.join(d, x["normal"])) for x in rec["detail"])
         finally:
             store.HOME = home
@@ -345,7 +346,7 @@ def test_lash_line_is_a_line():
             spec["joints"]["lm_eye_inner.L"]["pos"] = (on(5) + [-0.012, 0.002, 0]).tolist()
             spec["joints"]["lm_eye_outer.L"]["pos"] = (on(5) + [0.013, 0.004, 0]).tolist()
         P = Points(spec, pts, np.tile([0, -1.0, 0], (2, 1)), np.zeros(2, int), ["body"], 0.002)
-        ly = skin.expand_zones(spec, {"color": [0, 0, 0], "zone": "lash_upper.L"})
+        ly = skin_zones.expand_zones(spec, {"color": [0, 0, 0], "zone": "lash_upper.L"})
         m = paint_apply.layer_mask(spec, "t", ly, paint_apply._View(P, np.arange(2)))
         assert (m > 0.5).astype(int).tolist() == want, (with_margin, m)
 
@@ -487,9 +488,9 @@ def test_lips_over_stack():
     lips.melanin 12 moved nothing, 2026-10-16); off by default"""
     st = {"box": [0.56, 0.65, 1.0, 0.99], "base": [0.86, 0.76, 0.66], "coverage": "c" * 16,
           "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}]}
-    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st))
+    L = skin_build.layers(head_spec(tone={"fitzpatrick": 2}, stack=st))
     assert L["skin:lips_upper"].get("_pre")
-    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, lips={"over_stack": True}))
+    L = skin_build.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, lips={"over_stack": True}))
     ks = list(L); top = max(i for i, k in enumerate(ks) if k.startswith("skin:stack_"))
     for nm in ("skin:lips_upper", "skin:lips_lower"):
         assert not L[nm].get("_pre") and ks.index(nm) > top, nm
@@ -500,7 +501,7 @@ def test_lid_shade_survives_a_stack():
     measured lever) stays: dropping it made every stacked head's lid_shade a silent no-op (r5, 2026-10-16)."""
     st = {"box": [0.56, 0.65, 1.0, 0.99], "base": [0.86, 0.76, 0.66], "coverage": "c" * 16,
           "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}]}
-    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye": 1.2}))
+    L = skin_build.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye": 1.2}))
     assert "skin:lid_shade" in L and "skin:stack_pigment" in L
     assert "skin:under_eye" not in L and "skin:midface_red" not in L
     ks = list(L)   # ... and lies OVER the stack (laid first, stack_base's normal mix at opacity 1 covered it: r6 moved nothing)
@@ -512,9 +513,9 @@ def test_under_eye_shade_survives_a_stack():
     after itself (the "under_eye" zone is dropped under a stack: nothing moved the under-eye row in r6, 2026-10-16)."""
     st = {"box": [0.56, 0.65, 1.0, 0.99], "base": [0.86, 0.76, 0.66], "coverage": "c" * 16,
           "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}]}
-    assert "skin:under_eye_shade" not in skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st))
-    L = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye_shade": 1.0}))
-    L2 = skin.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye_shade": 1.5}))
+    assert "skin:under_eye_shade" not in skin_build.layers(head_spec(tone={"fitzpatrick": 2}, stack=st))
+    L = skin_build.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye_shade": 1.0}))
+    L2 = skin_build.layers(head_spec(tone={"fitzpatrick": 2}, stack=st, zones={"lid_shade": 0.6, "under_eye_shade": 1.5}))
     ks = list(L); top = max(i for i, k in enumerate(ks) if k.startswith("skin:stack_"))
     assert ks.index("skin:under_eye_shade") > top and ks.index("skin:lid_shade") > top
     assert L["skin:under_eye_shade"]["mix"] == "multiply" and L2["skin:under_eye_shade"]["opacity"] > L["skin:under_eye_shade"]["opacity"]
@@ -522,10 +523,10 @@ def test_under_eye_shade_survives_a_stack():
     assert not L["skin:under_eye_shade"].get("_pre") and not L["skin:lid_shade"].get("_pre")
     sp_ = head_spec(tone={"fitzpatrick": 2}, stack=st)
     sp_["skin"].setdefault("hair", {})["brows"] = {"density": 1.0}
-    assert not skin.layers(sp_)["skin:brow_shadow"].get("_pre")
+    assert not skin_build.layers(sp_)["skin:brow_shadow"].get("_pre")
     sp_ = head_spec(tone={"fitzpatrick": 2})
     sp_["skin"].setdefault("hair", {})["brows"] = {"density": 1.0}
-    assert skin.layers(sp_)["skin:brow_shadow"].get("_pre")   # (no stack: unchanged)
+    assert skin_build.layers(sp_)["skin:brow_shadow"].get("_pre")   # (no stack: unchanged)
 
 
 def test_rough_layers_follow_shading_roughness():
@@ -535,7 +536,7 @@ def test_rough_layers_follow_shading_roughness():
         sp_ = head_spec(tone={"fitzpatrick": 2})
         if sh:
             sp_["skin"]["shading"] = sh
-        return skin.layers(sp_)["skin:rough_tzone"]["roughness"]
+        return skin_build.layers(sp_)["skin:rough_tzone"]["roughness"]
     assert abs((tz(roughness=0.6) - tz(roughness=0.4)) - 0.2) < 2e-3, (tz(roughness=0.6), tz(roughness=0.4))
 
 
@@ -544,7 +545,7 @@ def test_brows_shadow_scales_the_skin_shadow():
     def op(sh):
         sp_ = head_spec(tone={"fitzpatrick": 2})
         sp_["skin"].setdefault("hair", {})["brows"] = {"density": 1.0, **({"shadow": sh} if sh is not None else {})}
-        return skin.layers(sp_)["skin:brow_shadow"]["opacity"]
+        return skin_build.layers(sp_)["skin:brow_shadow"]["opacity"]
     assert abs(op(0.5) - 0.5 * op(None)) < 2e-3, (op(0.5), op(None))
 
 
@@ -571,10 +572,10 @@ def test_export_bakes_skin_detail_into_the_parts_maps():
         home, store.HOME = store.HOME, __import__("pathlib").Path(d)
         try:
             spec = head_spec(tone={"fitzpatrick": 3}, age=60, lips={"dry": 0.5})
-            rec = skin.export_recipe(spec, d, "t", baked=True)
+            rec = skin_build.export_recipe(spec, d, "t", baked=True)
             assert rec["detail"] and all(x["baked"] for x in rec["detail"]) and "ALREADY baked" in rec["detail_baked"]
             assert any(x["layer"] == "micro_lip_lines" for x in rec["detail"]), [x["layer"] for x in rec["detail"]]
-            old = skin.export_recipe(spec, d, "t")
+            old = skin_build.export_recipe(spec, d, "t")
             assert "detail_baked" not in old and not any(x["baked"] for x in old["detail"])
             info = {"glb": "t.glb", "triangles": 1, "skin": {**rec, "part": "body"}, "parts": {"body": {}}, "atlases": {"a": {"parts": ["body"], "maps": {}}}}
             n = shading.notes(info, "t")

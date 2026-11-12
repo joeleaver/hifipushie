@@ -172,14 +172,15 @@ def test_eyeball_guard_reads_the_shipped_head():
     gnmnative, 2026-10-12: no seat), which GNM's lid margins touch (0 +- 0.5 mm); the lid's skin by a number per ring;
     a ball pushed forward 1.5 mm comes through (less clearance)."""
     import copy
-    from hifipushie import blockin_lid as bl, onemesh
+    from hifipushie import blockin_lid as bl
+    from hifipushie import onemesh_head
     b0 = store.load(REF)["base"]
     b1 = copy.deepcopy(b0)
     b1["head"]["eye_radius"] = 0.012
-    ours = bl.ball_clearance(onemesh.head_template(b1))
+    ours = bl.ball_clearance(onemesh_head.head_template(b1))
     assert abs(ours["landmarks"] - 0.8) < 0.15, ours
     b0["head"].pop("eye_radius", None)
-    ht = onemesh.head_template(b0)
+    ht = onemesh_head.head_template(b0)
     b = bl.ball_clearance(ht)
     assert abs(b["landmarks"]) < 0.5 and set(b["rings"]) == set(range(1, 8)), b
     ht2 = copy.copy(ht)

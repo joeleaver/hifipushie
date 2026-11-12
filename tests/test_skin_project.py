@@ -4,7 +4,8 @@ atlas through a known camera, and the de-lighting against a KNOWN albedo shaded 
 own light transport."""
 import numpy as np
 
-from hifipushie import assets, skin, skin_project as sp
+from hifipushie import assets, skin_project as sp
+from hifipushie import skin_params
 from hifipushie import humanfit_views
 from hifipushie import skin_project_atlas, skin_project_detail, skin_project_light, skin_project_lookup, skin_project_model, skin_project_sample
 from hifipushie import likeness_render
@@ -127,17 +128,17 @@ def test_delight_known_light():
 def test_spec_layers():
     spec = {"skin": {"tone": {"fitzpatrick": 2}, "projection": {"albedo": "0" * 16, "detail": "1" * 16, "box": [0.56, 0.65, 1.0, 0.99],
                                                                "opacity": 1.0, "detail_depth": 0.0001, "head": "abc"}}}
-    p = skin.params(spec)
+    p = skin_params.params(spec)
     out = {}
     skin_project_model.layers(spec, p["projection"], out, "body")
     assert out["skin:projection"]["image"]["wrap"] == "uv" and out["skin:projection"]["color"] == "image"
     assert out["skin:projection_detail"]["height"] == -0.0001 and out["skin:projection_detail"]["mask"][0]["image"]["channel"] == "luma"
     try:
-        skin.params({"skin": {"projection": {"albedo": "x", "bogus": 1, "box": [0, 0, 1, 1]}}})
+        skin_params.params({"skin": {"projection": {"albedo": "x", "bogus": 1, "box": [0, 0, 1, 1]}}})
         raise AssertionError("bad projection keys accepted")
     except SpecError:
         pass
-    assert skin.params({"skin": {}})["projection"] is None
+    assert skin_params.params({"skin": {}})["projection"] is None
 
 
 def _cut_case():

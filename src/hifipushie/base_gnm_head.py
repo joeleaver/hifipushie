@@ -116,8 +116,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     s = float(head.get("scale", 1.4))
     if head.get("bound"):  # (onemesh.py) the head its body carries, with all of the above laid on it and faded out
         # toward the stitch at the neck
-        from . import onemesh
-        V, J = onemesh.hook(V, J, head, R, np.asarray(eye_mid, float), s, mid)
+        from . import onemesh_head, onemesh_native
+        V, J = onemesh_head.hook(V, J, head, R, np.asarray(eye_mid, float), s, mid)
         r_eye = [r * float(head["bound"].get("head_size", 1.0)) for r in r_eye]  # (a style's bigger head: its eyeballs too)
     if head.get("lip_seal") and head.get("mouth_gap") is None:  # (faceslide.seal_delta) the rest mouth closed: the
         # lips in contact along their width, by this share (0..1). On the head as it is now (after the body's hook,
@@ -126,8 +126,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         from . import faceslide
         E = np.tensordot(ce, g["expression_basis"], 1)
         if head.get("bound"):
-            from . import onemesh as _om
-            E = E * _om.head_fade(head)[:, None]
+            from . import onemesh_head, onemesh_native
+            E = E * onemesh_native.head_fade(head)[:, None]
         V = V + faceslide.seal_delta(V - E, float(np.clip(head["lip_seal"], 0.0, 1.0)))
     elif head.get("lip_close") and head.get("mouth_gap") is None:  # GNM's own closing (lip_close_delta), where the
         # seal goes: after the body's hook (it carries the template lips at their own gap) and on the head WITHOUT
@@ -135,14 +135,14 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         # INTO the expression, the lips step, clears lip_close: not doubled)
         E = np.tensordot(ce, g["expression_basis"], 1)
         if head.get("bound"):
-            from . import onemesh as _om
-            E = E * _om.head_fade(head)[:, None]
+            from . import onemesh_head, onemesh_native
+            E = E * onemesh_native.head_fade(head)[:, None]
         dp = lip_close_delta(V - E, g, float(head.get("scale", 1.4)))
         V, Vg, En = V + dp, Vg + dp, En + dp
     pf = None
     if head.get("bound"):  # (the one mesh hands the head's own shape over to the body through the neck: neck_fade)
-        from . import onemesh as _om
-        pf = _om.head_fade(head)
+        from . import onemesh_head, onemesh_native
+        pf = onemesh_native.head_fade(head)
     V = _gnm_pieces(V, Vg, g, En, pf)
 
     def place(X):

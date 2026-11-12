@@ -426,6 +426,7 @@ def test_decal_pull_through_blender():
     import shutil
     import subprocess
     from hifipushie import scene
+    from hifipushie import scene_sync
     if not shutil.which("blender"):
         print("  (no blender: skipped)")
         return
@@ -433,7 +434,7 @@ def test_decal_pull_through_blender():
     spec = _board({"file": str(p), "at": "board", "size": [0.1, None]})
     (Path(_TMP) / "decal_rt").mkdir(exist_ok=True)
     store.save("decal_rt", spec)
-    scene.sync("decal_rt", 96)
+    scene_sync.sync("decal_rt", 96)
     move = ("import bpy\n"
             "ob = next(o for o in bpy.data.objects if o.get('hp_decal') is not None)\n"
             "ob.location.x += 0.03\n"
@@ -441,11 +442,11 @@ def test_decal_pull_through_blender():
     subprocess.run(["blender", "-b", str(scene.blend_path("decal_rt")), "--factory-startup", "--python-expr", move],
                    check=True, capture_output=True, timeout=300)
     log: list = []
-    got = scene.pull("decal_rt", log)
+    got = scene_sync.pull("decal_rt", log)
     assert np.allclose(got["pic.image"]["offset"], [0.03, 0, 0]), (got, log)
     assert np.allclose(store.load("decal_rt")["paint"]["pic"]["image"]["offset"], [0.03, 0, 0])
-    scene.sync("decal_rt", 96)
-    assert scene.pull("decal_rt", []) == {}  # re-stamped: nothing moved since
+    scene_sync.sync("decal_rt", 96)
+    assert scene_sync.pull("decal_rt", []) == {}  # re-stamped: nothing moved since
 
 
 def test_chart_border_steps():

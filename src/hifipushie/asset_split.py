@@ -85,13 +85,13 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
     frames = {}
     for key, ps in xs.items():
         if key == origin[key]:
-            from . import scene as scenemod
-            pv, _ = scenemod.part_voxel(ps, voxel)
+            from . import scene_objects
+            pv, _ = scene_objects.part_voxel(ps, voxel)
             if (voxels or {}).get(key):
                 pv = min(pv, float(voxels[key]))
             # a part finer than the model's voxel (a shirt collar's 6 mm sheet, a strap) on its own grid, as the
             # scene meshes it: at the model's 7.8 mm the collar came out as shreds
-            frames[key] = (lo, voxel, shape) if pv >= voxel else scenemod._frame(ps, pv)
+            frames[key] = (lo, voxel, shape) if pv >= voxel else scene_objects._frame(ps, pv)
             continue
         # a prefab is meshed in a box of its own, finer if it's small (`resolution` voxels across it)
         pf = key.split("/")[0]

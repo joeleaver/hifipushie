@@ -31,7 +31,7 @@ its support, then its mean; `provenance` marks every texel measured / mirrored /
 
   decompose(name)          -> the maps, the recomposition and its error, the per-layer text
   apply(name, out=None)    -> the maps stored as images, spec["skin"]["stack"] saved; skin layers "skin:stack_*"
-  layers(spec, st, out, part)   (skin_features.build) the stack as paint layers: an opaque base + one multiply layer a map
+  layers(spec, st, out, part)   (skin_features_build.build) the stack as paint layers: an opaque base + one multiply layer a map
   edit(spec, **kw)         -> a copy with layer strengths changed (blush, tan, older, no stubble): one map each
 """
 from __future__ import annotations
@@ -390,11 +390,12 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     "freckles": (n,) density map 0..1, "provenance" (n,) uint8 (255 measured, 170 mirrored, 85 inferred), "recomposed"
     (n, 3) linear, "residual": {...by region and band}, "ica", "axes", "at", "text"}."""
     from scipy.spatial import cKDTree
-    from . import skin, store
+    from . import store
+    from . import skin_params
     spec = spec or store.load(name)
     at, alb, cf, pj = _atlas_of(spec)
     n = len(alb)
-    tone = skin.params(spec)["tone"]
+    tone = skin_params.params(spec)["tone"]
     V = axes(tone)
     Vi = np.linalg.inv(V)                                     # amounts = D @ Vi
     meas = cf > 0.6
@@ -823,7 +824,7 @@ def check(st) -> dict | None:
 
 
 def layers(spec: dict, st: dict, out: dict, part: str) -> None:
-    """spec["skin"]["stack"] as paint layers (skin_features.build calls it FIRST: over the skin's broad colour layers,
+    """spec["skin"]["stack"] as paint layers (skin_features_build.build calls it FIRST: over the skin's broad colour layers,
     under every fine generator): the base colour over the head, then one multiply layer a map."""
     if not st or not st.get("layers"):
         return

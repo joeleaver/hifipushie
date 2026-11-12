@@ -73,7 +73,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
     "node"...}, "wood_wind": (trunk, branch, phase, flutter) per wood vertex, "crown": None | {"V", "F", "N", "uv",
     "col" (n, 3 multiplier), "wind", "mass"}, "mini", "info"}. A lower count takes triangles off the same two
     surfaces: the masses and the limbs themselves never change with the LOD."""
-    from . import veg_export
+    from . import veg_export_parts
     if tree.get("clump"):
         return dress_clump(tree, st, triangles, season)
     ft = fit(tree, st)
@@ -83,7 +83,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
     share = float(st["wood"].get("share", 0.25)) if ft["ells"] else 1.0
     wd_ = ft["wood"]
     wfn = lambda q: np.maximum(wood_field(wd_["segs"], q, wd_["blend"]), -0.3 - q[:, 2])
-    wn = veg_export.wind_nodes(mini)
+    wn = veg_export_parts.wind_nodes(mini)
 
     def surface(dn, target):
         fn_ = wfn if dn is wd_ else (lambda q: wood_field(dn["segs"], q, dn["blend"]))

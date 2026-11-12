@@ -126,11 +126,12 @@ def state(base: dict) -> dict:
     """The mesh and what is read off it: {"tpl", "head", "L" (68 landmarks + 2 eye centres, world, template pose),
     "measures"}."""
     from . import anthro, onemesh
+    from . import onemesh_head
     if not onemesh.applies(base):
         raise ValueError('humanfit: the model\'s base is not the one human mesh (base.body.source "human"; make one with '
                          'the human tool, source="human")')
-    tpl = onemesh.template(base)
-    ht = onemesh.head_rest(base)
+    tpl = onemesh_head.template(base)
+    ht = onemesh_head.head_rest(base)
     L = np.r_[np.asarray(ht["lm68"], float), np.asarray(ht["eyes"], float)]
     if L[EYE_L, 0] < L[EYE_R, 0]:
         L[[EYE_L, EYE_R]] = L[[EYE_R, EYE_L]]
@@ -228,9 +229,10 @@ def value(m: dict, name: str) -> float:
 
 def identity(base: dict) -> np.ndarray:
     """The head's GNM identity components as the solver sees them (headfit's 120, sigma units)."""
-    from . import headfit, onemesh
+    from . import headfit
+    from . import onemesh_head
     g = headfit._gnm()
-    idn = onemesh.head_desc(base).get("identity") or {}
+    idn = onemesh_head.head_desc(base).get("identity") or {}
     return np.array([float(idn.get(g["names"][i], 0.0)) for i in g["comps"]])
 
 

@@ -102,7 +102,8 @@ def season_tree(T: dict, season: str) -> dict:
 
 def drawn_points(T: dict) -> np.ndarray:
     """Every vertex the full export draws (styled: wood, crown, heads; realistic: stalks + cards), plant axes (z up)."""
-    from . import veg_export, veg_leaf, veg_mesh, veg_style
+    from . import veg_leaf, veg_mesh, veg_style
+    from . import veg_export_parts
     from . import veg_style_dress
     s = T["spec"]
     st = veg_style.sheet(s)
@@ -115,7 +116,7 @@ def drawn_points(T: dict) -> np.ndarray:
     else:
         if len(veg_leaf.place(T)["pos"]):
             at = veg_leaf.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
-            L = veg_export.foliage_mesh(T, at)
+            L = veg_export_parts.foliage_mesh(T, at)
             if len(L["V"]):
                 P.append(L["V"])
         try:
@@ -265,7 +266,7 @@ def compose(f: dict, albedo: np.ndarray, normal: np.ndarray, shade: np.ndarray, 
     """One card's maps from its passes (h, w, 4 floats 0..1): albedo sRGB with the shade baked in + alpha, and the
     tangent-space normal map in the card's own frame (_card_frame)."""
     from scipy import ndimage
-    from .veg_export import _bleed
+    from .veg_export_parts import _bleed
     k = albedo.shape[1] // max(f["px"][0], 1)
     if k > 1:  # (rendered SUPER x: coverage-weighted means down to the picture's pixels)
         h_, w_ = f["px"][1], f["px"][0]
@@ -357,7 +358,7 @@ def pack(sizes: list, width: int = ATLAS_W, pad: int = 2) -> tuple[list, int, in
 
 def atlases(baked: dict, frames: list, box: list) -> tuple[dict, list, int, int]:
     """{season: (rgba uint8, normal uint8)} and per frame its [x, y] in them."""
-    from .veg_export import _bleed
+    from .veg_export_parts import _bleed
     from scipy import ndimage
     sizes = [None if b is None else (b[1] - b[0], b[3] - b[2]) for b in box]
     at, W, Ht = pack(sizes, pad=PAD)
@@ -603,13 +604,14 @@ def _finish(renders: dict, frames: list, R: float, H: float) -> dict:
 
 def export(T: dict, out_dir: str, stem: str, seasons=SEASONS, built: dict | None = None) -> dict:
     """The groundcover files in out_dir (see the module's docstring); returns counts."""
-    from . import veg_export, veg_style
+    from . import veg_style
+    from . import veg_export_files, veg_export_parts
     s = T["spec"]
     st = veg_style.sheet(s)
     B = built or build(T, seasons)
     info = {"name": stem, "species": s.get("species"), "height_m": round(B["H"], 3), "radius_m": round(B["R"], 3),
             "atlas_px": B["atlas"], "style": {"name": st["name"] if st else "realistic", "kind": "groundcover cards"},
-            "snow_numbers": veg_export.snow_numbers(s, st), "roughness": float((st or {}).get("crown", {}).get("roughness", 0.85)) if st else 0.85,
+            "snow_numbers": veg_export_parts.snow_numbers(s, st), "roughness": float((st or {}).get("crown", {}).get("roughness", 0.85)) if st else 0.85,
             "groundcover": "each card shows the slice of the clump in its own wedge round the foot (azimuth within 90 / planes deg of "
                            "its line), baked square on from the full plant in its style and season: albedo (sRGB, shade of the clump "
                            "above baked in) + tangent-space normal map; NORMAL leans up and out (the ground's light)"}
@@ -620,7 +622,7 @@ def export(T: dict, out_dir: str, stem: str, seasons=SEASONS, built: dict | None
     files = [full["path"]]
     for li in range(len(B["tiers"])):
         files.append(write_glb(str(out / f"{stem}_LOD{li}.glb"), stem, B["tiers"], B["maps"], seasons, info, which=[li])["path"])
-    sj = veg_export.seasons_json(full["path"])
+    sj = veg_export_files.seasons_json(full["path"])
     if sj:
         files.append(sj["path"])
     return {"path": full["path"], "files": files, "lods": full["lods"], "R": B["R"], "H": B["H"], "atlas": B["atlas"],

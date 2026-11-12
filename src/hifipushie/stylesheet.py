@@ -192,15 +192,16 @@ def colour_check(name: str, size: int = 512, save: str | None = None) -> list[di
     camera on the face, HSV sampled in 7x7 px patches at SKIN_SAMPLES (lit: forehead, the key side's cheek;
     shadow: the far side of the face, above the stubble). Returns rules as check() does, plus the samples."""
     import colorsys
-    from . import scene, store
+    from . import store
+    from . import scene_sync
     from . import spec as S
     spec = store.load(name)
     rules = load(sheet_of(spec)).get("rules") or {}
     J = S.expand_mirror(spec)["joints"]
     mid = np.array(J["lm_nose_tip"]["pos"], float)
     cam = {"eye": (mid + [0, -0.85, 0.01]).tolist(), "target": mid.tolist(), "fov": 16, "name": "style_front"}
-    scene.look(name, [], [cam], size, save)
-    im = np.asarray(scene.look.images[0][1].convert("RGB"), float) / 255
+    scene_sync.look(name, [], [cam], size, save)
+    im = np.asarray(scene_sync.look.images[0][1].convert("RGB"), float) / 255
     samples = {}
     for nm, j, off, kind in skin_samples(spec):
         if j not in J:

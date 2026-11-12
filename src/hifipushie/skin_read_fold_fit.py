@@ -41,14 +41,14 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
     for name, row in fr["folds"].items():
         if not row["readable"]:
             if name == "lid_fold" and name not in cur and lid_prior:
-                from . import skin as skinmod
-                pp = skinmod.params({"skin": sk})
+                from . import skin_params
+                pp = skin_params.params({"skin": sk})
                 masc = float(pp.get("masc", 0.0)) if sk.get("sex") is not None else 0.5
                 show = skin_read.LID_PRIOR["show"][0] + (skin_read.LID_PRIOR["show"][1] - skin_read.LID_PRIOR["show"][0]) * masc
                 sh = round(show - skin_read.LID_PRIOR["nominal"], 2)
-                entry = {"amount": skin_read.LID_PRIOR["amount"], "roll": round(1.0 + 1.2 * skinmod._age_curve(pp["age"], 35, 75), 2),
+                entry = {"amount": skin_read.LID_PRIOR["amount"], "roll": round(1.0 + 1.2 * skin_params._age_curve(pp["age"], 35, 75), 2),
                          "L": {"shift": [sh] * 3}, "R": {"shift": [sh] * 3}}
-                hood = round(0.9 * skinmod._age_curve(pp["age"], 40, 75), 2)
+                hood = round(0.9 * skin_params._age_curve(pp["age"], 40, 75), 2)
                 if hood >= 0.05:
                     entry["hood"] = hood
                 folds[name] = entry
@@ -177,16 +177,16 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
         changes.append(("folds (NOT raised)", "", "", ", ".join(stuck) + ": laid, yet our render shows less than a third of what that "
                         "amount should read under the picture's light. Painted relief does not carry it: the picture's fold is "
                         "geometry (sculpt / block-in), not more paint"))
-    from . import skin as skinmod
-    p = skinmod.params({"skin": sk})
+    from . import skin_params
+    p = skin_params.params({"skin": sk})
     for name, row in fr["fields"].items():
         # FIELD_FIT is off: the validation's null (the same lines in picture and ours, another light) read +0.47 where
         # lines against none read +0.65: fine-line energy follows the light as much as the lines. Reported, not fitted.
         if not skin_read.FIELD_FIT or not row["readable"] or abs(row["diff"]) < skin_read.FIELD_T:
             continue
         age = p["age"]
-        dflt = {"forehead": skinmod._age_curve(age, 26, 72), "crows_feet": skinmod._age_curve(age, 28, 70),
-                "under_eye": skinmod._age_curve(age, 30, 75), "lip_lines": skinmod._age_curve(age, 48, 85)}[name]
+        dflt = {"forehead": skin_params._age_curve(age, 26, 72), "crows_feet": skin_params._age_curve(age, 28, 70),
+                "under_eye": skin_params._age_curve(age, 30, 75), "lip_lines": skin_params._age_curve(age, 48, 85)}[name]
         a0 = float((sk.get("wrinkles") or {}).get(name, dflt))
         a1 = round(float(np.clip(a0 + row["diff"] / skin_read.FIELDS[name][2], 0, 2.0)), 3)
         if abs(a1 - a0) > 0.08:

@@ -126,7 +126,7 @@ RELIEF_FADE = 0.1
 JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
 FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
-FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
+FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs_checks.floating's tol)
 EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
 BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
 FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground

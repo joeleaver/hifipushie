@@ -456,7 +456,8 @@ def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, 
     `lods` mesh LODs + an impostor), the floor's meshes (brash and stumps as OBJ, the fern as a GLB) and layout.json
     (every tree's and floor thing's place, the LOD distances). A heavy job: one at a time on the machine."""
     from pathlib import Path
-    from . import resources, veg_export, veg_tools
+    from . import resources, veg_tools
+    from . import veg_export_glb
     s = st["spec"]
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -467,7 +468,7 @@ def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, 
             imp = None
             if impostor:
                 imp = _impostor(v["tree"], out / f"{v['name']}_impostor.png")
-            c = veg_export.write_glb(v["tree"], str(out / f"{v['name']}.glb"), v["name"], triangles=tri, lods=lods, impostor=imp)
+            c = veg_export_glb.write_glb(v["tree"], str(out / f"{v['name']}.glb"), v["name"], triangles=tri, lods=lods, impostor=imp)
             files.append(c["path"])
             rows.append({"name": v["name"], "lods": [{"lod": q["lod"], "triangles": q["triangles"]} for q in c["lods"]]})
             if log:
@@ -480,7 +481,7 @@ def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, 
             files.append(str(out / f"stump{k}.obj"))
         if "ferns" in st["floor"] and len(st["floor"]["ferns"]["xy"]):
             nm = s["floor"].get("fern", "fern")
-            c = veg_export.write_glb(_fern(nm), str(out / f"{nm}.glb"), nm)
+            c = veg_export_glb.write_glb(_fern(nm), str(out / f"{nm}.glb"), nm)
             files.append(c["path"])
     lj = layout_json(st)
     lj["kit"] = rows

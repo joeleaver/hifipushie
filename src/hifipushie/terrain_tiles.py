@@ -76,6 +76,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     region = None
     if cfg["mode"] == "cliffs":
         from . import terrain_cliffs
+        from . import terrain_cliffs_checks, terrain_cliffs_ground
         region = terrain_cliffs.Region(T, base, G, cfg)
         field = terrain_cliffs.CliffField(base, region)
     elif cfg["mode"] != "full":
@@ -768,13 +769,14 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             check = seam_check(out, memo=memo) if manifest_tiles else {"summary": {"failures": 0}, "failures": []}
         if region is not None:
             from . import terrain_cliffs
+            from . import terrain_cliffs_checks, terrain_cliffs_ground
             with prof.stage("check: ground (parent)"):
-                gc = terrain_cliffs.ground_check(out, manifest, region, memo=memo,
+                gc = terrain_cliffs_ground.ground_check(out, manifest, region, memo=memo,
                                                  tile_keys={ij: fkey[ij][0] for ij in tiles})
             check["summary"]["ground"] = gc["summary"]
             check["failures"] += gc["failures"]
             with prof.stage("check: lakes (parent)"):
-                lc = terrain_cliffs.lake_check(out, manifest)
+                lc = terrain_cliffs_checks.lake_check(out, manifest)
             check["summary"]["lakes"] = lc["summary"]
             check["failures"] += lc["failures"]
         # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the

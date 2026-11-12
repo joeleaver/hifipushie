@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import veg_export, veg_style as vs
+from hifipushie import veg_export_files, veg_export_glb, veg_export_parts
 from hifipushie import veg_style_crown, veg_style_dress, veg_style_small, veg_style_wood
 from hifipushie import vegetation_grow
 
@@ -147,7 +148,7 @@ def test_seasons():
     # a bare tree keeps the summer tree's limbs and forks (it is fitted in leaf whatever the season)
     assert Wn["info"]["axes_kept"] == veg_style_dress.dress(T, st)["info"]["axes_kept"] > 1 + Wn["info"]["limbs_kept"]
     # the realistic tree has a spring too: smaller, fresher leaves
-    sp = veg_export.spring_leaves(T["spec"])
+    sp = veg_export_parts.spring_leaves(T["spec"])
     assert sp["length"] < T["spec"]["leaves"].get("length", 0.07) and sp["color"] != T["spec"]["leaves"]["color"]
 
 
@@ -158,8 +159,8 @@ def test_export_contract():
     R = vegetation_grow.grow(BASE)
     with tempfile.TemporaryDirectory() as tmp:
         seasons = ("summer", "spring", "autumn", "winter", "snow")
-        c = veg_export.write_glb(T, str(Path(tmp) / "b.glb"), "b", lods=3, seasons=seasons)
-        veg_export.write_glb(R, str(Path(tmp) / "r.glb"), "b", triangles=6000, lods=3, seasons=("summer", "autumn", "winter"))
+        c = veg_export_glb.write_glb(T, str(Path(tmp) / "b.glb"), "b", lods=3, seasons=seasons)
+        veg_export_glb.write_glb(R, str(Path(tmp) / "r.glb"), "b", triangles=6000, lods=3, seasons=("summer", "autumn", "winter"))
         G, arr = _glb(c["path"])
         Gr, _ = _glb(str(Path(tmp) / "r.glb"))
         names = lambda g: sorted(n["name"] for n in g["nodes"])
@@ -186,7 +187,7 @@ def test_export_contract():
         assert ex["collision"] == Gr["extras"]["hifipushie_plant"]["collision"]
         assert winter["extras"]["hidden"] is True
         # for engines without variants / out-of-scene nodes: a seasons json and a collision file
-        sj = veg_export.seasons_json(c["path"])
+        sj = veg_export_files.seasons_json(c["path"])
         assert sj["variants"] == list(seasons) and set(sj["slots"]) == {"bark", "foliage", "bark_forks"}
         # the forks: a second wood primitive, hidden except in the bare season
         assert sj["seasons"]["summer"]["bark_forks"]["hidden"] and not sj["seasons"]["winter"]["bark_forks"]["hidden"]
@@ -194,11 +195,11 @@ def test_export_contract():
         assert sj["seasons"]["winter"]["foliage"]["hidden"] and not sj["seasons"]["autumn"]["foliage"]["hidden"]
         assert sj["seasons"]["autumn"]["foliage"]["baseColorFactor"] != sj["seasons"]["summer"]["foliage"]["baseColorFactor"]
         assert json.loads(Path(sj["path"]).read_text())["default"] == "summer"
-        sr = veg_export.seasons_json(str(Path(tmp) / "r.glb"))
+        sr = veg_export_files.seasons_json(str(Path(tmp) / "r.glb"))
         fs = [k for k in sr["slots"] if k.startswith("foliage")]  # (a budgeted tree's LODs may each have their own bough picture)
         assert fs and all(Path(tmp, sr["seasons"]["autumn"][k]["baseColorTexture"]["file"]).exists() for k in fs)
         assert all(sr["seasons"]["winter"][k]["hidden"] for k in fs)
-        Gc, _ = _glb(veg_export.write_collision(T, str(Path(tmp) / "c.glb"), "b"))
+        Gc, _ = _glb(veg_export_files.write_collision(T, str(Path(tmp) / "c.glb"), "b"))
         assert Gc["nodes"][Gc["scenes"][0]["nodes"][0]]["name"] == "b_collision-colonly" and Gc["extras"]["hifipushie_collision"]["capsules"]
         # contract version and the full slot list lead the seasons json (an engine can refuse what it doesn't know)
         raw = json.loads(Path(sj["path"]).read_text())
@@ -210,7 +211,7 @@ def test_export_contract():
         # their own tangent (w = -1 behind), so one normal map lights both; pictures face the cameras that made them
         img = {"image": np.ones((8, 16, 4), np.float32), "normal": np.full((8, 16, 3), 0.5, np.float32), "size": 6.0, "height": 3.0,
                "seasons": {"winter": {"image": np.zeros((8, 16, 4), np.float32), "normal": np.full((8, 16, 3), 0.5, np.float32)}}}
-        Gi, arr_i = _glb(veg_export.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img, ("summer", "winter")))
+        Gi, arr_i = _glb(veg_export_glb.write_impostor(T, str(Path(tmp) / "i.glb"), "b", img, ("summer", "winter")))
         pi = Gi["meshes"][0]["primitives"][0]
         mi = Gi["materials"][pi["material"]]
         assert not mi.get("doubleSided") and len(arr_i(pi["indices"])) == 24 and "normalTexture" in mi and mi["extras"]["receive_shadows"] is False
@@ -221,7 +222,7 @@ def test_export_contract():
         assert np.allclose(fn, N[I[:, 0]], atol=1e-5) and len(P) == 16
         assert np.allclose(np.cross(N, Tg[:, :3]) * Tg[:, 3:], [0, 1, 0], atol=1e-6)  # bitangent = up (glTF is Y up) on every face
         assert np.allclose(N[:4], [0, 0, 1]) and np.allclose(N[8:12], [-1, 0, 0])  # picture 1 faces Blender -y, picture 2 Blender -x
-        si = veg_export.seasons_json(str(Path(tmp) / "i.glb"))
+        si = veg_export_files.seasons_json(str(Path(tmp) / "i.glb"))
         assert si["slots"]["impostor"]["receive_shadows"] is False and Path(tmp, si["slots"]["impostor"]["normalTexture"]["file"]).exists()
 
 
@@ -233,12 +234,12 @@ def test_impostor_maps():
     sh = np.ones((h, h, 4), np.float32)
     sh[2:4, 2:4, 0] = 0.0
     out = []
-    for right, front in veg_export.impostor_frames():
+    for right, front in veg_export_parts.impostor_frames():
         n = 0.6 * front + 0.8 * np.array([0, 0, 1.0])  # facing the camera and up
         Nw = np.zeros((h, h, 4), np.float32)
         Nw[2:4, 2:4] = [*(n * 0.5 + 0.5), 1]
         out.append(Nw)
-    m = veg_export.impostor_maps([A, A], out, [sh, sh], shade_amount=0.5, depth=1.0)
+    m = veg_export_parts.impostor_maps([A, A], out, [sh, sh], shade_amount=0.5, depth=1.0)
     assert m["image"].shape == (h, 2 * h, 4) and m["normal"].shape == (h, 2 * h, 3)
     for j in (0, 1):
         ts = m["normal"][2, 2 + h * j] * 2 - 1
@@ -273,7 +274,7 @@ def test_lod_normals_are_the_fields():
             assert (np.einsum("ij,ij->i", gw, W["N"]) > 0.9999).all(), share
         # and that is what the file holds
         with tempfile.TemporaryDirectory() as tmp:
-            c = veg_export.write_glb(T, str(Path(tmp) / "b.glb"), "b", lods=3)
+            c = veg_export_glb.write_glb(T, str(Path(tmp) / "b.glb"), "b", lods=3)
             G, arr = _glb(c["path"])
             for m in G["meshes"]:
                 if not m["name"].endswith("foliage"):
@@ -308,7 +309,7 @@ def test_clump_seasons():
     except ValueError:
         pass
     # the realistic export: a season's atlas has the pictures of layers out of season blanked
-    a_su, a_sp = veg_export.season_atlas(su["spec"], "summer", [0.5, 0.5, 0.3]), veg_export.season_atlas(su["spec"], "spring", [0.5, 0.5, 0.3])
+    a_su, a_sp = veg_export_parts.season_atlas(su["spec"], "summer", [0.5, 0.5, 0.3]), veg_export_parts.season_atlas(su["spec"], "spring", [0.5, 0.5, 0.3])
     assert a_sp["color"][..., 3].sum() < 0.97 * a_su["color"][..., 3].sum()
 
 
@@ -337,10 +338,10 @@ def test_blobby_clump():
     assert veg_style_dress.dress(vegetation_grow.grow({"species": "meadow_grass", "style": "blobby", "season": "winter"}), st, season="winter")["heads"] is None
     with tempfile.TemporaryDirectory() as tmp:
         seasons = ("summer", "spring", "autumn", "winter", "snow")
-        c = veg_export.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=3, seasons=seasons)
+        c = veg_export_glb.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=3, seasons=seasons)
         G, arr = _glb(c["path"])
         assert "textures" not in G and [l["triangles"] for l in c["lods"]] == sorted([l["triangles"] for l in c["lods"]], reverse=True)
-        sj = veg_export.seasons_json(c["path"])
+        sj = veg_export_files.seasons_json(c["path"])
         sl = {e_["slot"]: e_ for e_ in sj["slot_list"]}
         # contract 6: the blades lying down in winter are their own slot (foliage_winter), the upright ones hidden then
         assert set(sl) == {"bark", "foliage", "heads", "foliage_winter"} and sl["heads"]["hidden_in"] == ["spring", "winter", "snow"]
@@ -390,7 +391,7 @@ def test_anime_clouds():
     assert veg_cloud.dab_atlas(T["spec"], st) is at
     with tempfile.TemporaryDirectory() as tmp:
         seasons = ("summer", "spring", "autumn", "winter", "snow")
-        c = veg_export.write_glb(T, str(Path(tmp) / "a.glb"), "a", lods=3, seasons=seasons)
+        c = veg_export_glb.write_glb(T, str(Path(tmp) / "a.glb"), "a", lods=3, seasons=seasons)
         G, arr = _glb(c["path"])
         fol = next(m for m in G["meshes"] if m["name"] == "LOD0_foliage")["primitives"][0]
         assert {"TEXCOORD_0", "TEXCOORD_1", "TEXCOORD_2", "TEXCOORD_3", "COLOR_0", "_WIND", "NORMAL"} <= set(fol["attributes"])
@@ -405,7 +406,7 @@ def test_anime_clouds():
         png = raw[20 + jl + 8:][bv.get("byteOffset", 0): bv.get("byteOffset", 0) + bv["byteLength"]]
         A = np.asarray(Image.open(io.BytesIO(png)))
         assert np.abs(A.astype(int) - at["color"].astype(int)).max() <= 1  # the atlas as made (uint8 x 255 once wrapped it into noise)
-        sj = veg_export.seasons_json(c["path"])
+        sj = veg_export_files.seasons_json(c["path"])
         assert sj["contract"]["version"] == veg_export.CONTRACT >= 4 and sj["style"] == {"name": "anime", "foliage": "clouds"}
         sl = {e_["slot"]: e_ for e_ in sj["slot_list"]}
         assert set(sl) == {"bark", "foliage"} and sl["foliage"]["hidden_in"] == ["winter", "snow"] and "TEXCOORD_3" in sl["foliage"]["channels"]
@@ -420,15 +421,15 @@ def test_snow_is_winter_under_snow():
     seasons = ("summer", "winter", "snow")
     with tempfile.TemporaryDirectory() as tmp:
         for name, spec, tri in (("b", {**BASE, "style": "blobby"}, None), ("r", BASE, 6000), ("g", {"species": "meadow_grass", "style": "blobby"}, None)):
-            c = veg_export.write_glb(vegetation_grow.grow(spec), str(Path(tmp) / f"{name}.glb"), name, triangles=tri, lods=1, seasons=seasons)
-            sj = veg_export.seasons_json(c["path"])
+            c = veg_export_glb.write_glb(vegetation_grow.grow(spec), str(Path(tmp) / f"{name}.glb"), name, triangles=tri, lods=1, seasons=seasons)
+            sj = veg_export_files.seasons_json(c["path"])
             hid = lambda se: sorted(k for k, d in sj["seasons"][se].items() if d["hidden"])
             assert hid("snow") == hid("winter"), (name, hid("snow"), hid("winter"))
             assert sj["snow"]["by_normal"]["from"] < sj["snow"]["by_normal"]["to"] and len(sj["snow"]["color_linear"]) == 3
-        b = veg_export.seasons_json(str(Path(tmp) / "b.glb"))
+        b = veg_export_files.seasons_json(str(Path(tmp) / "b.glb"))
         assert b["seasons"]["snow"]["foliage"]["hidden"] and not b["seasons"]["snow"]["bark_forks"]["hidden"]
-        c = veg_export.write_glb(vegetation_grow.grow({"species": "norway_spruce", "age": 20, "style": "blobby"}), str(Path(tmp) / "s.glb"), "s", lods=1, seasons=seasons)
-        s_ = veg_export.seasons_json(c["path"])
+        c = veg_export_glb.write_glb(vegetation_grow.grow({"species": "norway_spruce", "age": 20, "style": "blobby"}), str(Path(tmp) / "s.glb"), "s", lods=1, seasons=seasons)
+        s_ = veg_export_files.seasons_json(c["path"])
         assert not s_["seasons"]["snow"]["foliage"]["hidden"]  # an evergreen keeps its crown under snow
         assert s_["seasons"]["snow"]["foliage"]["baseColorFactor"] != s_["seasons"]["winter"]["foliage"]["baseColorFactor"]
 
@@ -438,8 +439,8 @@ def test_winter_blades_lie_in_the_export():
     winter and snow while the upright blades are hidden; its blades stand lower than the summer ones."""
     T = vegetation_grow.grow({"species": "meadow_grass", "style": "blobby"})
     with tempfile.TemporaryDirectory() as tmp:
-        c = veg_export.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=1, seasons=["summer", "winter", "snow"])
-        sj = veg_export.seasons_json(c["path"])
+        c = veg_export_glb.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=1, seasons=["summer", "winter", "snow"])
+        sj = veg_export_files.seasons_json(c["path"])
         sl = {e["slot"]: e for e in sj["slot_list"]}
         assert sl["foliage_winter"]["hidden_in"] == ["summer"] and sl["foliage"]["hidden_in"] == ["winter", "snow"]
         G, arr = _glb(c["path"])
@@ -451,8 +452,8 @@ def test_winter_blades_lie_in_the_export():
     # the realistic small plant the same way (its cards lying in slot foliage_winter)
     R = vegetation_grow.grow({"species": "meadow_grass"})
     with tempfile.TemporaryDirectory() as tmp:
-        c = veg_export.write_glb(R, str(Path(tmp) / "r.glb"), "r", lods=1, seasons=["summer", "winter", "snow"])
-        sj = veg_export.seasons_json(c["path"])
+        c = veg_export_glb.write_glb(R, str(Path(tmp) / "r.glb"), "r", lods=1, seasons=["summer", "winter", "snow"])
+        sj = veg_export_files.seasons_json(c["path"])
         sl = {e["slot"]: e for e in sj["slot_list"]}
         assert sl["foliage_winter"]["hidden_in"] == ["summer"] and sl["foliage"]["hidden_in"] == ["winter", "snow"], sl
         G, arr = _glb(c["path"])
@@ -517,8 +518,8 @@ def test_pixar():
     assert D2["cards"]["cards"] < K["cards"] and D2["cards"]["card_m"] > K["card_m"]
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "p.glb"
-        veg_export.write_glb(T, str(p), "p", seasons=["summer", "winter"])
-        sj = veg_export.seasons_json(str(p))
+        veg_export_glb.write_glb(T, str(p), "p", seasons=["summer", "winter"])
+        sj = veg_export_files.seasons_json(str(p))
         slots = {s_["slot"]: s_ for s_ in sj["slot_list"]}
         assert "foliage_cards" in slots and "TEXCOORD_3" in slots["foliage_cards"]["channels"] and "winter" in slots["foliage_cards"]["hidden_in"]
         assert sj["seasons"]["summer"]["foliage_cards"]["alphaMode"] == "MASK"

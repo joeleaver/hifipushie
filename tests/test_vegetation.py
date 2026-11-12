@@ -419,13 +419,13 @@ def test_angle_clear_and_bare():
 
 
 def test_budget_is_what_is_written():
-    from hifipushie import veg_export
+    from hifipushie import veg_export_parts
     T = vegetation_grow.grow({"species": "birch", "age": 25})
     for n in (4000, 12000):
-        bud = veg_export.budget(T, n, (0.4, 0.8), 8)
+        bud = veg_export_parts.budget(T, n, (0.4, 0.8), 8)
         assert bud["total"] <= n or bud["over"] == bud["total"] - n
         assert bud["total"] <= n, (n, bud["total"])
-    full = veg_export.budget(T, None, (0.4, 0.8), 8)
+    full = veg_export_parts.budget(T, None, (0.4, 0.8), 8)
     assert full["keep"] == 1.0 and full["min_radius"] == 0.0
 
 
@@ -538,28 +538,29 @@ def test_boll_dead_roots_and_habit_extras():
 
 
 def test_budget_keeps_marked_wood_and_cards_on_wood():
-    from hifipushie import veg_export, veg_leaf, veg_mesh
+    from hifipushie import veg_leaf, veg_mesh
+    from hifipushie import veg_export_parts
     T = vegetation_grow.grow({"species": "oak", "age": 70, "dead": [{"above": 9.0, "min_radius": 0.02}]})
     assert T["dead"].any()
-    bud = veg_export.budget(T, 12000, (0.5, 1.0), 7)
+    bud = veg_export_parts.budget(T, 12000, (0.5, 1.0), 7)
     assert bud["total"] <= 12000 and bud["min_radius"] > 0.02  # thin live wood went ...
     assert bud["wood"]["dead"].sum() > 0  # ... the dead antlers (thinner than the cut-off) did not
-    ok = veg_export.kept_wood(T, bud["min_radius"], bud["protect"])
+    ok = veg_export_parts.kept_wood(T, bud["min_radius"], bud["protect"])
     thin = T["radius"] < bud["min_radius"]
     assert ok[T["dead"] & thin].mean() > 3 * ok[~T["dead"] & thin].mean()  # thin dead wood is drawn, thin live wood is not
-    tw, floating = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"])
+    tw, floating = veg_export_parts.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"])
     rnd = veg_leaf.place(T)
     far_all = 1 - ok[rnd["node"]].mean()
     if bud["keep"] >= 0.25:  # twig cards stand on drawn wood (bough cards are spread over the crown instead)
         # (dead wood carries no leaves now: on this tree, nearly half antlers, the live twigs stand on wood thinner
         # than any 12k cut-off whether the antlers are kept or not: then the marked wood stays and the export warns)
-        free = veg_export._budget(T, 12000, (0.5, 1.0), 7, pr=np.zeros(len(T["pos"]), bool))
-        hopeless = veg_export.pick_twigs(T, free["keep"], free["min_radius"], free["protect"])[1] > 0.5
+        free = veg_export_parts._budget(T, 12000, (0.5, 1.0), 7, pr=np.zeros(len(T["pos"]), bool))
+        hopeless = veg_export_parts.pick_twigs(T, free["keep"], free["min_radius"], free["protect"])[1] > 0.5
         assert floating <= 0.2 or floating < 0.5 * far_all or hopeless, (floating, far_all)
     else:
-        lf2, cap2, back2 = veg_export.cluster_leaves(T["spec"]["leaves"], bud["keep"])
+        lf2, cap2, back2 = veg_export_parts.cluster_leaves(T["spec"]["leaves"], bud["keep"])
         assert back2 > 0 and lf2["card"]["twig"]["length"] > 1.25 * veg_leaf.card_spec(T["spec"]["leaves"])["twig"]["length"]
-        b2 = veg_export.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"], cap=cap2, back=back2)[0]
+        b2 = veg_export_parts.pick_twigs(T, bud["keep"], bud["min_radius"], bud["protect"], cap=cap2, back=back2)[0]
         spread = lambda q: len(np.unique(np.floor(q / 2.0).astype(int), axis=0))
         assert spread(b2["pos"]) >= spread(tw["pos"])  # over the crown, not bunched on the limbs
     full, simp = veg_mesh.tubes(T), veg_mesh.tubes(T, simplify=0.3)
@@ -610,11 +611,12 @@ def _glb(path):
 
 def test_export_lods_wind_seasons_collision():
     import tempfile
-    from hifipushie import veg_export, veg_leaf
+    from hifipushie import veg_leaf
+    from hifipushie import veg_export_glb, veg_export_parts
     T = vegetation_grow.grow({"species": "birch", "age": 25})
     with tempfile.TemporaryDirectory() as tmp:
         imp = {"image": np.ones((8, 16, 4), np.float32), "size": 10.0, "height": 5.0}
-        c = veg_export.write_glb(T, tmp + "/b.glb", "b", triangles=9000, lods=3, seasons=["summer", "autumn", "winter", "snow"],
+        c = veg_export_glb.write_glb(T, tmp + "/b.glb", "b", triangles=9000, lods=3, seasons=["summer", "autumn", "winter", "snow"],
                                  wet=True, impostor=imp)
         g, bin_ = _glb(c["path"])
         tri = [l_["triangles"] for l_ in c["lods"]]
@@ -651,8 +653,8 @@ def test_export_lods_wind_seasons_collision():
     ev = vegetation_grow.grow({"species": "norway_spruce", "age": 20, "season": "winter"})
     de = vegetation_grow.grow({"species": "birch", "age": 20, "season": "winter"})
     assert len(veg_leaf.place(ev)["pos"]) > 0 and len(veg_leaf.place(de)["pos"]) == 0
-    assert veg_export.season_atlas(de["spec"], "winter", [0.4, 0.3, 0.3]) is None
-    su, au = veg_export.season_atlas(de["spec"], "summer", [0.4, 0.3, 0.3]), veg_export.season_atlas(de["spec"], "autumn", [0.4, 0.3, 0.3])
+    assert veg_export_parts.season_atlas(de["spec"], "winter", [0.4, 0.3, 0.3]) is None
+    su, au = veg_export_parts.season_atlas(de["spec"], "summer", [0.4, 0.3, 0.3]), veg_export_parts.season_atlas(de["spec"], "autumn", [0.4, 0.3, 0.3])
     m = su["color"][..., 3] > 0.6
     assert (au["color"][m][:, 0] - au["color"][m][:, 1]).mean() > (su["color"][m][:, 0] - su["color"][m][:, 1]).mean() + 0.1
 
@@ -738,7 +740,8 @@ def test_ground_and_stand_forms():
 
 
 def test_small_plants_are_assembled():
-    from hifipushie import veg_small, veg_export
+    from hifipushie import veg_small
+    from hifipushie import veg_export_parts
     clumps = [sp for sp in v.species() if v.preset(sp).get("plant") == "clump"]
     assert {"meadow_grass", "fern", "daisy", "clover", "feather_palm"} <= set(clumps)
     for sp in clumps:
@@ -760,7 +763,7 @@ def test_small_plants_are_assembled():
     pc = veg_leaf.part_cards(v.resolve({"species": "daisy"})["leaves"])
     d = vegetation_grow.grow({"species": "daisy"})
     assert set(pc) == {"main", "head", "stemleaf"} and set(np.unique(d["twigs"]["card"])) <= set(sum(pc.values(), []))
-    L = veg_export.foliage_mesh(g, veg_leaf.atlas(g["spec"]["leaves"]))
+    L = veg_export_parts.foliage_mesh(g, veg_leaf.atlas(g["spec"]["leaves"]))
     assert len(L["V"]) and L["N"][:, 2].mean() > 0.6 and L["reach"].max() < 1.0  # normals lean up; cards know their length
     for bad in ({"clump": {"layers": [{"part": "nope"}]}}, {"clump": {"layers": [{"sizee": 1}]}}, {"clump": {"layers": []}}):
         try:
@@ -984,7 +987,8 @@ def test_bough_card_form_by_budget():
     """A budget's bough cards: the finest cut of the tree, never more than `FULL` of its boughs (more only stack
     layers), lower LODs the same cut thinned and grown to the same cover (one atlas, no pop at a switch); a tiny
     budget re-cuts the tree into few rich limb cards. The triangle count holds either way."""
-    from hifipushie import veg_bough, veg_export
+    from hifipushie import veg_bough
+    from hifipushie import veg_export_parts
     T = vegetation_grow.grow({"species": "norway_spruce", "age": 30, "leaves": {"card": {"limbs": False}}})
     m = len(veg_bough.plan(T, veg_bough.most(T))["roots"])
     n, form = veg_bough.fit(T, m * veg_bough.tris(1))
@@ -1000,7 +1004,7 @@ def test_bough_card_form_by_budget():
 
     def cover(tw):  # the cards' polygons from the side, 10 cm pixels
         from PIL import Image, ImageDraw
-        L = veg_export.foliage_mesh(T, at, tw=tw)
+        L = veg_export_parts.foliage_mesh(T, at, tw=tw)
         q = (L["V"][:, [0, 2]] - [-12, -1]) / 0.1
         im = Image.new("1", (240, 320), 0)
         dr = ImageDraw.Draw(im)
@@ -1009,14 +1013,14 @@ def test_bough_card_form_by_budget():
         return float(np.asarray(im).sum())
     ca, cb = cover(a), cover(b)
     assert 0.9 < cb / ca < 1.1, (ca, cb)
-    bud = veg_export.budget(T, 12000, [0.3, 0.6], 10)
+    bud = veg_export_parts.budget(T, 12000, [0.3, 0.6], 10)
     if bud.get("boughs"):
         assert bud["total"] <= 12000, bud["total"]
     # a species built of flat limbs (leaves.card.limbs): every whole limb on its own card pair under the fine cards,
     # in the same atlas, dark toward the trunk, and inside the budget
     L = vegetation_grow.grow({"species": "norway_spruce", "age": 30})
     assert veg_bough.limbs_on(L) and veg_bough.extra(L) > 0
-    budL = veg_export.budget(L, 12000, [0.3, 0.6], 10)
+    budL = veg_export_parts.budget(L, 12000, [0.3, 0.6], 10)
     assert budL["boughs"] and budL["total"] <= 12000, budL["total"]
     atL = veg_bough.atlas(L, cards=budL["boughs"])
     twL = veg_bough.place(L, budL["boughs"], atL)
@@ -1027,7 +1031,7 @@ def test_bough_card_form_by_budget():
     lead_ = (L["order"][twL["node"]] == 0) & ~core
     assert atL["apex_card"] is not None and lead_.any() and (twL["card"][lead_] == atL["apex_card"]).all()
     assert min(atL["limb_extent"]) < 0.5 * float(np.median(atL["limb_extent"])), atL["limb_extent"]
-    M = veg_export.foliage_mesh(L, atL, tw=twL)
+    M = veg_export_parts.foliage_mesh(L, atL, tw=twL)
     assert M["tint"].min() < 0.6 < M["tint"].max(), (M["tint"].min(), M["tint"].max())
 
 

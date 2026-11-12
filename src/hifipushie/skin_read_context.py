@@ -336,14 +336,15 @@ def _region(c: Context, wz: np.ndarray, views: bool = True) -> dict:
 def regions(c: Context) -> dict:
     """{region: weights over the pooled points}: the skin's zones, the two lips, the beard's zones."""
     if getattr(c, "_regions", None) is None:
-        from . import skin as skinmod, skin_marks
+        from . import skin_marks
+        from . import skin_zones
         R = {z: c.alb.zone(z) for z in skin_read.ZONES}
         lips, low = c.alb.zone("lips", 0.8), c.alb.zone("lip_lower", 0.8)
         for z in skin_read.ZONES:
             R[z] = R[z] * (1 - lips)
         R["lip_upper"] = (lips * (1 - low)) ** 3
         R["lip_lower"] = low ** 3
-        J = skinmod._joints(c.st)
+        J = skin_zones._joints(c.st)
         c.J = J
         if "lm_jaw_1.L" in J:
             bz = skin_marks.beard_zones(J)(c.X)

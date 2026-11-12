@@ -11,7 +11,7 @@ ways is cut in four round a centre vertex), so the loops need no poles and are m
 Nothing about GNM's own vertices changes: `base_identity._gnm_data` stays GNM's (every fit, region, Laplacian and binding
 runs on it exactly as before) and the new vertices are APPENDED after GNM's 17821 (GNM ids N_RAW + j) and after the
 asset's own (asset ids). Each is the mean of its PARENTS (an edge's two ends, or a quad's four corners), applied
-where the head's vertices are final (`onemesh.template`), so the old vertices are bit-identical; per-vertex tables
+where the head's vertices are final (`onemesh_head.template`), so the old vertices are bit-identical; per-vertex tables
 are extended by the same rule (`ext`, `take`). A cut quad keeps its index for the child holding its first vertex;
 the other children are appended after GNM's quads (and the asset's faces).
 """

@@ -102,7 +102,7 @@ def maps(albedo: list, normal: list, shade: list, n: int, shade_amount: float = 
     """The atlas (n*px square) from the per-frame unlit passes (frame k = i * n + j: column i, row j): albedo sRGB with
     the baked shade and alpha, the object-space normal map (glTF axes), colour bled under the alpha."""
     from scipy import ndimage
-    from .veg_export import _bleed
+    from .veg_export_parts import _bleed
     px = albedo[0].shape[0]
     A = np.zeros((n * px, n * px, 4), np.float32)
     Nm = np.zeros((n * px, n * px, 4), np.float32)

@@ -706,10 +706,11 @@ def impostor(name: str, px: int = 512, season: str | None = None, kind: str = "o
     0..1 = albedo with the shade of what stands above baked in, "normal" (h, 2w, 3) = its tangent-space normal map
     (each half in its own quad's frame), "size": the square each view covers (m), "height": its middle's height (m)}.
     Three unlit passes per view (blender_vegetation._pass_material: albedo, shading normal, sky reaching the point),
-    put together by veg_export.impostor_maps; `over` = its numbers (shade_amount, depth)."""
+    put together by veg_export_parts.impostor_maps; `over` = its numbers (shade_amount, depth)."""
     from PIL import Image
     import tempfile
     from . import veg_export, veg_look
+    from . import veg_export_parts
     T = grown(name)
     if season:  # the same grown plant shown in another season ("snow" = as it stands, under snow)
         T = {**T, "spec": {**T["spec"], **({"snow": 0.8, "season": "winter"} if season == "snow" else {"season": season})}}
@@ -730,17 +731,18 @@ def impostor(name: str, px: int = 512, season: str | None = None, kind: str = "o
         from . import veg_style
         if "depth" not in over and not veg_style.sheet(T["spec"]):
             over = {**over, "depth": veg_export.IMPOSTOR["depth_cards"]}
-        m = veg_export.impostor_maps(rd("albedo"), rd("normal"), rd("shade"), **over)
+        m = veg_export_parts.impostor_maps(rd("albedo"), rd("normal"), rd("shade"), **over)
     return {**m, "size": S, "height": 0.5 * H}
 
 
 def export(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1, seasons=("summer",),
            wet: bool = False, impostor_lod: bool | str = False, lod_files: bool = False, grade: str = "full") -> dict:
-    """The plant's GLB (see veg_export.write_glb). lods 1-3 mesh LODs (+ impostor_lod: crossed quads with its picture
+    """The plant's GLB (see veg_export_glb.write_glb). lods 1-3 mesh LODs (+ impostor_lod: crossed quads with its picture
     as the last); lod_files also writes each LOD as <name>_LOD<k>.glb for engines without MSFT_lod.
     grade "groundcover" (small plants only): the clump baked onto a few cards per LOD (veg_groundcover), its own folder
     (default export_groundcover/) of <name>_LOD0..2.glb + <name>.glb + <name>_seasons.json."""
     from . import veg_export
+    from . import veg_export_files, veg_export_glb
     T = grown(name)
     if T.get("sward"):  # a tile of blades: its own files (LODs are fewer / wider blades; no impostor, no budget)
         from . import veg_sward
@@ -773,7 +775,7 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
                 geo.setdefault(gk, r_.get("passes"))
             imp["seasons"][se] = {k_: v_ for k_, v_ in r_.items() if k_ in ("image", "normal")}
     stem = name.replace("#", "_")
-    c = veg_export.write_glb(T, str(out / f"{stem}.glb"), stem, triangles=triangles, lods=lods, seasons=seasons, wet=wet, impostor=imp)
+    c = veg_export_glb.write_glb(T, str(out / f"{stem}.glb"), stem, triangles=triangles, lods=lods, seasons=seasons, wet=wet, impostor=imp)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
     c["over"] = max(0, c["total"] - triangles) if triangles else 0
     c["files"] = [c["path"]]
@@ -784,18 +786,18 @@ def export(name: str, out_dir: str | None = None, triangles: int | None = None, 
         base = triangles or (c["style"]["budget"] if c.get("style") else c["lods"][0]["triangles"])
         for li, L in enumerate(c["lods"]):
             if L.get("impostor"):
-                f = veg_export.write_impostor(T, str(out / f"{stem}_LOD{li}.glb"), stem, imp, seasons)
+                f = veg_export_glb.write_impostor(T, str(out / f"{stem}_LOD{li}.glb"), stem, imp, seasons)
             else:
-                f = veg_export.write_glb(T, str(out / f"{stem}_LOD{li}.glb"), stem, triangles=int(base * veg_export.LODS[li][0]),
+                f = veg_export_glb.write_glb(T, str(out / f"{stem}_LOD{li}.glb"), stem, triangles=int(base * veg_export.LODS[li][0]),
                                          seasons=seasons, wet=wet, cap=veg_export.LODS[li][1])["path"]
             c["files"].append(f)
     # for engines that read neither MSFT_lod, out-of-scene nodes nor KHR_materials_variants (Godot 4.7 reads none of the three)
     if not T.get("clump"):
-        f = veg_export.write_collision(T, str(out / f"{stem}_collision.glb"), stem)
+        f = veg_export_files.write_collision(T, str(out / f"{stem}_collision.glb"), stem)
         if f:
             c["files"].append(f)
             c["collision_file"] = f
-    sj = veg_export.seasons_json(c["path"])
+    sj = veg_export_files.seasons_json(c["path"])
     if sj:
         c["files"].append(sj["path"])
         c["seasons_file"] = sj["path"]
@@ -829,12 +831,12 @@ def wind(name: str, triangles: int | None = 20000, seconds: float = 4.0, fps: in
     import shutil
     import subprocess
     from PIL import Image
-    from . import veg_export
+    from . import veg_export_glb
     T = grown(name)
     d = _dir(name)
     v = len(history(name))
     stem = name.replace("#", "_")
-    glb = veg_export.write_glb(T, str(d / "export" / f"{stem}_wind.glb"), stem, triangles=triangles)["path"]
+    glb = veg_export_glb.write_glb(T, str(d / "export" / f"{stem}_wind.glb"), stem, triangles=triangles)["path"]
     fr = d / f"wind_v{v}"
     if fr.exists():
         shutil.rmtree(fr)
@@ -968,12 +970,12 @@ def set_report(name: str) -> str:
 def export_set(name: str, out_dir: str | None = None, triangles: int | None = None, lods: int = 1,
                seasons=("summer",), wet: bool = False) -> dict:
     """The set as ONE GLB (<name>_set.glb): a node per plant, one bark and one foliage material shared."""
-    from . import veg_export
+    from . import veg_export_glb
     names = set_names(name)
     if not names:
         raise ValueError(f"{name} has no set: grow_plant(name, patch={{\"set\": {{\"count\": 5}}}})")
     out = Path(out_dir) if out_dir else _dir(name) / "export"
-    c = veg_export.write_glb([grown(n_) for n_ in names], str(out / f"{name}_set.glb"),
+    c = veg_export_glb.write_glb([grown(n_) for n_ in names], str(out / f"{name}_set.glb"),
                              [n_.replace("#", "_") for n_ in names], triangles=triangles, lods=lods, seasons=seasons, wet=wet)
     c["total"] = c["wood_triangles"] + c["foliage_triangles"]
     return c

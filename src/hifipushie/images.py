@@ -29,7 +29,7 @@ The paint generator `image` lays an image on the surface as a projected decal (p
                 moved in the Blender scene comes back while it stays near its joint or blob (`from_gizmo`)}
 
 In the Blender scene every decal is a wire gizmo (collection "decals", never rendered or baked): its rectangle
-(a wrap's outline round its axis, plus the axis). Move, turn or scale it there and `scene.pull` writes the
+(a wrap's outline round its axis, plus the axis). Move, turn or scale it there and `scene_sync.pull` writes the
 placement back (`from_gizmo`): at/offset, dir/up/rotate, size; a wrap's height, axis, dir, span.
 
 Wraps, so a label isn't stretched round a curved thing:
@@ -66,7 +66,7 @@ Where the code is (split by responsibility, as C424): this module is the family'
 and read at images.NAME: C422). images_frame: placement: the frame an image sits in (on a prim, at a point, along an
 axis), the wrap frame, the UV frame. images_project: placement: mirrored copies, the surface map, wrap coordinates,
 projection, sampling, `evaluate`, the frames of a spec, footprint and coverage. images_gizmo: decals as gizmos in the
-Blender scene (scene.sync / scene.pull): entries, the gizmo, and back from it.
+Blender scene (scene_sync.sync / scene_sync.pull): entries, the gizmo, and back from it.
 """
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ KEYS = {"file", "id", "text", "name", "at", "dir", "up", "size", "rotate", "dept
         "mirror", "mirror_image", "wrap", "axis", "seam", "span", "style", "on", "unroll", "offset", "box"}
 WRAPS = ("planar", "cylinder", "sphere", "surface", "uv")
 PLACE_KEYS = {"id", "file", "text", "at", "dir", "up", "size", "rotate", "offset", "wrap", "axis", "seam", "span",
-              "unroll", "on"}  # entries alike in these share one gizmo in the scene (scene.decal_gizmos)
+              "unroll", "on"}  # entries alike in these share one gizmo in the scene (scene_sync.decal_gizmos)
 UNROLLS = ("auto", "cone", "arc")
 TAPER = 0.02  # |d radius / d height| over a cylinder wrap's label above which "auto" unrolls it as a cone
 TEXT_KEYS = {"string", "font", "size", "color", "background", "align", "margin", "line", "px_per_m"}

@@ -137,7 +137,7 @@ def mouth_mode(b: dict, head: dict | None = None) -> str:
 def mouth_open(b: dict, head: dict) -> bool:
     """Whether a GNM head's lips are parted, i.e. whether its field needs a mouth cavity (GNM's bag) instead of the
     fill behind closed lips. The one mesh: as its template decides the closed mouth's seam field (lip_seal, or GNM's
-    contact ring closed: onemesh.template's "seal_field"); a grafted head: the inner lips' landmarks further apart
+    contact ring closed: onemesh_head.template's "seal_field"); a grafted head: the inner lips' landmarks further apart
     than MOUTH_PARTED and the lips not zipped."""
     if head.get("skin_index") is not None:
         return False

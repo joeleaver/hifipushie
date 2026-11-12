@@ -55,7 +55,6 @@ def stage_name(name: str, region: str) -> str:
 
 def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
     """The model cut down to one region's bare skin (and its eyes)."""
-    from . import skin
     s = copy.deepcopy(spec)
     part = (s.get("skin") or {}).get("part", "body")
     keep = {part, (s.get("base") or {}).get("eyes") or "eyes"}
@@ -105,7 +104,7 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
     s["parts"].setdefault(part, {})
     s["parts"][part]["voxel"] = float(voxel or min(vx, s["parts"][part].get("voxel", 1.0)))
     if region == "head" and "eye.L" in J and "eye.R" in J and EYE_VOXEL < s["parts"][part]["voxel"]:
-        # the orbits, lids to brows, finer (scene.refine_box): at 1 mm the lid margins came out ragged and the
+        # the orbits, lids to brows, finer (scene_objects.refine_box): at 1 mm the lid margins came out ragged and the
         # lid's folds and rims (2-3 mm features) were a voxel or two wide
         e = np.array([J["eye.L"], J["eye.R"]])
         # (with a tear trough laid, skin.folds: down to the trough under the bag, ~2 cm under the eye)
@@ -136,24 +135,24 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
 def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str:
     """The region's stage model, saved and synced when the model changed since. Returns its name."""
     from . import scene, stylesheet
+    from . import scene_sync
     spec = store.load(name)
     st = stage_spec(spec, region, voxel)
     sn = stage_name(name, region)
     key = hashlib.sha1(json.dumps([st, Path(scene.SCRIPT).read_bytes().hex()[:0]], sort_keys=True, default=str).encode()).hexdigest()[:16]
     d = store._dir(sn)
     mark = d / "skin_look.key"
-    from . import base as basemod, paint as paintmod
-    code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in
-                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py", *(f"{m}.py" for m in paintmod.MODULES), "paintnodes.py",
-                                  "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
-                                  "headfit.py", "skin_look.py"))).hexdigest()[:12]
+    from . import moved
+    code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in moved.files(  # (each with its split modules)
+        "skin", "skin_features", "skin_makeup", "skin_marks", "skin_swatch", "paint", "paintnodes", "blender_scene", "base",
+        "headfit", "skin_look"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
         mark.touch()  # last use, for store.prune_stages
         return sn
     t = time.time()
     d.mkdir(parents=True, exist_ok=True)
     (d / "spec.json").write_text(json.dumps(stylesheet.strip(st) if hasattr(stylesheet, "strip") else st))
-    r = scene.sync(sn, resolution=256)
+    r = scene_sync.sync(sn, resolution=256)
     mark.write_text(key + code)
     store.prune_stages("_skin_", "skin_look.key", keep=sn)
     log.append(f"{region}: synced in {time.time() - t:.0f} s ({', '.join(f'{k} {v}' for k, v in r['seconds'].items())})")
@@ -166,7 +165,7 @@ def cameras(spec: dict) -> dict:
     out = {}
     if "lm_nose_tip" in J:
         nt = J["lm_nose_tip"]
-        from .skin import interocular
+        from .skin_zones import interocular
         io = interocular(J)
         k = io / 0.0863
         ear = J["lm_jaw_0.R"] + np.array([-0.01, 0.025, 0.02]) * k
@@ -185,7 +184,7 @@ def cameras(spec: dict) -> dict:
             "brows": (J["lm_nose_bridge"] + np.array([0.0, -0.3, 0.03]) * k, J["lm_nose_bridge"] + [0, 0, 0.012 * k], 17, "soft"),
             "ear": (ear + np.array([-0.3, -0.12, 0.0]) * k, ear, 20, "back")})
     if "wrist.L" in J and "finger2_0.L" in J:
-        from .skin import _palm_normal
+        from .skin_zones import _palm_normal
         pn = _palm_normal(J, ".L")
         w = J["wrist.L"]
         c = 0.5 * (w + J["finger2_3.L"])  # the whole hand, fingertips and nails in frame
@@ -218,7 +217,7 @@ def _project(cam, p, size):
 
 def face_boxes(spec: dict, cam: dict, size: int) -> tuple[dict, float]:
     """Skin-only boxes (forehead, cheek on the lit side, nose, chin) in a front view of the face, and mm per pixel."""
-    from .skin import interocular
+    from .skin_zones import interocular
     J = _J(spec)
     io = interocular(J)
 
@@ -237,7 +236,8 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
          layer: str | None = None, measure: bool = True, save: str | None = None):
     """Render the views (see VIEWS) and measure the face. Returns (sheet image, text, {view: image})."""
     from PIL import Image
-    from . import paint, render, scene, skin
+    from . import paint, render, scene
+    from . import skin_params
     views = list(views)
     bad = [v for v in views if v not in VIEWS]
     if bad:
@@ -300,11 +300,11 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
         sheet.save(save)
     text = [f"rendered {', '.join(views)} in {time.time() - t0:.0f} s" + ("; " + "; ".join(log) if log else "")]
     sk = spec.get("skin")
-    if sk and not skin.shaded(spec):
-        text.append(f"skin only {skin.params(spec)['only']}: the skin part keeps its own paint and shading")
+    if sk and not skin_params.shaded(spec):
+        text.append(f"skin only {skin_params.params(spec)['only']}: the skin part keeps its own paint and shading")
     elif sk:
-        p = skin.params(spec)
-        base = skin.part_base(spec)[1]
+        p = skin_params.params(spec)
+        base = skin_params.part_base(spec)[1]
         n = sum(1 for k in paint.layers(spec) if k.startswith("skin:"))
         text.append(f"skin: melanin {p['tone']['melanin']:.2f} blood {p['tone']['blood']:.2f} undertone {p['tone']['undertone']:+.1f}, "
                     f"age {p['age']:.0f}; base #{''.join(f'{int(round(c * 255)):02x}' for c in base['color'])} roughness "
@@ -323,7 +323,7 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
 def _crop_of(spec: dict, cam: dict, region: str) -> list:
     """The square picture crop [x0, y0, x1, y1] of a region through a fitted camera, on the side facing it."""
     from . import humanfit_views
-    from .skin import interocular
+    from .skin_zones import interocular
     J = _J(spec)
     io = interocular(J)
     Rc = humanfit_views._cam_rot(cam)

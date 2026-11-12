@@ -30,18 +30,17 @@ def stage_spec(spec: dict) -> dict:
 
 
 def _code() -> str:
-    from . import base as basemod, paint as paintmod
-    src = Path(__file__).parent
-    return hashlib.sha1(b"".join((src / f).read_bytes() for f in
-                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "skin_folds.py", "paint.py",
-                                  *(f"{m}.py" for m in paintmod.MODULES),  # (paint.py was split, C427)
-                                  "paintnodes.py", "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
-                                  "skin_look.py", "scene.py"))).hexdigest()[:12]
+    from . import moved
+    src = Path(__file__).parent  # (each module with every module it was split into: moved.files)
+    return hashlib.sha1(b"".join((src / f).read_bytes() for f in moved.files(
+        "skin", "skin_features", "skin_makeup", "skin_marks", "skin_swatch", "skin_folds", "paint", "paintnodes",
+        "blender_scene", "base", "skin_look", "scene"))).hexdigest()[:12]
 
 
 def stage(name: str, spec: dict | None = None, log=print) -> str:
     """The stage model of `name` (or of `spec`, a variant of it), synced when its spec or the skin code changed."""
     from . import scene, store, stylesheet
+    from . import scene_sync
     st = stage_spec(spec or store.load(name))
     sn = skin_read.STAGE + name
     key = hashlib.sha1(json.dumps(st, sort_keys=True, default=str).encode()).hexdigest()[:16] + _code()
@@ -53,7 +52,7 @@ def stage(name: str, spec: dict | None = None, log=print) -> str:
         mark.touch()
         return sn
     t = time.time()
-    scene.sync(sn, resolution=256)
+    scene_sync.sync(sn, resolution=256)
     mark.write_text(key)
     log(f"skin_read: stage {sn} synced in {time.time() - t:.0f} s")
     return sn
@@ -321,9 +320,10 @@ class Albedo:
     def __call__(self, skin: dict | None = None, skip=(), masks: dict | None = None, scale: dict | None = None) -> np.ndarray:
         """(n, 3) linear albedo. skip: layer names ("skin:" left off) or prefixes ending "*" left out; masks: gets
         each layer's opacity x mask; scale: {layer name ("skin:" left off): per-point factor on its opacity}."""
-        from . import paint, skin as skinmod
+        from . import paint
+        from . import skin_params
         spec, lys = self.layers(skin)
-        base = skinmod.part_base(spec)
+        base = skin_params.part_base(spec)
         col = np.tile(_lin(np.asarray(base[1]["color"], float)[:3]) if base else np.array([0.5, 0.5, 0.5]), (len(self.pts), 1))
         for pre in (True, False):
             for name, ly in lys:
@@ -350,8 +350,8 @@ class Albedo:
 
     def zone(self, name: str, grow: float = 1.0) -> np.ndarray:
         """A skin zone's mask (0..1) at the points."""
-        from . import skin as skinmod
-        ly = skinmod.expand_zones(self.st, {"mask": [{"zone": {"name": name, "grow": grow}}]}, "skin_read")
+        from . import skin_zones
+        ly = skin_zones.expand_zones(self.st, {"mask": [{"zone": {"name": name, "grow": grow}}]}, "skin_read")
         return self._mask(self.st, f"zone:{name}", ly)
 
 

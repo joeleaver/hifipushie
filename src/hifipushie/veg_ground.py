@@ -154,8 +154,9 @@ def wood_depth(tree: dict, W: dict) -> tuple[np.ndarray, np.ndarray]:
 
 def drawn(tree: dict, triangles: int | None = None) -> dict:
     """What a look or an export of the plant draws at a budget: {"wood": mesh, "tw": placements, "cards", "var",
-    "boughs": bool, "leaves"} (the same calls as veg_look and veg_export.write_glb's LOD 0)."""
-    from . import veg_bark, veg_bough, veg_export, veg_leaf, veg_mesh
+    "boughs": bool, "leaves"} (the same calls as veg_look and veg_export_glb.write_glb's LOD 0)."""
+    from . import veg_bark, veg_bough, veg_leaf, veg_mesh
+    from . import veg_export_parts
     s = tree["spec"]
     lf = s["leaves"]
     bark = s.get("bark") or {}
@@ -169,17 +170,17 @@ def drawn(tree: dict, triangles: int | None = None) -> dict:
         return out
     at = veg_leaf.atlas(lf, twc)
     if triangles:
-        bud = veg_export.budget(tree, triangles, tile, at["triangles"])
+        bud = veg_export_parts.budget(tree, triangles, tile, at["triangles"])
         out["wood"] = bud["wood"]
         if bud.get("boughs"):
             at = veg_bough.atlas(tree, lf, twc, bud["boughs"])
             tw = veg_bough.place(tree, bud["boughs"], at)
             out["boughs"] = True
         else:
-            lf, cap_c, back_c = veg_export.cluster_leaves(lf, bud["keep"])
+            lf, cap_c, back_c = veg_export_parts.cluster_leaves(lf, bud["keep"])
             if lf is not s["leaves"]:
                 at = veg_leaf.atlas(lf, twc)
-            tw = veg_export.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
+            tw = veg_export_parts.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
     var = veg_leaf.card_variant(tw, len(at["cards"]))
     st = {}
     tw = clear(s, tw, at["cards"], var, stats=st) if CLEAR and not tree.get("clump") else tw

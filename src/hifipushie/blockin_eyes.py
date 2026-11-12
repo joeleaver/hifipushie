@@ -143,7 +143,7 @@ def _chain(segs, tol=1e-7):
 
 class Reader:
     """Lid margins vs our drawn iris, and the upper lid's sagittal profile (crease, visible platform), on head dicts
-    from onemesh.head_template (the subject's LEFT eye, +x)."""
+    from onemesh_head.head_template (the subject's LEFT eye, +x)."""
 
     def __init__(self, ht):
         from . import base_identity
@@ -591,11 +591,12 @@ _EB: dict = {}
 
 def _head(base, c, e, Ln, Rn):
     from . import blockin as bi, onemesh
+    from . import onemesh_head
     b = copy.deepcopy(base)
     bi.set_identity({"base": b}, c)
     ex = {**{Ln[k]: round(float(e[k]), 6) for k in range(NE)}, **{Rn[k]: round(float(e[k]), 6) for k in range(NE)}}
     b["head"]["expression"] = {k: v for k, v in ex.items() if v}
-    ht = onemesh.head_template(b)
+    ht = onemesh_head.head_template(b)
     for kk in [k for k in onemesh._CACHE if isinstance(k, tuple) and k and k[0] == "head_t"]:
         onemesh._CACHE.pop(kk, None)   # (each evaluation is a new head: don't keep hundreds)
     return ht, b
@@ -854,8 +855,8 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
             if ev.get("ruler"):       # the margins after the lid solve, against the picture's rows again
                 b2 = copy.deepcopy(b1)
                 bi.set_identity({"base": b2}, c1)
-                from . import onemesh
-                ht2 = onemesh.head_template(b2)
+                from . import onemesh_head
+                ht2 = onemesh_head.head_template(b2)
                 mg2 = Reader(ht2).margins(ht2)
                 lid["margins_after"] = {k: np.asarray(x, float).tolist() for k, x in mg2.items()}
                 d = np.r_[mg2["up"] - np.asarray(ev["ruler"]["up"], float), mg2["lo"] - (np.asarray(ev["ruler"]["lo"], float) - LO_BIAS)]

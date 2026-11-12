@@ -18,8 +18,8 @@ def head_of(s: dict, base: dict):
     """The grafted head (gnm_head) for a base with "head": {"source": "gnm", ...}, placed on the template's eye
     midpoint (the head joint's ride) and the neck -> head direction; None without one. Cached."""
     if (base.get("body") or {}).get("source") == "human":  # one human mesh: the head is part of the body's mesh
-        from . import onemesh
-        return onemesh.head(s, base)
+        from . import onemesh_head
+        return onemesh_head.head(s, base)
     head = base.get("head")
     if not head:
         return None
@@ -189,7 +189,7 @@ def _landmark_joints(head: dict) -> dict:
     for name in ("lm_lid_upper.L", "lm_lid_lower.L"):
         i, j = (43, 44) if "upper" in name else (46, 47)
         out[name] = {"pos": [round(float(x), 4) for x in 0.5 * (lm[i] + lm[j])], "r": 0.004}
-    # the lid margins' own points (the lash lines run corner -> these -> corner: skin.zone lash_upper / lash_lower)
+    # the lid margins' own points (the lash lines run corner -> these -> corner: skin_zones.zone lash_upper / lash_lower)
     for name, i in (("lm_lid_upper_in.L", 43), ("lm_lid_upper_out.L", 44), ("lm_lid_lower_in.L", 47),
                     ("lm_lid_lower_out.L", 46)):
         out[name] = {"pos": [round(float(x), 4) for x in lm[i]], "r": 0.003}

@@ -86,6 +86,13 @@ def families() -> dict:
     return out
 
 
+def files(*modules: str) -> list:
+    """The source files of these modules, each with every module it was split into: for a key that hashes code by
+    file name (a cache listing "skin.py" must go on hashing skin's code after skin.py is split)."""
+    fam = families()
+    return [f"{x}.py" for m in modules for x in (m, *fam.get(m, ()))]
+
+
 # ---------------------------------------------------------------- a script pointed at the new modules
 def _bound_otherwise(tree: ast.Module, name: str) -> bool:
     """`name` is also a variable, an argument or a def in the script (then `name.x` may not be the module)."""

@@ -72,11 +72,11 @@ def _job_maps(args):
 
 
 def _job_ground(ij):
-    from . import terrain_cliffs
+    from . import terrain_cliffs_ground
     c = terrain_mesh._CTX
     i, j = ij
     lo, _ = c["G"].bounds(i, j)
-    return terrain_cliffs.ground_tile(c["region"], c["mats"], i, j, lo, int(c["cfg"]["heightmap"]) or 65,
+    return terrain_cliffs_ground.ground_tile(c["region"], c["mats"], i, j, lo, int(c["cfg"]["heightmap"]) or 65,
                                       c["G"].lods, c["out"], c["cfg"])
 
 

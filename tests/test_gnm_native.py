@@ -17,7 +17,8 @@ import pytest
 _TMP = tempfile.mkdtemp(prefix="hp-gnmnative-")
 os.environ.setdefault("HIFIPUSHIE_HOME", _TMP)
 
-from hifipushie import assets, base, humans, lidrings, onemesh, sdf  # noqa: E402
+from hifipushie import assets, base, humans, lidrings, sdf  # noqa: E402
+from hifipushie import onemesh_head
 from hifipushie import faceshapes_apply, faceshapes_gnm
 from hifipushie import base_gnm_parts, base_identity, base_implied, base_measures
 from hifipushie import spec as specmod  # noqa: E402
@@ -49,7 +50,7 @@ def _spec(**head) -> dict:
 
 
 def _head(sp):
-    return onemesh.head_rest(sp["base"])
+    return onemesh_head.head_rest(sp["base"])
 
 
 # ---- GNM's eye as data -------------------------------------------------------------------------------------------
@@ -312,10 +313,10 @@ def test_inner_lip_paint_covers_the_rolls_not_the_outer_lips():
     vertex: hidden in the closed neutral, the bake filled them with skin and every parting shape showed a brown
     fringe. The outer vermilion stays the skin's."""
     from scipy.spatial import cKDTree
-    from hifipushie import skin_features as sf
+    from hifipushie import skin_features_mouth
     sp = _spec()
     head = base_measures.head_of({"joints": specmod.expand_mirror(sp)["joints"]}, sp["base"])
-    val = sf.inner_lip_values(head)
+    val = skin_features_mouth.inner_lip_values(head)
     W = np.asarray(head["gnm_world"], float)
     t = cKDTree(W)
     lm = head["lm68"]

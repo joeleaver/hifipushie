@@ -1,4 +1,4 @@
-"""Decals as gizmos in the Blender scene (scene.sync / scene.pull): entries, the gizmo, and back from it. Part of images (images.py has the spec)."""
+"""Decals as gizmos in the Blender scene (scene_sync.sync / scene_sync.pull): entries, the gizmo, and back from it. Part of images (images.py has the spec)."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,7 +6,7 @@ import numpy as np
 from .images_frame import _offset, frame
 from .images_project import _place
 
-# ---- decals as gizmos in the Blender scene (scene.sync / scene.pull) -------------------------------------------------
+# ---- decals as gizmos in the Blender scene (scene_sync.sync / scene_sync.pull) -------------------------------------------------
 def decal_entries(spec: dict) -> list[tuple[list, dict, str, object]]:
     """Every image entry in the spec's paint layers: (json path to it, the image dict, layer name, the layer's
     parts). Mask stacks included (["paint", layer, "mask", i, ..., "image"])."""

@@ -108,13 +108,14 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
     widens the head's sides instead of filling the cheeks (pass 2 without it: a pear-shaped, jowly face)."""
     from . import base_identity
     from . import onemesh
+    from . import onemesh_head
     g = base_identity._gnm_data()
     cur = copy.deepcopy(base)
     names = [str(n) for n in g["identity_names"]]
     rep = {"rounds": []}
     for rnd in range(rounds):
         st = state(cur)
-        hd = onemesh.head_desc(cur)
+        hd = onemesh_head.head_desc(cur)
         c = st["head"]["carry"]
         Rh, s = np.asarray(c["R"], float), float(c["s"])
         idn = dict(base_identity.fit_identity(hd["fit"])) if hd.get("fit") else {}

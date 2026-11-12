@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import assets, onemesh
+from hifipushie import onemesh_head
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -85,7 +86,7 @@ def test_the_stitch_follows_every_body():
         b = _b(**params)
         bd = onemesh.bound(onemesh.body_params(b))
         T = (r["bar"][:, :, None] * bd["P"][r["tri"]]).sum(1)
-        ht = onemesh.head_template(b)
+        ht = onemesh_head.head_template(b)
         dA = np.linalg.norm(ht["verts"][[row[int(v)] for v in ringA]] - T[ringA], axis=1)
         allv = np.flatnonzero(r["val"] & (a["g_lev"] >= r["meta"]["RING"]))
         dall = np.linalg.norm(bd["B"][allv] - T[allv], axis=1)
@@ -96,14 +97,14 @@ def test_the_stitch_follows_every_body():
 
 def test_template_is_one_closed_mesh_and_deterministic():
     b = _b(age=30, sex=0.0)
-    t1 = onemesh.template(b)
+    t1 = onemesh_head.template(b)
     keep = {k: v for k, v in onemesh._CACHE.items() if k in ("asset",)}
     onemesh._CACHE.clear()
     onemesh._CACHE.update(keep)
     from hifipushie import base
     for k in [k for k in base._CACHE if isinstance(k, tuple) and k[0] == "head"]:
         base._CACHE.pop(k)
-    t2 = onemesh.template(b)
+    t2 = onemesh_head.template(b)
     assert np.array_equal(t1["P"], t2["P"]) and np.array_equal(t1["L"], t2["L"])
     F = np.asarray(t1["L"]).reshape(-1, 4)
     cnt = collections.Counter()
@@ -116,7 +117,7 @@ def test_template_is_one_closed_mesh_and_deterministic():
     assert all(P[u, 2] > t1["chin_lm"] for u, v in open_edges) and len(open_edges) < 200
     assert np.isfinite(P).all()
     # symmetric to 1 mm (the seed's identity is not symmetric: test the neutral head)
-    tn = onemesh.template(_b(head={}, age=30, sex=0.0))
+    tn = onemesh_head.template(_b(head={}, age=30, sex=0.0))
     from scipy.spatial import cKDTree
     d, _ = cKDTree(tn["P"]).query(tn["P"] * [-1, 1, 1])
     assert d.max() < 1e-3, d.max()  # (MakeHuman's own targets are symmetric to ~0.6 mm)
@@ -124,8 +125,8 @@ def test_template_is_one_closed_mesh_and_deterministic():
 
 def test_identity_fades_out_at_the_stitch():
     """A seed moves the face by centimetres and the bridge / the body's neck not at all."""
-    a = onemesh.template(_b(head={}, age=30, sex=1.0))
-    c = onemesh.template(_b(head={"seed": 11, "spread": 1.0}, age=30, sex=1.0))
+    a = onemesh_head.template(_b(head={}, age=30, sex=1.0))
+    c = onemesh_head.template(_b(head={"seed": 11, "spread": 1.0}, age=30, sex=1.0))
     d = np.linalg.norm(a["P"] - c["P"], axis=1)
     assert d[:a["n_body"]].max() == 0 and d[a["n_body"]:].max() > 0.004
     assert a["chin_mh"] == c["chin_mh"]
@@ -136,19 +137,21 @@ def test_old_paths_never_touch_it():
     from hifipushie import humans
     from hifipushie import base_surface
     from hifipushie.spec import expand_mirror
-    saved = {k: getattr(onemesh, k) for k in ("template", "head", "hook", "bound")}
+    from hifipushie import onemesh_head
+    where = {"template": onemesh_head, "head": onemesh_head, "hook": onemesh_head, "bound": onemesh}  # (onemesh was split)
+    saved = {k: getattr(m, k) for k, m in where.items()}
 
     def boom(*a, **k):
         raise AssertionError("an old path called onemesh")
     try:
         for k in saved:
-            setattr(onemesh, k, boom)
+            setattr(where[k], k, boom)
         for sp in (humans.spec(age=30, sex=1.0, seed=3, skin=False), {"base": {"template": "male_stylized"}, "joints": {}, "bones": {}, "blobs": {}}):
             sf = base_surface.surface(expand_mirror(sp), sp["base"])
             assert sf["template"] != "human"
     finally:
         for k, v in saved.items():
-            setattr(onemesh, k, v)
+            setattr(where[k], k, v)
 
 
 def test_whole_person_builds_and_measures_as_the_old_path():
@@ -259,7 +262,7 @@ def test_stored_warp_survives_features():
     w = {"at": [[0.071, 0.24, 0.033], [-0.071, 0.24, 0.033]], "coef": [[0.004, 0.0, 0.0], [-0.004, 0.0, 0.0]],
          "sigma": 0.022}  # GNM frame: the cheeks at the mouth (as fit_outline writes)
     sp["base"]["head"]["warp"] = w
-    hd = onemesh.head_desc(sp["base"])
+    hd = onemesh_head.head_desc(sp["base"])
     assert isinstance(hd["warp"], list) and hd["warp"][-1] == w and len(hd["warp"]) == 2, hd.get("warp")
     h1 = base_measures.head_of(expand_mirror(sp), sp["base"])
     d = max(float(np.abs(np.asarray(h1[k], float) - np.asarray(h0[k], float)).max())

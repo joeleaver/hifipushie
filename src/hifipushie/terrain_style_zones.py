@@ -29,7 +29,7 @@ def season_colours(st: dict, layer: str, colour_srgb) -> dict:
 
 
 def snow_numbers(st: dict) -> dict:
-    """Snow for the engine's own shader, in the plants' form (veg_export.snow_numbers) plus the ground's own: a snow
+    """Snow for the engine's own shader, in the plants' form (veg_export_parts.snow_numbers) plus the ground's own: a snow
     line by height and the share that lies on steep ground."""
     S = st.get("snow") or {}
     c = float(S.get("coverage", 0.8))

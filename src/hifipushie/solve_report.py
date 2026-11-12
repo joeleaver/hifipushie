@@ -463,12 +463,13 @@ def neck_girth(c) -> tuple:
     the loop's length on GNM's own evaluation (GNM's metres; a native head stands at x base.head.size of it). GNM's
     female class mean is 363 mm (ANSUR II women 330 +- 18), its male mean 385 (398 +- 25), and head_000 / head_001
     carry 33 / 10 mm of it per sd with no picture reading it (docs/notes/headbody.md)."""
-    from . import gnm_mm, onemesh
+    from . import gnm_mm
+    from . import onemesh_report
     sp = gnm_mm._space()
     c = np.asarray(c, float)[:170]
     best = None
     for k in NECK_RINGS:
-        lp = onemesh._ring_loop(k)
+        lp = onemesh_report._ring_loop(k)
         X = sp["T"][lp] + np.tensordot(c, sp["IB"][:, lp], 1)
         e = X - np.roll(X, -1, 0)
         L = float(np.linalg.norm(e, axis=1).sum())

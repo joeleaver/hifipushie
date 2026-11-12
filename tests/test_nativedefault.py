@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from hifipushie import assets, blockin as bi, onemesh, solve_report as sr, store
+from hifipushie import onemesh_head, onemesh_native
 from hifipushie import blockin_models, blockin_steps
 
 REF = "tess_a1"
@@ -176,21 +177,21 @@ def test_neck_girth_row_and_move():
 
 @need
 def test_native_size_and_neck_target():
-    """onemesh.native_size: the head goes with the stature by ANSUR's allometry (1.000 at the sex's mean stature), a
+    """onemesh_native.native_size: the head goes with the stature by ANSUR's allometry (1.000 at the sex's mean stature), a
     given base.head.size wins; the neck ANSUR expects for the sex and stature."""
     def b(sex, h, **hd):
         return {"body": {"source": "human", "age": 30.0, "sex": sex, "height": h}, "head": {"attach": "native", **hd}}
-    f, m = onemesh.native_size(b(0.0, 1.627)), onemesh.native_size(b(1.0, 1.755))
+    f, m = onemesh_native.native_size(b(0.0, 1.627)), onemesh_native.native_size(b(1.0, 1.755))
     assert abs(f["size"] - 1) < 1e-9 and abs(m["size"] - 1) < 1e-9 and f["allometric"]
     assert abs(f["neck"] - 0.3292) < 1e-6 and abs(m["neck"] - 0.3968) < 1e-6
-    t = onemesh.native_size(b(1.0, 1.95))
+    t = onemesh_native.native_size(b(1.0, 1.95))
     assert 1.02 < t["size"] < 1.03 and t["neck"] > m["neck"]
-    assert 0.97 < onemesh.native_size(b(0.0, 1.50))["size"] < 0.98
-    g = onemesh.native_size(b(0.0, 1.627, size=0.9))
+    assert 0.97 < onemesh_native.native_size(b(0.0, 1.50))["size"] < 0.98
+    g = onemesh_native.native_size(b(0.0, 1.627, size=0.9))
     assert g["size"] == 0.9 and not g["allometric"]
     # ... and it is the size the build uses
     bb = b(0.0, 1.70, identity={"head_000": 0.5})
-    assert abs(onemesh.head_desc(bb)["bound"]["native"]["size"] - onemesh.native_size(bb)["size"]) < 1e-9
+    assert abs(onemesh_head.head_desc(bb)["bound"]["native"]["size"] - onemesh_native.native_size(bb)["size"]) < 1e-9
 
 
 @need_ref
@@ -203,7 +204,7 @@ def test_solve_has_a_neck_prior_and_says_so():
     _rm(a, b, c, d)
     try:
         blockin_models.start(a, REF, sex="female")
-        ns = onemesh.native_size(store.load(a)["base"])
+        ns = onemesh_native.native_size(store.load(a)["base"])
         so = blockin_steps.solve_step(a, out=b, rounds=2)["solve"]
         assert any(x.startswith("CAMERAS: carried") for x in so["notes"])
         assert any(x.startswith("NECK: an anthropometric PRIOR") and "NO DIRECT READ" in x for x in so["notes"])

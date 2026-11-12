@@ -269,10 +269,10 @@ class _GnmMoves:
                 gr = {k: np.asarray(v) > 0.5 for k, v in G["g"]["groups"].items()}
                 V = np.asarray(G["c"]["V"], float)
                 n = min(len(V), len(d), len(gr["skin_exterior"]))
-                # the rolls: GNM's skin rings from the sock to the contact ring (skin_features.inner_lip_values = 1, the
+                # the rolls: GNM's skin rings from the sock to the contact ring (skin_features_mouth.inner_lip_values = 1, the
                 # same rings the export paints as wet lip), the sock itself left where the fit put it
-                from . import skin_features as sfe
-                iv = sfe.inner_lip_values(self.head)
+                from . import skin_features_mouth
+                iv = skin_features_mouth.inner_lip_values(self.head)
                 roll = np.zeros(len(d), bool)
                 if iv is not None:
                     m_ = min(len(iv), n)

@@ -167,7 +167,7 @@ def _job_tile(ij):
                 bur = (field.front(Ps[Fs].mean(1)) < -np.maximum(thr, terrain_mesh.BURIED_DEEP * np.sqrt(fa))) & \
                     (np.abs(field.front(Ps))[Fs].max(1) > thr)
                 # (and still in rock half a metre out along the face's own normal: what faces open air from just under
-                # the surface is seen, as `terrain_cliffs.exposed_buried` judges it)
+                # the surface is seen, as `terrain_cliffs_checks.exposed_buried` judges it)
                 kb = np.flatnonzero(bur)
                 if len(kb):
                     fn = np.cross(Ps[Fs[kb, 1]] - Ps[Fs[kb, 0]], Ps[Fs[kb, 2]] - Ps[Fs[kb, 0]])

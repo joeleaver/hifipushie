@@ -6,6 +6,7 @@ import hashlib
 import numpy as np
 
 from hifipushie import assets, onemesh
+from hifipushie import onemesh_head, onemesh_report
 
 IDENT = {"head_000": 1.2, "head_001": -0.8, "head_004": 0.9, "head_011": -1.1, "head_030": 0.7}
 STYLE = {"human": {"head_size": 0.95, "legs": 1.03, "hips": 0.92, "limbs": 0.9, "waist": 0.95}}
@@ -53,16 +54,16 @@ def test_head_is_gnms_evaluation_under_one_similarity():
                      (dict(age=52, sex=1.0, weight=0.4, height=1.7715, style=STYLE), 1.0),
                      (dict(age=30, sex=0.5), 0.9)):
         b = _b({"size": size} if size != 1.0 else None, **kw)
-        ht = onemesh.head_rest(b)
+        ht = onemesh_head.head_rest(b)
         g, V = _gnm(IDENT)
-        size = onemesh.head_desc(b)["bound"]["native"]["size"]
+        size = onemesh_head.head_desc(b)["bound"]["native"]["size"]
         X = V @ onemesh._RG.T
         W = np.asarray(ht["gnm_world"], float)
         t = (W[keep] - size * X[keep]).mean(0)
         err = np.abs(W[keep] - (size * X[keep] + t)).max()
         assert err < 1e-9, (kw, err)
         # and the template's head rows ARE those vertices (what is meshed, exported, skinned)
-        tpl = onemesh.template(b)
+        tpl = onemesh_head.template(b)
         nb, hr = tpl["n_body"], tpl["head_rows"]
         assert np.abs(tpl["P"][nb:nb + len(hr)] - ht["verts"][hr]).max() < 1e-12
         skin_ids = np.flatnonzero(g["skin"])
@@ -76,7 +77,7 @@ def test_lip_close_is_the_only_other_move_and_it_is_gnms_expression():
     keep = _head_rows()
     b0 = _b(age=30, sex=1.0)
     b1 = _b({"lip_close": True}, age=30, sex=1.0)
-    W0, W1 = (np.asarray(onemesh.head_rest(b)["gnm_world"], float) for b in (b0, b1))
+    W0, W1 = (np.asarray(onemesh_head.head_rest(b)["gnm_world"], float) for b in (b0, b1))
     d = (W1 - W0)[keep]
     assert np.abs(d).max() > 1e-4  # (it does close the lips)
     g = base_identity._gnm_data()
@@ -92,9 +93,9 @@ def test_lip_close_is_the_only_other_move_and_it_is_gnms_expression():
 def test_stature_is_the_stated_one_and_the_body_gives():
     for kw in (dict(age=22, sex=0.0, weight=0.15, height=1.636), dict(age=52, sex=1.0, height=1.7715, style=STYLE)):
         b = _b(**kw)
-        P = onemesh.template(b)["P"]
+        P = onemesh_head.template(b)["P"]
         assert abs(float(P[:, 2].max() - P[:, 2].min()) - kw["height"]) < 5e-4, kw
-        r = onemesh.attach_report(b)
+        r = onemesh_report.attach_report(b)
         assert r["native"] and abs(r["size"] - 1.0) < 6e-3 and abs(r["eyeball_r"] - 0.0146) < 2e-4
         assert 6.5 < r["heads_tall"] < 8.8, r["heads_tall"]
         assert "base.style.human.head_size" in r["ignored"] if kw.get("style") else not r["ignored"]
@@ -105,11 +106,11 @@ def test_seam_ring_and_neck():
     under the armpits moves), no quad next to the ring is folded, the mesh stays closed there."""
     import collections
     b = _b(age=22, sex=0.0, weight=0.15, height=1.636)
-    tpl = onemesh.template(b)
-    ring = onemesh.seam_ring(tpl)
+    tpl = onemesh_head.template(b)
+    ring = onemesh_head.seam_ring(tpl)
     assert len(ring) == 110 and (ring >= tpl["n_body"]).all()
     P = tpl["P"]
-    hd = onemesh.head_desc(b)
+    hd = onemesh_head.head_desc(b)
     a = onemesh.asset()
     mh_rows = np.flatnonzero(a["m2f"] >= 0)
     own = onemesh.bound(hd["bound"]["body"], 1.0)["P"][mh_rows]
@@ -143,7 +144,7 @@ def test_seam_ring_and_neck():
 def test_the_default_attach_is_unchanged():
     """The old path (no attach key) builds the same template as before this change (hashes of main 1ed30ce)."""
     b = {"body": {"source": "human", "age": 30, "sex": 1.0}, "head": {"identity": dict(IDENT), "gnm_base": 1.0, "dimorphism": 0.0}}
-    P = onemesh.template(b)["P"]
+    P = onemesh_head.template(b)["P"]
     h = hashlib.sha256(np.round(P, 7).tobytes()).hexdigest()[:16]
     assert h == OLD_HASH, h
 
@@ -168,24 +169,24 @@ def test_any_body_takes_the_head():
     keep = _head_rows()
     for name, kw in RANGE.items():
         b = {"body": {"source": "human", **kw}, "head": {"identity": _class_mean(kw["sex"]), "attach": "native"}}
-        tpl = onemesh.template(b)
+        tpl = onemesh_head.template(b)
         P = tpl["P"]
         want = kw.get("height") or float(np.asarray(makehuman.body({k: v for k, v in kw.items()})["P"])[:, 2].max())
         assert abs(float(P[:, 2].max() - P[:, 2].min()) - want) < 1e-3, (name, want)
-        ht = onemesh.head_rest(b)
+        ht = onemesh_head.head_rest(b)
         g, V = _gnm(b["head"]["identity"])
-        size = onemesh.head_desc(b)["bound"]["native"]["size"]
+        size = onemesh_head.head_desc(b)["bound"]["native"]["size"]
         assert 0.96 < size < 1.04, (name, size)  # (the head goes a little with the stature: stature ^ ~0.27)
         X = size * (V @ onemesh._RG.T)
         W = np.asarray(ht["gnm_world"], float)
         assert np.abs(W[keep] - (X[keep] + (W[keep] - X[keep]).mean(0))).max() < 1e-9, name
-        ring = onemesh.seam_ring(tpl)
+        ring = onemesh_head.seam_ring(tpl)
         assert len(ring) == 110 and (ring >= tpl["n_body"]).all()
         faces, i = [], 0
         for n in tpl["S"]:
             faces.append(tpl["L"][i:i + n])
             i += n
-        hd = onemesh.head_desc(b)
+        hd = onemesh_head.head_desc(b)
         a = onemesh.asset()
         own = onemesh.bound(hd["bound"]["body"], 1.0)["P"][np.flatnonzero(a["m2f"] >= 0)]
         near = np.zeros(len(P), bool)
@@ -196,7 +197,7 @@ def test_any_body_takes_the_head():
             if len(f) == 4 and near[f].any():
                 Xq = P[f]
                 assert np.cross(Xq[1] - Xq[0], Xq[2] - Xq[0]) @ np.cross(Xq[2] - Xq[0], Xq[3] - Xq[0]) > 0, (name, "a folded quad at the neck")
-        r = onemesh.attach_report(b)
+        r = onemesh_report.attach_report(b)
         bad = [c["name"] for c in r["checks"] if not c["ok"]]
         # the one known limit: GNM's neck has its own length, so on a very tall body head + neck stand short over the
         # shoulders for the stature, and the report says so

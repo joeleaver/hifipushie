@@ -2,7 +2,8 @@
 (`uv run python tests/test_skin_layers.py`; the lid fold needs the gnm pack and skips without)."""
 import numpy as np
 
-from hifipushie import assets, skin, skin_layers as sl
+from hifipushie import assets, skin_layers as sl
+from hifipushie import skin_params
 from hifipushie.spec import SpecError
 
 
@@ -32,7 +33,7 @@ def test_stack_layers_and_edit():
           "layers": [{"name": "pigment", "image": "a" * 16, "opacity": 0.8}, {"name": "redness", "image": "b" * 16, "opacity": 0.8},
                      {"name": "beard", "image": "d" * 16, "opacity": 0.8}]}
     spec = {"skin": {"tone": {"fitzpatrick": 2}, "stack": st}}
-    assert skin.params(spec)["stack"] is st
+    assert skin_params.params(spec)["stack"] is st
     out = {}
     sl.layers(spec, st, out, "body")
     assert list(out) == ["skin:stack_base", "skin:stack_pigment", "skin:stack_redness", "skin:stack_beard"]
@@ -55,7 +56,7 @@ def test_stack_layers_and_edit():
     c = sl._multiplier(od)
     assert np.allclose(1 - sl.P0 + sl.P0 * c, np.exp(-od))
     try:
-        skin.params({"skin": {"stack": {"layers": "x"}}})
+        skin_params.params({"skin": {"stack": {"layers": "x"}}})
         raise AssertionError("a bad stack was accepted")
     except SpecError:
         pass

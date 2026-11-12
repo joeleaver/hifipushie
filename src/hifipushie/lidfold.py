@@ -22,7 +22,7 @@ along its normal by a profile across the line: the platform a little in (`platfo
 invagination (`crease_depth`, `crease_width`), the fold's roll out over it (`fold_overhang`, `fold_width`, peaking
 `fold_drop` above the line: a larger overhang hangs lower and hides the platform). Parameters per lid end
 (`inner` / `outer` scale the crease height, the platform show tapering into both canthi). In the field, so it is
-meshed at the face stage's 0.5 mm (scene.refine_box) and baked into the export's normal / AO maps; the one mesh's
+meshed at the face stage's 0.5 mm (scene_objects.refine_box) and baked into the export's normal / AO maps; the one mesh's
 quads follow its overhang (rows ~0.6 mm there with the lid loops).
 """
 from __future__ import annotations

@@ -88,7 +88,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
           stage: str | None = None) -> dict:
     """Grow the first pass of locks from spec["hair"]["groom"] and save them. Locks a person or an edit changed
     (their names not starting with the tier letters b/f/e + digits) and hand-shaped locks (`"hand": true`: every lock
-    edited or added in Blender comes back with it from scene.pull) are kept unless replace; locks deleted in Blender
+    edited or added in Blender comes back with it from scene_sync.pull) are kept unless replace; locks deleted in Blender
     (`hair.removed`) aren't grown again."""
     spec = store.load(name)
     from . import hair_route
