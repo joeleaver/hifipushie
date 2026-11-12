@@ -1,4 +1,4 @@
-"""garment_asset: the character's export takes a chain garment as export_garment wrote it (C433).
+"""garment_asset: the character's export takes a chain garment as export_garment wrote it (C434).
 
 The old route re-simulated the garment's draft and shipped that. These tests hold the hand-over: the file reads back
 as written, the two-sided layout is recognised, an unapproved or unexported garment is left out and said, weights

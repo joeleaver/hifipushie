@@ -1,4 +1,4 @@
-"""A chain-built garment as a part of its character's game asset (asset_export's clothes; C433).
+"""A chain-built garment as a part of its character's game asset (asset_export's clothes; C434).
 
 Why: asset_export took clothes only from cloth.export_part, which re-runs the old cloth simulation on a garment's
 draft, so the garment an agent built, looked at and had approved (steps 0-10, garment_record) was not the one in the

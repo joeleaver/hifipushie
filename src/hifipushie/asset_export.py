@@ -420,7 +420,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
     chain_w, chain_looks, left_out = {}, {}, []
     if spec.get("cloth"):  # garments. A chain garment (one with a garment record) ships as export_garment wrote it at
-        # step 10 (garment_asset, C433: the old route re-simulated its draft and shipped that); any other garment is
+        # step 10 (garment_asset, C434: the old route re-simulated its draft and shipped that); any other garment is
         # the old simulation's (cloth.py): its settled mesh, the flat pattern as the uv
         from . import cloth as clothmod
         from . import garment_asset
