@@ -17,8 +17,9 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A dressed character: export_asset takes a chain garment's step-10 file (docs/state/dressed_export.md, C434).
 
 ## Open, by what it costs an agent (from the area re-review: /mnt/data/hifipushie/review_20261112/<area>.md)
-1. block_in_start cannot be called as its own example shows: no `size` in the example, read unguarded
-   (humanfit_map.py:95, :282); sex left out silently gives the male mean (blockin_models.py:113). Read, not run.
+1. DONE (C437): block_in_start called as its own example shows now works (a picture's size is read from the file, a
+   missing sex is refused before the detector runs, the profile refusal names its points). Still open there: a profile
+   needs clicked points, and nothing fits a profile's camera from its outline.
 2. Dead ends: approvals (a garment's step 9 and 7a, a head before skin) have no tool; terrain's designer questions
    (eight texts forbid answering, none says what to do alone); stage "hang_rows_failed" has no answer (tools_cloth.py).
 3. review_view, the only independent look, is worded for clothes (DETAIL_WORDS, the look_chain refusal, the "hang"
@@ -45,4 +46,4 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: item 1 (run block_in_start as documented on a public head; fill size, refuse a missing sex), then items 5 and 6.
+NEXT: items 5 and 6 (unknown keys refused; the one-picture route in the playbook), then item 10 (the GPU lock).
