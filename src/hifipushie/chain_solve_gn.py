@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import splu
+from sksparse.cholmod import CholeskyFactor
+from threadpoolctl import threadpool_limits
 
 from . import chain_solve_terms as terms
 
@@ -43,10 +44,10 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
         rs.append(s * c)
         if jac:
             g = dv / l[:, None] * (s / L)[:, None]
+            g = g * (c != 0)[:, None]  # (an at-most edge short of its length: zero rows, kept, so the pattern is fixed)
             r = m + np.arange(len(i))
-            act = c != 0
-            _rows(R, C, V, r[act], j[act], g[act])
-            _rows(R, C, V, r[act], i[act], -g[act])
+            _rows(R, C, V, r, j, g)
+            _rows(R, C, V, r, i, -g)
         m += len(i)
 
     li, lj, L, _ = t["links"]
@@ -135,9 +136,50 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
     return r, J
 
 
-def _factor(A):
-    """Unpivoted sparse LU of an SPD matrix (splu without SymmetricMode: 2.7 s a factor at 1.5k points; with it, ms)."""
-    return splu(A.tocsc(), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options={"SymmetricMode": True})
+class Factor:
+    """CHOLMOD on the LM matrix: the symbolic factor (METIS ordering, supernodal) computed ONCE from the matrix's
+    sparsity pattern, which never changes between passes (only the values and the damping do), then a numeric factor
+    per pass. The pattern is fixed by construction: the Jacobian keeps every link / edge row (zeros where inactive) and
+    every node's own 3x3 block is in (contact rows touch only those). One BLAS / OpenMP thread: N1c measured, at load
+    80-100 on 24 cores, 4 threads spinning against each other at 1-10 s a factor (6k points) vs 0.13-0.44 s on one;
+    24k points 0.6-1.8 s a factor (metis; amd 1.9-3.0, nesdis 1-2.9) vs splu 18-32 s. (N1b's ctypes CHOLMOD was slow for
+    that reason: the system OpenBLAS's threads, not the method.)"""
+
+    def __init__(self, J, nn):
+        Jp = J.copy()
+        Jp.data[:] = 1.0
+        P = sp.tril((Jp.T @ Jp) + sp.kron(sp.identity(nn), np.ones((3, 3))), format="csc")
+        P.sort_indices()
+        self.n = P.shape[0]
+        self.indices, self.indptr = P.indices, P.indptr
+        cols = np.repeat(np.arange(self.n), np.diff(P.indptr))
+        self.key = cols.astype(np.int64) * self.n + P.indices
+        self.diag = np.searchsorted(self.key, np.arange(self.n, dtype=np.int64) * (self.n + 1))
+        with threadpool_limits(1):
+            self.F = CholeskyFactor(self._csc(np.ones(len(self.key))), lower=True, order="metis",
+                                    supernodal_mode="supernodal")  # (symbolic only: the pattern)
+
+    def _csc(self, data):
+        return sp.csc_array((data, self.indices, self.indptr), shape=(self.n, self.n))
+
+    def values(self, H):
+        """H (any pattern inside the analysed one) as data on the analysed pattern (lower triangle)."""
+        L = sp.tril(H, format="coo")
+        k = L.col.astype(np.int64) * self.n + L.row
+        pos = np.searchsorted(self.key, k)
+        if (pos >= len(self.key)).any() or (self.key[np.minimum(pos, len(self.key) - 1)] != k).any():
+            raise ValueError("LM matrix entry outside the analysed pattern (the Jacobian's pattern changed)")
+        d = np.zeros(len(self.key))
+        d[pos] = L.data  # (J^T J is canonical: no duplicates)
+        return d
+
+    def solve(self, d, damp, g):
+        """Factor (data d + damp on the diagonal) and solve for g."""
+        d = d.copy()
+        d[self.diag] += damp
+        with threadpool_limits(1):
+            self.F.factorize(self._csc(d))
+            return self.F.solve(g)
 
 
 LM_DROP = 1e-3  # a pass that lowers E by less than this fraction ends the polish (N1b: 6k points, the last 6 of 17
@@ -183,15 +225,19 @@ def polish(Xn, t, w, ct, gap, iters: int = 30, mu: float = 1e-2, log=None):
     lengths, E 0.3 -> 7e4 on a tube. CG preconditioned by an earlier pass's factor: it did not converge in 40
     iterations on 26 of 29 passes, the matrix moves too much between passes.)"""
     r, J = residuals(Xn, t, w, ct, gap)
+    if "lm_factor" not in t:  # (analysed once per solve: every round's passes share the pattern)
+        t["lm_factor"] = Factor(J, len(Xn))
+    fac = t["lm_factor"]
     E = float(r @ r)
     k = nf = 0
     for k in range(iters):
-        H = (J.T @ J).tocsc()
+        H = J.T @ J
         g = J.T @ r
         dg = H.diagonal()
+        d = fac.values(H)
         ok = False
         for _ in range(REFACTOR):
-            dx = -_factor(H + sp.diags(mu * (dg + 1e-9))).solve(g).reshape(-1, 3)
+            dx = -fac.solve(d, mu * (dg + 1e-9), g).reshape(-1, 3)
             nf += 1
             s = 1.0
             for _ in range(BACKTRACK + 1):
