@@ -24,11 +24,7 @@ layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4
   (10 planned); tie at LAYER -> 0.0 mm; pulls 2x the strip apart -> links 0.0 %, pulls reported 108 mm.
 
 ## Open faults (ranked)
-1. SPEED, the blocker for N3: a 6k-point tube round a cylinder solves right (links 0.0 %, 0 inside) in 152 s (PD 400
-   passes + LM 21 passes ~120 s); 24k points did not finish in ~25 min (killed). The LM pass refactors a 3n x 3n system
-   per pass (and per rejected step); the contact query (~40 us a point) dominates PD on a body-hugging garment (_Near
-   caches it by the 1-Lipschitz bound). Next: LM by preconditioned CG (or LM on nodes x 3 with a block solve), fewer
-   LM passes (stop on the hard residual), profile the 24k case first.
+1. SPEED, the blocker for N3: 24k points ~974 s before N1b; see N1b below.
 2. stiffness 40 (5x canvas) converges badly (pulls 14 mm): PD stops early, LM crawls. Realistic max is 8.
 3. Curved fold rows: row_rows pulls a row towards straight (weak); fine for straight rows only.
 4. No self-contact (two plies may cross); N2 adds plies / layers as constraints.
@@ -42,8 +38,23 @@ layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4
   rotation). Pushing points out of the body after each LM step: undoes lengths (E 0.3 -> 7e4).
 - splu without SymmetricMode on the LM matrix: 2.7 s a factor at 1.5k points.
 
-## Commands
-`uv run pytest -q tests/test_chain_solve.py`
+## N1b (branch n1b-speed, run 2, stopped at budget; deliverable NOT met)
+- Kept: PD_STIFFEN stages (links/edges x10, x100 after the 400 passes): LM starts at E ~1 (1.5k) / 30 (6k), not 6e3 /
+  1.6e5. LM: rejected steps halved along their direction (no refactor), trial steps retracted onto the lengths
+  (gn.retract, 6 Jacobi PBD sweeps), stop at LM_DROP 0.1 % gain, a round stops when the projection leaves E within 1 %.
+  rep["lm_factors"] counts factors. Tests all pass at their numbers (stiff strip pull max 1.52 mm vs 1.50; width 1.04).
+- Bench (machine load 60-140 on 24 cores from other jobs: walls ~3-4x inflated, compare factor counts): 1.5k ~11+4
+  factors, 6k 13 factors (was 60+ passes, 2 caps). 24k: 10 factors, 1 round (was 166 factors), hard_ok, links 0.0 %,
+  0 inside; wall 601 s at load 135 (pd 75, lm 516, project 0.6): NOT timed idle. Log /mnt/data/hifipushie/n1b/b24k_v3.log.
+- Dead ends (measured): contact rows in PD's matrix (isotropic rows stick nodes where they touch: LM start E 10-25x
+  UP); CG preconditioned by a stale LM factor (26 of 29 passes no convergence in 40); chord steps with the last factor
+  (zigzag, step 1 / 1/16, no fewer factors); lower LM link weights (LM stalls); node-level / geometric ND orderings
+  (no better than SuperLU MMD: 24k factor 3.4-4.2 s, fill 27M); CHOLMOD via ctypes on the system libcholmod.so.5
+  (works, scripts /mnt/data/hifipushie/n1b/chol_ctypes.py, but 16 s a factor under load vs splu 10.6).
+- WHY still slow: LM needs ~13 factors at 6k (it crawls: a penalty LM on stiff links), each ~4 s at 24k unloaded.
+  Ways out: a constrained step (SQP on the links / projection inside each pass) so LM needs ~3 factors; or a fast
+  Cholesky (scikit-sparse needs libsuitesparse-dev headers: Joe's call); measure on an idle machine.
+Run: `uv run pytest -q tests/test_chain_solve.py`; bench `uv run python tests/chain_solve_bench.py [scale] [--log]`.
 
-NEXT: make the solve fast at 24k points (open fault 1; profile first), then N2 (seed from tapes: edges on their tapes by arc length, interiors mapped between; plies / layers as constraints
-in chain_solve), then time chain_solve on the jacket's real ~24k-point seed.
+NEXT: N1b run 3 on an idle machine: time 24k with the kept changes, then LM as SQP (soft step in the links' tangent +
+projection) to cut factors to ~3; only then N2 (seed from tapes; plies / layers as constraints).

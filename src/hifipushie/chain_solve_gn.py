@@ -135,36 +135,85 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
     return r, J
 
 
-def polish(Xn, t, w, ct, gap, iters: int = 30, mu: float = 1e-4, log=None):
-    """Levenberg-Marquardt over every node; returns (Xn, passes, final energy). (Pushing points out of the body after
-    each step instead of a contact residual was tried: the pushes undo the lengths, E 0.3 -> 7e4 on a tube.)"""
+def _factor(A):
+    """Unpivoted sparse LU of an SPD matrix (splu without SymmetricMode: 2.7 s a factor at 1.5k points; with it, ms)."""
+    return splu(A.tocsc(), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options={"SymmetricMode": True})
+
+
+LM_DROP = 1e-3  # a pass that lowers E by less than this fraction ends the polish (N1b: 6k points, the last 6 of 17
+# passes took E 4.295 -> 4.283; the projection then moves it as much)
+REFACTOR = 4  # factors a pass may try (mu x 16 each) before the pass is called converged
+BACKTRACK = 6  # halvings of a rejected step along its own direction before a refactor at a higher damping
+
+
+RETRACT = 6  # Jacobi sweeps of retract after each trial step
+
+
+def retract(Xn, t, sweeps: int = None):
+    """Each trial step put back near the lengths (links and exact edges to theirs, at-most edges no longer): a GN step
+    rotates a stiff link by its tangent, so the link comes out longer by ~ theta^2 / 2 and the step is rejected for
+    strain the linear model can't see (N1b: 19 passes at 6k, each cut by backtracking). A few Jacobi sweeps of
+    position-based projection (each node moved by the mean of its constraints' halves) remove that second-order
+    stretch; the step is then judged on the energy it actually changes."""
+    li, lj, L, _ = t["links"]
+    ei, ej, eL, ex = t["edges"]
+    I, J_, Ls = np.r_[li, ei], np.r_[lj, ej], np.r_[L, eL]
+    atmost = np.r_[np.zeros(len(L), bool), ~ex]
+    nn = len(Xn)
+    cnt = np.bincount(np.r_[I, J_], minlength=nn).astype(float)[:, None]
+    cnt = np.maximum(cnt, 1.0)
+    for _ in range(RETRACT if sweeps is None else sweeps):
+        dv = Xn[J_] - Xn[I]
+        l = np.maximum(np.linalg.norm(dv, axis=1), 1e-12)
+        c = l - Ls
+        c[atmost & (c < 0)] = 0.0
+        corr = (0.5 * c / l)[:, None] * dv
+        D = np.zeros_like(Xn)
+        for d in range(3):
+            D[:, d] = np.bincount(I, corr[:, d], nn) - np.bincount(J_, corr[:, d], nn)
+        Xn = Xn + D / cnt
+    return Xn
+
+
+def polish(Xn, t, w, ct, gap, iters: int = 30, mu: float = 1e-2, log=None):
+    """Levenberg-Marquardt over every node; returns (Xn, passes, final energy, factors). A factor is the dear part (~4 s
+    at 24k points), so a rejected step is first halved along its own direction (a residual each, no factor) and the
+    damping raised to match for the next pass; only a step no halving makes better is refactored at mu x 16.
+    (Pushing points out of the body after each step instead of a contact residual was tried: the pushes undo the
+    lengths, E 0.3 -> 7e4 on a tube. CG preconditioned by an earlier pass's factor: it did not converge in 40
+    iterations on 26 of 29 passes, the matrix moves too much between passes.)"""
     r, J = residuals(Xn, t, w, ct, gap)
     E = float(r @ r)
-    k = 0
+    k = nf = 0
     for k in range(iters):
         H = (J.T @ J).tocsc()
         g = J.T @ r
         dg = H.diagonal()
         ok = False
-        for _ in range(20):
-            A = (H + sp.diags(mu * (dg + 1e-9))).tocsc()
-            dx = -splu(A, permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0,
-                       options={"SymmetricMode": True}).solve(g)  # (SPD: no pivoting; 2.7 s -> ms a factor)
-            Xt = Xn + dx.reshape(-1, 3)
-            rt, _ = residuals(Xt, t, w, ct, gap, jac=False)
-            Et = float(rt @ rt)
-            if Et < E:
-                ok = True
+        for _ in range(REFACTOR):
+            dx = -_factor(H + sp.diags(mu * (dg + 1e-9))).solve(g).reshape(-1, 3)
+            nf += 1
+            s = 1.0
+            for _ in range(BACKTRACK + 1):
+                Xt = retract(Xn + s * dx, t)
+                rt, _ = residuals(Xt, t, w, ct, gap, jac=False)
+                Et = float(rt @ rt)
+                if Et < E:
+                    ok = True
+                    break
+                s *= 0.5
+            if ok:
                 break
-            mu *= 4.0
+            mu *= 16.0
+        mv = float(np.abs(Xt - Xn).max())
         if log:
-            log(f"  lm {k}: E {E:.4g} -> {Et:.4g} mu {mu:.2g}")
+            log(f"  lm {k}: E {E:.4g} -> {Et:.4g} mu {mu:.2g} step {s:.3g} move {mv * 1e3:.3f} mm")
         if not ok:
             break
         drop = (E - Et) / max(E, 1e-30)
-        Xn, mu = Xt, max(mu / 3.0, 1e-9)
+        Xn, mu = Xt, (max(mu / 3.0, 1e-9) if s == 1.0 else mu / s)
         r, J = residuals(Xn, t, w, ct, gap)
         E = float(r @ r)
-        if drop < 1e-4:
+        if drop < LM_DROP:
             break
-    return Xn, k + 1, E
+    return Xn, k + 1, E, nf
