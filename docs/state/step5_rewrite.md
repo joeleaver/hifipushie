@@ -45,5 +45,17 @@ layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4
 ## Commands
 `uv run pytest -q tests/test_chain_solve.py`
 
-NEXT: make the solve fast at 24k points (open fault 1; profile first), then N2 (seed from tapes: edges on their tapes by arc length, interiors mapped between; plies / layers as constraints
+## N1b (branch n1b-speed, stopped at budget: only the benchmark landed)
+- tests/chain_solve_bench.py [scale]: torso + 2 sleeves (2 sewn panels each) round 3 cylinders; scale 1 = 24k points.
+  rep["timing"] now splits setup / pd / lm / project.
+- BEFORE: 1.5k 4.5 s (lm 3.4); 6k 113 s (pd 4.3, lm 104, project 4.5; lm 30+30 passes, hit the cap); 24k ~974 s
+  (pd 20, lm 938, project 14). All hard_ok, links 0.0 %, 0 inside. Profile: /mnt/data/hifipushie/n1b/before_24k.txt.
+- WHY: one LM factor at 24k (72k unknowns) = 16.8 s (MMD; COLAMD 29 s); round 0 LM starts at E 1.6e5, mostly CONTACT
+  (after PD the sleeves sit up to 17 mm inside the arms: bending flattens a tube between PD's pushes), so mu climbs
+  through ~8 rejected steps, each a refactor. Round-0 projection then fails (40 passes, worst 180 %); round 1 fixes it.
+- Untried / unmeasured: PCG with a frozen factor (patch /mnt/data/hifipushie/n1b/pcg_unmeasured.patch, NOT applied).
+  Fix the warm start first: contact inside PD's global step (a constant per-node weight, target = projection out),
+  so LM starts near E ~1e4 with few rejections; then reuse one factor across passes / rejections.
+
+NEXT: N1b again: fix PD contact (warm start), then reuse LM factors; bench 0.0625 / 0.25 / 1 each step, then N2 (seed from tapes: edges on their tapes by arc length, interiors mapped between; plies / layers as constraints
 in chain_solve), then time chain_solve on the jacket's real ~24k-point seed.
