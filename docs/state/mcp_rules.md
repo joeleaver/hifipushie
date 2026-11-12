@@ -6,10 +6,10 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 
 ## Current best (on main)
 - 102 tools, 14 native (core); the rest through call_tool. find_tool("") lists them by domain (2.7k characters).
-- find_tool (find_route.py, C400 + C435): a job's domain comes from its subject words; a domain's steps lead in order;
+- find_tool (find_route.py, C400 + C436): a job's domain comes from its subject words; a domain's steps lead in order;
   a tool FOR the job beats one that mentions it; "make / build / model / sculpt / create a <thing>" that no domain names
   leads with put_model and the playbook; KEYWORDS hold plain words a tool's name and purpose lack.
-  Measured: 34 of 35 on the first list; on 49 jobs worded afresh 33 found before C435, 47 of 51 after (FRESH in
+  Measured: 34 of 35 on the first list; on 49 jobs worded afresh 33 found before C436, 47 of 51 after (FRESH in
   tests/test_find_jobs.py; its four misses carry their reasons). FRESH is a regression list now: measure next on new words.
 - next lines: heads, clothes and skin from their route modules; creatures and props from next_steps.after_save /
   after_model_look (put_model, edit_model, look). Terrain, plants, clutter, hair export: none yet.

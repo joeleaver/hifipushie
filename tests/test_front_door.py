@@ -1,4 +1,4 @@
-"""The front door for creatures and props (the area re-review, 2026-11-12; C435): a next line after every save and look,
+"""The front door for creatures and props (the area re-review, 2026-11-12; C436): a next line after every save and look,
 an unknown blob shape refused, and a quadruped not told it is a human."""
 import json
 from pathlib import Path

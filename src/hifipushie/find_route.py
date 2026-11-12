@@ -20,7 +20,7 @@ The rule, the same for every domain:
   a mention in `check`), the playbook leads: its "Which path" table is where an unknown subject starts.
 - A domain's own pin still leads (head_route.pin_block_in, skin_route.find_bias): a tool they scored above its match.
 - "Make / build / model / sculpt / create a <thing>" in no domain is the modeller's job: put_model and the playbook lead,
-  the word matches follow (C435). KEYWORDS: plain words for a job that a tool's own name and purpose do not carry.
+  the word matches follow (C436). KEYWORDS: plain words for a job that a tool's own name and purpose do not carry.
 """
 from __future__ import annotations
 
