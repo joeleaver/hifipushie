@@ -15,9 +15,8 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
   LOD's switch size is left out (the shirt's buttons at LOD3), the others simplified and seated on the LOD's cloth.
 - A garment whose look (step 9) is not approved, or with no current step 10, is LEFT OUT, and the answer's first line
   says NOT IN THIS EXPORT with the call that puts it in. A step 10 whose own gate FAILED ships with a WARNING naming
-  the rows; a garment exported before the LOD files is decimated with a WARNING naming export_garment.
-- Seams: a seam is shared per stretch (garment_game.boundaries). Before, armholes, the neckline and the cuffs were
-  open loops that only read closed at LOD0's grid. The shirt's outer mesh now has 3 openings at every LOD.
+  the rows; one exported before the LOD files is decimated with a WARNING naming export_garment.
+- Seams are shared per stretch (garment_game.boundaries): armholes, neckline and cuffs were open loops before.
 - Proof: cf_shirt + shirt, on a copy of the T14 proof workspace (approvals stubbed test-only):
   export_garment 188 s: LOD0 10,226 + 1,440 triangles (27 mm), LOD1 2,552 + 360 (76 mm), LOD2 1,156 + 162 (87 mm),
   LOD3 584 + 0 (119 mm); 0 open pattern edges each. export_asset (out3, 4 min once it had memory): the character's
@@ -34,8 +33,8 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
    garment_export.clear_body (a LOD's cloth lifted off the body where its faces cut under the skin) was added for it;
    its proof was RUNNING when the run stopped: read dressed_export/logs/proof_4.log (each LOD's "lifted clear" line),
    logs/equal_4.log (ALL EQUAL expected) and look_dressed_lods_before_after.png before trusting it.
-3. Skin through both sleeves at the forearm at LOD0 too: the build's own (in the garment's step-10 look), not made here.
-4. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
+3. Skin through both sleeves at the forearm at LOD0 too: the build's own, not made here. 4. Approvals: a blind
+   agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
 5. A character's LOD GLB has no .json / _shading.json beside it, so asset_export.preview cannot draw a LOD (copied
    by hand for the sheets); find_tool("export the dressed character as one GLB") still leads with export_garment.
 6. Not proven: the bend check at the LODs; a head + skin + hair AND a chain garment; one garment over another (an
