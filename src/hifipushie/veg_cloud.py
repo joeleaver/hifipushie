@@ -13,7 +13,8 @@ import math
 
 import numpy as np
 
-from . import veg_leaf, vegetation
+from . import veg_leaf
+from . import vegetation_kernels
 
 _DABS: dict = {}
 DAB = {"variants": 4, "size": 256, "count": 34, "length": 0.42, "width": 0.5, "shape": "leaf", "ragged": 0.35, "core": 0.5,
@@ -55,7 +56,7 @@ def dab_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
         if not d.get("true"):
             prof = np.maximum(prof, 0.55 * np.sin(np.pi * t) ** 0.6)  # (fattened: a dab, not a botanical leaf; `true` = the species outline)
     for v in range(nv):
-        u = lambda i, salt: float(vegetation._u(np.array([i + 1000 * v + 100000 * int(spec.get("seed", 1))], np.uint64), salt)[0])
+        u = lambda i, salt: float(vegetation_kernels._u(np.array([i + 1000 * v + 100000 * int(spec.get("seed", 1))], np.uint64), salt)[0])
         N = n * ss
         col = Image.new("RGB", (N, N), (int(255 * float(np.mean(d["tone"]))),) * 3)
         alp = Image.new("L", (N, N), 0)
@@ -176,7 +177,7 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
         return None
     seed = int(spec.get("seed", 1))
     key = np.arange(m_all, dtype=np.uint64) + np.uint64(7919 * seed)
-    u = lambda salt: vegetation._u(key, salt)[:want]
+    u = lambda salt: vegetation_kernels._u(key, salt)[:want]
     cdf = np.cumsum(w) / w.sum()
     fi = np.minimum(np.searchsorted(cdf, u(81)), len(F) - 1)
     a_, b_ = u(82), u(83)
@@ -293,7 +294,7 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
             if want < 0.5:
                 continue
             m_ = int(math.ceil(want * 2.2)) + 6
-            ph = 2 * math.pi * float(vegetation._u(np.array([j * 16 + li + 1000 * seed], np.uint64), 21)[0])
+            ph = 2 * math.pi * float(vegetation_kernels._u(np.array([j * 16 + li + 1000 * seed], np.uint64), 21)[0])
             U = _fib(m_) @ np.array([[math.cos(ph), -math.sin(ph), 0], [math.sin(ph), math.cos(ph), 0], [0, 0, 1.0]]).T
             r_ = np.tile(e["r"], (m_, 1))
             if e.get("down") is not None:
@@ -315,13 +316,13 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
                 keep &= np.linalg.norm(q2 / r2, axis=1) > 1 - float(cr.get("bury", 0.3))
             idx = np.flatnonzero(keep)
             hk = (idx + 4096 * (j * 16 + li) + 1000003 * seed).astype(np.uint64)
-            o_ = np.argsort(vegetation._u(hk, 22))[: max(int(round(want)), 1 if li == len(layers) - 1 else 0)]
+            o_ = np.argsort(vegetation_kernels._u(hk, 22))[: max(int(round(want)), 1 if li == len(layers) - 1 else 0)]
             cp.append(p[idx[o_]]); cn.append(nw[idx[o_]]); ch.append(hk[o_])
             cm.append(np.full(len(o_), j)); cl.append(np.full(len(o_), li))
     P0, N0 = np.vstack(cp), np.vstack(cn)
     M, Lr, Hk = np.concatenate(cm), np.concatenate(cl), np.concatenate(ch)
     nc = len(P0)
-    u = lambda salt: vegetation._u(Hk, salt)
+    u = lambda salt: vegetation_kernels._u(Hk, salt)
     # the card's frame: out of the shell, tilted; its picture's up = world up (the dabs' droop hangs), rolled a little
     tilt = math.radians(float(cr.get("tilt", 25.0)))
     rnd = np.c_[u(31) - 0.5, u(32) - 0.5, u(33) - 0.5] * 2

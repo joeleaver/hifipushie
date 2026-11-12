@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from . import store, vegetation
+from . import vegetation_fit, vegetation_grow, vegetation_kernels, vegetation_measures, vegetation_tree
 
 _GROWN: dict[str, tuple[str, dict]] = {}
 
@@ -57,7 +58,7 @@ def _lasting_limbs(spec: dict) -> None:
     if not todo:
         return
     T = _tree_of({k: v for k, v in spec.items() if k != "dead"})
-    by = {L["name"]: L["id"] for L in vegetation.limbs(T)}
+    by = {L["name"]: L["id"] for L in vegetation_tree.limbs(T)}
     for d in todo:
         if d["limb"] not in by:
             raise ValueError(f"dead: no limb {d['limb']!r} on this tree; its limbs: {sorted(by)} (or a guide's name, or a limb id)")
@@ -85,7 +86,7 @@ def variants(spec: dict) -> list[dict]:
     for k in range(n):
         u = (k + 0.5) / n if n > 1 else 1.0
         t = k / (n - 1) if n > 1 else 1.0
-        key = vegetation._child(vegetation._mix(np.uint64(int(spec.get("seed", 1)) + 7919)), k)
+        key = vegetation_kernels._child(vegetation_kernels._mix(np.uint64(int(spec.get("seed", 1)) + 7919)), k)
         v = {kk: json.loads(json.dumps(vv)) for kk, vv in spec.items() if kk != "set"}
         if not st["keep_guides"]:
             for kk in ("guides", "prune", "envelope", "forces"):
@@ -100,10 +101,10 @@ def variants(spec: dict) -> list[dict]:
             v.pop("height", None) if not st.get("ages") and st["age"] != [1.0, 1.0] else None
         if st["vigour"]:
             hb = vegetation.resolve(v)["habit"]["vigour"]
-            v.setdefault("habit", {})["vigour"] = round(float(hb * (1 + st["vigour"] * (2 * float(vegetation._u(key, 3)) - 1))), 3)
+            v.setdefault("habit", {})["vigour"] = round(float(hb * (1 + st["vigour"] * (2 * float(vegetation_kernels._u(key, 3)) - 1))), 3)
         if st["lean"]:
-            a = 2 * np.pi * float(vegetation._u(key, 4))
-            m = np.tan(np.radians(st["lean"] * (0.4 + 0.6 * float(vegetation._u(key, 5)))))
+            a = 2 * np.pi * float(vegetation_kernels._u(key, 4))
+            m = np.tan(np.radians(st["lean"] * (0.4 + 0.6 * float(vegetation_kernels._u(key, 5)))))
             v.setdefault("forces", []).append({"dir": [round(float(np.cos(a) * m), 3), round(float(np.sin(a) * m), 3), 0], "orders": [0]})
         if st.get("patch"):
             v = merge(v, st["patch"][k] if isinstance(st["patch"], list) else st["patch"])
@@ -172,7 +173,7 @@ def describe(name: str | None = None, species: str | None = None) -> dict:
                 "leaf_twig_ranges": TWIG_INFO, "note": "an assembled plant (plant: clump): `habit`, guides, prunes and cuts do not apply; "
                 "its form is `clump.layers`, its pictures are `leaves` + `leaves.parts`"}
     out = {"own": own, "resolved": full, "habit_ranges": vegetation.HABIT_INFO,
-           "leaf_twig_ranges": TWIG_INFO, "growth": {"steps": vegetation.steps_of(full),
+           "leaf_twig_ranges": TWIG_INFO, "growth": {"steps": vegetation_tree.steps_of(full),
                                                      "note": "steps = age / habit.years_per_step, 2-80"}}
     from . import veg_style
     out["style"] = {"resolved": veg_style.sheet(full) or "realistic", "styles": veg_style.names(),
@@ -245,7 +246,7 @@ def grown(name: str) -> dict:
     spec = {k: v for k, v in spec.items() if k != "set"}
     key = hashlib.sha1(json.dumps([spec, vegetation.VERSION], sort_keys=True).encode()).hexdigest()
     if _GROWN.get(name, ("",))[0] != key:
-        _GROWN[name] = (key, vegetation.grow(spec))
+        _GROWN[name] = (key, vegetation_grow.grow(spec))
     return _GROWN[name][1]
 
 
@@ -258,7 +259,7 @@ def reference(name: str) -> dict | None:
 
 def set_reference(name: str, image: str, mask: dict, bare: bool = False, credit: str = "") -> dict:
     """Keep a reference photo for the plant: copied beside it, with how its silhouette is taken (`mask` =
-    vegetation.reference_mask arguments: crop + foot, or a traced polygon) and whether the photo is of a bare tree."""
+    vegetation_measures.reference_mask arguments: crop + foot, or a traced polygon) and whether the photo is of a bare tree."""
     import shutil
     d = _dir(name)
     d.mkdir(parents=True, exist_ok=True)
@@ -268,7 +269,7 @@ def set_reference(name: str, image: str, mask: dict, bare: bool = False, credit:
     dst = d / ("reference" + src.suffix.lower())
     if src.resolve() != dst.resolve():
         shutil.copyfile(src, dst)
-    m = vegetation.reference_mask(str(dst), **mask)  # (fails here if the mask's arguments are wrong)
+    m = vegetation_measures.reference_mask(str(dst), **mask)  # (fails here if the mask's arguments are wrong)
     if m.sum() < 50:
         raise ValueError("the mask is empty: check crop/foot/tol, or trace a polygon")
     ref = {"image": str(dst), "mask": mask, "bare": bool(bare), "credit": credit}
@@ -352,7 +353,7 @@ def report(name: str) -> str:
                    f"{s['habit']['dead_keep']} years are still on the trunk ({seg_[d_].sum():.0f} m of dead wood, from {P_[d_, 2].min():.1f} m up); "
                    f"live crown from {base_:.1f} m = {1 - base_ / T['height']:.0%} of the height"
                    + ("" if veg_leaf.dead_part(s["leaves"]) is not None else " (no `leaves.parts.dead` picture: its fine twigs are not drawn)"))
-    ms = [vegetation.shape_measures(vegetation.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
+    ms = [vegetation_measures.shape_measures(vegetation_measures.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
     f = lambda k: round(float(np.mean([m[k] for m in ms])), 2)
     H = T["height"]
     ends = T["pos"][T["ends"] & (T["order"] > 0)]
@@ -363,9 +364,9 @@ def report(name: str) -> str:
     zlow = float(np.percentile(ends[:, 2], 3)) if len(ends) else 0.0
     covs = []
     for az in (0, 90):  # cover of the CROWN: the side view above the crown's base, trunk rows left out
-        m_, fr = vegetation.silhouette(T, az, 12, leaves=True)
+        m_, fr = vegetation_measures.silhouette(T, az, 12, leaves=True)
         top = int(max((fr["z1"] - zlow) * fr["px_per_m"], 1))
-        covs.append(1 - vegetation.shape_measures(m_[:top])["porosity"] if m_[:top].any() else 0.0)
+        covs.append(1 - vegetation_measures.shape_measures(m_[:top])["porosity"] if m_[:top].any() else 0.0)
     cover = float(np.mean(covs))
     tr = T["pos"][T["order"] == 0]
     tip = tr[np.argmax(tr[:, 2])]
@@ -377,13 +378,13 @@ def report(name: str) -> str:
                + f" (its top stands [{tip[0]:+.1f}, {tip[1]:+.1f}] m from its foot)")
     out.append(f"crown: its middle sits [{cen[0]:+.1f}, {cen[1]:+.1f}] m from the trunk's foot ({np.linalg.norm(cen) / max(rad_, 0.5):.2f} "
                f"of its radius {rad_:.1f} m: 0 = centred, 0.5+ = plainly swept to one side); cover {cover:.2f} (1 = solid from the side)")
-    ang = vegetation.branch_angles(T, 1)
+    ang = vegetation_measures.branch_angles(T, 1)
     if ang["n"]:
         drawn = sum(1 for ai in T["guides"].values() if T["axes"][ai]["order"] == 1)
         out.append(f"limbs: {ang['n']} first-order branches ({drawn} drawn; medians of so few jump about), leaving the trunk at {ang['insertion_p10_50_90'][1]} deg "
                    f"(p10-p90 {ang['insertion_p10_50_90'][0]}-{ang['insertion_p10_50_90'][2]}), their far halves "
                    f"{ang['elevation_p10_50_90'][1]} deg above level ({ang['elevation_p10_50_90'][0]} to {ang['elevation_p10_50_90'][2]})")
-    lb = vegetation.limbs(T)
+    lb = vegetation_tree.limbs(T)
     if lb:
         out.append("main limbs (name: leaves the trunk at height, base diameter, its length along its stoutest wood and where that "
                    "ends, the span of everything it carries. The compass name is by where its farthest wood lies and "
@@ -424,8 +425,8 @@ def report(name: str) -> str:
             warn.append(f"guide {g} never started (from_year past the tree's age?)")
     ref = reference(name)
     if ref:
-        R = vegetation.reference_mask(ref["image"], **ref["mask"])
-        m = vegetation.match(T, R, bare=ref["bare"], azimuths=(0, 45, 90, 135))
+        R = vegetation_measures.reference_mask(ref["image"], **ref["mask"])
+        m = vegetation_fit.match(T, R, bare=ref["bare"], azimuths=(0, 45, 90, 135))
         o, r = m["ours"], m["ref"]
         out.append(f"reference: outline IoU {m['iou']:.2f} (best from azimuth {m['azimuth']}); width/height "
                    f"{o['width_over_height']:.2f} vs {r['width_over_height']:.2f}, bole {o['bole']:.2f} vs {r['bole']:.2f}, "
@@ -486,13 +487,13 @@ def report(name: str) -> str:
                     f"age here ({T['height']:.0f} m); for an older-looking tree of normal size set `height`, or lower habit.vigour")
     if s["habit"]["clear"] > 0.9 * tip[2]:
         warn.append(f"habit.clear {s['habit']['clear']} m is nearly the whole trunk ({tip[2]:.1f} m): no limbs can leave it")
-    dr = vegetation.droop(T, max(f("bole"), 0.1))
+    dr = vegetation_fit.droop(T, max(f("bole"), 0.1))
     if dr > 0.1:
         warn.append(f"{dr:.0%} of the shoot ends hang under the crown's base away from the trunk (habit.sag, tropism)")
-    d_end = vegetation._norm(T["pos"] - T["pos"][T["parent"]])[T["ends"]]
+    d_end = vegetation_tree._norm(T["pos"] - T["pos"][T["parent"]])[T["ends"]]
     down = float((d_end[:, 2] < -0.5).mean()) if len(d_end) else 0.0
     out.append(f"shoot ends: {down:.0%} point steeply down (weeping), {float((d_end[:, 2] > 0.5).mean()) if len(d_end) else 0:.0%} steeply up")
-    if down > 0.35 and min(vegetation._per(s["habit"]["tropism"], np.arange(6))) > -0.3:
+    if down > 0.35 and min(vegetation_tree._per(s["habit"]["tropism"], np.arange(6))) > -0.3:
         warn.append(f"{down:.0%} of the shoot ends hang though the habit isn't a weeping one: lower habit.sag ({s['habit']['sag']}) "
                     f"or raise tropism on the high orders")
     if load(name.partition("#")[0]).get("set") and "#" not in name:
@@ -521,7 +522,7 @@ VIEWS = ("clay", "bare", "leaf", "far", "near", "close", "under", "ground")
 
 
 def veg_look_ground(T: dict, P) -> np.ndarray:
-    return vegetation.ground_at(T["spec"], np.asarray(P)[:, :2])
+    return vegetation_tree.ground_at(T["spec"], np.asarray(P)[:, :2])
 
 
 def _view_jobs(T: dict, views, azimuth: float, size: int, stem) -> tuple[list, list]:
@@ -875,17 +876,17 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
             spec.setdefault("guides", {})[g] = o
         elif k == "take_limb":  # a grown limb becomes a guide: same place and shape, now yours to redraw
             T = T0 = T0 or _tree_of(spec0)  # (the tree as it stood before this batch: the names the caller saw)
-            lb = {L["name"]: L for L in vegetation.limbs(T)}
+            lb = {L["name"]: L for L in vegetation_tree.limbs(T)}
             L = next((q for q in lb.values() if o.get("key") and q["key"] == o["key"]), None) or lb.get(o.get("limb")) \
-                or next((q for q in vegetation.limbs(T, 99, 0.0) if q["id"] == o.get("limb")), None)
+                or next((q for q in vegetation_tree.limbs(T, 99, 0.0) if q["id"] == o.get("limb")), None)
             if L is None:
                 raise ValueError(f"op {i}: no limb {o.get('limb')!r}; this tree's limbs: {sorted(lb)} (the report lists them)")
             if L["guide"]:
                 raise ValueError(f"op {i}: {L['name']} is already a guide: redraw it with op guide")
             g = o.get("name") or f"limb_{o.get('limb') or L['name']}"
-            path = o.get("path") or vegetation.limb_path(T, L, int(o.get("points", 6)))
+            path = o.get("path") or vegetation_tree.limb_path(T, L, int(o.get("points", 6)))
             path = [[round(float(x), 3) for x in q] for q in path]
-            nodes = vegetation.stout_path(T, T["axes"][L["axis"]]["node"])
+            nodes = vegetation_tree.stout_path(T, T["axes"][L["axis"]]["node"])
             yps = T["spec"]["habit"]["years_per_step"]
             spec.setdefault("guides", {})[g] = {
                 "path": path, "on": "trunk", "from_year": L["born_year"],
@@ -922,7 +923,7 @@ def edit(name: str, ops: list[dict], note: str = "") -> int:
         elif k == "set":
             head, _, rest = o["path"].partition(".")
             if head == "habit" and rest:
-                vegetation._set_path(spec.setdefault("habit", {}) if rest.partition(".")[0] in spec.get("habit", {}) else
+                vegetation_fit._set_path(spec.setdefault("habit", {}) if rest.partition(".")[0] in spec.get("habit", {}) else
                                      _seed_habit(spec, rest.partition(".")[0]), rest, o["value"])
             else:
                 cur = spec
@@ -942,7 +943,7 @@ def _tree_of(spec: dict) -> dict:
     for k_, t in _GROWN.values():
         if k_ == key:
             return t
-    return vegetation.grow(spec)
+    return vegetation_grow.grow(spec)
 
 
 def set_names(name: str) -> list[str]:
@@ -985,9 +986,9 @@ def blend_path(name: str) -> Path:
 def _curves(T: dict) -> list:
     s = T["spec"]
     out = [{"name": g, "kind": "guides", "points": gd["path"], "radius": 0.035} for g, gd in (s.get("guides") or {}).items()]
-    for L in vegetation.limbs(T):
+    for L in vegetation_tree.limbs(T):
         if not L["guide"]:
-            out.append({"name": L["name"], "kind": "limbs", "points": vegetation.limb_path(T, L, 6), "radius": 0.02, "key": L["key"]})
+            out.append({"name": L["name"], "kind": "limbs", "points": vegetation_tree.limb_path(T, L, 6), "radius": 0.02, "key": L["key"]})
     return out
 
 
@@ -1076,7 +1077,7 @@ def sync(name: str) -> dict:
         _scene._live_call("import bpy\nbpy.ops.wm.revert_mainfile()\nresult = {}", timeout=120.0)
         live = True
     return {"blend": str(bp), "pulled": came, "live": live, "guides": len(T["spec"].get("guides") or {}),
-            "limbs": sum(1 for L in vegetation.limbs(T) if not L["guide"]), **info}
+            "limbs": sum(1 for L in vegetation_tree.limbs(T) if not L["guide"]), **info}
 
 
 def _seed_habit(spec: dict, key: str) -> dict:

@@ -98,13 +98,14 @@ def skin_from_reference(name: str, out: str = "", groups: list[str] | None = Non
     redness, periorbital, brows, lips, beard, shade: skin.stack). painting=True: the per-picture read instead (tone, zones,
     lips, beard, brows, freckles, folds). read_only=True: the read alone. No pores or roughness are read. out: save to a
     copy. Details: guide(topic="skin_from_reference")."""
-    from . import skin_layers, skin_project as spj, store
+    from . import skin_layers, store
+    from . import skin_project_model
     from . import skin_read_fit, skin_read_frames, skin_read_reads
     from . import skin_read
     dst = out or name
     project, pre = skin_route.plan_read(store.load(name), project, painting, read_only)
     if project:
-        a = spj.apply(name, out=out or None, opacity=0.0, log=lambda s: None)
+        a = skin_project_model.apply(name, out=out or None, opacity=0.0, log=lambda s: None)
         pre += a["text"] + "\n\n"
         name = dst
     if read_only:
@@ -128,14 +129,14 @@ def skin_project(name: str, out: str = "", views: list[int] | None = None, remov
     filled, fine lines as relief; saved as skin.projection. opacity 0 (default): nothing of the photo is laid as colour;
     > 0: a judging overlay only, which the export refuses. The reply says what was left out and what is ambiguous. out:
     save to a copy; remove=True takes it out. Details: guide(topic="skin_project")."""
-    from . import skin_project as spj
+    from . import skin_project_make, skin_project_model
     kw = dict(views=views, delight=delight, ears=ears, mirror=mirror, tone=tone, parse=parse or None, log=lambda s: None)
     dst = out or name
     if remove:
-        return spj.apply(name, out=out or None, remove=True)["text"] + skin_route.after_project(dst, removed=True)
+        return skin_project_model.apply(name, out=out or None, remove=True)["text"] + skin_route.after_project(dst, removed=True)
     if report_only:
-        return spj.make(name, **kw)["text"] + skin_route.after_project(dst, report_only=True)
-    return spj.apply(name, out=out or None, opacity=opacity, detail_depth=detail_depth, eyes=eyes, stubble=stubble, **kw)["text"] + skin_route.after_project(dst, opacity)
+        return skin_project_make.make(name, **kw)["text"] + skin_route.after_project(dst, report_only=True)
+    return skin_project_model.apply(name, out=out or None, opacity=opacity, detail_depth=detail_depth, eyes=eyes, stubble=stubble, **kw)["text"] + skin_route.after_project(dst, opacity)
 
 
 @mcp.tool(structured_output=False)

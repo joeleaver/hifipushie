@@ -42,6 +42,7 @@ from pathlib import Path
 import numpy as np
 
 from . import vegetation
+from . import vegetation_grow, vegetation_kernels
 
 GRADE = "groundcover"
 BAKE_VERSION = 1  # bump with any change to what is rendered (frames, views, heads, extents); not for composing
@@ -93,7 +94,7 @@ def season_tree(T: dict, season: str) -> dict:
     se = "winter" if season == "snow" else season
     if se == s.get("season", "summer") and season != "snow":
         return T
-    t = vegetation.grow({**s, "season": se})
+    t = vegetation_grow.grow({**s, "season": se})
     if season == "snow":
         t = {**t, "spec": {**t["spec"], "snow": 0.8}}
     return t
@@ -413,7 +414,7 @@ def cards(frames: list, box: list, at: list, W: int, Ht: int, R: float, H: float
         n_v = len(S)
         # wind: a card bends from its foot; a flat card by how far out from the foot (its leaves' tips)
         hz = np.clip(P[:, 2] / max(H, 1e-6), 0, 1) if not f["top"] else np.clip(np.linalg.norm(P[:, :2], axis=1) / R, 0, 1) * TOP_AT
-        ph = float(vegetation._u(np.array([1000 * tier + f.get("k_ph", f["k"]) + 1], np.uint64), 57)[0])  # (a head card sways with its stalk's)
+        ph = float(vegetation_kernels._u(np.array([1000 * tier + f.get("k_ph", f["k"]) + 1], np.uint64), 57)[0])  # (a head card sways with its stalk's)
         bend = hz ** 1.5 * float(np.clip(H / 1.2, 0.08, 1.0))
         wind = np.c_[hz ** 1.5, bend, np.full(n_v, ph), 0.5 * hz]
         for side in ((1.0,) if f["top"] else (1.0, -1.0)):  # front, then back (its own vertices: TANGENT w = -1); a flat card: its top

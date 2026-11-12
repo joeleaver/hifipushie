@@ -274,7 +274,7 @@ def build(spec: dict) -> dict:
 
 
 def grow(spec: dict) -> dict:
-    """What vegetation.grow hands back for plant "sward": no skeleton, the built tile + numbers for the report."""
+    """What vegetation_grow.grow hands back for plant "sward": no skeleton, the built tile + numbers for the report."""
     b = build(spec)
     p = b["p"]
     H = float(max((M["V"][:, 2].max() if len(M["V"]) else 0.0) for M in b["lods"]))

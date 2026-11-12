@@ -1,6 +1,6 @@
 """Plants and the ground they stand on: nothing a plant draws may lie under it.
 
-The ground is `vegetation.ground_at` (environment.ground: level, slope). Three things can go under it: wood (limbs that
+The ground is `vegetation_tree.ground_at` (environment.ground: level, slope). Three things can go under it: wood (limbs that
 droop or sag into it), cards (a card is a polygon round its anchor: an anchor above the ground says nothing about its
 corners; a hanging card reaches its whole length below its anchor) and bough cards (metres long). `audit` measures what
 a look or an export of the plant DRAWS (the same wood mesh, placements and cards), `audit_glb` an exported file, and
@@ -14,7 +14,7 @@ import struct
 
 import numpy as np
 
-from . import vegetation
+from . import vegetation_tree
 
 MARGIN = 0.01  # m: nearer the ground than this counts as on it
 
@@ -34,7 +34,7 @@ def lowest(spec: dict, tw: dict, cards: list, var: np.ndarray) -> np.ndarray:
     """Per placement: its lowest card vertex's height over the ground (m; negative = under it)."""
     low = np.full(len(tw["pos"]), np.inf)
     for sel, V in _world(tw, cards, var):
-        g = vegetation.ground_at(spec, V.reshape(-1, 3)[:, :2]).reshape(V.shape[:2])
+        g = vegetation_tree.ground_at(spec, V.reshape(-1, 3)[:, :2]).reshape(V.shape[:2])
         low[sel] = (V[:, :, 2] - g).min(1)
     return low
 
@@ -142,11 +142,11 @@ def wood_depth(tree: dict, W: dict) -> tuple[np.ndarray, np.ndarray]:
     ground on purpose, so a foot on a slope shows no gap)."""
     spec = tree["spec"]
     V = W["V"]
-    depth = V[:, 2] - vegetation.ground_at(spec, V[:, :2])
+    depth = V[:, 2] - vegetation_tree.ground_at(spec, V[:, :2])
     node = np.asarray(W.get("node", np.zeros(len(V), int)))
     order = tree["order"][np.clip(node, 0, len(tree["order"]) - 1)]
     free = tree.get("free")
-    foot = (order == 0) & (tree["pos"][np.clip(node, 0, len(tree["pos"]) - 1), 2] - vegetation.ground_at(spec, tree["pos"][np.clip(node, 0, len(tree["pos"]) - 1), :2]) < 1.0)
+    foot = (order == 0) & (tree["pos"][np.clip(node, 0, len(tree["pos"]) - 1), 2] - vegetation_tree.ground_at(spec, tree["pos"][np.clip(node, 0, len(tree["pos"]) - 1), :2]) < 1.0)
     if free is not None:  # a clump's stalks each stand on the ground by themselves
         foot |= True
     return depth, foot
@@ -202,18 +202,18 @@ def audit(tree: dict, triangles: int | None = None, d: dict | None = None) -> di
            "lowest_wood_m": round(float(depth[~foot].min()), 3) if (~foot).any() else None, "cleared": d.get("cleared") or {},
            "height_m": round(float(tree["height"]), 2)}
     P, par = tree["pos"], tree["parent"]
-    rest = (tree["order"] > 0) & (P[:, 2] - vegetation.ground_at(s, P[:, :2]) - tree["radius"] < 0.06)
+    rest = (tree["order"] > 0) & (P[:, 2] - vegetation_tree.ground_at(s, P[:, :2]) - tree["radius"] < 0.06)
     out["resting_m"] = round(float(np.linalg.norm(P - P[par], axis=1)[rest].sum()), 1)  # wood lying on the ground
     tw = d["tw"]
     if len(tw["pos"]) and d["cards"]:
         deps, own = [], []
         for sel, V in _world(tw, d["cards"], d["var"]):
-            g = vegetation.ground_at(s, V.reshape(-1, 3)[:, :2])
+            g = vegetation_tree.ground_at(s, V.reshape(-1, 3)[:, :2])
             deps.append(V.reshape(-1, 3)[:, 2] - g)
             own.append(np.repeat(sel, V.shape[1]))
         dep, own = np.concatenate(deps), np.concatenate(own)
         out["cards"] = _measure(dep, own)
-        out["anchors"] = int((tw["pos"][:, 2] - vegetation.ground_at(s, tw["pos"][:, :2]) < -1e-4).sum())
+        out["anchors"] = int((tw["pos"][:, 2] - vegetation_tree.ground_at(s, tw["pos"][:, :2]) < -1e-4).sum())
         out["lowest_card_m"] = round(float(dep.min()), 3)
         out["cards_within_30cm"] = int(len(np.unique(own[dep < 0.3])))
     else:
@@ -261,7 +261,7 @@ def audit_glb(path: str, spec: dict | None = None, trunk_radius: float | None = 
             continue
         V = positions(G["meshes"][nd["mesh"]]).astype(float)
         zup = np.c_[V[:, 0], -V[:, 2], V[:, 1]]  # in the plant's own frame (the node's offset only stands it in a set)
-        depth = zup[:, 2] - (vegetation.ground_at(spec, zup[:, :2]) if spec else 0.0)
+        depth = zup[:, 2] - (vegetation_tree.ground_at(spec, zup[:, :2]) if spec else 0.0)
         if kind == "wood":
             r = trunk_radius if trunk_radius is not None else 0.5
             foot = (np.hypot(zup[:, 0], zup[:, 1]) < 2.5 * r) & (zup[:, 2] < 1.0)

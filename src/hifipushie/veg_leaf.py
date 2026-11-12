@@ -12,7 +12,8 @@ import math
 import numpy as np
 from numba import njit
 
-from .vegetation import _child, _norm, _u
+from .vegetation_kernels import _child, _u
+from .vegetation_tree import _norm
 
 LEAF = {"shape": "ovate", "length": 0.07, "width": 0.55, "lobes": 4, "fold": 0.25, "curl": 0.25, "petiole": 0.15,
         "serrate": 0.0, "needle_width": 0.1, "bend": 0.0}  # bend: the blade curves sideways (a grass blade's arc), x its length  # needle_width: a needle's width / length (far wider than life: a mesh
@@ -562,7 +563,7 @@ def place_live(tree: dict) -> dict:
         x, z = x * c_ + z * s_, z * c_ - x * s_
     lo, hi = tw["scale"]
     sc_ = lo + (hi - lo) * _u(key, 8)
-    from .vegetation import ground_at  # no twig runs into the ground: one that would is lifted to lie along it
+    from .vegetation_tree import ground_at
     gz = ground_at(s, pos[:, :2]) + 0.04
     pos[:, 2] = np.maximum(pos[:, 2], gz)
     need = (gz - pos[:, 2]) / np.maximum(tw["length"] * sc_, 1e-6)  # the least rise of its run that keeps its tip above

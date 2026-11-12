@@ -6,7 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import veg_export, veg_impostor as vi, vegetation as v
+from hifipushie import veg_export, veg_impostor as vi
+from hifipushie import vegetation_grow
 
 
 def test_mapping():
@@ -106,7 +107,7 @@ def test_reference_shader_keeps_its_uniforms():
 
 
 def test_export_one_quad_with_its_recipe():
-    T = v.grow({"species": "birch", "age": 12, "style": "blobby"})
+    T = vegetation_grow.grow({"species": "birch", "age": 12, "style": "blobby"})
     A = _ball_atlas(n=4, px=16)
     imp = {**A, "kind": vi.KIND, "normal": A["normal"],
            "seasons": {"winter": {"image": np.zeros_like(A["image"]), "normal": A["normal"]}}}
