@@ -9,6 +9,11 @@ specular, ao, orm, 16-bit height) and a json with the conventions. Nothing is ba
 texel is projected onto the exact surface, so detail the low poly drops (warts, wrinkles, creases) lives in the
 normal and height maps, and paint is as sharp as the texture. Faces buried inside another part (skin under
 solid clothing, eyeball backs) are removed first.
+- Clothes: a garment built in steps 0-10 ships AS `export_garment` WROTE IT: finish the garment first (its look
+  approved, `garment_appearance`, `export_garment`), then `export_asset`. The character's GLB carries that file's
+  mesh, maps and skin weights as part `cloth_<garment>` (its buttons and trims as `cloth_<garment>_details`), and
+  the skin it covers is dropped. Nothing is rebuilt. A garment that is not there yet is left out, and the answer's
+  first line says so with the call that puts it in: `NOT IN THIS EXPORT: garment <name>: ... next: ...`.
 - Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
   variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
   these; the exported GLB in EEVEE does.
