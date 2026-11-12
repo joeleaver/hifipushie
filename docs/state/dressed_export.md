@@ -16,29 +16,29 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
 - A garment whose look (step 9) is not approved, or with no current step 10, is LEFT OUT, and the answer's first line
   says NOT IN THIS EXPORT with the call that puts it in. A step 10 whose own gate FAILED ships with a WARNING naming
   the rows; one exported before the LOD files is decimated with a WARNING naming export_garment.
-- Seams are shared per stretch (garment_game.boundaries): armholes, neckline and cuffs were open loops before.
+- Seams are shared per stretch (garment_game.boundaries): armholes, neckline and cuffs were open loops before, at LOD0
+  too. The shirt's outer mesh has 3 openings at every LOD (its outline, two cuffs).
 - Proof: cf_shirt + shirt, on a copy of the T14 proof workspace (approvals stubbed test-only):
-  export_garment 188 s: LOD0 10,226 + 1,440 triangles (27 mm), LOD1 2,552 + 360 (76 mm), LOD2 1,156 + 162 (87 mm),
-  LOD3 584 + 0 (119 mm); 0 open pattern edges each. export_asset (out3, 4 min once it had memory): the character's
-  LOD1 / 2 / 3 carry exactly those counts (the log: "the garments' own LOD files ... not decimated").
-  NOT YET CHECKED: each LOD's shirt equal to the garment's file vertex by vertex (the script ran last, with proof 4).
-- Looks (EEVEE): dressed_export/look_dressed_lods_before_after.png (before left, after right; LOD1-3 top to bottom).
+  export_garment 190 s: LOD0 10,226 + 1,440 triangles (27 mm), LOD1 2,552 + 360 (76 mm), LOD2 1,156 + 162 (87 mm),
+  LOD3 584 + 0 (119 mm); 0 open pattern edges each. export_asset (out3, 4 min once it had memory; 18 min decimating):
+  each LOD's shirt in the character's GLB EQUALS the garment's file to float32 (positions + uv, triangles, normals,
+  weights by bone name), against files a second export_garment run wrote again: the re-grid repeats exactly.
+- Looks (EEVEE): dressed_export/look_dressed_lods_before_after_proof3.png (before | after, LOD1-3 top to bottom).
 
 ## Open faults (worst first)
-1. NOT LANDED. Branch garment-lods (worktree .claude/worktrees/garment-lods), stopped at 98 % of the week's usage.
-   No fast suite on its head yet (targeted: tests/test_garment_export.py, _asset.py, _game.py, _record.py pass).
-2. Skin through the coarse sleeves. Proof 3 (before the lift): the shirt itself clean at LOD1-3 (no kink, no torn
-   front), but skin patches at both armpits and forearms at LOD3, upper arms at LOD2, two at LOD1
-   (look_dressed_lods_before_after_proof3.png; body poking after the push-under 41 / 64 / 157, decimated 6 / 0 / 33).
-   garment_export.clear_body (a LOD's cloth lifted off the body where its faces cut under the skin) was added for it;
-   its proof was RUNNING when the run stopped: read dressed_export/logs/proof_4.log (each LOD's "lifted clear" line),
-   logs/equal_4.log (ALL EQUAL expected) and look_dressed_lods_before_after.png before trusting it.
-3. Skin through both sleeves at the forearm at LOD0 too: the build's own, not made here. 4. Approvals: a blind
-   agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
-5. A character's LOD GLB has no .json / _shading.json beside it, so asset_export.preview cannot draw a LOD (copied
-   by hand for the sheets); find_tool("export the dressed character as one GLB") still leads with export_garment.
-6. Not proven: the bend check at the LODs; a head + skin + hair AND a chain garment; one garment over another (an
-   under garment's LOD0 cull is not applied to its own LOD file); an alpha-cut base map.
+1. SKIN THROUGH THE COARSE SLEEVES at the character's LODs: both armpits, the forearms and a speck at the front hem at
+   LOD3; the backs of the upper arms at LOD2; two patches at LOD1 (body poking after the push-under 41 / 64 / 157;
+   decimated it was 6 / 0 / 33, with twice the triangles at LOD2 / 3). The shirt itself is clean at every LOD (no kink,
+   no torn front or collar). Flat faces of a 9-12 cm grid cut under the skin the LOD0 cull leaves (40 mm rims,
+   armpits). Tried and taken out: lifting each face's corners along the body's normal until its points clear the skin
+   (to 50 mm) bloats the shirt (balloon sleeves, spiked shoulders). Next to try: cut the skin under a chain garment's
+   LOD harder in asset_export (the skin left under LOD k's own cloth), not move the cloth.
+2. Skin through both sleeves at the forearm at LOD0 too: the build's own (in the garment's step-10 look), not made here.
+3. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
+4. asset_export.preview cannot draw a character's LOD GLB (no .json / _shading.json beside it: LOD0's copied by hand
+   for the sheets); find_tool("export the dressed character as one GLB") still leads with export_garment.
+5. Not proven: the bend check at the LODs; a head + skin + hair AND a chain garment; one garment over another (an
+   under garment's LOD0 cull is not applied to its own LOD file); an alpha-cut base map; read()'s maps by file name.
 
 ## Decisions in force
 - The character takes step 10's FILES, never the garment's pickle, a rebuild or a decimation: what was looked at ships.
@@ -54,7 +54,7 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
   `from hifipushie import garment_export_tool as g; print(g.run("cf_shirt", "shirt", "open", "main_npc", True)[1])`
   `from hifipushie import server; print(server.export_asset("cf_shirt", "<out>", role="main_npc", rig=True, preview=False))`
 - Equal to the garment's files: garment_asset.read(<garment LOD glb>) against garment_asset.read(<character LOD glb>),
-  matched on position + uv together (seam vertices share a position).
+  matched on position + uv together (seam vertices share a position); the character's meshes are "<asset>_cloth_<g>".
 
-NEXT: read proof 4 (fault 2). Clean: one bin/suite on the branch head, land it (main merged in, ledger C439 written),
-remove the worktree, tell the garment session. Not clean: clear_body's reach / cap first. Then mcp_rules.md 5, 6, 10.
+NEXT: fault 1 (the skin under a chain garment's LOD cut in asset_export's LOD loop, proved on the before / after sheet);
+then docs/state/mcp_rules.md items 5, 6, 10.
