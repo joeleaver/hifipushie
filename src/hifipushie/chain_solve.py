@@ -43,7 +43,8 @@ import time
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import splu
+from sksparse.cholmod import CholeskyFactor
+from threadpoolctl import threadpool_limits
 
 from . import chain_net as cn
 from . import chain_solve_gn as gn
@@ -112,6 +113,7 @@ class _PD:
         ei, ej, eL, ex = t["edges"]
         self.t = t
         self.stiff = 1.0
+        self.F = None  # (CHOLMOD: analysed once, the pattern is the same at every stiffening; gn.Factor's notes)
         B = []  # (S, W, kind)
         B.append((_diff_rows(li, lj, nn), W_LINK / np.maximum(L, 1e-9) ** 2, "link"))
         B.append((_diff_rows(ei, ej, nn), W_EDGE / np.maximum(eL, 1e-9) ** 2, "edge"))
@@ -153,7 +155,12 @@ class _PD:
         A = sp.identity(nn, format="csr") * (PROX / REF ** 2)
         for S, W, _ in B:
             A = A + S.T @ sp.diags(W) @ S
-        self.lu = splu(A.tocsc())
+        A = sp.tril(A, format="csc")
+        A.sort_indices()
+        with threadpool_limits(1):
+            if self.F is None:
+                self.F = CholeskyFactor(A, lower=True, order="metis", supernodal_mode="supernodal")
+            self.F.factorize(A)
 
     def targets(self, Xn):
         t = self.t
@@ -202,7 +209,8 @@ class _PD:
         rhs = Xn * (PROX / REF ** 2)
         for (S, W, _), P in zip(self.B, self.targets(Xn)):
             rhs = rhs + S.T @ (W[:, None] * P)
-        return self.lu.solve(rhs)
+        with threadpool_limits(1):
+            return self.F.solve(rhs)
 
 
 class _Near:
