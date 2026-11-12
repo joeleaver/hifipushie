@@ -16,7 +16,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import veg_bark, veg_bough, veg_cloud, veg_ground, veg_impostor, veg_leaf, veg_mesh, veg_style, vegetation
+from . import veg_bark, veg_bough, veg_cloud, veg_ground, veg_impostor, veg_leaf, veg_mesh, veg_style
+from . import vegetation_grow, vegetation_kernels, vegetation_tree
 
 
 def veg_small_state(spec: dict, season: str):
@@ -62,7 +63,7 @@ def wind_nodes(tree: dict) -> dict:
     np.maximum.at(far, limb, d)
     return {"trunk": np.clip(P[:, 2] / max(tree["height"], 1e-6), 0, 1) ** 1.5,
             "branch": np.where(order > 0, (d / np.maximum(far[limb], 1e-6)) ** 1.3, 0.0),
-            "phase": np.where(order > 0, vegetation._u(tree["key"][limb], 55), 0.0)}
+            "phase": np.where(order > 0, vegetation_kernels._u(tree["key"][limb], 55), 0.0)}
 
 
 def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.0, protect=None, cap: float = 2.5,
@@ -81,9 +82,9 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         if not len(tw["pos"]):
             return foliage_mesh(tree, at, tw={**tw, "pos": np.zeros((0, 3))})
     var = veg_leaf.card_variant(tw, nv)
-    tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
+    tint = 0.75 + 0.5 * vegetation_kernels._u(tw["key"], 77)
     if "size_m" in tw:  # bough cards are big: a tone per card as wide as a twig's read as a crown of pale and dark leaves
-        tint = 0.88 + 0.24 * vegetation._u(tw["key"], 77)
+        tint = 0.88 + 0.24 * vegetation_kernels._u(tw["key"], 77)
     core = np.asarray(tw["core"], float) if tw.get("core") is not None and len(np.atleast_1d(tw["core"])) == len(tw["pos"]) else None
     Vs, Fs, Us, Ts, Ns, Fl, Nr, Rc, Ph = [], [], [], [], [], [], [], [], []
     base = 0
@@ -105,7 +106,7 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         Fl.append(np.tile(np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1), len(sel)))
         Nr.append(np.repeat(tw["frame"][sel][:, :, 2], k, axis=0))  # the card's own upper side
         Rc.append(np.repeat(tw["scale"][sel] * float(c["V"][:, 1].max()), k))  # how long the card is, m
-        Ph.append(np.repeat(vegetation._u(tw["key"][sel], 56), k))
+        Ph.append(np.repeat(vegetation_kernels._u(tw["key"][sel], 56), k))
         base += len(sel) * k
     V = np.vstack(Vs)
     cen = np.array([tw["pos"][:, 0].mean(), tw["pos"][:, 1].mean(), np.percentile(tw["pos"][:, 2], 30)])
@@ -186,7 +187,7 @@ def pick_twigs(tree: dict, keep: float, min_radius: float = 0.0, protect=None, t
     if back:  # bough cards: spread over the crown first (one per cell of about a card's size, then a second each...)
         cell = np.floor(tw["pos"] / max(2.2 * back + 0.3, 0.3)).astype(np.int64)
         cid = np.unique(cell, axis=0, return_inverse=True)[1].ravel()
-        h_ = vegetation._u(tw["key"], 91)
+        h_ = vegetation_kernels._u(tw["key"], 91)
         order_ = np.lexsort((h_, cid))
         within = np.empty(n, np.int64)
         start = np.r_[0, np.flatnonzero(np.diff(cid[order_])) + 1]
@@ -194,7 +195,7 @@ def pick_twigs(tree: dict, keep: float, min_radius: float = 0.0, protect=None, t
         rank = np.argsort(np.argsort(within + 0.999 * h_))
         far = far & False
     else:
-        rank = np.argsort(np.argsort(far.astype(float) + 0.999 * vegetation._u(tw["key"], 91)))
+        rank = np.argsort(np.argsort(far.astype(float) + 0.999 * vegetation_kernels._u(tw["key"], 91)))
     sel = rank < int(np.floor(n * keep + 1e-9))  # (exactly that many: a threshold on the hash overshot budgets)
     out = {k: v[sel] for k, v in tw.items()}
     out["scale"] = out["scale"] * grow
@@ -379,9 +380,9 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
     thr = max(0.05, 0.2 * float(rad[1]))
     starts = [1] + [L["axis"] for L in ()]
     caps = []
-    roots_ = [1] + [tree["axes"][L["axis"]]["node"] for L in vegetation.limbs(tree, 40, 0.0) if 0.5 * L["diameter"] >= thr]
+    roots_ = [1] + [tree["axes"][L["axis"]]["node"] for L in vegetation_tree.limbs(tree, 40, 0.0) if 0.5 * L["diameter"] >= thr]
     for n0 in roots_:
-        nodes = vegetation.stout_path(tree, n0, kids)
+        nodes = vegetation_tree.stout_path(tree, n0, kids)
         nodes = np.concatenate([[par[n0]], nodes[rad[nodes] >= 0.6 * thr]])
         if len(nodes) < 2:
             continue
@@ -887,7 +888,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                         c["heads_triangles"] = int(len(Hd["F"]))
                     if M_FW is not None:  # the blades lying down (winter, snow): their own primitive
                         if "_winter_tree" not in t:
-                            t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
+                            t["_winter_tree"] = vegetation_grow.grow({**t["spec"], "season": "winter"})
                         Dw = veg_style.dress(t["_winter_tree"], st, int(triangles * share), "winter")
                         Cw = Dw["crown"]
                         if Cw is not None:
@@ -974,7 +975,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                     # a realistic small plant whose blades lie down in winter: as the styled ones, slot foliage_winter =
                     # the cards of the plant regrown at season winter, shown in winter / snow while foliage is hidden
                     if "_winter_tree" not in t:
-                        t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
+                        t["_winter_tree"] = vegetation_grow.grow({**t["spec"], "season": "winter"})
                     tw_ = t["_winter_tree"]
                     Lw = foliage_mesh(tw_, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c)
                     if not len(Lw["F"]):  # (a low LOD's keep share can leave the lying plant no cards: keep them all, it is small)

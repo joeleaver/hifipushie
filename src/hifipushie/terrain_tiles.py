@@ -532,8 +532,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     # ---- 5. trees and the manifest
     _st = prof.stage("trees + layer textures (parent)")
     _st.__enter__()
-    from . import terrain_design as design
-    inst = design.trees(T)
+    from . import terrain_design_cover
+    inst = terrain_design_cover.trees(T)
     with open(out / "trees.csv", "w") as f:
         f.write("x,y,z,kind,layer\n")
         layers = getattr(T, "tree_layers", {})

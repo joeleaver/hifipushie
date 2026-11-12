@@ -3,6 +3,7 @@ words say, the measures measure. uv run python tests/test_vegetation.py"""
 import numpy as np
 
 from hifipushie import veg_bark, veg_leaf, veg_mesh, vegetation as v
+from hifipushie import vegetation_fit, vegetation_grow, vegetation_measures, vegetation_tree
 
 SMALL = {"species": "birch", "age": 22}
 TREES = [sp for sp in v.species() if v.preset(sp).get("plant", "tree") == "tree"]  # grown; the others are assembled (veg_small)
@@ -10,7 +11,7 @@ TREES = [sp for sp in v.species() if v.preset(sp).get("plant", "tree") == "tree"
 
 def _curve(path, T):
     """The curve a guide follows: the drawn points on a Catmull-Rom spline, as the model resamples it."""
-    return v._path(np.asarray(path, float) / T["unit"])[0] * T["unit"]
+    return vegetation_tree._path(np.asarray(path, float) / T["unit"])[0] * T["unit"]
 
 
 def _polyline_dist(p, P):
@@ -22,15 +23,15 @@ def _polyline_dist(p, P):
 
 
 def test_deterministic():
-    a, b = v.grow(SMALL), v.grow(SMALL)
+    a, b = vegetation_grow.grow(SMALL), vegetation_grow.grow(SMALL)
     assert a["stats"]["nodes"] == b["stats"]["nodes"] > 500
     assert np.array_equal(a["pos"], b["pos"]) and np.array_equal(a["key"], b["key"])
-    c = v.grow({**SMALL, "seed": 2})
+    c = vegetation_grow.grow({**SMALL, "seed": 2})
     assert c["stats"]["nodes"] != a["stats"]["nodes"] or not np.allclose(c["pos"][:200], a["pos"][:200])
 
 
 def test_structure():
-    T = v.grow(SMALL)
+    T = vegetation_grow.grow(SMALL)
     par = T["parent"]
     assert (par[1:] < np.arange(1, len(par))).all()  # parents come first
     assert np.isfinite(T["pos"]).all() and (T["radius"] > 0).all()
@@ -42,7 +43,7 @@ def test_structure():
 def test_guides_any_order_exact_and_regrown():
     limb = [[0, 0, 3], [2.5, 0, 4.5], [5.5, 0, 5.2], [8, 0, 5.0]]
     sub = [[4, 0, 4.9], [4.5, 0, 7], [4.2, 0, 9.5]]
-    T = v.grow({**SMALL, "age": 30, "guides": {"limb": {"path": limb, "from_year": 6, "until_year": 20},
+    T = vegetation_grow.grow({**SMALL, "age": 30, "guides": {"limb": {"path": limb, "from_year": 6, "until_year": 20},
                                                "sub": {"path": sub, "from_year": 14, "until_year": 26}}})
     for name, path, order in (("limb", limb, 1), ("sub", sub, 2)):
         ai = T["guides"][name]
@@ -62,106 +63,106 @@ def test_guides_any_order_exact_and_regrown():
 
 def test_drawn_trunk():
     path = [[0, 0, 0], [0.3, 0, 2], [1.5, 0, 5], [3.5, 0, 8], [4.5, 0, 12]]
-    T = v.grow({**SMALL, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 16}}})
+    T = vegetation_grow.grow({**SMALL, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 16}}})
     assert T["axes"][T["guides"]["trunk"]]["order"] == 0
     nodes = np.flatnonzero(T["pin"])
     assert max(_polyline_dist(T["pos"][n], _curve(path, T)) for n in nodes) < 1e-6
-    S = v.grow({**SMALL, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 16, "straight": True}}})
+    S = vegetation_grow.grow({**SMALL, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 16, "straight": True}}})
     assert max(_polyline_dist(S["pos"][n], np.array(path, float)) for n in np.flatnonzero(S["pin"])) < 1e-6
 
 
 def test_guide_on_a_guide_and_stout_wood():
     limb = [[0, 0, 3], [2.5, 0, 4.5], [5.5, 0, 5.2]]
     sub = [[2.5, 0, 4.5], [2.8, 0, 6.5], [2.6, 0, 8.5]]
-    T = v.grow({**SMALL, "age": 30, "guides": {"limb": {"path": limb, "from_year": 6, "until_year": 18},
+    T = vegetation_grow.grow({**SMALL, "age": 30, "guides": {"limb": {"path": limb, "from_year": 6, "until_year": 18},
                                                "sub": {"path": sub, "from_year": 16, "until_year": 26, "on": "limb"}}})
     first = T["axes"][T["guides"]["sub"]]["node"]
     assert T["axis"][T["parent"][first]] == T["guides"]["limb"] and T["axes"][T["guides"]["sub"]]["order"] == 2
     # a limb drawn from a point on the trunk leaves the TRUNK (order 1), not a twig that happens to pass there
-    L = v.grow({**SMALL, "age": 30, "guides": {"low": {"path": [[0, 0, 4], [2, 0, 4.6], [4, 0, 4.8]], "from_year": 20}}})
+    L = vegetation_grow.grow({**SMALL, "age": 30, "guides": {"low": {"path": [[0, 0, 4], [2, 0, 4.6], [4, 0, 4.8]], "from_year": 20}}})
     assert L["axes"][L["guides"]["low"]]["order"] == 1
 
 
 def test_cuts_are_local_and_girth_is_settable():
-    T0 = v.grow(SMALL)
+    T0 = vegetation_grow.grow(SMALL)
     box = [[1.0, -30, 0], [30, 30, 40]]
-    T = v.grow({**SMALL, "prune": [{"box": box}]})
+    T = vegetation_grow.grow({**SMALL, "prune": [{"box": box}]})
     keep = ~np.isin(T0["key"], T["key"])
     assert T["stats"]["pruned_nodes"] == keep.sum() > 10
     same = np.isin(T0["key"], T["key"])
     assert np.array_equal(T0["pos"][same], T["pos"]) and np.allclose(T0["radius"][same], T["radius"])  # nothing else moved
-    R = v.grow({**SMALL, "prune": [{"box": box, "from_year": 8}]})  # with a year it is a cut the tree answers
+    R = vegetation_grow.grow({**SMALL, "prune": [{"box": box, "from_year": 8}]})  # with a year it is a cut the tree answers
     assert not np.isin(R["key"], T0["key"]).all()
-    U = v.grow({**SMALL, "prune": [{"under": 4.0}]})
+    U = vegetation_grow.grow({**SMALL, "prune": [{"under": 4.0}]})
     assert (U["pos"][U["order"] > 0][:, 2] >= 4.0).all() and (U["order"] == 0).sum() == (T0["order"] == 0).sum()
-    G = v.grow({**SMALL, "trunk_diameter": 0.5})
+    G = vegetation_grow.grow({**SMALL, "trunk_diameter": 0.5})
     assert abs(G["stats"]["trunk_diameter_m"] - 0.5) < 0.02 * 1.6  # (the foot's flare sits on top)
     ratio = G["radius"][G["ends"]] / T0["radius"][T0["ends"]]
     assert abs(np.median(ratio) - 1) < 0.1 and np.percentile(ratio, 90) < 0.6 * G["radius"][1] / T0["radius"][1] + 0.4  # twigs stay
-    lean = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6, "lean": [4, 0]}})
-    up = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6}})
+    lean = vegetation_grow.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6, "lean": [4, 0]}})
+    up = vegetation_grow.grow({**SMALL, "envelope": {"shape": "column", "radius": 2.0, "top": 12, "soft": 0.6}})
     hi = lambda t: t["pos"][t["pos"][:, 2] > 0.6 * t["height"], 0].mean()
     assert hi(lean) > hi(up) + 0.8
 
 
 def test_prune_and_envelope():
-    T0 = v.grow(SMALL)
-    T = v.grow({**SMALL, "prune": [{"box": [[1.0, -30, 0], [30, 30, 40]]}]})
+    T0 = vegetation_grow.grow(SMALL)
+    T = vegetation_grow.grow({**SMALL, "prune": [{"box": [[1.0, -30, 0], [30, 30, 40]]}]})
     assert (T["pos"][:, 0] < 1.0 + 1.2).all() and (T0["pos"][:, 0] > 2.5).any()
-    T = v.grow({**SMALL, "prune": [{"below": 5.0}]})
+    T = vegetation_grow.grow({**SMALL, "prune": [{"below": 5.0}]})
     lat = (T["order"] == 1) & ~T["main"]
     assert (T["pos"][T["parent"][lat], 2] >= 5.0 - 1e-6).all()
-    E = v.grow({**SMALL, "envelope": {"shape": "column", "radius": 1.5, "top": 40, "soft": 0.5}})
+    E = vegetation_grow.grow({**SMALL, "envelope": {"shape": "column", "radius": 1.5, "top": 40, "soft": 0.5}})
     r = lambda t: np.percentile(np.linalg.norm(t["pos"][:, :2], axis=1), 95)
     assert r(E) < 0.6 * r(T0)
 
 
 def test_environment():
-    T0 = v.grow(SMALL)
-    F = v.grow({**SMALL, "environment": {"setting": "forest"}})
-    m0, mf = v.shape_measures(v.silhouette(T0, 0, 10, leaves=False)[0]), v.shape_measures(v.silhouette(F, 0, 10, leaves=False)[0])
+    T0 = vegetation_grow.grow(SMALL)
+    F = vegetation_grow.grow({**SMALL, "environment": {"setting": "forest"}})
+    m0, mf = vegetation_measures.shape_measures(vegetation_measures.silhouette(T0, 0, 10, leaves=False)[0]), vegetation_measures.shape_measures(vegetation_measures.silhouette(F, 0, 10, leaves=False)[0])
     assert mf["bole"] > m0["bole"] + 0.05 and mf["width_over_height"] < m0["width_over_height"]  # drawn up by its neighbours
-    W = v.grow({**SMALL, "environment": {"wind": {"from": "w", "strength": 0.5}}})
+    W = vegetation_grow.grow({**SMALL, "environment": {"wind": {"from": "w", "strength": 0.5}}})
     assert W["pos"][W["ends"], 0].mean() > T0["pos"][T0["ends"], 0].mean() + 0.3  # leans downwind (east, +x)
 
 
 def test_habit_words():
     ok = {"species": "oak", "age": 40}  # (no forced leader: a birch's leader holds its trunk whatever the apical share)
-    ex = v.grow({**ok, "habit": {"apical": [0.62, 0.5], "apical_old": None, "leader": 0}})
-    de = v.grow({**ok, "habit": {"apical": [0.44, 0.5], "apical_old": None, "leader": 0}})
-    w = lambda t: v.shape_measures(v.silhouette(t, 0, 10, leaves=False)[0])["width_over_height"]
+    ex = vegetation_grow.grow({**ok, "habit": {"apical": [0.62, 0.5], "apical_old": None, "leader": 0}})
+    de = vegetation_grow.grow({**ok, "habit": {"apical": [0.44, 0.5], "apical_old": None, "leader": 0}})
+    w = lambda t: vegetation_measures.shape_measures(vegetation_measures.silhouette(t, 0, 10, leaves=False)[0])["width_over_height"]
     assert w(de) > w(ex)  # less apical control: broader for its height
-    up = v.grow({**SMALL, "habit": {"tropism": [0.35, 0.4, 0.3, 0.3], "sag": 0}})
-    down = v.grow({**SMALL, "habit": {"tropism": [0.35, -0.2, -0.5, -0.8]}})
-    assert v.branch_angles(up, 1)["elevation_p10_50_90"][1] > v.branch_angles(down, 1)["elevation_p10_50_90"][1] + 15
+    up = vegetation_grow.grow({**SMALL, "habit": {"tropism": [0.35, 0.4, 0.3, 0.3], "sag": 0}})
+    down = vegetation_grow.grow({**SMALL, "habit": {"tropism": [0.35, -0.2, -0.5, -0.8]}})
+    assert vegetation_measures.branch_angles(up, 1)["elevation_p10_50_90"][1] > vegetation_measures.branch_angles(down, 1)["elevation_p10_50_90"][1] + 15
 
 
 def test_species_presets_grow():
     for sp in TREES:
-        T = v.grow({"species": sp})
+        T = vegetation_grow.grow({"species": sp})
         assert (200 if sp == "shrub" else 1000) < T["stats"]["nodes"] < 80000, (sp, T["stats"])
         assert T["stats"]["grow_s"] < 20, sp
     try:
-        v.grow({"species": "oak", "habit": {"nonsense": 1}})
+        vegetation_grow.grow({"species": "oak", "habit": {"nonsense": 1}})
         raise AssertionError("unknown habit key accepted")
     except ValueError:
         pass
 
 
 def test_height_sets_the_unit():
-    T = v.grow({**SMALL, "height": 9.0})
+    T = vegetation_grow.grow({**SMALL, "height": 9.0})
     assert abs(T["height"] - 9.0) < 0.5, T["height"]
     g = {"limb": {"path": [[0, 0, 2], [2, 0, 3], [4, 0, 3.2]], "from_year": 5, "until_year": 15}}
-    T = v.grow({**SMALL, "height": 9.0, "guides": g})  # a guide stays in metres whatever the unit
+    T = vegetation_grow.grow({**SMALL, "height": 9.0, "guides": g})  # a guide stays in metres whatever the unit
     nodes = np.flatnonzero(T["pin"])
     assert max(_polyline_dist(T["pos"][n], _curve(g["limb"]["path"], T)) for n in nodes) < 1e-6
 
 
 def test_decay_and_seasons():
-    D = v.grow({**SMALL, "decay": {"min_radius": 0.02}})
+    D = vegetation_grow.grow({**SMALL, "decay": {"min_radius": 0.02}})
     assert (D["radius"][2:] >= 0.02).all() and not D["leafy"].any()
     assert len(veg_leaf.place(D)["pos"]) == 0
-    assert len(veg_leaf.place(v.grow({**SMALL, "season": "winter"}))["pos"]) == 0
+    assert len(veg_leaf.place(vegetation_grow.grow({**SMALL, "season": "winter"}))["pos"]) == 0
 
 
 def test_leaves_and_twigs():
@@ -179,7 +180,7 @@ def test_leaves_and_twigs():
         assert (a["mat"] == 1).sum() > 5 and (a["mat"] == 0).sum() > 5, sp
         assert a["V"].shape != b["V"].shape or not np.allclose(a["V"], b["V"])  # variants differ
         assert np.array_equal(a["V"], veg_leaf.twig_mesh(lf, 0)["V"])  # and are deterministic
-    T = v.grow(SMALL)
+    T = vegetation_grow.grow(SMALL)
     tw = veg_leaf.place(T)
     assert len(tw["pos"]) > 500
     Fm = tw["frame"]
@@ -188,13 +189,13 @@ def test_leaves_and_twigs():
     assert set(np.unique(tw["variant"])) <= {0, 1, 2}
     d = np.linalg.norm(tw["pos"][:, None, :] - T["pos"][tw["node"]][:, None, :], axis=2).max()
     assert d < 1.0  # every twig stands on its node's internode
-    ends_only = veg_leaf.place(v.grow({**SMALL, "leaves": {"twig": {"where": "ends", "per_m": 0}}}))
+    ends_only = veg_leaf.place(vegetation_grow.grow({**SMALL, "leaves": {"twig": {"where": "ends", "per_m": 0}}}))
     assert len(ends_only["pos"]) < len(tw["pos"])
 
 
 def test_girth_and_collar():
-    thin = v.grow({**SMALL, "habit": {"ring": 0.0}})
-    thick = v.grow({**SMALL, "habit": {"ring": 0.003}})
+    thin = vegetation_grow.grow({**SMALL, "habit": {"ring": 0.0}})
+    thick = vegetation_grow.grow({**SMALL, "habit": {"ring": 0.003}})
     assert thick["stats"]["trunk_diameter_m"] > thin["stats"]["trunk_diameter_m"] + 0.08
     par = thick["parent"]
     assert (thick["radius"][par[2:]] >= thick["radius"][2:] * 0.999).all()  # still thinning outward
@@ -204,8 +205,8 @@ def test_girth_and_collar():
 
 
 def test_wind_spares_the_trunk():
-    T0 = v.grow(SMALL)
-    W = v.grow({**SMALL, "forces": [{"dir": [1, 0, 0], "strength": 0.25}], "environment": {"wind": {"from": "w", "strength": 0.8}}})
+    T0 = vegetation_grow.grow(SMALL)
+    W = vegetation_grow.grow({**SMALL, "forces": [{"dir": [1, 0, 0], "strength": 0.25}], "environment": {"wind": {"from": "w", "strength": 0.8}}})
     assert W["height"] > 0.8 * T0["height"]  # it leans, it doesn't lie down
     trunk = W["pos"][W["order"] == 0]
     assert trunk[:, 0].max() < 0.5 * W["height"]
@@ -216,13 +217,13 @@ def test_line_directions_and_droop():
     upright = ((xx % 20) < 3).astype(float) * 255
     level = ((yy % 20) < 3).astype(float) * 255
     reg = np.ones((200, 200), bool)
-    assert v.line_directions(upright, reg)["p50"] < 10 and v.line_directions(level, reg)["p50"] > 80
-    assert v.line_directions(upright, reg)["upright"] > 0.9 and v.line_directions(level, reg)["level"] > 0.9
-    T = v.grow(SMALL)
+    assert vegetation_measures.line_directions(upright, reg)["p50"] < 10 and vegetation_measures.line_directions(level, reg)["p50"] > 80
+    assert vegetation_measures.line_directions(upright, reg)["upright"] > 0.9 and vegetation_measures.line_directions(level, reg)["level"] > 0.9
+    T = vegetation_grow.grow(SMALL)
     fake = {"pos": np.array([[0, 0, 0], [0, 0, 10.0], [4, 0, 1.0], [4, 0, 6.0], [0.5, 0, 1.0]]), "height": 10.0,
             "ends": np.array([False, True, True, True, True])}
-    assert abs(v.droop(fake, 0.3) - 0.25) < 1e-9  # one end of four hangs low and far out; the one by the trunk doesn't count
-    d = v.tree_branch_directions(T, 0, 400)
+    assert abs(vegetation_fit.droop(fake, 0.3) - 0.25) < 1e-9  # one end of four hangs low and far out; the one by the trunk doesn't count
+    d = vegetation_measures.tree_branch_directions(T, 0, 400)
     assert 0 <= d["p25"] <= d["p50"] <= d["p75"] <= 90
 
 
@@ -231,18 +232,18 @@ def test_measures_and_masks():
     m[60:, 38:42] = True  # a bole of 40% under a disc
     yy, xx = np.mgrid[:100, :80]
     m |= (yy - 30) ** 2 + (xx - 40) ** 2 < 30 ** 2
-    s = v.shape_measures(m)
+    s = vegetation_measures.shape_measures(m)
     assert abs(s["width_over_height"] - 0.6) < 0.03 and 0.3 < s["bole"] < 0.45 and abs(s["lopsided"]) < 0.05
-    assert v.outline_iou(m, m) == 1.0
-    assert v.outline_iou(m, m[:, ::-1]) > 0.95
+    assert vegetation_measures.outline_iou(m, m) == 1.0
+    assert vegetation_measures.outline_iou(m, m[:, ::-1]) > 0.95
     tall = np.repeat(m, 2, axis=0)
-    assert v.outline_iou(m, tall) < 0.8
+    assert vegetation_measures.outline_iou(m, tall) < 0.8
     P = [[10, 90], [10, 40], [0, 30], [20, 0], [40, 30], [30, 40], [30, 90]]
-    assert v.traced_mask(P).sum() > 1000
+    assert vegetation_measures.traced_mask(P).sum() > 1000
 
 
 def test_tubes():
-    T = v.grow(SMALL)
+    T = vegetation_grow.grow(SMALL)
     M = veg_mesh.tubes(T)
     assert len(M["V"]) == len(M["axis"]) and M["F"].max() < len(M["V"]) and M["F"].min() == 0
     assert np.isfinite(M["V"]).all() and (M["along"] >= 0).all() and (M["along"] <= 1).all()
@@ -297,7 +298,7 @@ def test_atlas_and_cards():
 
 
 def test_tubes_uv_and_weld():
-    T = v.grow(SMALL)
+    T = vegetation_grow.grow(SMALL)
     M = veg_mesh.tubes(T, tile=(0.5, 1.0))
     assert len(M["uv"]) == len(M["V"]) and np.isfinite(M["uv"]).all()
     # u spans whole tiles round every branch (the seam column is doubled, so a ring's u runs 0..n exactly)
@@ -378,22 +379,22 @@ def test_tools_and_export(tmp=None):
 
 def test_cuts_regrow_and_keys_are_checked():
     base = {"species": "birch", "age": 30}
-    T0 = v.grow(base)
-    P = v.grow({**base, "cuts": [{"year": 10, "above": 3.0, "every": 5, "until_year": 20, "sprouts": 5}], "trunk_diameter": 0.4, "trunk_taper": 0.1})
+    T0 = vegetation_grow.grow(base)
+    P = vegetation_grow.grow({**base, "cuts": [{"year": 10, "above": 3.0, "every": 5, "until_year": 20, "sprouts": 5}], "trunk_diameter": 0.4, "trunk_taper": 0.1})
     trunk = P["pos"][P["order"] == 0]
     assert trunk[:, 2].max() < 3.0 + 0.6 and P["height"] > 4.0  # a short trunk carrying a head that grew back
     assert len(P["stats"]["cuts"]) >= 3 and all(c["nodes"] > 0 for c in P["stats"]["cuts"])
     assert P["height"] < T0["height"] and (P["order"] > 0).sum() > 100
     r = P["radius"][P["order"] == 0]
     assert r.min() > 0.5 * 0.4 * 0.85  # a column: the trunk keeps its girth to its top
-    held = v.grow({**base, "prune": [{"above": 3.0, "from_year": 10}]})  # held for ever: nothing above it
+    held = vegetation_grow.grow({**base, "prune": [{"above": 3.0, "from_year": 10}]})  # held for ever: nothing above it
     assert held["pos"][:, 2].max() < 3.0 + 0.6
-    stub = v.grow({**base, "cuts": [{"year": 20, "above": 5.0, "sprouts": 0}]})
+    stub = vegetation_grow.grow({**base, "cuts": [{"year": 20, "above": 5.0, "sprouts": 0}]})
     assert stub["pos"][stub["order"] == 0][:, 2].max() < 5.6
     for bad in ({"prune": [{"above": 3, "until_year": 9}]}, {"cuts": [{"above": 3}]}, {"guides": {"g": {"path": [[0, 0, 1]]}}},
                 {"wibble": 1}, {"guides": {"g": {"path": [[0, 0, 1], [1, 0, 2]], "untill": 3}}}):
         try:
-            v.grow({**base, **bad})
+            vegetation_grow.grow({**base, **bad})
             raise AssertionError(f"accepted {bad}")
         except ValueError:
             pass
@@ -401,25 +402,25 @@ def test_cuts_regrow_and_keys_are_checked():
 
 def test_angle_clear_and_bare():
     b = {"species": "birch", "age": 25}
-    lo = v.branch_angles(v.grow({**b, "habit": {"angle": [35, 55, 60]}}), 1)["insertion_p10_50_90"][1]
-    hi = v.branch_angles(v.grow({**b, "habit": {"angle": [70, 55, 60]}}), 1)["insertion_p10_50_90"][1]
+    lo = vegetation_measures.branch_angles(vegetation_grow.grow({**b, "habit": {"angle": [35, 55, 60]}}), 1)["insertion_p10_50_90"][1]
+    hi = vegetation_measures.branch_angles(vegetation_grow.grow({**b, "habit": {"angle": [70, 55, 60]}}), 1)["insertion_p10_50_90"][1]
     assert abs(lo - 35) < 8 and abs(hi - 70) < 12 and hi > lo + 20  # angle[0] IS the limbs' angle off the trunk
     path = [[0, 0, 0], [0.5, 0, 3], [1.5, 0, 6], [1.8, 0, 9]]
-    G = v.grow({**b, "habit": {"clear": 4.0}, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 15}}})
+    G = vegetation_grow.grow({**b, "habit": {"clear": 4.0}, "guides": {"trunk": {"path": path, "from_year": 0, "until_year": 15}}})
     lat = (G["order"] == 1) & ~G["main"]
     assert lat.any() and (G["pos"][G["parent"][lat], 2] >= 4.0 - 0.6).all()  # a drawn trunk has its clear bole too
     limb = [[0, 0, 4], [2, 0, 4.8], [5, 0, 5.2]]
-    L = v.grow({**b, "guides": {"limb": {"path": limb, "from_year": 8, "until_year": 18, "bare": 2.5}}})
+    L = vegetation_grow.grow({**b, "guides": {"limb": {"path": limb, "from_year": 8, "until_year": 18, "bare": 2.5}}})
     ai = L["guides"]["limb"]
     kids = np.flatnonzero((~L["main"]) & (L["axis"][L["parent"]] == ai) & L["pin"][L["parent"]])
     assert len(kids) and (np.linalg.norm(L["pos"][L["parent"][kids]] - np.array(limb[0]), axis=1) > 2.0).all()
-    U = v.grow({**b, "envelope": {"shape": "umbrella", "radius": 4, "top": 9, "base": 2}})
+    U = vegetation_grow.grow({**b, "envelope": {"shape": "umbrella", "radius": 4, "top": 9, "base": 2}})
     assert U["stats"]["nodes"] > 100
 
 
 def test_budget_is_what_is_written():
     from hifipushie import veg_export
-    T = v.grow({"species": "birch", "age": 25})
+    T = vegetation_grow.grow({"species": "birch", "age": 25})
     for n in (4000, 12000):
         bud = veg_export.budget(T, n, (0.4, 0.8), 8)
         assert bud["total"] <= n or bud["over"] == bud["total"] - n
@@ -437,7 +438,7 @@ def test_named_limbs_take_and_sets():
         try:
             vt.save("o", {"species": "birch", "age": 28, "habit": {"apical": [0.5, 0.55, 0.6]}}, note="t")
             T = vt.grown("o")
-            lb = v.limbs(T)
+            lb = vegetation_tree.limbs(T)
             assert len(lb) >= 3 and len({L["name"] for L in lb}) == len(lb)
             L = max(lb, key=lambda q: q["diameter"])
             vt.edit("o", [{"op": "take_limb", "limb": L["name"], "name": "mine"}])
@@ -507,14 +508,14 @@ def test_boll_dead_roots_and_habit_extras():
     from hifipushie import veg_mesh
     base = {"species": "white_willow"}
     cut = {"year": 10, "above": 2.5, "every": 6, "until_year": 28, "sprouts": 6}
-    A = v.grow({**base, "cuts": [cut], "trunk_diameter": 0.7, "trunk_taper": 0.1})
-    B = v.grow({**base, "cuts": [{**cut, "boll": 1.7}], "trunk_diameter": 0.7, "trunk_taper": 0.1})
+    A = vegetation_grow.grow({**base, "cuts": [cut], "trunk_diameter": 0.7, "trunk_taper": 0.1})
+    B = vegetation_grow.grow({**base, "cuts": [{**cut, "boll": 1.7}], "trunk_diameter": 0.7, "trunk_taper": 0.1})
     ra, rb = A["radius"][A["order"] == 0], B["radius"][B["order"] == 0]
     assert abs(A["height"] - B["height"]) < 1e-6 and A["height"] < 9  # (a preset `height` no longer scales a pollard up to it)
     assert 1.25 < rb[-1] / ra[-1] < 1.75 and abs(rb[1] - ra[1]) < 1e-6  # a head on the same trunk
-    T = v.grow({"species": "birch", "age": 25})
-    lb = v.limbs(T)
-    D = v.grow({"species": "birch", "age": 25, "dead": [{"limb": lb[0]["name"], "min_radius": 0.01}]})
+    T = vegetation_grow.grow({"species": "birch", "age": 25})
+    lb = vegetation_tree.limbs(T)
+    D = vegetation_grow.grow({"species": "birch", "age": 25, "dead": [{"limb": lb[0]["name"], "min_radius": 0.01}]})
     assert D["dead"].any() and not D["leafy"][D["dead"]].any() and D["stats"]["nodes"] < T["stats"]["nodes"]
     assert (D["radius"][D["dead"]] >= 0.01).all()
     M = veg_mesh.tubes(D)
@@ -525,20 +526,20 @@ def test_boll_dead_roots_and_habit_extras():
     assert f1.max() > 1.6 * f0.max() and f1.min() < 1.25 * f0.max()  # flares between hollows, not a wider cone
     # determinate axes and uneven pace
     s0 = {"species": "norway_spruce", "age": 30, "habit": {"tip_life": [0], "uneven": [0]}}
-    a = v.grow(s0)
-    b = v.grow({**s0, "habit": {"tip_life": [0, 0, 4], "uneven": [0]}})
+    a = vegetation_grow.grow(s0)
+    b = vegetation_grow.grow({**s0, "habit": {"tip_life": [0, 0, 4], "uneven": [0]}})
     assert (b["order"] == 2).sum() < 0.7 * (a["order"] == 2).sum()
-    c = v.grow({**s0, "habit": {"tip_life": [0], "uneven": [0, 0.4]}})
+    c = vegetation_grow.grow({**s0, "habit": {"tip_life": [0], "uneven": [0, 0.4]}})
     seg = lambda t: np.linalg.norm(t["pos"] - t["pos"][t["parent"]], axis=1)[t["order"] == 1]
     assert np.std(seg(c)) > 1.5 * np.std(seg(a))  # limbs at their own pace
     for sp in v.species():  # every preset grows something sound
-        t = v.grow({"species": sp, "age": 12})
+        t = vegetation_grow.grow({"species": sp, "age": 12})
         assert t["stats"]["nodes"] > (1 if t.get("clump") else 5) and np.isfinite(t["pos"]).all(), sp
 
 
 def test_budget_keeps_marked_wood_and_cards_on_wood():
     from hifipushie import veg_export, veg_leaf, veg_mesh
-    T = v.grow({"species": "oak", "age": 70, "dead": [{"above": 9.0, "min_radius": 0.02}]})
+    T = vegetation_grow.grow({"species": "oak", "age": 70, "dead": [{"above": 9.0, "min_radius": 0.02}]})
     assert T["dead"].any()
     bud = veg_export.budget(T, 12000, (0.5, 1.0), 7)
     assert bud["total"] <= 12000 and bud["min_radius"] > 0.02  # thin live wood went ...
@@ -573,16 +574,16 @@ def test_limb_ids_last_and_report_says():
         store.HOME = __import__("pathlib").Path(tmp)
         try:
             base = {"species": "birch", "age": 28, "environment": {"ground": {"slope": 15, "toward": [1, 0]}}}
-            T = v.grow(base)
-            L = max(v.limbs(T), key=lambda q: q["diameter"])
+            T = vegetation_grow.grow(base)
+            L = max(vegetation_tree.limbs(T), key=lambda q: q["diameter"])
             vt.save("d", {**base, "dead": [{"limb": L["name"], "min_radius": 0.008}]}, note="t")
             sp = vt.load("d")
             assert sp["dead"][0]["limb"] == L["id"] and L["id"].startswith("L")  # stored by its lasting id
             D = vt.grown("d")
-            p0 = D["pos"][D["axes"][v.find_limb(D, L["id"])]["node"]]
+            p0 = D["pos"][D["axes"][vegetation_tree.find_limb(D, L["id"])]["node"]]
             vt.edit("d", [{"op": "set", "path": "habit.jitter", "value": [0.05, 0.3, 0.3, 0.2]}])
             D2 = vt.grown("d")
-            ai = v.find_limb(D2, L["id"])
+            ai = vegetation_tree.find_limb(D2, L["id"])
             assert ai is not None and np.linalg.norm(D2["pos"][D2["axes"][ai]["node"]] - p0) < 1.0  # the same bud's limb
             assert D2["dead"][D2["axes"][ai]["node"]]
             r = vt.report("d")
@@ -590,9 +591,9 @@ def test_limb_ids_last_and_report_says():
             vt.save("d", patch={"dead": [{"limb": "Lzzzz"}]})
             assert "is not on this tree any more" in vt.report("d")
             # a fat trunk under ordinary limbs
-            a = v.grow({**base, "trunk_diameter": 1.2})
-            b = v.grow({**base, "trunk_diameter": 1.2, "limb_diameter": 0.2})
-            la, lb_ = max(q["diameter"] for q in v.limbs(a)), max(q["diameter"] for q in v.limbs(b))
+            a = vegetation_grow.grow({**base, "trunk_diameter": 1.2})
+            b = vegetation_grow.grow({**base, "trunk_diameter": 1.2, "limb_diameter": 0.2})
+            la, lb_ = max(q["diameter"] for q in vegetation_tree.limbs(a)), max(q["diameter"] for q in vegetation_tree.limbs(b))
             assert abs(lb_ - 0.2) < 0.03 and la > 1.5 * lb_ and abs(2 * b["radius"][1] - 1.2) < 0.05
         finally:
             store.HOME = old
@@ -610,7 +611,7 @@ def _glb(path):
 def test_export_lods_wind_seasons_collision():
     import tempfile
     from hifipushie import veg_export, veg_leaf
-    T = v.grow({"species": "birch", "age": 25})
+    T = vegetation_grow.grow({"species": "birch", "age": 25})
     with tempfile.TemporaryDirectory() as tmp:
         imp = {"image": np.ones((8, 16, 4), np.float32), "size": 10.0, "height": 5.0}
         c = veg_export.write_glb(T, tmp + "/b.glb", "b", triangles=9000, lods=3, seasons=["summer", "autumn", "winter", "snow"],
@@ -647,8 +648,8 @@ def test_export_lods_wind_seasons_collision():
         assert 2 <= len(caps) <= 24 and caps[0]["ra"] > 0.03 and "sin" in hp["wind"]
         assert g["nodes"][hp["collision"][0]["mesh_node"]]["name"] == "b_collision"
     # seasons on the plant itself
-    ev = v.grow({"species": "norway_spruce", "age": 20, "season": "winter"})
-    de = v.grow({"species": "birch", "age": 20, "season": "winter"})
+    ev = vegetation_grow.grow({"species": "norway_spruce", "age": 20, "season": "winter"})
+    de = vegetation_grow.grow({"species": "birch", "age": 20, "season": "winter"})
     assert len(veg_leaf.place(ev)["pos"]) > 0 and len(veg_leaf.place(de)["pos"]) == 0
     assert veg_export.season_atlas(de["spec"], "winter", [0.4, 0.3, 0.3]) is None
     su, au = veg_export.season_atlas(de["spec"], "summer", [0.4, 0.3, 0.3]), veg_export.season_atlas(de["spec"], "autumn", [0.4, 0.3, 0.3])
@@ -657,10 +658,10 @@ def test_export_lods_wind_seasons_collision():
 
 
 def test_fit_improves():
-    ref = v.silhouette(v.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
+    ref = vegetation_measures.silhouette(vegetation_grow.grow({**SMALL, "habit": {"apical": [0.6, 0.5]}}), 0, 12, leaves=False)[0]
     start = {**SMALL, "habit": {"apical": [0.45, 0.5]}}
-    before = v.match(v.grow(start), ref, bare=True)["iou"]
-    r = v.fit_habit(start, ref, {"apical.0": [0.44, 0.64]}, bare=True, iters=10, seeds=(1,), nodes=(300, 30000))
+    before = vegetation_fit.match(vegetation_grow.grow(start), ref, bare=True)["iou"]
+    r = vegetation_fit.fit_habit(start, ref, {"apical.0": [0.44, 0.64]}, bare=True, iters=10, seeds=(1,), nodes=(300, 30000))
     assert r["iou"] >= before and "apical" in r["habit"]
 
 
@@ -674,13 +675,13 @@ def _limbs_by_whorl(T):
 def test_whorls_rings_and_creeping_branchlets():
     # bud_each: a low bud_break keeps one or two limbs of a whorl, not whole whorls or none
     base = {"species": "scots_pine", "age": 50, "habit": {"bud_break": [1, 0.3, 0.8, 0.9, 0.8]}}
-    whole = _limbs_by_whorl(v.grow(v._merge(base, {"habit": {"bud_each": False}})))
-    each = _limbs_by_whorl(v.grow(v._merge(base, {"habit": {"bud_each": True}})))
+    whole = _limbs_by_whorl(vegetation_grow.grow(v._merge(base, {"habit": {"bud_each": False}})))
+    each = _limbs_by_whorl(vegetation_grow.grow(v._merge(base, {"habit": {"bud_each": True}})))
     assert whole.max() >= 3 and each.mean() < whole.mean() and len(each) > len(whole), (whole, each)
     # ring per order: old low branches stay thin under a stout trunk; slowing keeps foliage along the limbs
     S = {"species": "norway_spruce", "age": 40}
-    one = v.grow(v._merge(S, {"habit": {"ring": 0.003, "slowing": [0], "tip_life": [0, 0, 7]}}))
-    per = v.grow(S)
+    one = vegetation_grow.grow(v._merge(S, {"habit": {"ring": 0.003, "slowing": [0], "tip_life": [0, 0, 7]}}))
+    per = vegetation_grow.grow(S)
 
     def low_limb_girth(T):
         o, par, P = T["order"], T["parent"], T["pos"]
@@ -716,16 +717,16 @@ def test_whorls_rings_and_creeping_branchlets():
 def test_ground_and_stand_forms():
     # nothing under the ground: an open-grown spruce's lowest limbs lie along it, its twigs' tips stay above it
     S = {"species": "norway_spruce", "age": 44}
-    op = v.grow(S)
+    op = vegetation_grow.grow(S)
     assert op["pos"][2:, 2].min() > 0 and op["stats"]["on_ground"] >= 0
     tw = veg_leaf.place(op)
     tl = v.resolve(S)["leaves"]["twig"]["length"]
     assert (tw["pos"][:, 2] + tw["frame"][:, 2, 1] * tl * tw["scale"]).min() > -0.01
-    up = v.grow({**S, "environment": {"ground": {"level": 1.0}}})  # the plane is a parameter
+    up = vegetation_grow.grow({**S, "environment": {"ground": {"level": 1.0}}})  # the plane is a parameter
     assert up["pos"][up["order"] > 0][:, 2].min() > 1.0
     # one word for where it stands: an interior tree has a higher crown base and keeps dead stubs; an edge tree is one-sided
-    inner = v.grow({**S, "environment": {"setting": "forest"}})
-    edge = v.grow({**S, "environment": {"setting": "edge", "open_side": [1, 0]}})
+    inner = vegetation_grow.grow({**S, "environment": {"setting": "forest"}})
+    edge = vegetation_grow.grow({**S, "environment": {"setting": "edge", "open_side": [1, 0]}})
     low = lambda t: float(np.percentile(veg_leaf.place(t)["pos"][:, 2], 5)) / t["height"]
     assert low(inner) > low(op) + 0.15 and inner["stats"]["dead_stubs"] > 10 and op["stats"]["dead_stubs"] == 0
     assert inner["dead"].any() and not inner["leafy"][inner["dead"]].any()
@@ -741,33 +742,33 @@ def test_small_plants_are_assembled():
     clumps = [sp for sp in v.species() if v.preset(sp).get("plant") == "clump"]
     assert {"meadow_grass", "fern", "daisy", "clover", "feather_palm"} <= set(clumps)
     for sp in clumps:
-        T = v.grow({"species": sp})
+        T = vegetation_grow.grow({"species": sp})
         tw = veg_leaf.place(T)
         m = veg_small.measures(T)
         assert T.get("clump") and len(tw["pos"]) == m["cards"] > 5 and np.isfinite(tw["frame"]).all(), sp
         assert np.allclose(np.linalg.det(tw["frame"]), 1, atol=1e-6), sp  # proper frames
         at = veg_leaf.atlas(T["spec"]["leaves"])
         assert tw["card"].max() < len(at["cards"]), sp
-        assert np.array_equal(v.grow({"species": sp})["twigs"]["pos"], tw["pos"])  # the same plant every time
-        assert not np.array_equal(v.grow({"species": sp, "seed": 2})["twigs"]["pos"], tw["pos"])
-    g = v.grow({"species": "meadow_grass"})
+        assert np.array_equal(vegetation_grow.grow({"species": sp})["twigs"]["pos"], tw["pos"])  # the same plant every time
+        assert not np.array_equal(vegetation_grow.grow({"species": sp, "seed": 2})["twigs"]["pos"], tw["pos"])
+    g = vegetation_grow.grow({"species": "meadow_grass"})
     assert 0.3 < g["height"] < 0.8 and veg_small.measures(g)["card_elevation_p10_50_90"][1] > 55  # a tuft stands
-    assert veg_small.measures(v.grow({"species": "clover"}))["cover_from_above"] > 0.6  # a groundcover covers
-    p = v.grow({"species": "feather_palm"})
+    assert veg_small.measures(vegetation_grow.grow({"species": "clover"}))["cover_from_above"] > 0.6  # a groundcover covers
+    p = vegetation_grow.grow({"species": "feather_palm"})
     assert p["height"] > 6 and (p["order"] == 0).sum() > 8 and 0.2 < 2 * p["radius"][1] < 0.6  # a trunk under a crown
     # parts: several pictures in one atlas, each layer drawing its own
     pc = veg_leaf.part_cards(v.resolve({"species": "daisy"})["leaves"])
-    d = v.grow({"species": "daisy"})
+    d = vegetation_grow.grow({"species": "daisy"})
     assert set(pc) == {"main", "head", "stemleaf"} and set(np.unique(d["twigs"]["card"])) <= set(sum(pc.values(), []))
     L = veg_export.foliage_mesh(g, veg_leaf.atlas(g["spec"]["leaves"]))
     assert len(L["V"]) and L["N"][:, 2].mean() > 0.6 and L["reach"].max() < 1.0  # normals lean up; cards know their length
     for bad in ({"clump": {"layers": [{"part": "nope"}]}}, {"clump": {"layers": [{"sizee": 1}]}}, {"clump": {"layers": []}}):
         try:
-            v.grow({"species": "fern", **bad})
+            vegetation_grow.grow({"species": "fern", **bad})
             raise AssertionError(bad)
         except ValueError:
             pass
-    s = v.grow({"species": "shrub"})
+    s = vegetation_grow.grow({"species": "shrub"})
     feet = np.flatnonzero((s["parent"] == 0) & (np.arange(len(s["parent"])) > 0))
     assert len(feet) == 6 and (s["order"][feet] == 0).all()  # six stems from one stool
 
@@ -795,10 +796,10 @@ def test_nothing_under_the_ground():
     assert np.array_equal(out["frame"][1], tw["frame"][2]) and out["scale"][1] == 1  # the high one untouched
     assert out["scale"][2] < 1 and np.array_equal(out["frame"][2], tw["frame"][3])  # a hanging card is shortened, never turned
     # 2. a weeping willow whose curtains may sweep the ground: shoots stop over it, no card corner under it
-    W = v.grow({"species": "weeping_willow", "prune": [], "habit": {"ground_clear": 0.4}})
+    W = vegetation_grow.grow({"species": "weeping_willow", "prune": [], "habit": {"ground_clear": 0.4}})
     limb = W["order"] > 0
     assert W["pos"][limb, 2].min() > 0.02
-    d = v._norm(W["pos"] - W["pos"][W["parent"]])
+    d = vegetation_tree._norm(W["pos"] - W["pos"][W["parent"]])
     hanging_low = limb & (d[:, 2] < -0.5) & (W["pos"][:, 2] < 0.39) & (W["pos"][W["parent"], 2] > 0.4)
     assert hanging_low.sum() <= 0.002 * limb.sum(), hanging_low.sum()  # (sag may dip a few; none grows on downward)
     a = g.audit(W)
@@ -813,8 +814,8 @@ def test_nothing_under_the_ground():
     assert a8["boughs"] and a8["wood"]["under"] == 0 and a8["cards"]["under"] == 0, a8
     assert not any(l_.startswith("WARNING") and "under the ground" in l_ for l_ in g.report(a8))
     # 3. on a hillside the ground is the slope: a spruce's skirt rests on it uphill, nothing goes into it
-    S = v.grow({"species": "norway_spruce", "age": 30, "environment": {"ground": {"slope": 18, "toward": [1, 0]}}})
-    gz = v.ground_at(S["spec"], S["pos"][:, :2])
+    S = vegetation_grow.grow({"species": "norway_spruce", "age": 30, "environment": {"ground": {"slope": 18, "toward": [1, 0]}}})
+    gz = vegetation_tree.ground_at(S["spec"], S["pos"][:, :2])
     lo = (S["pos"][:, 2] - gz - S["radius"])[S["order"] > 0]
     assert lo.min() > 0.0, lo.min()
     wd = g.audit(S, d=g.drawn({**S, "spec": {**S["spec"], "season": "bare"}}))
@@ -826,9 +827,9 @@ def test_stand_interior_dead_wood():
     when lately dead, short spurs when old), drawn with dead-twig cards; an edge tree keeps its skirt on the open side."""
     from hifipushie import veg_leaf
     base = {"species": "norway_spruce", "age": 44}
-    O = v.grow(base)
-    F = v.grow({**base, "environment": {"setting": "forest", "spacing": 3.0}})
-    E = v.grow({**base, "environment": {"setting": "edge", "open_side": [-1, 0], "spacing": 3.0}})
+    O = vegetation_grow.grow(base)
+    F = vegetation_grow.grow({**base, "environment": {"setting": "forest", "spacing": 3.0}})
+    E = vegetation_grow.grow({**base, "environment": {"setting": "edge", "open_side": [-1, 0], "spacing": 3.0}})
     assert not O["dead"].any() and F["shade_dead"].sum() > 200
     live = lambda T: T["pos"][T["leafy"] & ~T["dead"]]
     ratio = 1 - np.percentile(live(F)[:, 2], 5) / F["height"]
@@ -862,7 +863,7 @@ def test_pine_form_across_ages_and_settings():
     preset fitted to one photo was a bare pole at 35 years, as wide as tall at 80 and wider than tall at 150)."""
     cases = [{"name": "15", "age": 15}, {"name": "35", "age": 35}, {"name": "80", "age": 80}, {"name": "160", "age": 160},
              {"name": "stand", "age": 80, "environment": {"setting": "forest", "spacing": 4.0}}]
-    cs = {c["name"]: c["measures"] for c in v.form_cases({"species": "scots_pine"}, cases, seeds=(1, 2))}
+    cs = {c["name"]: c["measures"] for c in vegetation_fit.form_cases({"species": "scots_pine"}, cases, seeds=(1, 2))}
     for k in ("15", "35", "80", "160"):  # taller than wide at every age, with a real crown
         assert 0.3 < cs[k]["width_over_height"] < 0.9, (k, cs[k])
         assert cs[k]["top_off"] < 2.5, (k, cs[k])  # the trunk runs to the top
@@ -875,8 +876,8 @@ def test_pine_form_across_ages_and_settings():
     assert s["width_over_height"] < 0.34 and s["crown_ratio"] < 0.5 and s["widest_at"] > 0.6 and s["top_off"] < 1.0, s
     assert s["dbh_cm"] < 0.85 * cs["80"]["dbh_cm"]
     # the measure's bands and the miss
-    hit = v.form_miss([{"measures": cs["80"], "width_over_height": [0.3, 0.9]}])
-    miss = v.form_miss([{"measures": cs["80"], "width_over_height": [1.0, 1.2]}])
+    hit = vegetation_fit.form_miss([{"measures": cs["80"], "width_over_height": [0.3, 0.9]}])
+    miss = vegetation_fit.form_miss([{"measures": cs["80"], "width_over_height": [1.0, 1.2]}])
     assert hit == 0 and miss > 0.1
 
 
@@ -884,10 +885,10 @@ def test_limb_pace_and_dead_ends():
     """`limb_pace` keeps side shoots under the leader's pace (a spire, not limbs overtopping an old leader), and wood
     past its last living branch is shed (no bare snakes trailing from old limbs)."""
     base = {"species": "scots_pine", "age": 120}
-    a = v.grow({**base, "habit": {"limb_pace": [1, 0.5, 0.5]}})
-    b = v.grow({**base, "habit": {"limb_pace": [1, 1.5, 1.2]}})
-    assert v.crown_measures(a)["width_over_height"] < v.crown_measures(b)["width_over_height"]
-    T = v.grow(base)
+    a = vegetation_grow.grow({**base, "habit": {"limb_pace": [1, 0.5, 0.5]}})
+    b = vegetation_grow.grow({**base, "habit": {"limb_pace": [1, 1.5, 1.2]}})
+    assert vegetation_fit.crown_measures(a)["width_over_height"] < vegetation_fit.crown_measures(b)["width_over_height"]
+    T = vegetation_grow.grow(base)
     live = ~T["dead"]
     # every living end of wood older than a few steps carries leaves or a tip
     old_end = T["ends"] & live & (T["steps"] - T["born"] > 8)
@@ -896,7 +897,7 @@ def test_limb_pace_and_dead_ends():
 
 def test_stand_girth_follows_stocking():
     """A stand tree's stem is no stouter than its spacing allows (Reineke): closer trees are thinner."""
-    g = lambda sp: v.crown_measures(v.grow({"species": "norway_spruce", "age": 60, "environment": {"setting": "forest", "spacing": sp}}))["dbh_cm"]
+    g = lambda sp: vegetation_fit.crown_measures(vegetation_grow.grow({"species": "norway_spruce", "age": 60, "environment": {"setting": "forest", "spacing": sp}}))["dbh_cm"]
     d3, d5 = g(3.0), g(5.0)
     assert d3 < d5 and d3 <= 25 * (1500 / (1e4 / 9)) ** (1 / 1.6) + 0.5, (d3, d5)
     n = 1e4 / 9
@@ -926,7 +927,7 @@ def test_dead_twigs_are_tangles():
 def test_dead_boughs_are_few_at_a_budget():
     """At a budget a stand tree's dead zone gets a few bough cards up the stem, not one per dead bough (a brown fur)."""
     from hifipushie import veg_bough
-    F = v.grow({"species": "norway_spruce", "age": 50, "environment": {"setting": "forest", "spacing": 3.0}})
+    F = vegetation_grow.grow({"species": "norway_spruce", "age": 50, "environment": {"setting": "forest", "spacing": 3.0}})
     pl = veg_bough.plan(F, 500)
     isd = veg_bough.dead_boughs(F, pl)
     share = F["spec"]["leaves"]["parts"]["dead"]["card"].get("share", veg_bough.DEAD_SHARE)  # (a spruce's dead haze: 0.2)
@@ -984,7 +985,7 @@ def test_bough_card_form_by_budget():
     layers), lower LODs the same cut thinned and grown to the same cover (one atlas, no pop at a switch); a tiny
     budget re-cuts the tree into few rich limb cards. The triangle count holds either way."""
     from hifipushie import veg_bough, veg_export
-    T = v.grow({"species": "norway_spruce", "age": 30, "leaves": {"card": {"limbs": False}}})
+    T = vegetation_grow.grow({"species": "norway_spruce", "age": 30, "leaves": {"card": {"limbs": False}}})
     m = len(veg_bough.plan(T, veg_bough.most(T))["roots"])
     n, form = veg_bough.fit(T, m * veg_bough.tris(1))
     assert form == 1 and n == max(int(veg_bough.FULL * m), min(m, veg_bough.FULL_LEAST)), (n, form, m)
@@ -1013,7 +1014,7 @@ def test_bough_card_form_by_budget():
         assert bud["total"] <= 12000, bud["total"]
     # a species built of flat limbs (leaves.card.limbs): every whole limb on its own card pair under the fine cards,
     # in the same atlas, dark toward the trunk, and inside the budget
-    L = v.grow({"species": "norway_spruce", "age": 30})
+    L = vegetation_grow.grow({"species": "norway_spruce", "age": 30})
     assert veg_bough.limbs_on(L) and veg_bough.extra(L) > 0
     budL = veg_export.budget(L, 12000, [0.3, 0.6], 10)
     assert budL["boughs"] and budL["total"] <= 12000, budL["total"]

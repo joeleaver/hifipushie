@@ -6,10 +6,11 @@ import numpy as np
 import pytest
 
 from hifipushie import veg_export, veg_sward, vegetation
+from hifipushie import vegetation_grow
 
 
 def _tile(spec=None):
-    return vegetation.grow(spec or {"species": "sward"})
+    return vegetation_grow.grow(spec or {"species": "sward"})
 
 
 def test_variants_and_unknown_keys():
@@ -20,9 +21,9 @@ def test_variants_and_unknown_keys():
         h[sp] = T["height"]
     assert h["sward_mown"] < 0.1 < h["sward"] < h["sward_rough"]
     with pytest.raises(ValueError):
-        vegetation.grow({"species": "sward", "sward": {"hight": 1}})
+        vegetation_grow.grow({"species": "sward", "sward": {"hight": 1}})
     with pytest.raises(ValueError):
-        vegetation.grow({"species": "sward", "sward": {"variant": "lawn"}})
+        vegetation_grow.grow({"species": "sward", "sward": {"variant": "lawn"}})
 
 
 def test_tile_is_periodic():
@@ -118,7 +119,7 @@ def _drawn(M, d, lod):
 
 
 def test_lod_thins_per_blade_and_meets_the_next_mesh(tmp_path):
-    T = vegetation.grow({"species": "sward"})
+    T = vegetation_grow.grow({"species": "sward"})
     b = T["built"]
     r = veg_sward.export(T, str(tmp_path), "sw", seasons=("summer", "autumn"))
     lod = r["sward"]["lod"]

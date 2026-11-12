@@ -17,7 +17,7 @@ def rock_colours(T):
     """sRGB per terrain cell: the colour the heightfield views paint on rock there (terrain_rock.colour when it
     exists, else the same rule as terrain_views.ground_colours: the kind's rock, sandstone for arid kinds, and every
     rock-type cover layer, e.g. black lava or a cliff's grey, over it where its mask is)."""
-    from . import terrain_design as design
+    from . import terrain_design_cover
     from . import terrain_rock
     f = getattr(terrain_rock, "colour", None)
     if f is not None:
@@ -28,10 +28,10 @@ def rock_colours(T):
                                                                                        terrain_mesh.LAYERS["rock"]["color"]))
     c = base + 0.06 * hn[..., None]
     for name, m in T.cover.items():
-        spec = design._spec_cover(T, name)
+        spec = terrain_design_cover._spec_cover(T, name)
         if terrain_mesh.LAYER_OF.get(spec.get("type", name)) == "rock":
             a = np.clip(m, 0, 1)[..., None]
-            c = c * (1 - a) + np.array(design.cover_colour(T, name)) * a
+            c = c * (1 - a) + np.array(terrain_design_cover.cover_colour(T, name)) * a
     tone = (getattr(T, "rock", None) or {}).get("tone") if isinstance(getattr(T, "rock", None), dict) else None
     if tone is not None and np.shape(tone) == T.H.shape:
         c = c * np.asarray(tone)[..., None]
@@ -44,7 +44,7 @@ class Materials:
     field's normal there: continuous across seams."""
 
     def __init__(self, T, field):
-        from . import terrain_design as design
+        from . import terrain_design_cover
         from .terrain_views import ground_colours
         self.T, self.field = T, field
         self.sea = _sea(T)
@@ -52,7 +52,7 @@ class Materials:
         self.cover = []
         from . import terrain_ground
         for name, m in T.cover.items():
-            c = design._spec_cover(T, name)
+            c = terrain_design_cover._spec_cover(T, name)
             typ = c.get("type", name)
             layer = terrain_mesh.LAYER_OF.get(typ, "grass")
             tree = bool(c.get("trees"))
@@ -81,7 +81,7 @@ class Materials:
             bare = ground_colours(T, cover=False)
             bare[wet] = np.array(terrain_mesh.LAYERS["sand"]["color"]) * 0.8
             self.display_bare = np.stack([ndimage.gaussian_filter(bare[..., i], 0.9) for i in range(3)], -1)
-            self.cover_col = {name: np.asarray(design.cover_colour(T, name), float) for name, *_ in self.cover}
+            self.cover_col = {name: np.asarray(terrain_design_cover.cover_colour(T, name), float) for name, *_ in self.cover}
         self.rock_grid = rock_colours(T)
         steep = T._slope() > 45
         self.rock_ref = np.median(self.rock_grid[steep] if steep.any() else self.rock_grid.reshape(-1, 3), 0)

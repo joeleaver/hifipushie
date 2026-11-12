@@ -13,7 +13,8 @@ from pathlib import Path
 import numpy as np
 
 from . import render as _render
-from . import veg_ground, veg_mesh, vegetation
+from . import veg_ground, veg_mesh
+from . import vegetation_fit, vegetation_grow, vegetation_kernels, vegetation_measures
 
 SCRIPT = Path(__file__).with_name("blender_vegetation.py")
 
@@ -221,7 +222,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
                 per.append(len(tm["F"]))
             info["leaf_triangles"] = int(sum(per[v] for v in var))
         arrays.update(tw_pos=tw["pos"], tw_rot=_euler(tw["frame"]), tw_scale=tw["scale"], tw_var=var,
-                      tw_tint=vegetation._u(tw["key"], 77))
+                      tw_tint=vegetation_kernels._u(tw["key"], 77))
     npz = tmp / f"plant{tag}.npz"
     np.savez(npz, **arrays)
     bark["maps"] = veg_bark.write(bm, str(out / f"bark{tag}"))
@@ -330,7 +331,7 @@ def closeup_focus(tree: dict, azimuth: float = 0.0):
 def overlay(ref_mask: np.ndarray, ours: np.ndarray, size: int = 420):
     """The two row-filled outlines at equal height, feet together: reference red, ours blue, both dark."""
     from PIL import Image
-    A, B = vegetation._outline(ref_mask, size), vegetation._outline(ours, size)
+    A, B = vegetation_measures._outline(ref_mask, size), vegetation_measures._outline(ours, size)
     if (A & B[:, ::-1]).sum() > (A & B).sum():
         B = B[:, ::-1]
     im = np.full(A.shape + (3,), 255, np.uint8)
@@ -351,14 +352,14 @@ def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, 
     """One row: the photo | outlines over each other | clay skeleton | leafed, with the numbers under it.
     ref = {"image", "mask": reference_mask kwargs, "credit"} or None."""
     from PIL import Image, ImageDraw
-    T = vegetation.grow(spec)
+    T = vegetation_grow.grow(spec)
     panels, text = [], [f"{title or spec.get('species', 'plant')}: age {T['spec']['age']}, {T['stats']['nodes']} nodes, "
                         f"{T['stats']['height_m']} m, trunk {T['stats']['trunk_diameter_m']} m, grown in {T['stats']['grow_s']} s"]
     az = 0
     info = {"stats": T["stats"]}
     if ref:
-        R = vegetation.reference_mask(ref["image"], **ref["mask"])
-        m = vegetation.match(T, R, bare=bare, azimuths=(0, 45, 90, 135))
+        R = vegetation_measures.reference_mask(ref["image"], **ref["mask"])
+        m = vegetation_fit.match(T, R, bare=bare, azimuths=(0, 45, 90, 135))
         az = m["azimuth"]
         photo = Image.open(ref["image"]).convert("RGB")
         c = ref["mask"].get("crop")
@@ -372,7 +373,7 @@ def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, 
         text += [f"outline IoU {m['iou']:.2f} (reference red, ours blue, view azimuth {az})",
                  f"reference: {f(m['ref'])}", f"ours:      {f(m['ours'])}"]
         info["match"] = {k: m[k] for k in ("iou", "azimuth", "ours", "ref")}
-    ang = vegetation.branch_angles(T, 1)
+    ang = vegetation_measures.branch_angles(T, 1)
     text.append(f"first-order branches: {ang['n']}, insertion p10/50/90 {ang['insertion_p10_50_90']} deg, "
                 f"far-half elevation {ang['elevation_p10_50_90']} deg")
     info["angles"] = ang

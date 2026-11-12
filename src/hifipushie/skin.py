@@ -592,8 +592,8 @@ def params(spec: dict) -> dict:
         p[k] = sk.get(k) or []
         if not isinstance(p[k], list):
             raise SpecError(f"skin {k} is a list")
-    from . import skin_project
-    p["projection"] = skin_project.check(sk.get("projection"))
+    from . import skin_project_model
+    p["projection"] = skin_project_model.check(sk.get("projection"))
     from . import skin_layers
     p["stack"] = skin_layers.check(sk.get("stack"))
     only = sk.get("only")

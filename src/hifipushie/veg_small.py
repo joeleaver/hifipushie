@@ -15,7 +15,7 @@ import time
 import numpy as np
 
 from . import veg_leaf
-from .vegetation import _child, _mix, _u
+from .vegetation_kernels import _child, _mix, _u
 
 LAYER = {"part": "main", "count": 12, "ring": [0.0, 0.1], "lean": [0, 25], "scale": [0.8, 1.2], "stem": [0.0, 0.0],
          "stem_radius": 0.004, "bend": 0.3, "facing": "auto", "on": None, "along": [1.0, 1.0], "turn": 0.0,

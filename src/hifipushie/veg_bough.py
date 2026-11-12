@@ -14,7 +14,7 @@ import numpy as np
 from numba import njit
 
 from . import veg_leaf
-from .vegetation import _child, _u
+from .vegetation_kernels import _child, _u
 
 BOUGH = {"variants": 4, "size": 384, "size_limbs": 512, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
 TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles the richest bough card costs (a fan per card)
@@ -31,8 +31,8 @@ FORMS = ({"verts": 7, "centre": True, "cup": 0.12}, {"verts": 7, "centre": False
 
 
 def _ground(tree: dict, P: np.ndarray) -> np.ndarray:
-    from . import vegetation
-    return np.asarray(vegetation.ground_at(tree["spec"], P), float)
+    from . import vegetation_tree
+    return np.asarray(vegetation_tree.ground_at(tree["spec"], P), float)
 
 
 def tris(form: int = 0) -> int:

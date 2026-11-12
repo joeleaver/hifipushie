@@ -462,7 +462,7 @@ def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "imag
     wrap = img.get("wrap", "planar")
     if wrap not in WRAPS:
         raise SpecError(f"{what}: wrap is one of {', '.join(WRAPS)}")
-    if wrap == "uv":  # the model's own texture space (skin_project.lookup): no placement, the image covers "box"
+    if wrap == "uv":  # the model's own texture space (skin_project_lookup.lookup): no placement, the image covers "box"
         return _uv_frame(spec, img, what)
     if "at" not in img and not (wrap == "cylinder" and "axis" in img):
         raise SpecError(f"{what}: needs \"at\" (the decal's centre: a joint, a blob, [x, y, z])")
@@ -670,7 +670,7 @@ _UVBASE: dict = {}  # a uv frame's "geo" -> the base whose atlas it is laid in
 
 
 def _uv_frame(spec: dict, img: dict, what: str) -> dict:
-    """wrap "uv": the image lies in the model's own texture space (the one human mesh's atlas; skin_project.atlas):
+    """wrap "uv": the image lies in the model's own texture space (the one human mesh's atlas; skin_project_atlas.atlas):
     "box" [u0, v0, u1, v1] = the rectangle of the atlas the image covers (default the whole atlas). No "at", "size" or
     "dir": the surface says where each texel is. Measured per vertex (u, v, weight), sampled per pixel."""
     import hashlib
@@ -760,7 +760,7 @@ def wrap_coords(fr: dict, pos: np.ndarray):
 def project(fr: dict, pos: np.ndarray, nrm: np.ndarray, both: bool = False):
     """(u, v, weight) per point: u, v in 0..1 across the decal (v up), weight = inside its depth x facing.
     both=True: (u, v, weight, u2, v2, s): wrap "uv" has a second coordinate set near the atlas' cut, the image sampled
-    at both and mixed by s (skin_project.lookup(both=True)); other wraps give (u, v) again and s = 0."""
+    at both and mixed by s (skin_project_lookup.lookup(both=True)); other wraps give (u, v) again and s = 0."""
     nn = np.asarray(nrm, float)
     nn = nn / np.maximum(np.linalg.norm(nn, axis=1, keepdims=True), 1e-12)
     wrap = fr.get("wrap", "planar")
@@ -779,15 +779,15 @@ def project(fr: dict, pos: np.ndarray, nrm: np.ndarray, both: bool = False):
         wgt = wgt * _ramp(np.linalg.norm(U, axis=1), fr["reach"], 0.9 * fr["reach"])
         wgt[off] = 0
     elif wrap == "uv":
-        from . import skin_project
+        from . import skin_project_lookup
         b = _UVBASE.get(fr["geo"])
         if b is None:
             raise RuntimeError("a uv image's frame must be made in this process (images.frame) before it's used")
         u0, v0, u1, v1 = fr["box"]
         if both:  # the image's coordinates are the atlas' (no flip, no mirror for this wrap)
-            ua, va, ub, vb, s, wgt = skin_project.lookup(b, pos, both=True)
+            ua, va, ub, vb, s, wgt = skin_project_lookup.lookup(b, pos, both=True)
             return ((ua - u0) / (u1 - u0), (va - v0) / (v1 - v0), wgt, (ub - u0) / (u1 - u0), (vb - v0) / (v1 - v0), s)
-        ua, va, wgt = skin_project.lookup(b, pos)
+        ua, va, wgt = skin_project_lookup.lookup(b, pos)
         u, v = (ua - u0) / (u1 - u0), (va - v0) / (v1 - v0)
     else:
         p = np.asarray(pos, float) - fr["c"]
