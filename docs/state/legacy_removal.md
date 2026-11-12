@@ -24,8 +24,10 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10, 10, 9; class GnmFace keeps its name, methods in five mixins.
   5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10. 6 terrain.py, clutter.py, hair_clumps.py (6.7k;
     C424) -> 8, 8, 6; class Terrain in terrain_model. 7 skin_project.py, vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7.
-  8 (landed 2026-11-12; C427) rig, retopo, hair_cards, hair_flow, veg_style, asset, lods, paint, terrain_style,
-    humanfit, hair_read, images (19.5k) -> 71 modules. asset.export stays (the export scripts call it).
+  8 (C427) rig, retopo, hair_cards, hair_flow, veg_style, asset, lods, paint, terrain_style, humanfit, hair_read,
+    images (19.5k) -> 71 modules. asset.export stays (the export scripts call it).
+  9 (branch split-tier4; C428) skin, skin_features, terrain_cliffs, onemesh, scene, veg_export, terrain_stream,
+    hair_strands, veg_tools, assemble (11.4k) -> 43 modules.
 - CONSTANTS STAY (C422): export scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET,
   assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). A family's base module holds every constant and is the only
   one that runs code at import: tests/test_constants_address.py.
@@ -33,9 +35,9 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script. Rule
   tests from the splits: test_undefined_names.py (source AND tests), test_constants_address.py, test_moved.py.
 - Still over 500 lines because one function is: asset_export 956 (_export 888), terrain_tiles 928 (_export_tiles 799),
-  vegetation_grow 750 (grow 733), hair_cards_job 600 (cards_job 570): refactoring, not moving.
-- NOT split, and why: terrain_stream (imports in the middle of the module: by hand); blender_* (Blender runs them by
-  path); fieldjit (numba kernels cached beside the file); artist (a CLI); the clothes files (the chain-build cut first).
+  vegetation_grow 750 (grow 733), veg_export_glb 601 (write_glb 578), hair_cards_job 600 (cards_job 570): refactoring.
+- NOT split, and why: blender_* (Blender runs them by path); fieldjit (numba kernels cached beside the file); artist
+  (a CLI); the clothes files (the chain-build cut first). Everything else over 1,000 lines is split.
 
 ## What still reaches the old clothes code (measured after cut 2; each cut assumes the ones above it)
 | cut | frees | what it needs first |
@@ -56,5 +58,5 @@ repoint and the proof. Proofs: same_units, same_members, same_comments, same_ord
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 
-NEXT: the 1,000-1,300 line files with a plan each (skin_features, veg_export, scene, skin, veg_tools, onemesh,
-hair_strands, assemble, terrain_cliffs), terrain_stream by hand; then the giant functions; then the re-review.
+NEXT: Joe's call: the 35 files of 700-1,000 lines (veg_leaf, skin_layers, faceslide, judge, blockin_eyes, ...), or
+the five giant functions, or the area-by-area re-review. The clothes files wait for the chain-build cut.
