@@ -79,7 +79,7 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
     out = d / "export"
     glb = glbw.write(out / f"{garment}.glb", garment, meshes, rb)
     counts = glbw.read_counts(glb)
-    lod_list, lod_lines = lods(garment, rec, role, spec, rb, drape, r["M"], bV, details, colour, g, out)
+    lod_list, lod_lines = lods(garment, rec, role, spec, rb, drape, r["M"], bV, bT, details, colour, g, out)
     lines = ge.text(name, garment, what, g, n_det, budget, role, tries, st, bend, glb, sd, winfo)
     lines.append("  " + mat)
     lines += lod_lines
@@ -120,11 +120,12 @@ def next_line(name: str, role: str, verdict: str, n_lods: int, look_approved: bo
     return f"next: look at it beside the reference (shape) and at the LOD sheet; {fix}then {onto}"
 
 
-def lods(garment, rec, role, spec, rb, drape, M, bV, details, colour, lod0, out: Path) -> tuple[list, list]:
+def lods(garment, rec, role, spec, rb, drape, M, bV, bT, details, colour, lod0, out: Path) -> tuple[list, list]:
     """<garment>_LOD<k>.glb for every LOD of the role (garment_export.lod_plan) -> (entries for the record, text
     lines). The LOD0 method again on a coarser grid: fit_budget at the LOD's share of the
-    budget, weights by garment_bend.skin on the LOD's own mesh, the pattern UVs and step 9a's maps; the details by
-    garment_export.lod_details (small ones left out, the rest simplified and seated on the LOD's cloth)."""
+    budget, the cloth lifted clear of the body (garment_export.clear_body), weights by garment_bend.skin on the LOD's
+    own mesh, the pattern UVs and step 9a's maps; the details by garment_export.lod_details (small ones left out, the
+    rest simplified and seated on the LOD's cloth)."""
     for old in list(out.glob(f"{garment}_LOD[0-9].glb")) + list(out.glob(f"{garment}_LOD[0-9].json")):
         old.unlink()  # (this tool's own files from a run before: a role with fewer LODs leaves none behind)
     joints = gl.joint_lines(drape, rb)
@@ -137,7 +138,7 @@ def lods(garment, rec, role, spec, rb, drape, M, bV, details, colour, lod0, out:
         det, dinfo = ge.lod_details(details, p["share"], px)
         n_det = sum(len(x["F"]) for x in det.values())
         g, tries = ge.fit_budget(drape, M, p["budget"], n_det, body=bV, h0=min(2 * lod0["h"], p["h_max"]), joints=joints,
-                                 rows=p["rows"], h_max=p["h_max"])
+                                 rows=p["rows"], h_max=p["h_max"], clear=(bV, bT))
         o = g["outer"]
         ge.seat_details(det, o0["V"], o0["T"], o["V"], o["T"])
         gJ, gW, _ = gb.skin(spec, rb, o["V"], o["T"], g["h"])
@@ -153,13 +154,16 @@ def lods(garment, rec, role, spec, rb, drape, M, bV, details, colour, lod0, out:
         total = len(g["T"]) + n_det
         entries.append({"lod": k, "glb": str(glb), "share": p["share"], "budget": p["budget"], "triangles": total,
                         "counts": glbw.read_counts(glb), "grid_mm": round(g["h"] * 1000, 1), "rows": p["rows"],
-                        "open_edges": int(g["missing_boundary_edges"]), "tries": tries, "details": dinfo})
+                        "open_edges": int(g["missing_boundary_edges"]), "tries": tries, "details": dinfo,
+                        "clear": g["clear"]})
+        cl = g["clear"]
         over = (f" OVER its share at the coarsest grid kept ({p['h_max'] * 1000:.0f} mm; information, not refused)"
                 if total > p["budget"] else "")
         lines.append(f"  LOD{k}: {glb.name} {total} triangles / {p['budget']} ({p['share']:g} of the budget){over}: garment "
                      f"{len(g['T'])} at {g['h'] * 1000:.0f} mm, stiff pieces {p['rows']} row(s), open pattern edges "
-                     f"{g['missing_boundary_edges']}; details at {p['screen']:g} of a {ge.SCREEN_PX} px screen: "
-                     f"{ge.details_text(dinfo)}")
+                     f"{g['missing_boundary_edges']}; lifted clear of the body: {cl['lifted']} vertices, most "
+                     f"{cl['most_m'] * 1000:.0f} mm, {cl['under']} of {cl['points']} face points still under the skin; "
+                     f"details at {p['screen']:g} of a {ge.SCREEN_PX} px screen: {ge.details_text(dinfo)}")
     if entries:
         lines.insert(0, f"  LODs: the same pattern re-grid, coarser (never a decimation of LOD0); a detail piece under "
                         f"{ge.DETAIL_MIN_PX:g} px at its LOD's switch size is left out, the others are simplified")
