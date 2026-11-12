@@ -50,13 +50,16 @@ def node_links(cnet):
 
 
 def _fold_turns(cnet, X, plan) -> dict:
-    """Median measured turn (deg) of each planned fold's rows: the angle between the faces either side of each row link."""
+    """Measured turn (deg) of each planned fold: per row the median angle between the faces either side of its links,
+    SUMMED over the draft's rows (N2e: a fold split over two rows turns half at each; the per-row median read against
+    the whole fold's turn read it at half)."""
     out = {}
     for bid, f in sorted((plan.get("folds") or {}).items()):
         fd = _draft_fold(cnet, f, bid)
-        got = []
+        rows = []
         for row in fd.get("rows") or []:
             row = np.asarray(row, np.int64)
+            got = []
             for a, b in zip(row[:-1], row[1:]):
                 fs = cnet.F[(cnet.F == a).any(1) & (cnet.F == b).any(1)]
                 if len(fs) != 2:
@@ -64,9 +67,12 @@ def _fold_turns(cnet, X, plan) -> dict:
                 n = np.cross(X[fs[:, 1]] - X[fs[:, 0]], X[fs[:, 2]] - X[fs[:, 0]])
                 n = n / np.maximum(np.linalg.norm(n, axis=1), 1e-12)[:, None]
                 got.append(np.degrees(np.arccos(np.clip(n[0] @ n[1], -1, 1))))
-        if got:
-            out[bid] = {"planned": float(f["turn_deg"]), "median": round(float(np.median(got)), 1),
-                        "off": round(abs(float(np.median(got)) - float(f["turn_deg"])), 1)}
+            if got:
+                rows.append(float(np.median(got)))
+        if rows:
+            tot = float(np.sum(rows))
+            out[bid] = {"planned": float(f["turn_deg"]), "median": round(tot, 1), "rows": [round(r, 1) for r in rows],
+                        "off": round(abs(tot - float(f["turn_deg"])), 1)}
     return out
 
 

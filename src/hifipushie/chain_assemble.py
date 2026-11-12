@@ -1,6 +1,6 @@
 """ASSEMBLE AND DRESS ROLLED PANELS (N2d of docs/proposals/step5_rewrite.md, "The build" 2-3).
 
-The unknowns are the panels' numbers (chain_panels: 8 per panel, ~150-190 for a jacket), never points. One small
+The unknowns are the panels' numbers (chain_panels: 9 per panel, ~250 for a jacket), never points. One small
 least-squares fit (scipy least_squares, finite-difference Jacobian over the panels each residual touches):
 - SEAMS: every sew pair's two points at their panels' maps coincide (the residual IS the seam gap). Seams are one chain
   end to end (chain_seams.join_seams), so a seam is matched point for point along its whole length.
@@ -8,8 +8,10 @@ least-squares fit (scipy least_squares, finite-difference Jacobian over the pane
   turn (chain_panels.hinge_read).
 - TIES: closures' pairs a LAYER apart.
 - ROLL: a stiff panel's curvature is a weight (stiff cloth rolls little), never a limit.
-- ASSEMBLE (`assemble`): a soft keep-out from the body's skeleton (chain_settle.skeleton: which way round, arms in
-  sleeves, neck in the collar) and a weak pull of each panel's centre to its start (the fit is small: it stays near).
+- ASSEMBLE (`assemble`): a soft keep-out from a THIN body (the body's surface THIN m in: which way round, arms in
+  sleeves, neck in the collar; N2e: the bare skeleton let run3 drift and twist), the TAPES each piece was drafted on as
+  residuals from the first fit on (girth pulls, edge tapes: where the body was measured, never a hold) and a weak pull
+  of each panel's centre to its start (panel_start: live, from those tapes).
 - DRESS (`dress`): the same numbers refitted with the body at full size: every point off the body (one-sided, GAP),
   the girth tapes each piece was drafted on pulling its points at their height (chain_settle.girth_pulls), seams,
   hinges and ties as in assembly.
@@ -35,7 +37,8 @@ W_HINGE = 1.0  # row points of a hinge on both its panels
 W_TURN = 0.05  # m per unit of direction off the planned turn
 W_STIFF = 0.002  # m per 1/m of a stiff panel's roll
 W_KEEP = 1.0  # per m inside the keep-out
-KEEP_R = 0.035  # m: no point nearer the skeleton than this while assembling
+KEEP_R = 0.035  # m: no point nearer the skeleton than this while assembling (keep = skeleton segments)
+THIN = 0.02  # m: while assembling no point deeper than this inside the body (keep = the body's contact)
 W_START = 0.2  # pull of a panel's centre towards its start (per m)
 W_BODY = 2.0  # per m under GAP when dressing
 W_TAPE = 0.3  # a girth tape's pull (per m)
@@ -110,7 +113,10 @@ class Fit:
             out.append(TIE_W * (np.linalg.norm(X[a.astype(int)] - X[b.astype(int)], axis=1) - d))
         out.append(W_STIFF * self.stiff * TH[:, 7])
         if self.keep is not None:
-            out.append(W_KEEP * np.maximum(0.0, KEEP_R - _seg_dist(X[self.pts], self.keep)))
+            if isinstance(self.keep, np.ndarray):
+                out.append(W_KEEP * np.maximum(0.0, KEEP_R - _seg_dist(X[self.pts], self.keep)))
+            else:
+                out.append(W_KEEP * np.maximum(0.0, -THIN - self.keep.query(X[self.pts])[0]))
             C = np.array([pan.place(TH[k], k, p["c"][None])[0] for k, p in enumerate(pan.panels)])
             out.append(W_START * (C - self.C0).ravel())
         if self.contact is not None:
@@ -171,9 +177,10 @@ def nodes_of(pan, TH):
     return Xn[c.root], n[c.root] > 0
 
 
-def assemble(pan, TH0, keep, ties=(), iters=150, log=None, sub=3):
-    """(TH, read): the panels assembled off their start (module doc)."""
-    f = Fit(pan, ties, TH0=TH0, keep=keep, sub=sub)
+def assemble(pan, TH0, keep, ties=(), iters=150, log=None, sub=3, pulls=()):
+    """(TH, read): the panels assembled off their start (module doc). keep: skeleton segments (k, 2, 3) or the body's
+    contact (a thin body); pulls: the tapes as residuals."""
+    f = Fit(pan, ties, TH0=TH0, keep=keep, sub=sub, pulls=pulls)
     TH, rd = f.solve(TH0, iters, log)
     rd.update(unknowns=pan.n * NP, residuals=f.m, **reads(pan, TH))
     return TH, rd
