@@ -134,7 +134,8 @@ def test_each_consumer_receives_its_definition(tape):
     for c in ("freesewing:simon", "freesewing:jaeger", "freesewing:carlton", "block:bodice", "block:knit"):
         m2, info = md.for_consumer(c, mm, at)
         assert m2["shoulderSlope"] == pytest.approx(at["shoulder_slope_chord"]), c
-        assert m2["hips"] == pytest.approx(mm["highHip"]) and m2["waistToHips"] == pytest.approx(mm["waistToHighHip"]), c
+        hips, down = ("fsHips", "waistToFsHips") if "fsHips" in mm else ("highHip", "waistToHighHip")  # C358
+        assert m2["hips"] == pytest.approx(mm[hips]) and m2["waistToHips"] == pytest.approx(mm[down]), c
         assert set(info["definitions"]) >= {"shoulderSlope", "hips", "waistToHips", "highBust"}
     # the trouser block reads (hips, waistToHips) only as a pair: the tape's own, unchanged
     m2, info = md.for_consumer("block:trouser", mm, at)
