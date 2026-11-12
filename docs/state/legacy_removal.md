@@ -27,9 +27,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     lods, paint, terrain_style, humanfit, hair_read, images (19.5k) -> 71; asset.export stays (the export scripts call it).
   9 (branch split-tier4; C428) skin, skin_features, terrain_cliffs, onemesh, scene, veg_export, terrain_stream,
     hair_strands, veg_tools, assemble (11.4k) -> 43 modules.
-- CONSTANTS STAY (C422): export scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET,
-  assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). A family's base module holds every constant and is the only
-  one that runs code at import: tests/test_constants_address.py.
+- CONSTANTS STAY (C422): scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET, assembly_garrett/s15/
+  sh4t.py, haircards/t47/r47.sh). A family's base holds every constant and alone runs code at import (rule test).
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
   says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script. Rule
   tests from the splits: test_undefined_names.py (source AND tests), test_constants_address.py, test_moved.py.
