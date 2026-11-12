@@ -254,10 +254,18 @@ def tube(feature: str, f: dict, how: dict, notes: list) -> dict:
             fl = float(np.abs(O["c"][:, 1] - P["c"][:, 1]).sum() > np.abs(O["c"][::-1, 1] - P["c"][:, 1]).sum())
             oc, oh = (O["c"][::-1], O["half"][::-1]) if fl else (O["c"], O["half"])
             third, depth = oc[:, 0].copy(), oh.copy()
+        elif sum(lines[okey]["cut"]) == 1 and sum(lines[key]["cut"]) == 1 and not f.get("line_" + okey):
+            # short there, but ROOTED: one end is its cut and the other its tip, in both views. Root to root and
+            # tip to tip, by place along it: a horn seen from the front is foreshortened, and its splay shows
+            # only there (its place at each HEIGHT can't say it: the tip comes back down past the root's height)
+            rev = lines[okey]["cut"][0] != lines[key]["cut"][0]
+            oc, oh = (O["c"][::-1], O["half"][::-1]) if rev else (O["c"], O["half"])
+            third, depth = oc[:, 0].copy(), oh.copy()
+            said = "its other view shows it foreshortened: root to root and tip to tip, by place along it"
         else:  # seen end on, or as a lump
             p = views[okey]
             zp_, zl = P["c"][:, 1], (float(p[:, 1].min()), float(p[:, 1].max()))
-            if zp >= 0.35 * P["length"] and zl[1] - zl[0] >= 0.5 * zp:
+            if zl[1] - zl[0] >= 0.5 * zp:
                 # a lump that spans the heights the line runs through (a horn seen from the front, foreshortened):
                 # at each height its middle is where the thing is, and its half breadth how deep. A splay shows here
                 gap = max(3.0 * float(f.get("px") or 0.002), 0.02 * (zl[1] - zl[0]))
