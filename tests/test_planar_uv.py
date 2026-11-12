@@ -1,16 +1,16 @@
-"""parts.<p>.uv = "planar" (asset.planar_uvs): a swappable flat surface gets upright, unmirrored 0..1 UVs.
+"""parts.<p>.uv = "planar" (asset_parts.planar_uvs): a swappable flat surface gets upright, unmirrored 0..1 UVs.
   uv run python tests/test_planar_uv.py"""
 from __future__ import annotations
 
 import numpy as np
 
-from hifipushie import asset
+from hifipushie import asset_parts
 
 
 def _uv(V, normal, at):
     V = np.asarray(V, float)
     n = len(V)
-    r = asset.planar_uvs({"verts": V, "corner_vert": np.arange(n), "normal": np.tile(normal, (n, 1)),
+    r = asset_parts.planar_uvs({"verts": V, "corner_vert": np.arange(n), "normal": np.tile(normal, (n, 1)),
                           "uv": np.zeros((n, 2), np.float32), "tangent": np.zeros((n, 3), np.float32),
                           "sign": np.ones(n, np.float32)})
     i = next(k for k in range(n) if np.allclose(V[k], at))

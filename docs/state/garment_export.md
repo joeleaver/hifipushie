@@ -5,7 +5,7 @@ garment_export_tool.py (tool body), garment_glb.py (GLB), garment_loops.py (T11b
 (T11b: weights + the bend check), garment_bend_look.py (T11b: close-ups). Tests: tests/test_garment_export.py. C291, C293.
 
 T11b (fix run; Joe: the shirt kinked at the shoulder top + pinched at the armpit with the arm at 45 deg; gate passed):
-- Cause, measured on T11's GLB: WEIGHTS: rig.skin_parts' transfer (closest skin point, WORN_SMOOTH 0) gave neighbours
+- Cause, measured on T11's GLB: WEIGHTS: rig_skin.skin_parts' transfer (closest skin point, WORN_SMOOTH 0) gave neighbours
   weights 69 % apart (p99, 100 % max) where cloth stands off the skin (p95 3.6 cm). The bare body bends smoothly at the
   front shoulder (its own crease: a small one at the back armpit, and it TEARS at the bent elbow: the body's). MESH: no
   loops. BUILD: the underarm cloth is already folded at rest (dihedral 129 deg at the back panel's underarm).

@@ -166,9 +166,9 @@ def test_per_character_face_fits_come_from_the_spec():
 
 
 def test_lod_keeps_seams_weights_and_shapes():
-    from hifipushie import lods
+    from hifipushie import lods_part
     p, w = _sheet_part()
-    q, wq, rep = lods.lod_part(p, w, 0.3)
+    q, wq, rep = lods_part.lod_part(p, w, 0.3)
     assert rep["triangles"] < 0.6 * rep["triangles0"], rep
     assert rep["patches"] == 2
     V = np.asarray(q["verts"], float)
@@ -205,12 +205,12 @@ def _sphere(r, n=40):
 
 
 def test_skin_under_cloth_is_dropped_with_a_rim():
-    from hifipushie import asset
+    from hifipushie import asset_hidden
     skin = _sphere(0.1)
     cloth = _sphere(0.11)
     T = cloth["corner_vert"].reshape(-1, 3)
     cloth["corner_vert"] = T[(cloth["verts"][T][:, :, 2] < 0).all(1)].ravel()  # a garment over the lower half
-    keep = asset.under_cloth_keep(skin, [cloth])
+    keep = asset_hidden.under_cloth_keep(skin, [cloth])
     cz = skin["verts"][skin["corner_vert"].reshape(-1, 3)].mean(1)[:, 2]
     assert keep[cz > 0].all(), "uncovered skin stays"
     assert not keep[(cz < -0.06) & (cz > -0.08)].any(), "deeply covered skin goes"  # (the grid's pole is a hole)
@@ -226,7 +226,7 @@ def test_cards_take_the_strands_desaturation():
 
 
 def test_card_lod_thins_one_layer_by_whole_cards():
-    from hifipushie import lods
+    from hifipushie import lods_part
     # 10 cards of 2 triangles (4 verts each) after a 2-triangle cap: one layer, as tied hair has
     V, F = [], []
     for c in range(11):
@@ -237,7 +237,7 @@ def test_card_lod_thins_one_layer_by_whole_cards():
     n = len(cv)
     p = {"verts": np.array(V, float), "corner_vert": cv, "uv": np.zeros((n, 2)), "normal": np.zeros((n, 3)),
          "tangent": np.zeros((n, 3)), "sign": np.ones(n)}
-    q, rep = lods.card_lod(p, {"cap": [0, 2], "layer0": [2, 20]}, 0.5)
+    q, rep = lods_part.card_lod(p, {"cap": [0, 2], "layer0": [2, 20]}, 0.5)
     assert rep["triangles"] <= 12 and rep["triangles"] >= 6
     kept = q["corner_vert"].reshape(-1, 3)
     assert {0, 1, 2}.issubset(set(kept[:1].ravel()))  # the cap stays
@@ -275,8 +275,9 @@ def test_hair_atlas_bakes_what_the_notes_say():
     the colour, so a shader must not apply them again."""
     import numpy as np
     from hifipushie import hair_cards as hc
+    from hifipushie import hair_cards_atlas
     S = {**hc.strands_of({}), "atlas": 128, "source": "drawn"}
-    at = hc.atlas(S, {"gap": "#201810", "lit": "#806040", "vary": 0.25})
+    at = hair_cards_atlas.atlas(S, {"gap": "#201810", "lit": "#806040", "vary": 0.25})
     col, aux = at["color"], at["aux"]
     on = aux[..., 3] > 0.9
     lum = col[..., :3].mean(-1)
@@ -287,12 +288,13 @@ def test_hair_atlas_bakes_what_the_notes_say():
 
 
 def test_budget_gate_maps_parts_and_flags_over():
-    from hifipushie import asset, budgets
+    from hifipushie import budgets
+    from hifipushie import asset_budget
     rb = budgets.role("hero")
     report = {"body": {"triangles": 41000, "meshes": {"head": {"triangles": 23000}, "body": {"triangles": 18000}}},
               "hair": {"triangles": 40000, "curves": True}, "lashes": {"triangles": 4900, "lashes": True},
               "eyes": {"triangles": 350}, "cloth_jeans": {"triangles": 9000, "cloth": True}, "shoes": {"triangles": 745}}
-    g = asset.budget_check(rb, report, {})
+    g = asset_budget.budget_check(rb, report, {})
     assert g["parts"]["head"][0] == 23000 and g["parts"]["body"][0] == 18000
     assert g["parts"]["eyes_mouth_lashes"][0] == 5250 and g["parts"]["accessories"][0] == 745
     over = [ln for ln in g["lines"] if "OVER" in ln]
@@ -302,21 +304,22 @@ def test_budget_gate_maps_parts_and_flags_over():
 
 def test_bend_helper_takes_the_hinge_overlap_and_is_driven_by_half():
     from hifipushie import rig
+    from hifipushie import rig_bend, rig_twist
     P = rig.PREFIX
     rb = [{"name": P + "Hips", "head": np.zeros(3), "parent": -1, "end": False},
           {"name": P + "LeftUpLeg", "head": np.array([0.1, 0, 0]), "parent": 0, "end": False},
           {"name": P + "LeftLeg", "head": np.array([0.1, 0, -0.4]), "parent": 1, "end": False},
           {"name": P + "LeftFoot", "head": np.array([0.1, 0, -0.8]), "parent": 2, "end": False}]
-    rb = rig._add_bend(rb, ["Leg"])
+    rb = rig_bend._add_bend(rb, ["Leg"])
     assert rb[-1]["name"] == P + "LeftLegBend" and rb[-1]["parent"] == 1
     J = np.array([[1, 2, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]])
     W = np.array([[0.6, 0.4, 0, 0], [1.0, 0, 0, 0], [1.0, 0, 0, 0]])
-    J2, W2 = rig._share_bend(rb, J, W)
+    J2, W2 = rig_bend._share_bend(rb, J, W)
     assert np.allclose(W2.sum(1), 1.0)
     h = len(rb) - 1
     wh = np.where(J2 == h, W2, 0).sum(1)
     assert abs(wh[0] - 0.8) < 1e-9 and wh[1] == 0 and wh[2] == 0  # 2 x min(0.6, 0.4)
-    t = rig.drive_twist(rb, {P + "LeftLeg": ([1, 0, 0], 90.0)})
+    t = rig_twist.drive_twist(rb, {P + "LeftLeg": ([1, 0, 0], 90.0)})
     assert t[P + "LeftLegBend"] == ([1, 0, 0], 45.0)
 
 
@@ -341,6 +344,7 @@ def test_bake_falls_back_to_osl_when_a_material_overflows_the_svm_stack():
     makes the bake run with OSL (no stack limit), anything else still raises. Checked on the real scene: OSL renders the
     body's colour pass (SVM: black), and on a material that fits (shoes) OSL and SVM give identical pixels."""
     from hifipushie import asset, scene
+    from hifipushie import asset_scene
     calls = []
 
     def fake(job, timeout, progress=None, deep=False):
@@ -352,10 +356,10 @@ def test_bake_falls_back_to_osl_when_a_material_overflows_the_svm_stack():
     try:
         scene._blender = lambda j, t, progress=None: fake(j, t)
         log = []
-        assert asset.bake_needs_osl({"mode": "bake_maps"}, log) is False and log == []
+        assert asset_scene.bake_needs_osl({"mode": "bake_maps"}, log) is False and log == []
         assert calls[-1]["check_only"] is True
         scene._blender = lambda j, t, progress=None: fake(j, t, deep=True)
-        assert asset.bake_needs_osl({"mode": "bake_maps"}, log) is True
+        assert asset_scene.bake_needs_osl({"mode": "bake_maps"}, log) is True
         assert "['part:body']" in log[-1] and "OSL" in log[-1]
 
         def boom(j, t, progress=None):
@@ -363,7 +367,7 @@ def test_bake_falls_back_to_osl_when_a_material_overflows_the_svm_stack():
         scene._blender = boom
         import pytest
         with pytest.raises(RuntimeError):
-            asset.bake_needs_osl({"mode": "bake_maps"}, [])
+            asset_scene.bake_needs_osl({"mode": "bake_maps"}, [])
     finally:
         scene._blender = old
     src = open(asset.__file__.replace("asset.py", "blender_scene.py")).read()
@@ -373,9 +377,9 @@ def test_bake_falls_back_to_osl_when_a_material_overflows_the_svm_stack():
 def test_two_sided_cloth_decimation_keeps_the_inner_shell_inside():
     """Garrett's jacket (session 4): the cloth decimation (17572 -> 4780) decimated the outer and inner shells apart;
     13.8% of the inner vertices ended OUTSIDE the outer (up to 9.6 mm): black blotches all over the jacket in the game
-    check. lods._lod_shell decimates the outer and rebuilds the inner from it."""
+    check. lods_part._lod_shell decimates the outer and rebuilds the inner from it."""
     import numpy as np
-    from hifipushie import lods
+    from hifipushie import lods_part
     n = 60
     u, v = np.meshgrid(np.linspace(0, 1, n), np.linspace(0, 1, n))
     rng = np.random.default_rng(0)
@@ -399,7 +403,7 @@ def test_two_sided_cloth_decimation_keeps_the_inner_shell_inside():
          "normal": nrm.astype(np.float32), "tangent": np.tile([1.0, 0, 0], (len(cv), 1)).astype(np.float32),
          "sign": np.r_[np.ones(3 * len(F)), -np.ones(3 * len(F))].astype(np.float32),
          "shell": {"outer": len(F), "thickness": th}}
-    q, _, r = lods.lod_part(p, None, 0.25)
+    q, _, r = lods_part.lod_part(p, None, 0.25)
     no = q["shell"]["outer"]
     T = np.asarray(q["corner_vert"]).reshape(-1, 3)
     assert len(T) == 2 * no and abs(len(T) / len(Fall) - 0.25) < 0.05, (len(T), no)
@@ -410,7 +414,7 @@ def test_two_sided_cloth_decimation_keeps_the_inner_shell_inside():
     d = Vq[T[:no][:, [0, 2, 1]]] - Vq[T[no:]]
     assert np.allclose(np.einsum("fkc,fkc->fk", d, nq[:no][:, [0, 2, 1]]), th, atol=1e-4)
     # and a LOD of the LOD keeps the structure
-    q2, _, _ = lods.lod_part(q, None, 0.5)
+    q2, _, _ = lods_part.lod_part(q, None, 0.5)
     assert len(np.asarray(q2["corner_vert"])) // 3 == 2 * q2["shell"]["outer"]
 
 
@@ -439,6 +443,7 @@ def test_lod_reduces_past_uv_island_borders():
 def _test_lod_reduces_past_uv_island_borders_body():
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_part
     n = 40
     g = np.linspace(0, 1, n + 1)
     X, Y = np.meshgrid(g, g)
@@ -456,14 +461,14 @@ def _test_lod_reduces_past_uv_island_borders_body():
     p = {"verts": V.astype(np.float32), "corner_vert": cv, "uv": uv, "normal": np.tile([0, 0, 1.0], (len(cv), 1)),
          "tangent": np.tile([1.0, 0, 0], (len(cv), 1)), "sign": np.ones(len(cv))}
     for r in (0.25, 0.1):
-        q, _, rep = lods.lod_part(p, None, r)
+        q, _, rep = lods_part.lod_part(p, None, r)
         assert rep["triangles"] <= lods.LOD_WELD_OVER * r * len(F) + 4, (r, rep["triangles"], len(F))
         assert rep["welded"]
         uvq = np.asarray(q["uv"])
         assert np.isfinite(uvq).all() and len(q["corner_vert"]) % 3 == 0
     lods.LOD_WELD = False
     try:
-        _, _, rep0 = lods.lod_part(p, None, 0.1)
+        _, _, rep0 = lods_part.lod_part(p, None, 0.1)
         assert rep0["triangles"] > lods.LOD_WELD_OVER * 0.1 * len(F)  # the floor this replaces
     finally:
         lods.LOD_WELD = True
@@ -485,6 +490,7 @@ def _test_lod_reduces_pattern_pieces_body():
     import numpy as np
     from scipy.spatial import cKDTree
     from hifipushie import lods
+    from hifipushie import lods_part
     n, b = 48, 6  # 8 x 8 pieces of 6 x 6 cells, each with its OWN vertices, 0.2 mm apart
     V, F = [], []
     for pi in range(n // b):
@@ -502,7 +508,7 @@ def _test_lod_reduces_pattern_pieces_body():
     p = {"verts": V.astype(np.float32), "corner_vert": cv, "uv": V[cv, :2], "normal": np.tile([0, 0, 1.0], (len(cv), 1)),
          "tangent": np.tile([1.0, 0, 0], (len(cv), 1)), "sign": np.ones(len(cv))}
     r = 0.12
-    q, _, rep = lods.lod_part(p, None, r)
+    q, _, rep = lods_part.lod_part(p, None, r)
     assert rep["triangles"] <= lods.LOD_WELD_OVER * r * len(F) + 8, (rep["triangles"], len(F))
     d, _ = cKDTree(V).query(np.asarray(q["verts"], float))
     assert d.max() < 1.5 / n, d.max()  # within ~a LOD0 cell of the original surface
@@ -523,10 +529,10 @@ def _test_lod_reduces_pattern_pieces_body():
     keep = lods.LOD_BORDER_OVER, lods.LOD_SEAM_WELD
     lods.LOD_BORDER_OVER = lods.LOD_SEAM_WELD = 0
     try:
-        _, _, rep0 = lods.lod_part(p, None, r)
+        _, _, rep0 = lods_part.lod_part(p, None, r)
         assert rep0["triangles"] > lods.LOD_WELD_OVER * r * len(F)  # the floor these replace
         lods.LOD_BORDER_OVER = keep[0]
-        q1, _, _ = lods.lod_part(p, None, r)  # border collapses alone: the share, but the seams open
+        q1, _, _ = lods_part.lod_part(p, None, r)  # border collapses alone: the share, but the seams open
         assert border_len(q1) > 1.6 * 4, border_len(q1)
     finally:
         lods.LOD_BORDER_OVER, lods.LOD_SEAM_WELD = keep
@@ -540,6 +546,7 @@ def test_lod_under_garment_stays_under():
     the inner tube the outer doesn't reach is untouched."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
 
     def tube(r, z0, z1, na=48, nz=30, bump=None):
         a, z = np.meshgrid(np.linspace(0, 2 * np.pi, na, endpoint=False), np.linspace(z0, z1, nz))
@@ -572,12 +579,12 @@ def test_lod_under_garment_stays_under():
     Vi, Fi = tube(0.10, 0.0, 0.6, bump=bump)
     Vo, Fo = tube(0.103, 0.0, 0.4, na=20, nz=10)  # the cover: coarse (decimated) and shorter
     under, cover = part(Vi, Fi, shell=0.0008), part(Vo, Fo)
-    _, _, _, t0 = lods.under_depth(under, [cover])
+    _, _, _, t0 = lods_under.under_depth(under, [cover])
     assert (np.isfinite(t0) & (t0 < 0)).sum() > 50  # the bumps poke through
     parts = {"jeans": under, "coat": cover}
-    rep = lods.push_under_layers(parts, {"jeans": ["coat"]})
+    rep = lods_under.push_under_layers(parts, {"jeans": ["coat"]})
     q = parts["jeans"]
-    _, _, _, t1 = lods.under_depth(q, [cover])
+    _, _, _, t1 = lods_under.under_depth(q, [cover])
     ok = np.isfinite(t1)
     assert rep["jeans"]["poking0"] > 50 and rep["jeans"]["poking"] == 0, rep
     assert t1[ok].min() > lods.LOD_UNDER_GAP - 2e-4, t1[ok].min()
@@ -594,7 +601,7 @@ def test_cloth_under_cloth_culled():
     triangle under the coat: budget, and the LOD poke-through): a two-sided tube under a shorter cover loses its covered
     middle on BOTH shells, keeps the part past the cover's opening and a rim inside it, and its shell layout stays valid."""
     import numpy as np
-    from hifipushie import asset
+    from hifipushie import asset_hidden
 
     def tube(r, z0, z1, na=40, nz=40):
         a, z = np.meshgrid(np.linspace(0, 2 * np.pi, na, endpoint=False), np.linspace(z0, z1, nz))
@@ -613,27 +620,27 @@ def test_cloth_under_cloth_culled():
              "shell": {"outer": n, "thickness": 0.0008}}
     Vo, Fo = tube(0.115, 0.0, 0.5)
     cover = {"verts": Vo, "corner_vert": Fo.ravel(), "normal": (Vo * [1, 1, 0] / 0.115)[Fo.ravel()]}
-    keep = asset.cloth_under_keep(under, [cover])
+    keep = asset_hidden.cloth_under_keep(under, [cover])
     ko, ki = keep[:n], keep[n:2 * n]
     assert (ko == ki).all()
     zc = Vi[Fi].mean(1)[:, 2]
     assert not ko[(zc > 0.05) & (zc < 0.4)].any()  # covered: dropped
     assert ko[zc > 0.5].all() and ko[(zc > 0.47) & (zc < 0.5)].all()  # past the opening, and the rim inside it
-    q = asset.cull_tris(under, keep)
+    q = asset_hidden.cull_tris(under, keep)
     assert q["shell"]["outer"] == int(ko.sum()) and len(q["corner_vert"]) == 3 * 2 * int(ko.sum())
-    assert asset._over_chain({"coat": "sweater", "sweater": "jeans", "jeans": None}, "coat") == ["sweater", "jeans"]
+    assert asset_hidden._over_chain({"coat": "sweater", "sweater": "jeans", "jeans": None}, "coat") == ["sweater", "jeans"]
 
 
 def test_bake_cage_is_per_vertex():
     """(r51) the bake cage pushes each vertex by its OWN faces' stray (skin r14: one extrusion per part, the part's worst
     stray, baked pinwheel fans into Tess's nostrils)."""
     import numpy as np
-    from hifipushie import asset
+    from hifipushie import asset_scene
     V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [5, 0, 0], [6, 0, 0], [5, 1, 0]], float)
     C = np.array([0, 1, 2, 3, 4, 5])
     p = {"verts": V, "corner_vert": C, "normal": np.tile([0, 0, 1.0], (6, 1))}
     d = np.r_[[0.0, -0.01], np.zeros(3), np.full(3, -0.01)]  # face 1 strays 10 mm (its centre and edges), face 0 not
-    cg = asset.cage_verts(p, d, 0.001)
+    cg = asset_scene.cage_verts(p, d, 0.001)
     off = cg[:, 2]
     assert np.allclose(off[:3], 0.002) and np.allclose(off[3:], 0.017)
     assert np.allclose(cg[:, :2], V[:, :2])
@@ -644,17 +651,18 @@ def test_bake_cage_stops_short_of_the_opposite_wall():
     "body", crossed the alar groove and the nostril rims; their texels baked the far wall: a dark blocky patch)."""
     import numpy as np
     from hifipushie import asset
+    from hifipushie import asset_scene
     q = np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]], float) * 0.02
     V = np.r_[np.c_[q, np.zeros(4)], np.c_[q, np.full(4, 0.005)]]   # a floor (up) and a ceiling 5 mm above it (down)
     T = np.array([[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6]])
     N = np.r_[np.tile([0, 0, 1.0], (6, 1)), np.tile([0, 0, -1.0], (6, 1))]
     p = {"verts": V, "corner_vert": T.ravel(), "normal": N}
-    cg = asset.cage_verts(p, np.zeros(4 + 12), 0.007)   # stray 0, voxel 7 mm: the old cage was 14 mm
+    cg = asset_scene.cage_verts(p, np.zeros(4 + 12), 0.007)   # stray 0, voxel 7 mm: the old cage was 14 mm
     off = np.abs(cg[:, 2] - V[:, 2])
     assert np.all(off <= asset.CAGE_CLEAR * 0.005 + 1e-9) and np.all(off > 0.001), off
     # an open sheet keeps its full 2-voxel cage
     p1 = {"verts": V[:4], "corner_vert": T[:2].ravel(), "normal": N[:6]}
-    assert np.allclose(asset.cage_verts(p1, np.zeros(2 + 6), 0.007)[:, 2], 0.014)
+    assert np.allclose(asset_scene.cage_verts(p1, np.zeros(2 + 6), 0.007)[:, 2], 0.014)
 
 
 def _grid_sheet(nx, ny, w, h, z):
@@ -676,6 +684,7 @@ def test_lod_made_pieces_stay_over_their_shell():
     triangles cut to 134 at LOD2, the decimated shell through them)."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_part, lods_under
     wave = lambda x, y: 0.008 * np.sin(60 * x) * np.cos(50 * y)  # a rumpled front: decimation flattens it by mm
     Vo, Fo = _grid_sheet(60, 60, 0.4, 0.4, wave)
     Vp, Fp = _grid_sheet(20, 20, 0.12, 0.12, lambda x, y: wave(x + 0.14, y + 0.14) + 0.0015)  # the pocket, 1.5 mm over
@@ -698,13 +707,13 @@ def test_lod_made_pieces_stay_over_their_shell():
         if not floor:
             lods.LOD_MADE_GAP = 0
         try:
-            q, _, r = lods._lod_shell(dict(p), None, 0.08)
+            q, _, r = lods_part._lod_shell(dict(p), None, 0.08)
         finally:
             lods.LOD_MADE_FLOOR, lods.LOD_MADE_GAP = (floor or 0.35), gap0
         T = np.asarray(q["corner_vert"]).reshape(-1, 3)
         no = q["shell"]["outer"]
         made = {"verts": q["verts"], "corner_vert": T[2 * no:].ravel(), "normal": np.asarray(q["normal"])[6 * no:]}
-        _, _, _, t = lods.under_depth(made, [{"verts": q["verts"], "corner_vert": T[:no].ravel()}], lods.LOD_MADE_REACH)
+        _, _, _, t = lods_under.under_depth(made, [{"verts": q["verts"], "corner_vert": T[:no].ravel()}], lods.LOD_MADE_REACH)
         through = int((np.isfinite(t) & (t > 0)).sum())  # the shell OUTSIDE a pocket vertex: it shows through
         if not floor:
             assert through > 0, "the bare decimation should put the shell through the pocket (else the test proves nothing)"
@@ -720,7 +729,7 @@ def test_lod_buttons_whole_folds_rewound_small_parts_far():
     radial fans on the pockets (now wound to face their normals: no triangle is wound against its corners' normals); and
     small parts (< MIN_PART) halve at the far LOD (LOD3 was 164 over 12,360, ~4.9k of it small parts kept whole)."""
     import numpy as np
-    from hifipushie import lods
+    from hifipushie import lods_part
     wave = lambda x, y: 0.01 * np.sin(70 * x) * np.cos(60 * y)
     Vo, Fo = _grid_sheet(50, 50, 0.4, 0.4, wave)
     Vb, Fb = _grid_sheet(8, 8, 0.02, 0.02, lambda x, y: 0.004 * np.cos(80 * x) * np.cos(80 * y) + 0.03)  # a button: 98
@@ -739,7 +748,7 @@ def test_lod_buttons_whole_folds_rewound_small_parts_far():
     p = {"verts": V.astype(np.float32), "corner_vert": cv, "uv": V[cv, :2], "normal": N[cv],
          "tangent": np.tile([1.0, 0, 0], (len(cv), 1)), "sign": np.ones(len(cv)), "shell": {"outer": n, "thickness": th}}
     for ratio, want in ((0.25, len(Fb)), (0.07, None)):
-        q, _, r = lods._lod_shell(dict(p), None, ratio)
+        q, _, r = lods_part._lod_shell(dict(p), None, ratio)
         T = np.asarray(q["corner_vert"]).reshape(-1, 3)
         Vq = np.asarray(q["verts"], np.float64)
         cen = Vq[T].mean(1)
@@ -754,7 +763,7 @@ def test_lod_buttons_whole_folds_rewound_small_parts_far():
     small = {"verts": Vb.astype(np.float32), "corner_vert": Fb.ravel(), "uv": Vb[Fb.ravel(), :2],
              "normal": np.tile([0, 0, 1.0], (Fb.size, 1)), "tangent": np.tile([1.0, 0, 0], (Fb.size, 1)), "sign": np.ones(Fb.size)}
     for ratio, kept in ((0.25, True), (0.07, False)):
-        out, _, rep = lods.lod_parts({"clip": small, "eyes": small}, None, ratio)
+        out, _, rep = lods_part.lod_parts({"clip": small, "eyes": small}, None, ratio)
         assert (len(out["clip"]["corner_vert"]) == Fb.size) == kept, (ratio, len(out["clip"]["corner_vert"]) // 3)
         assert len(out["eyes"]["corner_vert"]) == Fb.size  # (the eyes: never)
 
@@ -766,6 +775,7 @@ def test_lod_small_outer_pieces_whole_and_made_pieces_lifted_rigidly():
     the decimated shell moves as one (vertex by vertex it came out lumpy)."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_part
     wave = lambda x, y: 0.02 * np.sin(40 * x) * np.cos(35 * y)
     Vo, Fo = _grid_sheet(50, 50, 0.4, 0.4, wave)
     Vp, Fp = _grid_sheet(10, 10, 0.08, 0.08, lambda x, y: wave(x + 0.1, y + 0.1) + 0.002)  # a pocket: 162, own piece
@@ -789,7 +799,7 @@ def test_lod_small_outer_pieces_whole_and_made_pieces_lifted_rigidly():
     for keep in (False, True):
         lods.LOD_KEEP_OUTER_PIECES = keep
         try:
-            q, _, r = lods._lod_shell(dict(p), None, 0.2)
+            q, _, r = lods_part._lod_shell(dict(p), None, 0.2)
         finally:
             lods.LOD_KEEP_OUTER_PIECES = True
         T = np.asarray(q["corner_vert"]).reshape(-1, 3)
@@ -815,6 +825,7 @@ def test_lod_under_faces_pushed_where_the_cover_dips_between_vertices():
     nothing moves (the vertices alone are under)."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
     g = np.linspace(-0.05, 0.05, 41)
     X, Y = np.meshgrid(g, g)
     Z = -0.008 * np.clip(1 - np.hypot(X - 0.01, Y + 0.01) / 0.02, 0, None)  # flat, a dent 8 mm deep inside the quad
@@ -833,12 +844,12 @@ def test_lod_under_faces_pushed_where_the_cover_dips_between_vertices():
         lods.LOD_UNDER_FACES = faces
         try:
             parts = {"sw": dict(under), "coat": cover}
-            rep = lods.push_under_layers(parts, {"sw": ["coat"]})
+            rep = lods_under.push_under_layers(parts, {"sw": ["coat"]})
         finally:
             lods.LOD_UNDER_FACES = True
         V = np.asarray(parts["sw"]["verts"], float)
         C = V[Fu.reshape(-1, 3)].mean(1)
-        tf = lods.cover_depth(C, np.tile([0, 0, 1.0], (2, 1)), [cover])
+        tf = lods_under.cover_depth(C, np.tile([0, 0, 1.0], (2, 1)), [cover])
         if not faces:
             assert np.allclose(V, Vu, atol=1e-6) and (tf < 0).any(), (rep, tf)
         else:
@@ -853,6 +864,7 @@ def test_lod_under_face_grid_finds_pokes_away_from_vertices_and_centroids():
     A point more than LOD_UNDER_FACE_DEEP outside is a face running out from under the cover's edge: left alone."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
     g = np.linspace(-0.05, 0.05, 81)
     X, Y = np.meshgrid(g, g)
     Z = -0.008 * np.clip(1 - np.hypot(X, Y + 0.027) / 0.012, 0, None)  # a dent 8 mm deep by the quad's edge y = -0.03
@@ -867,19 +879,19 @@ def test_lod_under_face_grid_finds_pokes_away_from_vertices_and_centroids():
     Vu = np.array([[-0.03, -0.03, -0.0025], [0.03, -0.03, -0.0025], [0.03, 0.03, -0.0025], [-0.03, 0.03, -0.0025]])
     Fu = np.array([0, 1, 2, 0, 2, 3])
     under = {"verts": Vu.astype(np.float32), "corner_vert": Fu, "normal": np.tile([0, 0, 1.0], (6, 1))}
-    B = lods.face_grid(4)
+    B = lods_under.face_grid(4)
     assert len(B) == 13 and np.allclose(B.sum(1), 1) and (B.max(1) < 1).all()
     for k in (1, 4):
         old = lods.LOD_UNDER_FACE_GRID
         lods.LOD_UNDER_FACE_GRID = k
         try:
             parts = {"sw": dict(under), "coat": cover}
-            lods.push_under_layers(parts, {"sw": ["coat"]})
+            lods_under.push_under_layers(parts, {"sw": ["coat"]})
         finally:
             lods.LOD_UNDER_FACE_GRID = old
         V = np.asarray(parts["sw"]["verts"], float)
         P = np.einsum("bk,fkd->fbd", B, V[Fu.reshape(-1, 3)]).reshape(-1, 3)
-        t = lods.cover_depth(P, np.tile([0, 0, 1.0], (len(P), 1)), [cover])
+        t = lods_under.cover_depth(P, np.tile([0, 0, 1.0], (len(P), 1)), [cover])
         if k == 1:
             assert np.allclose(V, Vu, atol=1e-6) and (t < 0).any(), t
         else:
@@ -888,7 +900,7 @@ def test_lod_under_face_grid_finds_pokes_away_from_vertices_and_centroids():
     lods.LOD_UNDER_FACE_DEEP = 0.002  # the 3.5 mm poke now reads as a face running out from under: nothing moves
     try:
         parts = {"sw": dict(under), "coat": cover}
-        lods.push_under_layers(parts, {"sw": ["coat"]})
+        lods_under.push_under_layers(parts, {"sw": ["coat"]})
     finally:
         lods.LOD_UNDER_FACE_DEEP = old
     assert np.allclose(np.asarray(parts["sw"]["verts"], float), Vu, atol=1e-6)
@@ -900,6 +912,7 @@ def test_lod_patch_pockets_seated_on_the_decimated_panel():
     panel at its LOD0 offset: a pocket 2.6 mm over a bumpy two-sided panel ends 2.6 mm (+-0.3) over the LOD2 panel."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_part, lods_pieces
     k = 60
     g = np.linspace(-0.15, 0.15, k + 1)
     X, Y = np.meshgrid(g, g)
@@ -935,13 +948,13 @@ def test_lod_patch_pockets_seated_on_the_decimated_panel():
     for seat in (False, True):
         lods.LOD_SEAT_PATCHES = seat
         try:
-            out, _, r = lods._lod_shell(dict(p), None, 0.1, shapes=False)
+            out, _, r = lods_part._lod_shell(dict(p), None, 0.1, shapes=False)
         finally:
             lods.LOD_SEAT_PATCHES = True
         Vo = np.asarray(out["verts"], float)
         To = np.asarray(out["corner_vert"], np.int64).reshape(-1, 3)[:out["shell"]["outer"]]
         piece = (np.abs(Vo[To].mean(1)[:, 2] - h(*Vo[To].mean(1)[:, :2].T)) > 0.0013)  # the pocket's triangles
-        _, _, _, off, _ = lods._patch_offsets(Vo, To, ~piece, piece, np.asarray(out["normal"], float)[:3 * len(To)])
+        _, _, _, off, _ = lods_pieces._patch_offsets(Vo, To, ~piece, piece, np.asarray(out["normal"], float)[:3 * len(To)])
         res[seat] = (off, r)
     assert res[True][1].get("patches_seated", 0) > 0, res[True][1]
     assert np.abs(res[True][0] - 0.0026).max() < 0.0003, res[True][0]
@@ -954,22 +967,23 @@ def test_lod_worn_parts_pushed_only_where_under_at_lod0():
     a part over the garment there (a shoe collar over the hem) is left alone."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
     Vu, Fu = _grid_sheet(30, 30, 0.3, 0.3, lambda x, y: np.zeros_like(x))
     Vc, Fc = _grid_sheet(8, 8, 0.3, 0.3, lambda x, y: np.full_like(x, 0.003))  # the cover 3 mm out
     mk = lambda V, F: {"verts": V.astype(np.float32), "corner_vert": F.ravel(), "uv": V[F.ravel(), :2],
                        "normal": np.tile([0, 0, 1.0], (F.size, 1)), "tangent": np.tile([1.0, 0, 0], (F.size, 1)),
                        "sign": np.ones(F.size)}
     under0, cover = mk(Vu, Fu), mk(Vc, Fc)
-    masks = {"socks": lods.under_at_lod0(under0, [cover])}
+    masks = {"socks": lods_under.under_at_lod0(under0, [cover])}
     over = Vu[:, 0] > 0.2  # this end was over the cover at LOD0 (a shoe collar): lift it out there
     Vu0 = Vu.copy()
     Vu0[over, 2] = 0.006
-    masks["socks"] = lods.under_at_lod0(mk(Vu0, Fu), [cover])
+    masks["socks"] = lods_under.under_at_lod0(mk(Vu0, Fu), [cover])
     assert masks["socks"][1].sum() > 0 and not masks["socks"][1][over[np.unique(Fu)]].any()
     Vk = Vu0.copy()
     Vk[~over, 2] += 0.0045 * (np.sin(30 * Vu[~over, 0]) > 0)  # LODk: the under end pokes through in bands
     parts = {"socks": mk(Vk, Fu), "jeans": cover}
-    rep = lods.push_under_layers(parts, {"socks": ["jeans"]}, masks=masks)
+    rep = lods_under.push_under_layers(parts, {"socks": ["jeans"]}, masks=masks)
     Vr = np.asarray(parts["socks"]["verts"], float)
     assert rep["socks"]["poking"] == 0 and rep["socks"]["moved"] > 0
     assert np.allclose(Vr[over], Vk[over]), "a part over the garment at LOD0 must not be pushed under it"
@@ -981,7 +995,7 @@ def test_cull_restores_faces_exposed_in_a_pose():
     per mesh): a triangle hidden at rest but uncovered in any frame is kept. A two-sided tube under a shorter cover; in
     the 'pose' the cover rides up 6 cm: the band it leaves comes back, a still pose restores nothing."""
     import numpy as np
-    from hifipushie import asset
+    from hifipushie import asset_hidden
 
     def tube(r, z0, z1, na=40, nz=40, shell=None):
         a, z = np.meshgrid(np.linspace(0, 2 * np.pi, na, endpoint=False), np.linspace(z0, z1, nz))
@@ -1003,20 +1017,20 @@ def test_cull_restores_faces_exposed_in_a_pose():
             p["shell"] = {"outer": n, "thickness": shell}
         return p
     under, cover = tube(0.10, 0.0, 0.8, shell=0.0008), tube(0.115, 0.2, 0.8)
-    keep0 = asset.cloth_under_keep(under, [cover])
+    keep0 = asset_hidden.cloth_under_keep(under, [cover])
     assert (~keep0).sum() > 100
     Vu, Vc = np.asarray(under["verts"]), np.asarray(cover["verts"])
     still = {"under:rest": Vu, "under:posed": Vu, "cover:rest": Vc, "cover:posed": Vc}
-    k1, r1 = asset.cull_exposed_keep(under, [cover], "under", ["cover"], [still], keep0)
+    k1, r1 = asset_hidden.cull_exposed_keep(under, [cover], "under", ["cover"], [still], keep0)
     assert r1["restored"] == 0 and (k1 == keep0).all()
     up = dict(still, **{"cover:posed": Vc + [0, 0, 0.06]})
-    k2, r2 = asset.cull_exposed_keep(under, [cover], "under", ["cover"], [still, up], keep0)
+    k2, r2 = asset_hidden.cull_exposed_keep(under, [cover], "under", ["cover"], [still, up], keep0)
     assert r2["restored"] > 0 and r2["frames"] == 2 and (k2 | ~keep0).all()
     T = np.asarray(under["corner_vert"]).reshape(-1, 3)
     zc = Vu[T].mean(1)[:, 2]
     back = k2 & ~keep0
     assert back.any() and zc[back].min() > 0.2 - 1e-6 and zc[back].max() < 0.2 + 0.06 + 0.04 + 1e-6
-    q = asset.cull_tris(under, k2)
+    q = asset_hidden.cull_tris(under, k2)
     assert q["shell"]["outer"] == int(k2[:under["shell"]["outer"]].sum())
 
 
@@ -1025,15 +1039,16 @@ def test_lod_worn_part_drops_its_covered_rim_far():
     the nearest point that was not): rc2j's LOD2 sock tops showed through the decimated jeans' calf as a shard."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
     Vu, Fu = _grid_sheet(30, 30, 0.3, 0.3, lambda x, y: np.zeros_like(x))
     Vc, Fc = _grid_sheet(8, 8, 0.15, 0.3, lambda x, y: np.full_like(x, 0.003))  # the cover over x < 0.15 only
     mk = lambda V, F: {"verts": V.astype(np.float32), "corner_vert": F.ravel(), "uv": V[F.ravel(), :2],
                        "normal": np.tile([0, 0, 1.0], (F.size, 1)), "tangent": np.tile([1.0, 0, 0], (F.size, 1)),
                        "sign": np.ones(F.size)}
     sock, cover = mk(Vu, Fu), mk(Vc, Fc)
-    P0, un0 = lods.under_at_lod0(sock, [cover])
+    P0, un0 = lods_under.under_at_lod0(sock, [cover])
     assert un0.any() and not un0.all()
-    keep = lods.cull_covered(sock, P0, un0)
+    keep = lods_under.cull_covered(sock, P0, un0)
     T = Fu.reshape(-1, 3)
     xc = Vu[T].mean(1)[:, 0]
     assert keep[xc > 0.15].all(), "faces in the open stay"
@@ -1047,6 +1062,7 @@ def test_lod_welded_decimation_redone_where_it_strays():
     LOD_DEV_MAX."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_pieces
     # a deep narrow V fold (two walls 60 mm deep, 4 mm apart at the bottom) in a sheet
     V, F = _grid_sheet(60, 20, 0.3, 0.1, lambda x, y: -0.06 * np.clip(1 - np.abs(x - 0.15) / 0.012, 0, 1))
     tgt = 24
@@ -1059,12 +1075,12 @@ def test_lod_welded_decimation_redone_where_it_strays():
         old = lods.LOD_DEV_MAX, lods.LOD_DEV_TRIES, lods.LOD_DEV_REF
         try:
             lods.LOD_DEV_MAX, lods.LOD_DEV_TRIES, lods.LOD_DEV_REF = dev_max, 4, r
-            out = lods._welded_pieces(p, [(0, np.arange(len(F)), src, F, V, V, F)], src, None, [], r, None, len(F))
+            out = lods_pieces._welded_pieces(p, [(0, np.arange(len(F)), src, F, V, V, F)], src, None, [], r, None, len(F))
         finally:
             lods.LOD_DEV_MAX, lods.LOD_DEV_TRIES, lods.LOD_DEV_REF = old
         Vw = np.concatenate([o[5] for o in out])
         Fw = np.concatenate([o[6] + sum(len(x[5]) for x in out[:i]) for i, o in enumerate(out)])
-        return lods._deviation(V, Vw, Fw), len(Fw)
+        return lods_pieces._deviation(V, Vw, Fw), len(Fw)
     d0, n0 = run(0.0)
     d1, n1 = run(0.003)
     assert d0 > 0.003, f"the unguarded decimation should stray here ({d0 * 1000:.0f} mm)"
@@ -1076,6 +1092,7 @@ def test_lod_worn_part_push_is_capped():
     neck was pushed up to 49 mm under the sweater's collar and its big triangles dragged the visible neck into wedges."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
     Vu, Fu = _grid_sheet(20, 20, 0.2, 0.2, lambda x, y: np.zeros_like(x))
     Vc, Fc = _grid_sheet(8, 8, 0.2, 0.2, lambda x, y: np.full_like(x, -0.015))  # the cover 15 mm INSIDE the skin
     mk = lambda V, F: {"verts": V.astype(np.float32), "corner_vert": F.ravel(), "uv": V[F.ravel(), :2],
@@ -1084,7 +1101,7 @@ def test_lod_worn_part_push_is_capped():
     skin, cover = mk(Vu, Fu), mk(Vc, Fc)
     masks = {"skin": (Vu.astype(np.float64), np.ones(len(Vu), bool), None, np.tile([0, 0, 1.0], (len(Vu), 1)))}
     parts = {"skin": skin, "cover": cover}
-    lods.push_under_layers(parts, {"skin": ["cover"]}, masks=masks)
+    lods_under.push_under_layers(parts, {"skin": ["cover"]}, masks=masks)
     mv = np.linalg.norm(np.asarray(parts["skin"]["verts"], np.float64) - Vu, axis=1)
     assert mv.max() > 0.005, "the skin is pushed in"
     assert mv.max() <= lods.LOD_UNDER_WORN_MAX + 1e-6, mv.max()
@@ -1103,24 +1120,25 @@ def test_drawn_made_parts_without_thickness():
 def test_lod0_hair_tier_defaults_to_the_role():
     """LOD0's card tier comes from the role when hair.export.tier is unset (Garrett v3 / v4 got EXPORT_CARDS' old
     per-lock cut, 96 cards + cap, while LOD1-3 had tiers); an explicit tier (Tess: "hero") is kept; no role warns."""
-    from hifipushie import asset
+    from hifipushie import asset_gates
     sp = {"hair": {"style": "strands", "export": {"card_gain": 2.1}}}
     log = []
-    out = asset.hair_tier_default(sp, "hero", log)
+    out = asset_gates.hair_tier_default(sp, "hero", log)
     assert out["hair"]["export"] == {"card_gain": 2.1, "tier": "hero"} and "tier" not in sp["hair"]["export"]
-    assert asset.hair_tier_default(sp, "secondary_npc", [])["hair"]["export"]["tier"] == "npc"
+    assert asset_gates.hair_tier_default(sp, "secondary_npc", [])["hair"]["export"]["tier"] == "npc"
     tess = {"hair": {"style": "strands", "export": {"tier": "hero"}}}
-    assert asset.hair_tier_default(tess, "crowd", []) is tess
+    assert asset_gates.hair_tier_default(tess, "crowd", []) is tess
     locks = {"hair": {"locks": {}}}
-    assert asset.hair_tier_default(locks, "hero", []) is locks
+    assert asset_gates.hair_tier_default(locks, "hero", []) is locks
     log = []
-    assert asset.hair_tier_default(sp, None, log) is sp and any(l.startswith("WARNING hair") for l in log)
+    assert asset_gates.hair_tier_default(sp, None, log) is sp and any(l.startswith("WARNING hair") for l in log)
 
 
 def test_cloth_decimated_under_its_budget_despite_floors():
     """Parts with floors (made pieces kept whole) overshoot one shared ratio (Garrett v5: clothing 27,032 of 25,000):
     decimate_cloth scales the ratio by the overshoot until the garments fit."""
-    from hifipushie import asset, lods
+    from hifipushie import lods_part
+    from hifipushie import asset_gates
 
     def fake(p, w, ratio, **k):  # a part keeps its floor + ratio of the rest
         n0 = len(p["corner_vert"]) // 3
@@ -1129,21 +1147,21 @@ def test_cloth_decimated_under_its_budget_despite_floors():
 
     parts = [(nm, {"corner_vert": np.zeros(3 * n, np.int64), "floor": f}, {}) for nm, n, f in
              (("shirt", 29000, 7400), ("jacket", 17600, 0), ("trousers", 45300, 0))]
-    old, lods.lod_part = lods.lod_part, fake
+    old, lods_part.lod_part = lods_part.lod_part, fake
     try:
         log = []
-        out = asset.decimate_cloth(parts, 25000, log)
+        out = asset_gates.decimate_cloth(parts, 25000, log)
     finally:
-        lods.lod_part = old
+        lods_part.lod_part = old
     tot = sum(len(q["corner_vert"]) // 3 for _, q, _ in out)
     assert 24000 < tot <= 25000 and not any(l.startswith("WARNING") for l in log), (tot, log)
 
 
 def test_frozen_garments_keep_their_over_chain_in_the_export():
-    """Garrett v6: frozen garments in the spec ({"frozen", "color"}) carry no "over", so asset._garment_stack was empty
+    """Garrett v6: frozen garments in the spec ({"frozen", "color"}) carry no "over", so asset_glb._garment_stack was empty
     and no garment push-under ran at any LOD, silently. The export falls back to the chain frozen with each garment
     (logged); the spec's own "over" wins; garments with no chain anywhere are a WARNING."""
-    from hifipushie import asset
+    from hifipushie import asset_glb
     b0 = cloth.Body(_grid_body())
     res = {"V": b0.V[:10] * 1.05, "mesh": {"F": np.array([[0, 1, 2]])}, "body": b0, "key": "k", "pieces": {}}
     with tempfile.TemporaryDirectory() as d:
@@ -1154,22 +1172,23 @@ def test_frozen_garments_keep_their_over_chain_in_the_export():
         spec = {"cloth": {gn: {"frozen": p_, "color": "#333333"} for gn, p_ in paths.items()}}
         parts = {f"cloth_{gn}": {} for gn in paths}
         log = []
-        st = asset._garment_stack(spec, parts, log.append)
+        st = asset_glb._garment_stack(spec, parts, log.append)
         assert sorted(st["cloth_shirt"]) == ["cloth_jacket", "cloth_trousers"] and len(st) == 1, st
         assert any("frozen garments' own chain" in l and "jacket over shirt" in l for l in log), log
         spec["cloth"]["jacket"]["over"] = "trousers"  # the spec wins
-        st = asset._garment_stack(spec, parts)
+        st = asset_glb._garment_stack(spec, parts)
         assert sorted(st["cloth_shirt"]) == ["cloth_jacket", "cloth_trousers"] and st["cloth_trousers"] == ["cloth_jacket"]
     log = []
-    assert asset.garment_over({"cloth": {"a": {}, "b": {}}}, log.append) == {"a": None, "b": None}
+    assert asset_glb.garment_over({"cloth": {"a": {}, "b": {}}}, log.append) == {"a": None, "b": None}
     assert any(l.startswith("WARNING garment layers") for l in log)
 
 
 def test_push_under_trusts_the_cover_for_outward():
     """(Garrett s7) an under garment with reversed normals (Garrett's frozen shirt: ~half its outer normals point into the
     forearm) poking 1 mm through its cover was pushed OUT along its own normal (v6b: a white shirt mass through the jacket
-    sleeve, up to 39 mm). push_under_layers orients the under part's normals by the cover's outward (lods.orient_to_covers)."""
+    sleeve, up to 39 mm). push_under_layers orients the under part's normals by the cover's outward (lods_under.orient_to_covers)."""
     from hifipushie import lods
+    from hifipushie import lods_under
     xs = np.linspace(0, 0.1, 11)
     X, Y = np.meshgrid(xs, xs, indexing="ij")
     F = []
@@ -1186,14 +1205,14 @@ def test_push_under_trusts_the_cover_for_outward():
 
     for nz in (1.0, -1.0):  # under normals right (+z) and reversed (-z): both must end under the cover (z = 0)
         parts = {"cover": sheet(0.0, 1.0), "under": sheet(0.001, nz)}
-        lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+        lods_under.push_under_layers(parts, {"under": ["cover"]}, masks=None)
         z = np.asarray(parts["under"]["verts"])[:, 2]
         assert z.max() < 0, (nz, z.max())
     old = lods.LOD_UNDER_ORIENT
     try:  # without the orientation the reversed sheet goes out through the cover (the v6b fault)
         lods.LOD_UNDER_ORIENT = False
         parts = {"cover": sheet(0.0, 1.0), "under": sheet(0.001, -1.0)}
-        lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+        lods_under.push_under_layers(parts, {"under": ["cover"]}, masks=None)
         assert np.asarray(parts["under"]["verts"])[:, 2].min() > 0.001
     finally:
         lods.LOD_UNDER_ORIENT = old
@@ -1203,6 +1222,7 @@ def test_push_under_move_is_capped():
     """(Garrett s8) no push-under moves a vertex more than LOD_UNDER_MAX_MOVE (v6b: 39 mm out through the sleeve): an under
     sheet 15 mm outside its cover (inside reach) moves at most 10 mm, reported as capped; a 1 mm poke still goes under."""
     from hifipushie import lods
+    from hifipushie import lods_under
     xs = np.linspace(0, 0.1, 6)
     X, Y = np.meshgrid(xs, xs, indexing="ij")
     F = np.array([(i * 6 + j, i * 6 + j + 6, i * 6 + j + 7) for i in range(5) for j in range(5)]
@@ -1213,12 +1233,12 @@ def test_push_under_move_is_capped():
         return {"verts": np.c_[X.ravel(), Y.ravel(), np.full(X.size, z)].astype(np.float32), "corner_vert": cv,
                 "normal": np.tile([0, 0, 1.0], (len(cv), 1))}
     parts = {"cover": sheet(0.0), "under": sheet(0.015)}
-    rep = lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+    rep = lods_under.push_under_layers(parts, {"under": ["cover"]}, masks=None)
     z = np.asarray(parts["under"]["verts"])[:, 2]
     assert z.min() >= 0.015 - lods.LOD_UNDER_MAX_MOVE - 1e-6, z.min()
     assert rep["under"]["capped"] > 0
     parts = {"cover": sheet(0.0), "under": sheet(0.001)}
-    rep = lods.push_under_layers(parts, {"under": ["cover"]}, masks=None)
+    rep = lods_under.push_under_layers(parts, {"under": ["cover"]}, masks=None)
     assert np.asarray(parts["under"]["verts"])[:, 2].max() < 0 and rep["under"]["capped"] == 0
 
 
@@ -1266,16 +1286,16 @@ def test_piece_facing_into_the_body_is_turned_alone():
 def test_skin_folds_over_a_millimetre_are_head_form():
     """(coordinator, Garrett s8) the approved-head rule for skin.folds: relief <= 1 mm (a groove) ships; a fold that
     changes form (nasolabial roll 1.3 mm at amount 1) is clamped to 1 mm with a WARNING, unless the approved head has it."""
-    from hifipushie import asset
+    from hifipushie import asset_gates
     log = []
     sp = {"skin": {"folds": {"glabella": 1.0, "nasolabial": 1.0}}}
-    out = asset.fold_form_gate(sp, log)
+    out = asset_gates.fold_form_gate(sp, log)
     assert out["skin"]["folds"]["glabella"] == 1.0
-    assert asset.fold_form("nasolabial", 1.0) > 1.0
-    assert abs(asset.fold_form("nasolabial", out["skin"]["folds"]["nasolabial"]) - 1.0) < 1e-6
+    assert asset_gates.fold_form("nasolabial", 1.0) > 1.0
+    assert abs(asset_gates.fold_form("nasolabial", out["skin"]["folds"]["nasolabial"]) - 1.0) < 1e-6
     assert any(m.startswith("WARNING head: skin.folds.nasolabial") for m in log)
     log = []
-    out = asset.fold_form_gate(sp, log, approved={"nasolabial": 1.0})
+    out = asset_gates.fold_form_gate(sp, log, approved={"nasolabial": 1.0})
     assert out["skin"]["folds"]["nasolabial"] == 1.0 and not any("WARNING" in m for m in log)
 
 
@@ -1283,7 +1303,7 @@ def test_export_head_is_the_approved_head():
     """(Garrett s7) base.head_approved names an approval; approved_head composes that model's base.head (the build keeps
     only "attach") and logs what it replaced (v6 carried s21's unapproved lid_fold + shape); an unknown approval raises."""
     import json
-    from hifipushie import asset
+    from hifipushie import asset_gates
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         (d / "gp").mkdir()
@@ -1292,11 +1312,11 @@ def test_export_head_is_the_approved_head():
         build = {"base": {"head_approved": "head/x", "head": {"identity": [1, 2], "attach": "seam",
                                                              "lid_fold": {"thick": 1.2}, "shape": {"eye_bag": {}}}}}
         log = []
-        out = asset.approved_head(build, log, d / "approved.json")
+        out = asset_gates.approved_head(build, log, d / "approved.json")
         assert out["base"]["head"] == {"identity": [1, 2], "attach": "seam"}, out["base"]["head"]
         assert "lid_fold" in build["base"]["head"] and "lid_fold, shape" in log[-1]
         try:
-            asset.approved_head({"base": {"head_approved": "head/nope", "head": {}}}, [], d / "approved.json")
+            asset_gates.approved_head({"base": {"head_approved": "head/nope", "head": {}}}, [], d / "approved.json")
             raise AssertionError("an unknown approval must raise")
         except ValueError:
             pass
@@ -1327,7 +1347,7 @@ def test_face_light_check_flags_a_dark_lid_band():
     """(Garrett s10, coordinator) the shipped head's eyes render vs the approved head's stage render: a lid band darker
     than approved (the v6 / v7 blink map crease) and forehead grooves (s21 wrinkles in the normal map) are WARNINGs with
     the numbers; the same render passes."""
-    from hifipushie import asset
+    from hifipushie import asset_gates
     h = w = 520
     base = np.full((h, w, 3), 200.0)
     for x in (130, 400):    # pupils
@@ -1337,11 +1357,11 @@ def test_face_light_check_flags_a_dark_lid_band():
         lid[290 - 40:290 - 19, x - 40:x + 40] = 120.0
     groove = base.copy()
     groove[60:125:8, 100:430] = 150.0   # forehead stripes
-    ok = asset.face_light_check(base, base, views=("Khronos PBR Neutral",) * 2)
+    ok = asset_gates.face_light_check(base, base, views=("Khronos PBR Neutral",) * 2)
     assert not any(l.startswith("WARNING") for l in ok), ok
-    bad = asset.face_light_check(base, lid, views=("Khronos PBR Neutral",) * 2)
+    bad = asset_gates.face_light_check(base, lid, views=("Khronos PBR Neutral",) * 2)
     assert bad[0].startswith("WARNING") and "lid-cheek" in bad[0], bad
-    gr = asset.face_light_check(base, groove, views=("Khronos PBR Neutral",) * 2)
+    gr = asset_gates.face_light_check(base, groove, views=("Khronos PBR Neutral",) * 2)
     assert gr[2].startswith("WARNING") and "forehead" in gr[2], gr
 
 
@@ -1349,24 +1369,25 @@ def test_lod_under_garment_drops_faces_deep_under_its_cover():
     """(Garrett s10) from LOD1 an under GARMENT (the shirt) drops its faces deep under its covers at LOD0 (v7's LOD1
     right forearm: a white shirt shard where the decimated sleeve dipped under it past the push-under cap); LOD0 and
     the part in the open are untouched."""
-    from hifipushie import asset, lods
+    from hifipushie import lods
+    from hifipushie import asset_hidden
     Vu, Fu = _grid_sheet(30, 30, 0.3, 0.3, lambda x, y: np.zeros_like(x))
     Vc, Fc = _grid_sheet(8, 8, 0.15, 0.3, lambda x, y: np.full_like(x, 0.003))  # the sleeve over x < 0.15 only
     mk = lambda V, F: {"verts": V.astype(np.float32), "corner_vert": F.ravel(), "uv": V[F.ravel(), :2],
                        "normal": np.tile([0, 0, 1.0], (F.size, 1)), "tangent": np.tile([1.0, 0, 0], (F.size, 1)),
                        "sign": np.ones(F.size)}
     parts = {"cloth_shirt": mk(Vu, Fu), "cloth_jacket": mk(Vc, Fc)}
-    m = asset.garment_cull_masks(parts, {"cloth_shirt": ["cloth_jacket"]}, ["cloth_shirt", "cloth_jacket"])
+    m = asset_hidden.garment_cull_masks(parts, {"cloth_shirt": ["cloth_jacket"]}, ["cloth_shirt", "cloth_jacket"])
     assert set(m) == {"cloth_shirt"}
     lp0, rep0 = dict(parts), {}
-    asset.cull_under_garments(lp0, m, 0, [], rep0)
+    asset_hidden.cull_under_garments(lp0, m, 0, [], rep0)
     assert lp0["cloth_shirt"] is parts["cloth_shirt"] and not rep0
     lp, rep, log = dict(parts), {}, []
-    asset.cull_under_garments(lp, m, lods.LOD_UNDER_CULL_GARMENTS_FROM, log, rep)
+    asset_hidden.cull_under_garments(lp, m, lods.LOD_UNDER_CULL_GARMENTS_FROM, log, rep)
     assert not rep, "a shirt still under its sleeve (3 mm) keeps its faces (a lifted cover must not open a hole)"
     Vc2 = Vc.copy(); Vc2[:, 2] = 0.001   # the decimated sleeve dips to 1 mm over the shirt (< LOD_UNDER_GAP)
     lp["cloth_jacket"] = mk(Vc2, Fc)
-    asset.cull_under_garments(lp, m, lods.LOD_UNDER_CULL_GARMENTS_FROM, log, rep)
+    asset_hidden.cull_under_garments(lp, m, lods.LOD_UNDER_CULL_GARMENTS_FROM, log, rep)
     T = np.asarray(lp["cloth_shirt"]["corner_vert"]).reshape(-1, 3)
     xc = Vu[T].mean(1)[:, 0]
     assert rep["cloth_shirt"]["covered_culled"] > 0 and "deep under its covers" in log[0]
@@ -1384,6 +1405,7 @@ def test_game_light_matches_blender_game_and_glb_basecolor_is_the_albedo():
     import numpy as np
     from PIL import Image
     from hifipushie import asset
+    from hifipushie import asset_glb, asset_raster
     src = (Path(asset.__file__).with_name("blender_game.py")).read_text()
     assert re.search(r'job\.get\("view", "%s"\)' % re.escape(asset.GAME_LIGHT["view"]), src)
     for L in asset.GAME_LIGHT["lights"]:
@@ -1397,7 +1419,7 @@ def test_game_light_matches_blender_game_and_glb_basecolor_is_the_albedo():
     lin = rng.uniform(0.0, 1.0, (16, 16, 3))
     lin[0, 0], lin[0, 1], lin[0, 2] = (0.45, 0.30, 0.22), (0.02, 0.015, 0.01), (0.9, 0.85, 0.8)
     d = Path(tempfile.mkdtemp())
-    asset._png(d / "b.png", asset._srgb(lin))
+    asset_raster._png(d / "b.png", asset_raster._srgb(lin))
     flat = d / "f.png"
     Image.new("RGBA", (4, 4), (128, 128, 255, 255)).save(flat)
     V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], float)
@@ -1405,7 +1427,7 @@ def test_game_light_matches_blender_game_and_glb_basecolor_is_the_albedo():
             "uv": np.array([[0, 0], [1, 0], [0, 1]], float), "normal": np.tile([0.0, 0.0, 1.0], (3, 1)),
             "tangent": np.tile([1.0, 0.0, 0.0], (3, 1)), "sign": np.ones(3)}
     glb = d / "t.glb"
-    asset.write_glb(glb, "t", {"body": part}, [("0", {"basecolor": d / "b.png", "orm": flat, "normal": flat, "specular": flat})])
+    asset_glb.write_glb(glb, "t", {"body": part}, [("0", {"basecolor": d / "b.png", "orm": flat, "normal": flat, "specular": flat})])
     raw = glb.read_bytes()
     jl = struct.unpack("<I", raw[12:16])[0]
     J = json.loads(raw[20:20 + jl])
@@ -1419,7 +1441,7 @@ def test_game_light_matches_blender_game_and_glb_basecolor_is_the_albedo():
     got = np.asarray(Image.open(io.BytesIO(binc[bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]])).convert("RGB")) / 255.0
     dec = np.where(got <= 0.04045, got / 12.92, ((got + 0.055) / 1.055) ** 2.4)
     for y, x in ((0, 0), (0, 1), (0, 2), (5, 7), (15, 15)):
-        enc = asset._srgb(lin[y, x])
+        enc = asset_raster._srgb(lin[y, x])
         assert np.abs(got[y, x] - enc).max() <= 0.6 / 255, (y, x)  # 8-bit rounding of the sRGB value only
         assert np.abs(dec[y, x] - lin[y, x]).max() < 0.01, (y, x, dec[y, x], lin[y, x])
 
@@ -1430,20 +1452,21 @@ def test_push_under_takes_a_small_deep_flap_through_its_cover():
     with no cover) is left alone."""
     import numpy as np
     from hifipushie import lods
+    from hifipushie import lods_under
     # faces: 0-1 the flap (deep), 2-5 its ring (under), 6 a deep face whose neighbour 7 has no cover
     F = np.array([[0, 1, 2], [1, 3, 2], [0, 2, 4], [2, 3, 5], [1, 0, 6], [3, 1, 6], [7, 8, 9], [8, 10, 9]])
     deep_t = np.array([-0.015, -0.015, 0.003, 0.003, 0.003, 0.003, -0.015, np.inf])
     t = np.where(deep_t > -lods.LOD_UNDER_FACE_DEEP, deep_t, np.inf)
-    r = lods.ringed_islands(F, deep_t, t, 11)
+    r = lods_under.ringed_islands(F, deep_t, t, 11)
     assert r.tolist() == [True, True, False, False, False, False, False, False], r
-    assert not lods.ringed_islands(F, deep_t, t, 11, most=1)[:2].any()  # an island over the size limit stays
+    assert not lods_under.ringed_islands(F, deep_t, t, 11, most=1)[:2].any()  # an island over the size limit stays
 
 
 def test_missed_texels_fill_from_the_surface_not_the_atlas():
     """(r66) a run of texels whose bake ray missed takes its colour from its 3D neighbours on the same part, not from
     whatever lies next to it in the atlas (rc2p/q's blocky nostril patch: a tiny island beside a big one)."""
     import numpy as np
-    from hifipushie import asset
+    from hifipushie import asset_raster
     size = 16
     ys, xs = np.mgrid[0:size, 0:size]
     ys, xs = ys.ravel(), xs.ravel()
@@ -1455,18 +1478,18 @@ def test_missed_texels_fill_from_the_surface_not_the_atlas():
     miss = (xs >= 5) & (xs < 8)       # the big island's last 3 columns missed: in the atlas, column 8 (dark) is nearer
     col[ys[miss], xs[miss], 3] = 0
     baked = col[..., 3] > 0
-    given = {"color": asset._dilate(col, baked)}
+    given = {"color": asset_raster._dilate(col, baked)}
     assert given["color"][0, 7, 0] < 0.2  # the atlas fill: dark
-    out = asset._fill_missed_3d(given, baked, miss, ys, xs, P, np.zeros(len(P), int), [])
+    out = asset_raster._fill_missed_3d(given, baked, miss, ys, xs, P, np.zeros(len(P), int), [])
     assert np.allclose(out["color"][ys[miss], xs[miss], :3], [0.8, 0.6, 0.5])
 
 
 def test_push_under_takes_a_flap_with_sideways_normals_through_its_cover():
     """(r66) rc2q's coat speck: a sweater flap 17-23 mm out of the coat's back whose vertex normals point sideways, so
-    no cover lies along them: lods.stray_flaps finds it (outside the cover's nearest surface, ringed by vertices under
+    no cover lies along them: lods_under.stray_flaps finds it (outside the cover's nearest surface, ringed by vertices under
     it) and push_under_layers takes it in; an open edge (no cover beyond the garment's edge) stays."""
     import numpy as np
-    from hifipushie import lods
+    from hifipushie import lods_under
 
     def grid(n, h, z, flap=None):
         x, y = np.meshgrid(np.linspace(0, 0.2, n), np.linspace(0, h, n))
@@ -1489,14 +1512,14 @@ def test_push_under_takes_a_flap_with_sideways_normals_through_its_cover():
     mid = 5 * n + 5
     under = grid(n, 0.2, 0.0, flap=[mid])
     cover = grid(n, 0.2, 0.01)
-    fi, fs, fn = lods.stray_flaps(under, [cover])
+    fi, fs, fn = lods_under.stray_flaps(under, [cover])
     assert fi.tolist() == [mid]
-    rep = lods.push_under_layers({"u": under, "c": cover}, {"u": ["c"]}, gap=0.002)
+    rep = lods_under.push_under_layers({"u": under, "c": cover}, {"u": ["c"]}, gap=0.002)
     assert rep["u"]["flaps"] == 1
     # a cover over only half of the under layer: its uncovered edge has no cover beyond it, nothing is a flap
     half = grid(n, 0.1, 0.01)
     under2 = grid(n, 0.2, 0.0, flap=[9 * n + 5])
-    assert len(lods.stray_flaps(under2, [half])[0]) == 0
+    assert len(lods_under.stray_flaps(under2, [half])[0]) == 0
 
 
 def test_game_check_reads_the_exports_specular_map():
@@ -1548,8 +1571,10 @@ print("PREFILTER OK")
 def test_skin_lod_cull_keeps_what_a_pose_uncovers():
     """(Garrett s14) the underarm notch: the skin's residue deep under the jacket poked through the decimated sleeve at
     LOD1-2, the one worn part left out of the per-LOD cull. Now the skin is culled from asset.LOD_SKIN_CULL_FROM too, but a
-    point a dumped clip frame uncovers (asset.skin_pose_exposed: the seated poses) is never dropped."""
-    from hifipushie import asset, lods
+    point a dumped clip frame uncovers (asset_hidden.skin_pose_exposed: the seated poses) is never dropped."""
+    from hifipushie import asset
+    from hifipushie import lods_under
+    from hifipushie import asset_hidden
 
     def sheet(n, x0, x1, z, up=True):
         xs = np.linspace(x0, x1, n)
@@ -1570,13 +1595,13 @@ def test_skin_lod_cull_keeps_what_a_pose_uncovers():
         np.savez(f, **{"body:rest": body["verts"], "body:posed": body["verts"],
                        "cloth_jacket:rest": cover["verts"], "cloth_jacket:posed": moved["verts"]})
         P0 = body["verts"]
-        exp_ = asset.skin_pose_exposed(body, P0, [cover], "body", ["cloth_jacket"], str(f))
-        assert not asset.skin_pose_exposed(body, P0, [cover], "body", ["cloth_jacket"], None).any()
+        exp_ = asset_hidden.skin_pose_exposed(body, P0, [cover], "body", ["cloth_jacket"], str(f))
+        assert not asset_hidden.skin_pose_exposed(body, P0, [cover], "body", ["cloth_jacket"], None).any()
     x = P0[:, 0]
     assert exp_[x < 0.1].all() and not exp_[(x > 0.16) & (x < 0.24)].any()
     un0 = x < 0.30
-    keep_rest = lods.cull_covered(body, P0, un0)
-    keep_pose = lods.cull_covered(body, P0, un0 & ~exp_)
+    keep_rest = lods_under.cull_covered(body, P0, un0)
+    keep_pose = lods_under.cull_covered(body, P0, un0 & ~exp_)
     T = body["corner_vert"].reshape(-1, 3)
     cx = P0[T].mean(1)[:, 0]
     assert not keep_rest[(cx > 0.03) & (cx < 0.08)].any()      # at rest alone those faces would go
@@ -1643,7 +1668,7 @@ def test_push_under_never_moves_a_flipped_normal_out_through_its_cover():
     coat's back. under_depth now orients outward normals by the nearest cover's facing, and a poking face moves only
     corners within 60 deg of it. A layer entirely under its cover stays under it."""
     import numpy as np
-    from hifipushie import lods
+    from hifipushie import lods_under
     n = 11
     x, y = np.meshgrid(np.linspace(0, 0.2, n), np.linspace(0, 0.2, n))
 
@@ -1666,7 +1691,7 @@ def test_push_under_never_moves_a_flipped_normal_out_through_its_cover():
     Vc, Fc, Nc = sheet(0.01)
     cover = {"verts": Vc, "corner_vert": Fc.ravel(), "normal": Nc[Fc.ravel()]}
     parts = {"u": under, "c": cover}
-    lods.push_under_layers(parts, {"u": ["c"]}, gap=0.002)
+    lods_under.push_under_layers(parts, {"u": ["c"]}, gap=0.002)
     assert np.asarray(parts["u"]["verts"])[:, 2].max() <= 0.008 + 1e-9
 
 
@@ -1675,10 +1700,11 @@ def test_lod_made_slab_decimated_as_a_sheet():
     """(2026-10-19, Garrett collars) cloth.export_part ships a made piece (a collar) as a closed slab: front, back a
     millimetre behind, rim. Decimated as one mesh at the made floor, front and back crossed: v1-v8's open shirt collar
     showed flat facets with its BACK face out (2086 back-face px in the collar crops vs 72 before decimation). With the
-    layout [outer | inner | made fronts | made backs | rims] (shell "made", "made_rim"), lods._lod_shell decimates the
+    layout [outer | inner | made fronts | made backs | rims] (shell "made", "made_rim"), lods_part._lod_shell decimates the
     fronts and rebuilds every back made_thickness behind its front."""
     import numpy as np
-    from hifipushie import lods, cloth_made
+    from hifipushie import cloth_made
+    from hifipushie import lods_part
     Vo, Fo = _grid_sheet(40, 40, 0.3, 0.3, lambda x, y: 0.004 * np.sin(40 * x))
     th, n = 0.0008, len(Fo)
     # the collar: a rolled, rumpled band (a part tube with wrinkles), 3 cm over the panel
@@ -1708,7 +1734,7 @@ def test_lod_made_slab_decimated_as_a_sheet():
     p = {"verts": V.astype(np.float32), "corner_vert": cv, "uv": V[cv, :2], "normal": N[cv],
          "tangent": np.tile([1.0, 0, 0], (len(cv), 1)), "sign": np.ones(len(cv)),
          "shell": {"outer": n, "thickness": th, "made": m, "made_rim": len(sF) - 2 * m, "made_thickness": m_th}}
-    q, _, r = lods._lod_shell(dict(p), None, 0.25)
+    q, _, r = lods_part._lod_shell(dict(p), None, 0.25)
     no, mq = q["shell"]["outer"], q["shell"]["made"]
     T = np.asarray(q["corner_vert"]).reshape(-1, 3)
     Vq, nq = np.asarray(q["verts"], float), np.asarray(q["normal"], float).reshape(-1, 3, 3)
@@ -1720,5 +1746,5 @@ def test_lod_made_slab_decimated_as_a_sheet():
     assert np.allclose(np.einsum("fkc,fkc->fk", d, nq[2 * no:2 * no + mq][:, [0, 2, 1]]), m_th, atol=1e-4)
     assert np.allclose(nq[2 * no + mq:], -nq[2 * no:2 * no + mq][:, [0, 2, 1]], atol=1e-5)
     # and a LOD of the LOD keeps the layout
-    q2, _, _ = lods.lod_part(q, None, 0.5)
+    q2, _, _ = lods_part.lod_part(q, None, 0.5)
     assert len(np.asarray(q2["corner_vert"])) // 3 == 2 * q2["shell"]["outer"] + 2 * q2["shell"]["made"]

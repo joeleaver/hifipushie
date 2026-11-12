@@ -131,7 +131,7 @@ def workers(per_worker_gb: float, cap: int | None = None, jobs: int | None = Non
 KIND_GB = {"export_asset": 6.0, "terrain_tiles": 16.0, "cloth_blender": 4.0, "cloth_zozo": 7.0, "hair_cycles": 6.0,
            "stand_export": 6.0, "gpu": 0.0, "heavy": 8.0}
 EXPORT_HUMAN_GB = 24.0  # (Garrett export v7e, 2026-10-19) a human character's export (skin bake, hair, cloth, LODs)
-# peaks near this: declared lower, it was OOM-killed sharing the slice with another export. asset.export_gb uses it.
+# peaks near this: declared lower, it was OOM-killed sharing the slice with another export. asset_budget.export_gb uses it.
 SMALL = 0.25        # share of the budget under which a job may pass a waiting job that doesn't fit
 PASS_LIMIT = 3      # how many times a waiting job may be passed by small jobs
 LEGACY_GB = 12.0    # what a job on the old code (holding heavy0.lock exclusively) is counted as

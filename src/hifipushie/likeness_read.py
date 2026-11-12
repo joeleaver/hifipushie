@@ -254,7 +254,8 @@ def project_reference(name: str, out: str, base: dict | None = None, view: int =
     for outlines / proportions. Returns {"sheet", "views", "seen": share of each panel's head pixels that carry the
     picture}."""
     from PIL import Image, ImageDraw
-    from . import humanfit, store
+    from . import store
+    from . import humanfit_views
     from . import likeness_render, likeness_sides
     base = base or store.load(name)["base"]
     refs = likeness_sides._refs(name)
@@ -266,7 +267,7 @@ def project_reference(name: str, out: str, base: dict | None = None, view: int =
     spx = int(min(max(w, h), 1600))
     _, ks, sp = likeness_render.render(mesh, src_cam, sbox, px=spx, passes=True)
     zs = sp["zb"]
-    Rs = humanfit._cam_rot(src_cam)
+    Rs = humanfit_views._cam_rot(src_cam)
     cells, names, seen = [], [], {}
     for nm, cam, box in _views(name):
         im, k, ps = likeness_render.render(mesh, cam, box, px=px, passes=True)
@@ -278,7 +279,7 @@ def project_reference(name: str, out: str, base: dict | None = None, view: int =
         u, v = box[0] + (jj + 0.5) / k, box[1] + (ii + 0.5) / k
         cw, ch = cam["size"]
         Xc = np.c_[(u - cw / 2) / cam["f"] * z, (v - ch / 2) / cam["f"] * z, z]
-        Rc = humanfit._cam_rot(cam)
+        Rc = humanfit_views._cam_rot(cam)
         X = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
         Xs = (X - np.asarray(src_cam["centre"], float)) @ Rs.T + np.asarray(src_cam["t"], float)
         us, vs = src_cam["f"] * Xs[:, 0] / Xs[:, 2] + w / 2, src_cam["f"] * Xs[:, 1] / Xs[:, 2] + h / 2

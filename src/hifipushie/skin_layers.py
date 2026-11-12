@@ -770,7 +770,7 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
 def stack_on_head(spec: dict, log: list) -> dict:
     """(Garrett s9 / Tess rc2, coordinator: "the export's eyes read smaller and hooded, a dark band over the upper lids")
     The stack's GEOMETRY-MEASURED layers (occlusion, occlusion_lid, crease: the blink map and the lid shading) belong to
-    the head they were baked on (stack.head). When the export's head differs (asset.approved_head swapped in the approved
+    the head they were baked on (stack.head). When the export's head differs (asset_gates.approved_head swapped in the approved
     head; the stack was measured on a lid_fold head), they are re-baked on the export's head: occlusion / occlusion_lid by
     occlusion(), the crease by crease_map() (a head without lid_fold has no crease line: dropped). The colour layers stay."""
     import tempfile

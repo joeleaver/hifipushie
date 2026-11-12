@@ -11,6 +11,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from hifipushie import retopo
+from hifipushie import retopo_warp
 from hifipushie.spec import expand_mirror
 
 
@@ -54,7 +55,7 @@ def _posed(Jt):
 
 def _warp(tpl, J):
     spec = expand_mirror({"symmetry": True, "joints": {n: {"pos": [float(x) for x in p]} for n, p in J.items()}})
-    W, segs, dom, _, _ = retopo._skeleton_warp(tpl["P"], tpl["J"], spec, [], girth={})
+    W, segs, dom, _, _ = retopo_warp._skeleton_warp(tpl["P"], tpl["J"], spec, [], girth={})
     return np.asarray(W)
 
 
@@ -92,7 +93,7 @@ def test_rest_and_rigid():
         R, t = _rot([0.2, 0.1, 1.0], 35), np.array([0.3, -0.2, 0.05])
         Jr = {n: p @ R.T + t for n, p in Jt.items()}  # not mirror-symmetric any more: both sides given
         spec = {"joints": {n: {"pos": [float(x) for x in p]} for n, p in Jr.items()}}
-        W = np.asarray(retopo._skeleton_warp(P, Jt, spec, [], girth={})[0])
+        W = np.asarray(retopo_warp._skeleton_warp(P, Jt, spec, [], girth={})[0])
         err = np.linalg.norm(W - (P @ R.T + t), axis=1)
         print(f"  {tpl['name']}: rigid skeleton -> body off by max {err.max() * 1000:.3f} mm")
         assert err.max() < 5e-4, (tpl["name"], err.max())
@@ -143,7 +144,7 @@ def test_unrelated_bones():
         _turn(J, arm, "shoulder.R", _rot([0, 1, 0], 25))
         _turn(J, ["knee.R", "ankle.R", "toe.R"], "hip.R", _rot([0, 1, 0], 12))
         spec = {"joints": {n: {"pos": [float(x) for x in p]} for n, p in J.items()}}
-        W = np.asarray(retopo._skeleton_warp(P, Jt, spec, [], girth={})[0])
+        W = np.asarray(retopo_warp._skeleton_warp(P, Jt, spec, [], girth={})[0])
         segs = retopo._segments(Jt)
         D = np.stack([retopo._seg_dist(P, Jt[x], Jt[y]) for x, y in segs], 1)
         dom, Ds = D.argmin(1), np.sort(D, 1)

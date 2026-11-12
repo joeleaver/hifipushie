@@ -1,5 +1,5 @@
 """Fitting the one human mesh's face to pictures as a MAP estimate (the reference-modelling study's result;
-CLAUDE.md "Reference modelling study"). What humanfit.fit_views got wrong, measured on heads whose 3D shape is known:
+CLAUDE.md "Reference modelling study"). What humanfit_views.fit_views got wrong, measured on heads whose 3D shape is known:
 
 - POINT DEFINITIONS. MediaPipe's points read as GNM's 68 landmarks (the MP68 table) are other places on a face: 9-12
   mm off on the jaw contour, 8 mm on the brows, 3 mm at nose and mouth. Here each of the detector's 478 points is used
@@ -110,7 +110,7 @@ def lens_prior(v: dict) -> tuple:
 
 def _fit_cam(cam, X, uv, wt):
     from scipy.optimize import least_squares
-    from . import humanfit
+    from . import humanfit_views
     f0, fsd = cam.get("f_prior") or (LENS[0] / 36.0 * cam["size"][0], LENS[1])
     if len(X) < THIN:   # a handful of clicked points (a profile: all near one plane) cannot tell lens from distance
         fsd = min(fsd, THIN_LENS)
@@ -121,7 +121,7 @@ def _fit_cam(cam, X, uv, wt):
 
     def res(p):
         c = {**cam, "r": p[:3], "t": p[3:6], "f": float(p[6])}
-        return np.r_[((humanfit.project(c, X) - uv) * wt[:, None]).ravel(), np.log(max(p[6], 1.0) / f0) / fsd,
+        return np.r_[((humanfit_views.project(c, X) - uv) * wt[:, None]).ravel(), np.log(max(p[6], 1.0) / f0) / fsd,
                      [] if psd is None else [p[0] / psd]]
     sol = least_squares(res, np.r_[cam["r"], cam["t"], cam["f"]], x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500.0], loss="soft_l1", f_scale=3.0)
     return {**cam, "r": [float(v) for v in sol.x[:3]], "t": [float(v) for v in sol.x[3:6]], "f": float(sol.x[6])}
@@ -130,7 +130,8 @@ def _fit_cam(cam, X, uv, wt):
 def _evidence(st, views) -> list:
     """Per view: world points X (n, 3) of the current head, their identity basis XB (K, n, 3), pixels, sigma (mm)."""
     from . import base_identity
-    from . import headfit, humanfit, onemesh
+    from . import headfit, onemesh
+    from . import humanfit_solve, humanfit_views
     g = headfit._gnm()
     gd = base_identity._gnm_data()
     tpl, c = st["tpl"], st["head"]["carry"]
@@ -141,7 +142,7 @@ def _evidence(st, views) -> list:
     of[gid[gid >= 0]] = np.flatnonzero(gid >= 0)
     IB = np.asarray(gd["vertex_identity_basis"])
     jm = g["JB"].mean(1)
-    LB = humanfit._lm_basis(st)
+    LB = humanfit_solve._lm_basis(st)
     tab = table()
     out = []
     for v in views:
@@ -164,7 +165,7 @@ def _evidence(st, views) -> list:
         elif lm68:
             clicks = {**lm68, **clicks}   # no image to detect on: the given 68, at their honest sigma
         if clicks:
-            ids = np.array([humanfit.point_index(n) for n in clicks])
+            ids = np.array([humanfit_views.point_index(n) for n in clicks])
             X.append(st["L"][ids])
             XB.append(LB[:, ids])
             uv.append(np.array([clicks[n] for n in clicks], float))
@@ -226,7 +227,7 @@ def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8,
 def _resolve(st, views: list) -> list:
     """Turned views: which side shows is taken from the picture, not from the hint's sign (hints in stored references
     carry either sign): the table's class and starting yaw whose camera-only fit on the current head is the better."""
-    from . import humanfit
+    from . import humanfit_views
     out = []
     for v in views:
         yaw = float(v.get("yaw", 0.0))
@@ -245,7 +246,7 @@ def _resolve(st, views: list) -> list:
             cam = {"r": [0.0, 0.0, 0.0], "t": [(uc[0] - w_ / 2) / f0 * z0, (uc[1] - h_ / 2) / f0 * z0, z0], "f": f0, "size": [w_, h_],
                    "centre": st["L"][:68].mean(0).tolist(), "yaw": cand["yaw"], "f_prior": [f0, fsd]}
             cam = _fit_cam(cam, e["X"], e["uv"], (z0 / f0 * 1000) / e["sig"])
-            r = float(np.sqrt((((humanfit.project(cam, e["X"]) - e["uv"]) * (cam["t"][2] / cam["f"] * 1000 / e["sig"])[:, None]) ** 2).mean()))
+            r = float(np.sqrt((((humanfit_views.project(cam, e["X"]) - e["uv"]) * (cam["t"][2] / cam["f"] * 1000 / e["sig"])[:, None]) ** 2).mean()))
             if best is None or r < best[0]:
                 best = (r, cand)
         out.append(best[1])
@@ -253,9 +254,10 @@ def _resolve(st, views: list) -> list:
 
 
 def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip, prior_mean=None) -> tuple:
-    """(new base, report). views as humanfit.fit_views' ({"image", "size", "yaw", "points": clicks}); read = a
+    """(new base, report). views as humanfit_views.fit_views' ({"image", "size", "yaw", "points": clicks}); read = a
     character read in humanmacro's macros (sigmas). free without "identity": cameras only."""
     from . import humanfit, humanmacro
+    from . import humanfit_integrity, humanfit_solve, humanfit_views
     st0 = humanfit.state(base)
     views = _resolve(st0, views)
     c0 = humanfit.identity(base)
@@ -287,7 +289,7 @@ def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip, prior_m
                 cam = cams[vi]
                 mm0 = cam["t"][2] / cam["f"] * 1000
                 cam = cams[vi] = _fit_cam(cam, X, e["uv"], mm0 / e["sig"])
-                Rc = humanfit._cam_rot(cam)
+                Rc = humanfit_views._cam_rot(cam)
                 Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
                 z = Xc[:, 2]
                 J = np.zeros((len(X), 2, 3))
@@ -296,7 +298,7 @@ def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip, prior_m
                 J[:, 1, 2] = -cam["f"] * Xc[:, 1] / z ** 2
                 J = J @ Rc
                 wt = (z / cam["f"] * 1000) / e["sig"]
-                r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
+                r = (e["uv"] - humanfit_views.project(cam, X)) * wt[:, None]
                 a = np.linalg.norm(r, axis=1)
                 hw = np.where(a > 2.5, np.sqrt(2.5 / np.maximum(a, 1e-9)), 1.0)   # Huber at 2.5 sigma
                 if skip and vi in skip:   # a camera only: this picture says nothing about the identity
@@ -313,19 +315,19 @@ def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip, prior_m
                 b += Ar.T @ yr
             c = np.linalg.solve(H, b)
         if use_id:
-            cur = humanfit._with_identity(base, c)
+            cur = humanfit_solve._with_identity(base, c)
     st1 = humanfit.state(cur) if use_id else st0
     per = []
     for cam, e, v in zip(cams, _evidence(st1, views), views):
-        d = np.linalg.norm(humanfit.project(cam, e["X"]) - e["uv"], axis=1)
-        mm = d * ((e["X"] - ctr) @ humanfit._cam_rot(cam).T + cam["t"])[:, 2] / cam["f"] * 1000
+        d = np.linalg.norm(humanfit_views.project(cam, e["X"]) - e["uv"], axis=1)
+        mm = d * ((e["X"] - ctr) @ humanfit_views._cam_rot(cam).T + cam["t"])[:, 2] / cam["f"] * 1000
         per.append({"points": len(d), "rms_px": round(float(np.sqrt((d ** 2).mean())), 2), "rms_mm": round(float(np.sqrt((mm ** 2).mean())), 2),
                     "worst": [], "focal": round(cam["f"], 1), "lens_mm": round(cam["f"] / cam["size"][0] * 36.0, 0), "evidence": e["src"],
                     "ignored_lm68": e["ignored_lm68"]})
     rep = {"views": per, "cameras": cams, "plausibility": humanfit.plausibility(cur), "method": "map",
-           "side_effects": humanfit.side_effects(st0, st1, set(humanfit.FACE)), "integrity": humanfit.integrity(cur, st1, st0)}
+           "side_effects": humanfit_integrity.side_effects(st0, st1, set(humanfit.FACE)), "integrity": humanfit_integrity.integrity(cur, st1, st0)}
     if read:
         z = humanmacro.read(c)
         rep["read"] = {k: {"asked": (v if not isinstance(v, (list, tuple)) else v[0]), "got": round(z[k], 2)} for k, v in read.items()}
     rep["macros"] = humanmacro.text(humanmacro.read(c), top=10) if use_id else ""
-    return humanfit._guarded(base, cur, rep, force)
+    return humanfit_integrity._guarded(base, cur, rep, force)

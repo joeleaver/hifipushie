@@ -7,6 +7,7 @@ import sys
 import numpy as np
 
 from hifipushie import rig
+from hifipushie import rig_bend, rig_model, rig_twist
 
 P = rig.PREFIX
 HIPS, HIP, KNEE, ANKLE = (np.array(p) for p in ([0, 0, 0.24], [0.1, 0, 0.17], [0.1, 0, 0.115], [0.1, 0, 0.05]))
@@ -32,7 +33,7 @@ def stub():
     V = np.r_[body, leg]
     # the distance blend's leak: thigh weight by distance to the thigh's segment, falling over 3 cm (a person's limb
     # radius x FALLOFF), so it reaches far up a body this much fatter than the limb
-    d_leg = rig._seg_dist(V, HIP, KNEE) - 0.06
+    d_leg = rig_model._seg_dist(V, HIP, KNEE) - 0.06
     d_body = np.where(np.arange(len(V)) < len(body), 0.0, 0.03)
     w = np.exp(-np.maximum(d_leg, 0) / 0.03) / (np.exp(-np.maximum(d_leg, 0) / 0.03) + np.exp(-d_body / 0.03))
     shin = np.clip((KNEE[2] - V[:, 2]) / 0.02 + 0.5, 0, 1) * w
@@ -49,21 +50,21 @@ def limb(J, W, cols):
 
 def test_girth_and_stub_frames():
     bones, V, J, W, nb = stub()
-    g = rig.limb_girth(bones, V, J, W)
+    g = rig_bend.limb_girth(bones, V, J, W)
     assert abs(g[1] - 0.06) < 0.01, g  # the thigh's own skin, not the belly the leak reached
-    fr = {f["joint"]: f for f in rig.arc_frames(bones, g)}
+    fr = {f["joint"]: f for f in rig_bend.arc_frames(bones, g)}
     assert fr["UpLeg"]["stub"] and not fr["Leg"]["stub"]  # a stub's knee stays an ordinary hinge
-    plain = {f["joint"]: f for f in rig.arc_frames(bones)}
+    plain = {f["joint"]: f for f in rig_bend.arc_frames(bones)}
     assert fr["UpLeg"]["outer"] > 5 * plain["UpLeg"]["outer"]  # sized by its girth, not its 7 cm length
 
 
 def test_body_skin_is_the_hips():
     bones, V, J, W, nb = stub()
-    J2, W2 = rig._arc_bend(bones, V, J, W)
+    J2, W2 = rig_bend._arc_bend(bones, V, J, W)
     legs = [1, 2, 4, 5]
     before, after = limb(J, W, legs), limb(J2, W2, legs)
     rho = np.linalg.norm((V - HIP)[:, :2], axis=1)
-    g = rig.limb_girth(bones, V, J, W)[1]
+    g = rig_bend.limb_girth(bones, V, J, W)[1]
     far = (np.arange(len(V)) < nb) & (rho > rig.ARC_BODY[1] * g + 0.01) & (V[:, 2] < 0.3)
     assert before[far].max() > 0.02  # the leak was there
     assert after[far].max() < 1e-6, after[far].max()
@@ -76,15 +77,15 @@ def test_a_persons_leg_is_untouched():
     sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
     from test_rig_bend import leg
     bones, V, F, J, W = leg()
-    J1, W1 = rig._arc_bend(bones, V, J, W)
-    fr = rig.arc_frames(bones, rig.limb_girth(bones, V, J, W))
+    J1, W1 = rig_bend._arc_bend(bones, V, J, W)
+    fr = rig_bend.arc_frames(bones, rig_bend.limb_girth(bones, V, J, W))
     assert not any(f["stub"] for f in fr)
-    saved = rig.limb_girth
-    rig.limb_girth = lambda *a: {}
+    saved = rig_bend.limb_girth
+    rig_bend.limb_girth = lambda *a: {}
     try:
-        J0, W0 = rig._arc_bend(bones, V, J, W)
+        J0, W0 = rig_bend._arc_bend(bones, V, J, W)
     finally:
-        rig.limb_girth = saved
+        rig_bend.limb_girth = saved
     assert np.array_equal(J0, J1) and np.array_equal(W0, W1)
 
 
@@ -93,8 +94,8 @@ def test_stub_seat_corrective():
     off the thigh: the belly in front stays put, the seat behind isn't carried below the turned thigh's underside."""
     from hifipushie import correctives as cm
     bones, V, J, W, nb = stub()
-    J2, W2 = rig._arc_bend(bones, V, J, W)
-    g = rig.limb_girth(bones, V, J, W)
+    J2, W2 = rig_bend._arc_bend(bones, V, J, W)
+    g = rig_bend.limb_girth(bones, V, J, W)
     ks = cm.keys(bones, girth=g)
     up = [k for k in ks if k["motion"] == "UpLeg_flex"]
     assert [k["name"] for k in up] == ["corr_LeftUpLeg_flex90"] and up[0]["frame"]["stub"]
@@ -103,8 +104,8 @@ def test_stub_seat_corrective():
     D = cm.solve(bones, V, tri, J2, W2, up)["corr_LeftUpLeg_flex90"]
     assert np.isfinite(D).all() and np.abs(D).max() > 1e-3
     f = up[0]["frame"]
-    turns = rig.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"]) for k in up})
-    P0, P1 = rig.pose(bones, V, J2, W2, turns), rig.pose(bones, V + D, J2, W2, turns)
+    turns = rig_twist.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"]) for k in up})
+    P0, P1 = rig_model.pose(bones, V, J2, W2, turns), rig_model.pose(bones, V + D, J2, W2, turns)
     d = V - f["pivot"]
     front = (np.arange(len(V)) < nb) & (d @ f["o"] < -1.5 * f["stub"])
     assert np.linalg.norm(P1 - V, axis=1)[front].max() <= np.linalg.norm(P0 - V, axis=1)[front].max() + 1e-9
@@ -120,7 +121,7 @@ def test_a_persons_keys_are_unchanged():
     from test_rig_bend import leg
     from hifipushie import correctives as cm
     bones, V, F, J, W = leg()
-    a, b = cm.keys(bones), cm.keys(bones, girth=rig.limb_girth(bones, V, J, W))
+    a, b = cm.keys(bones), cm.keys(bones, girth=rig_bend.limb_girth(bones, V, J, W))
     assert [k["name"] for k in a] == [k["name"] for k in b]
     assert not any(k["motion"] == "UpLeg_flex" for k in b)
     for x, y in zip(a, b):

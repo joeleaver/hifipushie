@@ -172,7 +172,7 @@ class _Nodes:
             else:
                 if name not in self.packing:
                     raise KeyError(f"measured input {name} isn't packed for this part (showing a pre-composited layer "
-                                   f"whose mask has per-vertex entries isn't supported: evaluate it with paint.layer_mask)")
+                                   f"whose mask has per-vertex entries isn't supported: evaluate it with paint_apply.layer_mask)")
                 pk, ch = self.packing[name]
                 if ch == 3:  # a pack is a FLOAT_COLOR: its fourth scalar is the attribute's alpha
                     self.attr(pk, True)
@@ -194,7 +194,7 @@ class _Nodes:
         return n.outputs[0]
 
     def stretch(self, q, st):
-        """paint._stretch: squashed along a direction, or along the vertex's element (then offset by its seed)."""
+        """paint_patterns._stretch: squashed along a direction, or along the vertex's element (then offset by its seed)."""
         if st[0] == "grain":
             _, f, seed = st
             g = self.vmath("NORMALIZE", self.attr("grain", True))  # its length is the end-grain weight
@@ -345,7 +345,7 @@ class _Nodes:
         return out
 
     def tile(self, e):
-        """paint.tile_mask: the image on the three axis planes, weighted by |normal|^4; a second, larger copy mixed
+        """paint_patterns.tile_mask: the image on the three axis planes, weighted by |normal|^4; a second, larger copy mixed
         in by a patchy noise."""
         p = self.attr("wpos", True)
         sep = self.node("ShaderNodeSeparateXYZ")
@@ -511,7 +511,7 @@ class _Nodes:
         return im
 
     def decal(self, e, fr, uv_attrs=None):
-        """images.project + sample as nodes: the decal's u, v from the world position (per pixel; a surface decal's
+        """images_project.project + sample as nodes: the decal's u, v from the world position (per pixel; a surface decal's
         from its measured per-vertex attributes), the image clipped outside, times the depth window and the facing
         ramp. Returns (mask, linear colour)."""
         wrap = e.get("wrap", "planar")
@@ -519,9 +519,9 @@ class _Nodes:
         cut = None
         if wrap in ("surface", "uv"):  # measured coordinates (geodesic, or the model's atlas); the weight holds depth, facing and reach
             u, v, wgt = (self.attr(a) for a in uv_attrs[:3])
-            if len(uv_attrs) == 6:  # the atlas' second coordinate set across its cut and side B's share (images.project both=True)
+            if len(uv_attrs) == 6:  # the atlas' second coordinate set across its cut and side B's share (images_project.project both=True)
                 cut = [self.attr(a) for a in uv_attrs[3:]]
-        elif wrap in ("cylinder", "sphere"):  # images.wrap_coords
+        elif wrap in ("cylinder", "sphere"):  # images_project.wrap_coords
             q = self.vmath("SUBTRACT", self.attr("wpos", True), fr["o"])
             t = self.vmath("DOT_PRODUCT", q, fr["k"])
             x = self.vmath("DOT_PRODUCT", q, fr["dir"])
@@ -617,7 +617,7 @@ class _Nodes:
         return self.math("MULTIPLY", val, wgt), colour
 
     def tiles(self, u, w, e):
-        """paint._tiles on one plane: running bond, rows shifted by offset (or at random), joints gap wide."""
+        """paint_patterns._tiles on one plane: running bond, rows shifted by offset (or at random), joints gap wide."""
         L, H = e["size"]
         row = self.math("FLOOR", self.math("DIVIDE", w, H))
         if e["offset"] == "random":
@@ -721,13 +721,13 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
     col.default_value = (*_lin(base["color"]), 1.0)
     ch = {"roughness": float(base["roughness"]), "metallic": float(base["metallic"]),
           "specular": float(base["specular"])}
-    if pre:  # the base as composited per vertex from the pre layers (paint.precomposite): linear rgb, roughness, specular
+    if pre:  # the base as composited per vertex from the pre layers (paint_apply.precomposite): linear rgb, roughness, specular
         cmb = N.node("ShaderNodeCombineColor")
         for k in range(3):
             N._in(cmb.inputs[k], N.attr(pre[k]))
         col = cmb.outputs[0]
         ch["roughness"], ch["specular"] = N.attr(pre[3]), N.attr(pre[4])
-    height = None  # painted relief (paint.bump): the layers' height x mask, summed (m)
+    height = None  # painted relief (paint_apply.bump): the layers' height x mask, summed (m)
     blink = None   # a switch on the blink-faded layers (crease line, lid occlusion)
     detail = None  # a switch on the tiling micro-detail layers: the export's bakes turn them off (they ship as tiling maps)
     for i, ly in enumerate(layers):
@@ -1022,7 +1022,7 @@ def _pull_painted(folder):
 
 
 def _decals(decals):
-    """Every image decal as a wire gizmo (collection "decals", never rendered or baked): images.gizmo's outline at
+    """Every image decal as a wire gizmo (collection "decals", never rendered or baked): images_gizmo.gizmo's outline at
     its matrix, which is stamped as "hp_set" so a pull reports only what a person moved, turned or scaled."""
     coll = _coll("decals")
     want = {d["path"]: d for d in decals}
@@ -1598,7 +1598,7 @@ def bake_maps(job):
         WHAT = WHAT + ("color_blink",)   # colour pass WITH them: their own multiplier map (the engine fades it by 1 - eyeBlink)
     if job.get("check_only"):  # (2026-10-18) compile each part's material in every bake pass (an 8 x 8 frame, 1 sample)
         # and stop: Cycles prints "out of SVM stack space" for one too deep, which scene._blender turns into an error naming
-        # it, in seconds instead of after a whole bake. asset.scene_maps then bakes with OSL (job "osl").
+        # it, in seconds instead of after a whole bake. asset_scene.scene_maps then bakes with OSL (job "osl").
         scene.render.resolution_x = scene.render.resolution_y = 8
         scene.cycles.samples = 1
         if scene.camera is None:
@@ -1620,7 +1620,7 @@ def bake_maps(job):
     # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
     # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
     # them (a box filter). No margin: the texels past each island's edge are filled across its seam by
-    # asset._across_seams (Blender's own "Adjacent Faces" margin left a dark rim round the islands: marks like
+    # asset_raster._across_seams (Blender's own "Adjacent Faces" margin left a dark rim round the islands: marks like
     # dents along a ball's chart borders).
     ss = {ai: max(1, min(int(job.get("supersample", 1)), int(job.get("max_px", 8192)) // size))
           for ai, size in job["atlases"].items()}
@@ -1652,7 +1652,7 @@ def bake_maps(job):
         return out
     lows ={pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
     cages = {}
-    for pt in job["parts"]:  # (r51) a per-vertex cage (asset.cage_verts), same topology as the low poly
+    for pt in job["parts"]:  # (r51) a per-vertex cage (asset_scene.cage_verts), same topology as the low poly
         z_ = np.load(pt["low"])
         if "cage" in z_.files:
             lo_ = lows[pt["key"]]

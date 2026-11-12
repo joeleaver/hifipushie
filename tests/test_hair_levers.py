@@ -4,16 +4,17 @@ import numpy as np
 import pytest
 
 from hifipushie import hair_cards as hc
+from hifipushie import hair_cards_budget
 from hifipushie import hair_cards_job
 
 
 def test_lever_matched_raises_on_zero():
     hc.LEVER_MATCHES.clear()
-    assert hc.lever_matched("x", 3, 10) == 3
-    with pytest.raises(hc.LeverMatchedNothing):
-        hc.lever_matched("x", 0, 10)
+    assert hair_cards_budget.lever_matched("x", 3, 10) == 3
+    with pytest.raises(hair_cards_budget.LeverMatchedNothing):
+        hair_cards_budget.lever_matched("x", 0, 10)
     assert hc.LEVER_MATCHES["x"] == [(3, 10), (0, 10)]
-    hc.lever_matched("x", 0, 0)  # an empty population (e.g. a short cut has no tail) is not a dead filter
+    hair_cards_budget.lever_matched("x", 0, 0)  # an empty population (e.g. a short cut has no tail) is not a dead filter
 
 
 def test_stamp_cls_gives_far_tier_cards_their_class(monkeypatch):
@@ -25,10 +26,10 @@ def test_stamp_cls_gives_far_tier_cards_their_class(monkeypatch):
     # the bug: unstamped cards never match a class filter
     monkeypatch.setattr(hc, "BEND_ROWS", 30.0)
     monkeypatch.setattr(hc, "BEND_CLS", ("tail",))
-    assert not any(hc.bend_selected(c) for c in cards)
+    assert not any(hair_cards_budget.bend_selected(c) for c in cards)
     hair_cards_job.stamp_cls(cards, locks)
     assert [c["cls"] for c in cards] == ["tail", "head", "face", "fly"]
-    assert [hc.bend_selected(c) for c in cards] == [True, False, False, False]
+    assert [hair_cards_budget.bend_selected(c) for c in cards] == [True, False, False, False]
 
 
 def test_stamp_cls_keeps_an_existing_class():

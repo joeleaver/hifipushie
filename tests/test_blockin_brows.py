@@ -73,7 +73,8 @@ def test_decal_is_the_skins_own_placement():
     import tempfile
     from pathlib import Path
     from test_skin import head_spec
-    from hifipushie import images, paint, skin_look
+    from hifipushie import paint, skin_look
+    from hifipushie import images_frame, images_project
     with tempfile.TemporaryDirectory() as tmp:
         home, store.HOME = store.HOME, Path(tmp)
         try:
@@ -81,9 +82,9 @@ def test_decal_is_the_skins_own_placement():
                 spec = head_spec(hair={"brows": o or 1.0})
                 ly = paint.layers(spec)["skin:brow_hairs"]
                 img = next(e["image"] for e in [ly] + list(ly.get("mask") or []) if isinstance(e, dict) and "image" in e)
-                fr = images.frame(spec, img)
+                fr = images_frame.frame(spec, img)
                 J = skin_look._J(spec)
-                for side, f in ((1, fr), (-1, images.mirrored(fr))):
+                for side, f in ((1, fr), (-1, images_project.mirrored(fr))):
                     c, right, up, w, h = bb.decal(J, o, side)
                     assert np.allclose(c, f["c"], atol=1e-4), (o, side, c, f["c"])
                     assert np.allclose(right, f["right"], atol=2e-3) and np.allclose(up, f["up"], atol=2e-3), (o, side)

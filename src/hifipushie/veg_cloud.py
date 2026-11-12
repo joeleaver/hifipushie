@@ -4,7 +4,7 @@ What artists do (sources in vegetation_guide.md "Styles"): Ghibli / Genshin / Bo
 clump with quads scattered over it in a few depth layers, each quad a painted cluster of leaf dabs with alpha; the
 quads' normals are replaced by the proxy's (out of the clump's middle), so a clump shades as one soft volume and the
 cards only cut its edge into leaves; colour is a painted gradient per clump (dark base, mid, sunlit top).
-Here the proxy is the style's masses (veg_style.masses: the same clusters the blobby crown is made of)."""
+Here the proxy is the style's masses (veg_style_crown.masses: the same clusters the blobby crown is made of)."""
 
 from __future__ import annotations
 

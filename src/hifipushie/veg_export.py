@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from . import veg_bark, veg_bough, veg_cloud, veg_ground, veg_impostor, veg_leaf, veg_mesh, veg_style
+from . import veg_style_dress, veg_style_small
 from . import vegetation_grow, vegetation_kernels, vegetation_tree
 
 
@@ -848,9 +849,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             share, cap_ = LODS[li]
             cap_i = cap_ if n_lod > 1 or cap is None else cap
             if st:
-                D = veg_style.dress(t, st, int(triangles * share), se0 if has_leaves else "summer")
+                D = veg_style_dress.dress(t, st, int(triangles * share), se0 if has_leaves else "summer")
                 if has_leaves and D["crown"] is None:  # (the file's default season is a bare one: the masses are still in it, hidden)
-                    D = veg_style.dress(t, st, int(triangles * share), "summer")
+                    D = veg_style_dress.dress(t, st, int(triangles * share), "summer")
                 pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
                 W = D["wood"]
                 kids = []
@@ -889,7 +890,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                     if M_FW is not None:  # the blades lying down (winter, snow): their own primitive
                         if "_winter_tree" not in t:
                             t["_winter_tree"] = vegetation_grow.grow({**t["spec"], "season": "winter"})
-                        Dw = veg_style.dress(t["_winter_tree"], st, int(triangles * share), "winter")
+                        Dw = veg_style_dress.dress(t["_winter_tree"], st, int(triangles * share), "winter")
                         Cw = Dw["crown"]
                         if Cw is not None:
                             fp.append(with_variants(prim(Cw["V"], Cw["F"], Cw["uv"], M_FW, Cw["wind"], Cw["col"], Cw["N"], uv3=Cw.get("grad")), var_fw, M_FW))
@@ -1108,7 +1109,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                                             "wind": WIND_RECIPE, "variants": variants, "contract": CONTRACT,
                                             "style": None if not st else {
                                                 "name": st["name"], "sheet": {k_: v_ for k_, v_ in st.items() if k_ != "about"},
-                                                "simplified": veg_style.lines(per[0]["lods"][0]["style"]) if per[0]["lods"] and per[0]["lods"][0].get("style") else [],
+                                                "simplified": veg_style_small.lines(per[0]["lods"][0]["style"]) if per[0]["lods"] and per[0]["lods"][0].get("style") else [],
                                                 "kind": "clouds" if dabs is not None else "masses",
                                                 "foliage": ("leaf clouds: alpha-MASK cards, double sided; albedo = the dab atlas's grey tone x the "
                                                             "`foliage` material's baseColorFactor (one per season variant) x COLOR_0 (the clump's "

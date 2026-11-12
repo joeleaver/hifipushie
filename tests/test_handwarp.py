@@ -9,6 +9,7 @@ import numpy as np
 from pathlib import Path
 
 from hifipushie import retopo
+from hifipushie import retopo_warp, retopo_wrap
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -29,7 +30,7 @@ def _hand_names(J):
 def _warp(J):
     tpl = retopo.load_template()
     spec = {"joints": {n: {"pos": list(map(float, p))} for n, p in J.items()}}
-    W, segs, dom, _, _ = retopo._skeleton_warp(tpl["P"], tpl["J"], spec, [], girth={})
+    W, segs, dom, _, _ = retopo_warp._skeleton_warp(tpl["P"], tpl["J"], spec, [], girth={})
     return tpl, np.asarray(W), segs, dom
 
 
@@ -161,12 +162,12 @@ def test_curled_fingers():
 
 
 def test_export_topology_is_the_bases_own():
-    """A base body exports its OWN quads (retopo.base_quads), on the field, with clean hands: the stylised
+    """A base body exports its OWN quads (retopo_wrap.base_quads), on the field, with clean hands: the stylised
     template's digit tubes carried onto MakeHuman's fingers tore both of the golfer's hands at the webs (88 / 81 / 71
     folded or turned faces by finger joints in the shipped GLB). Skipped without the asset packs."""
     import copy
     import json
-    from hifipushie import asset
+    from hifipushie import asset_quality
     from hifipushie.spec import compile_prims
     try:
         spec = json.loads((ROOT / "examples" / "disc_golfer_mh.json").read_text())
@@ -174,15 +175,15 @@ def test_export_topology_is_the_bases_own():
         b = {k: v for k, v in copy.deepcopy(spec["base"]).items() if k not in ("head", "style", "eyes", "look_at")}
         spec = {"joints": {k: v for k, v in spec.get("joints", {}).items() if "pos" in v}, "base": b}
         log = []
-        r = retopo.base_quads(spec, log)
+        r = retopo_wrap.base_quads(spec, log)
     except Exception as e:  # the packs aren't here
         print("  (skipped: %s)" % str(e).splitlines()[0][:80])
         return
     assert r is not None and (r["sizes"] == 4).mean() > 0.99, log
     T = np.asarray(retopo.tris(r["loops"], r["sizes"]))
     prims = [p for p in compile_prims(spec) if p.part == "body"]
-    q = asset.mesh_quality(np.asarray(r["verts"], float), T, prims)
-    where = asset.defect_regions(q["spots"], spec)
+    q = asset_quality.mesh_quality(np.asarray(r["verts"], float), T, prims)
+    where = asset_quality.defect_regions(q["spots"], spec)
     hands = [(j, n) for j, n in where if j.startswith(("finger", "thumb", "wrist", "hand"))]
     assert not hands, hands
     assert q["err_mm_p99"] < 2.5 and q["non_manifold_edges"] == 0, q

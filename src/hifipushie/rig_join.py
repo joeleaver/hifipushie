@@ -10,14 +10,14 @@ across that seam (half each side). Away from the band a vertex keeps only its ow
 
 Only for a limb laid on as a layer above the body (its shapes in a later layer: the artist's "this hangs beside,
 joined where it touches"); a limb sculpted in the body's own layer keeps its blend. Runs after every other weight
-pass (rig.rig_weights). Limbs: JOIN_ROOTS (arms). Off for a base body (a
+pass (rig_skin.rig_weights). Limbs: JOIN_ROOTS (arms). Off for a base body (a
 person's weights come from the template) and with spec["rig"]["join"] = False.
 """
 import numpy as np
 
 from . import sdf
 
-JOIN_ROOTS = ("Arm",)  # a thigh blended into the hips is the stub repaint's (rig._arc_bend, leg_blend): left to it
+JOIN_ROOTS = ("Arm",)  # a thigh blended into the hips is the stub repaint's (rig_bend._arc_bend, leg_blend): left to it
 JOIN_BAND = 2.5  # x the limb's girth: the band's full width along the surface, across the seam (swept on Puddles, arms 80)
 JOIN_SPLIT = 0.2  # the limb's share on the seam: low, so the body's side stays put and the limb's skin takes the stretch
 JOIN_SPLIT_L = 0.9  # the part of the band on the limb's side
@@ -73,7 +73,7 @@ def reblend(D: np.ndarray, g: np.ndarray, cols: np.ndarray, root: int, parent: i
 
 def limb_join(spec: dict, rb: list[dict], V: np.ndarray, F, J: np.ndarray, W: np.ndarray, carry: list[dict],
               girth: dict | None = None):
-    """(J, W) with each limb's weight re-blended across its seam (module docstring). `carry`: rig._flesh_tree's
+    """(J, W) with each limb's weight re-blended across its seam (module docstring). `carry`: rig_flesh._flesh_tree's
     weight-carrying bones (their "prims" name the sculpted shapes each bone holds)."""
     from scipy.sparse import coo_matrix
     from .rig import PREFIX

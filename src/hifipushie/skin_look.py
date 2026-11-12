@@ -142,9 +142,9 @@ def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str
     key = hashlib.sha1(json.dumps([st, Path(scene.SCRIPT).read_bytes().hex()[:0]], sort_keys=True, default=str).encode()).hexdigest()[:16]
     d = store._dir(sn)
     mark = d / "skin_look.key"
-    from . import base as basemod
+    from . import base as basemod, paint as paintmod
     code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in
-                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py", "paintnodes.py",
+                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py", *(f"{m}.py" for m in paintmod.MODULES), "paintnodes.py",
                                   "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
                                   "headfit.py", "skin_look.py"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
@@ -322,11 +322,11 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
 
 def _crop_of(spec: dict, cam: dict, region: str) -> list:
     """The square picture crop [x0, y0, x1, y1] of a region through a fitted camera, on the side facing it."""
-    from . import humanfit
+    from . import humanfit_views
     from .skin import interocular
     J = _J(spec)
     io = interocular(J)
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     c0, t0 = np.asarray(cam["centre"], float), np.asarray(cam["t"], float)
     pos = c0 - Rc.T @ t0                                   # (the camera's own position: skin_read_frames.fitted_frame)
     side = region[-2:] if region[-2:] in (".L", ".R") else (".R" if pos[0] < J["lm_nose_tip"][0] else ".L")

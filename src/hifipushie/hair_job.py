@@ -200,17 +200,6 @@ def _hcap_vm():
     return hcap_.VALUE_MAP
 
 
-def tier_triangles(tier: str, role: str = "hero", own: dict | None = None) -> int:
-    from . import budgets
-    if own and tier in own:
-        return int(own[tier])
-    return budgets.triangles(role, "hair_cards", hair.CARD_TIER_LOD[tier])
-
-
-for _t in hair.CARD_TIERS:
-    hair.CARD_TIERS[_t]["triangles"] = tier_triangles(_t)
-
-
 def tier_settings(tier: str, short: bool = False, even: bool = False) -> dict:
     """A card tier's settings: CARD_TIERS, a short cut's SHORT_TIERS over them; an EVEN groom (strands.even) is cut by
     visual clumps at every tier: it has no per-lock guide strands, so clump_cards found none (c2: Garrett's main 57

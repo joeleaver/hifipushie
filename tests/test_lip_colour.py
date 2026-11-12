@@ -9,6 +9,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, humanfit, humans, onemesh, paint, skin  # noqa: E402
+from hifipushie import paint_masks
 from hifipushie import base_identity
 
 
@@ -45,7 +46,7 @@ def test_lip_layers_cover_the_vermilion():
         for lname in ("skin:lips_upper", "skin:lips_lower"):
             o = lys[lname]["mask"][0]
             stack = skin.zone(sp, o["zone"]["name"], grow=o["zone"].get("grow", 1.0))
-            cover = np.maximum(cover, paint._outline_mask(sp, lname, stack[0]["outline"], P, n))
+            cover = np.maximum(cover, paint_masks._outline_mask(sp, lname, stack[0]["outline"], P, n))
         # (the border's own vertices lie on the outline: 0.5 there by construction)
         assert (cover[sel] > 0.45).mean() > 0.85, (grp, float((cover[sel] > 0.45).mean()))
     # and the colour follows skin.lips

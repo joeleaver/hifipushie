@@ -62,7 +62,7 @@ def _tangents(V, T, UV):
 
 def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int | None = None,
                 sides: int | None = None, log: list | None = None) -> tuple[dict, dict] | None:
-    """The hair as an export part: (part dict as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
+    """The hair as an export part: (part dict as asset_parts.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
     sign; atlas set by the caller) and its maps {basecolor, orm, normal, specular: png}. Low poly = the curve locks at
     `segments` x `sides` + the underlayer decimated; maps = Cycles bakes from the full-resolution locks (Blender)."""
     from PIL import Image
@@ -118,7 +118,6 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
     themselves for engines and renderers that draw them (`<name>_groom.abc` in centimetres for Unreal's groom
     importer / Unity's hair package, `<name>_groom.usdc` with the groom_* attributes as primvars). Returns the
     report (also `<name>_hair.json`)."""
-    from . import asset, hair_cards as hc
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     spec = store.load(name) if spec is None else spec
@@ -155,7 +154,8 @@ def export_constants(h: dict):
 
 
 def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> dict:
-    from . import asset, hair_cards as hc
+    from . import asset_glb
+    from . import hair_cards_mass
     import shutil
     out_dir = Path(out_dir)
     h = hair_of(spec)
@@ -190,7 +190,7 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
         sp_ = part.pop("shadow_proxy", None)
         if sp_ is not None and len(sp_["tris"]):  # a shadow-only caster beside the GLB (shading.py hair_cards "shadows")
             spf = out_dir / f"{name}_hair_{tier}_shadow.obj"
-            hc.write_obj(spf, sp_["verts"], sp_["tris"], f"{name}_hair_shadow")
+            hair_cards_mass.write_obj(spf, sp_["verts"], sp_["tris"], f"{name}_hair_shadow")
             hc_["shadow_proxy"] = {"file": spf.name, "triangles": int(len(sp_["tris"])), "inset": sp_["inset"],
                                    "use": "cast shadows only, hidden from camera; the cards cast none"}
         hc_["aux_texture"] = list(files).index("aux")
@@ -208,7 +208,7 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
                    "anisotropyTexture": {"index": list(files).index("flow")}}
             hc_["flow_texture"] = list(files).index("flow")
         hc_["textures"] = textures
-        asset.write_glb(glb, f"{name}_hair", {"hair": part}, [("hair", files)], external=textures == "shared",
+        asset_glb.write_glb(glb, f"{name}_hair", {"hair": part}, [("hair", files)], external=textures == "shared",
                         looks={"hair": {"alpha_cutoff": hc_["alpha_cutoff"], "double_sided": not hc_.get("back_faces"),
                                          "extras": {"hifipushie_hair": hc_}}},
                         extra_ext={0: {"KHR_materials_specular": {  # (a card is a sheet standing for many round
@@ -268,13 +268,13 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
 
 def share_atlas(part: dict, files: dict, files0: dict, tol: int = 2) -> bool:
     """Put a card tier's uv onto another tier's atlas (`files0`), in place: True when every map of `files` is the
-    same picture as `files0`'s, or the same as its TOP rows (hair_cards.atlas stacks a tier's baked clump tiles UNDER
+    same picture as `files0`'s, or the same as its TOP rows (hair_cards_atlas.atlas stacks a tier's baked clump tiles UNDER
     the tiles + chart: the hero tier's atlas is 2048 x 2048 where main / npc / far, with no baked cards, are 2048 x
-    1024), its v then remapped onto those rows (hair_cards.remap_v). False: the pictures differ, the tier needs its
+    1024), its v then remapped onto those rows (hair_cards_atlas.remap_v). False: the pictures differ, the tier needs its
     own maps (its uv untouched). Round 28: asset's LOD1-3 hair indexed LOD0's atlas with uv made for a half-height
     one: a bald crown and a torn tail."""
     from PIL import Image
-    from . import hair_cards as hc
+    from . import hair_cards_atlas
     keys = [k for k in files0 if k != "specular"]
     if set(keys) != {k for k in files if k != "specular"}:
         return False
@@ -291,7 +291,7 @@ def share_atlas(part: dict, files: dict, files0: dict, tol: int = 2) -> bool:
         if (d > tol).mean() > 1e-3:  # (the normal map's last tile rows see the baked block under them: 0.005% of
             return False  # texels differ there by up to 28 levels; a different picture differs nearly everywhere)
     if rows != rows0:
-        part["uv"] = hc.remap_v({"uv": part["uv"]}, {"rows": rows, "rows_total": rows0})["uv"]
+        part["uv"] = hair_cards_atlas.remap_v({"uv": part["uv"]}, {"rows": rows, "rows_total": rows0})["uv"]
     return True
 
 
@@ -333,6 +333,7 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
     specular, aux."""
     from PIL import Image
     from . import hair_cards as hc
+    from . import hair_cards_budget, hair_cards_mass
     t = time.time()
     out_dir.mkdir(parents=True, exist_ok=True)
     h = hair_of(spec)
@@ -343,7 +344,7 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
     cap, cards = dict(np.load(cd["cap"])), dict(np.load(cd["mesh"]))
     o = np.argsort(cards["layer"][cards["tris"][:, 0]], kind="stable")  # triangles by layer: a LOD is a range
     cards["tris"] = cards["tris"][o]
-    M = hc.join(cap, cards)
+    M = hair_cards_budget.join(cap, cards)
     V, T = M["verts"].astype(np.float64), M["tris"]
     UV = M["uv"][T].reshape(-1, 2).astype(np.float64)
     _, tt, sg = _tangents(V, T, UV)
@@ -367,7 +368,7 @@ def _export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict
                      "back_faces": bool(hair.BACK_FACES),
                      "strands": hc.strands_of(spec), "budget": cd["budget"], "clearance": cd.get("clearance")}}
     if ex.get("shadow_proxy", True):  # the hair's shadow caster (opaque hull of the cards, shadow-only)
-        sp_ = hc.shadow_proxy(M["verts"], M["tris"])
+        sp_ = hair_cards_mass.shadow_proxy(M["verts"], M["tris"])
         part["shadow_proxy"] = sp_
     aux = np.asarray(Image.open(cd["aux"]).convert("RGBA"), np.float32) / 255
     files = {"basecolor": out_dir / "hair_basecolor.png", "orm": out_dir / "hair_orm.png",

@@ -1,4 +1,4 @@
-"""Strand grooms and the game cards cut from them (hair_strands.py, hair_cards.clump_cards, hair_checks.py).
+"""Strand grooms and the game cards cut from them (hair_strands.py, hair_cards_clumps.clump_cards, hair_checks.py).
 
 The incidents these reproduce (2026-10-06): a path tracer drew 30k strands at 0.08 mm as a pale haze; card tiers
 "corrupted": a dark band where layer 0 showed, baby-hair cards as brown stamps under an alpha test, the tail as a
@@ -11,6 +11,7 @@ import os
 import numpy as np
 
 from hifipushie import hair_cards as hc
+from hifipushie import hair_cards_atlas, hair_cards_budget, hair_cards_clumps, hair_cards_mass, hair_cards_mesh
 from hifipushie import hair_checks as hk
 from hifipushie import hair_strands as hs
 
@@ -26,7 +27,7 @@ def _strands(locks, per=60, subs=4, spread=0.012, wave=0.0, seed=0, n=24):
     rng = np.random.default_rng(seed)
     pts, counts, lock, sub, rand, obj = [], [], [], [], [], []
     for li, lk in enumerate(locks):
-        P, *_ = hc.spine(lk, n)
+        P, *_ = hair_cards_mesh.spine(lk, n)
         s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
         for k in range(per):
             sb = k % subs
@@ -75,8 +76,8 @@ def test_grey_share_in_the_card_atlas():
     none without a share."""
     S = {**hc.strands_of({}), "atlas": 256, "source": "drawn"}
     look = {"gap": "#201810", "lit": "#402818", "grey": "#c0c0c0", "vary": 0.0}
-    a0 = hc.atlas(S, look)
-    a1 = hc.atlas(S, {**look, "grey_share": 0.5})
+    a0 = hair_cards_atlas.atlas(S, look)
+    a1 = hair_cards_atlas.atlas(S, {**look, "grey_share": 0.5})
     m = a0["color"][..., 3] > 0.5
     b0 = a0["color"][..., 2][m]
     b1 = a1["color"][..., 2][m]
@@ -87,8 +88,8 @@ def test_grey_share_in_the_card_atlas():
 def test_join_of_nothing_is_an_empty_mesh():
     """A far tier of a short cut has no cards (no hair off the head): joining nothing gives the empty mesh back."""
     S = hc.strands_of({})
-    e = hc.mesh([], S, {}, hc.atlas({**S, "atlas": 256, "source": "drawn"}, {})["tiles"])
-    assert len(hc.join(None, e, e)["tris"]) == 0
+    e = hair_cards_mesh.mesh([], S, {}, hair_cards_atlas.atlas({**S, "atlas": 256, "source": "drawn"}, {})["tiles"])
+    assert len(hair_cards_budget.join(None, e, e)["tris"]) == 0
 
 
 def test_short_hair_is_drawn_on_the_cap():
@@ -223,8 +224,8 @@ def test_short_tiles_are_few_thick_strands():
     hundred 1-texel hairs that average to a film."""
     S = {**hc.strands_of({}), "atlas": 512}
     lk = {"lit": "#54463c", "gap": "#3a312b", "grey": "#cfc7bd"}
-    a0 = hc.atlas(S, lk, key="t0")
-    a1 = hc.atlas({**S, "short": True}, lk, key="t1")
+    a0 = hair_cards_atlas.atlas(S, lk, key="t0")
+    a1 = hair_cards_atlas.atlas({**S, "short": True}, lk, key="t1")
     t0 = next(t_ for t_ in a0["tiles"] if t_["kind"] == "medium")
     x0, x1 = int(t0["u0"] * 512), int(t0["u1"] * 512)
     cov = lambda at: float((at["color"][100:300, x0:x1, 3] > 0.5).mean())  # noqa: E731
@@ -243,8 +244,8 @@ def test_clump_cards_follow_the_strands():
     locks = _hanging(3)
     D = _strands(locks, wave=0.01)
     S = {**hc.STRANDS, "layers": 2, "card_width": 0.012, "segment": 0.01, "group": "sub"}
-    sub = hc.clump_cards(D, locks, np.zeros(3), S)
-    lock = hc.clump_cards(D, locks, np.zeros(3), {**S, "group": "lock", "layers": 1, "card_width": 0.04})
+    sub = hair_cards_clumps.clump_cards(D, locks, np.zeros(3), S)
+    lock = hair_cards_clumps.clump_cards(D, locks, np.zeros(3), {**S, "group": "lock", "layers": 1, "card_width": 0.04})
     assert len(sub) > 2 * len(lock) >= 6, (len(sub), len(lock))
     w = lambda cs: float(np.median([2 * c["hw"].max() for c in cs if c["layer"] == 0]))  # noqa: E731
     assert w(lock) > 1.5 * w(sub), (w(lock), w(sub))
@@ -259,9 +260,9 @@ def test_budget_drops_coverage_last():
     locks = _hanging(3)
     D = _strands(locks)
     S = {**hc.STRANDS, "layers": 3, "card_width": 0.012, "segment": 0.01, "group": "sub", "fly": 2}
-    cards = hc.clump_cards(D, locks, np.zeros(3), S)
-    full = hc.triangles(cards, S)
-    kept, seg, info = hc.fit_budget(cards, S, full // 3)
+    cards = hair_cards_clumps.clump_cards(D, locks, np.zeros(3), S)
+    full = hair_cards_budget.triangles(cards, S)
+    kept, seg, info = hair_cards_budget.fit_budget(cards, S, full // 3)
     assert info["triangles"] <= full // 3 and seg <= S["segment"] * 1.5 + 1e-9, info
     n0 = lambda cs: sum(c["layer"] == 0 for c in cs)  # noqa: E731
     assert n0(kept) >= 0.9 * n0(cards) or all(c["layer"] == 0 for c in kept), (n0(kept), n0(cards))
@@ -276,11 +277,11 @@ def test_tail_core_inside_the_strands():
         x, y = 0.02 * np.cos(a), 0.12 + 0.02 * np.sin(a)
         locks.append(_lock(f"tt{i}", [[x, y, 0.0], [x, y, -0.1], [x, y, -0.2], [x, y, -0.3]], core=core))
     D = _strands(locks, per=40, spread=0.006)
-    tc = hc.tail_cores(D, locks, sides=8)
+    tc = hair_cards_mass.tail_cores(D, locks, sides=8)
     assert tc is not None and len(tc["tris"]) > 100
     r = np.hypot(tc["verts"][:, 0], tc["verts"][:, 1] - 0.12)
     assert 0.008 < np.median(r) < 0.024, np.median(r)  # inside the ring of locks, not a thread and not outside
-    m = hc.core_mesh(tc, [{"kind": "dense", "u0": 0.0, "u1": 0.1}])
+    m = hair_cards_mass.core_mesh(tc, [{"kind": "dense", "u0": 0.0, "u1": 0.1}])
     assert m["uv"][:, 0].min() >= 0 and m["uv"][:, 0].max() <= 0.1 + 1e-6
 
 
@@ -378,7 +379,7 @@ def test_atlas_edges_are_padded_not_black():
     the alpha bleeds in through filtering and mips as a dark fringe round every card (Godot)."""
     S = {**hc.strands_of({}), "atlas": 512, "short": True}
     lk = {"lit": "#54463c", "gap": "#3a312b", "grey": "#cfc7bd"}
-    at = hc.atlas(S, lk, key="edges")
+    at = hair_cards_atlas.atlas(S, lk, key="edges")
     c = at["color"]
     a = c[..., 3]
     lum = c[..., :3] @ np.array([0.2126, 0.7152, 0.0722])
@@ -528,10 +529,10 @@ def test_colour_model_outside_the_material():
     # cards: the same look on a lock's cards: lighter toward the tip with sun, never over 1
     S = {**hc.strands_of({}), "soft": 0.008}
     P = [[0.0, 0.03, 0.1], [0.0, 0.06, 0.05], [0.0, 0.07, 0.0], [0.0, 0.07, -0.12]]
-    cards = hc.cards_of([_lock("x0", P, free=1.0)], np.zeros(3), S, {})
+    cards = hair_cards_mesh.cards_of([_lock("x0", P, free=1.0)], np.zeros(3), S, {})
     tiles = [{"kind": k, "u0": 0.0, "u1": 1.0} for k in sorted({c["kind"] for c in cards})]
-    m0 = hc.mesh(cards, S, flat, tiles)
-    m1 = hc.mesh(cards, S, {**flat, "sun": 1.0}, tiles)
+    m0 = hair_cards_mesh.mesh(cards, S, flat, tiles)
+    m1 = hair_cards_mesh.mesh(cards, S, {**flat, "sun": 1.0}, tiles)
     c0, c1 = m0["col"][:, 0], m1["col"][:, 0]
     assert c1.max() <= 1.0 + 1e-6 and c0.max() <= 1.0 + 1e-6
     # (stored tone / peak: the young end of a sun-lightened card is darker than its old end by up to 1 / 1.5)

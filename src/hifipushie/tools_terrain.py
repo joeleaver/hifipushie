@@ -86,24 +86,25 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
             notes.append(f"masks: {d / f'masks_v{ver}.png'}")
     if styles:
         from . import terrain_style
+        from . import terrain_style_files, terrain_style_looks
         sts = terrain_style.resolve(T.spec)
         sheets = [s["sheet"] for s in sts] + ([] if any(s["name"] == "realistic" for s in sts)
                                               else [terrain_style.sheet("realistic")])
-        refs = terrain_style.refs_of(T)
+        refs = terrain_style_files.refs_of(T)
         lays = [nm for nm in ("grass", "rock", "sand") if nm in refs]
-        p = terrain_style.swatch_sheet(sheets, refs, lays, d / f"styles_v{ver}.png")
+        p = terrain_style_looks.swatch_sheet(sheets, refs, lays, d / f"styles_v{ver}.png")
         out.append(_out(PILImage.open(p), None))
         notes.append(f"styles sheet: {p}")
-        p = terrain_style.season_sheet(sheets, refs, lays, d / f"styles_seasons_v{ver}.png")
+        p = terrain_style_looks.season_sheet(sheets, refs, lays, d / f"styles_seasons_v{ver}.png")
         out.append(_out(PILImage.open(p), None))
         notes.append(f"seasons sheet (spring, summer, autumn, winter, snow by the snow numbers): {p}")
         gl = [nm for nm in ("grass", "earth") if nm in refs]
-        p = terrain_style.ground_view(sheets, refs, d / f"styles_ground_v{ver}.png", layers=tuple(gl))
+        p = terrain_style_looks.ground_view(sheets, refs, d / f"styles_ground_v{ver}.png", layers=tuple(gl))
         out.append(_out(PILImage.open(p), None))
         notes.append(f"ground as the game shows it (flat cel light, mipmaps, anti-tiling, layer edges; eye level and "
                      f"25 m up): {p}")
         for nm in lays:
-            q = terrain_style.transition_strip(sheets, refs, nm, d / f"styles_strip_{nm}_v{ver}.png")
+            q = terrain_style_looks.transition_strip(sheets, refs, nm, d / f"styles_strip_{nm}_v{ver}.png")
             out.append(_out(PILImage.open(q), None))
             notes.append(f"transition ({nm}, {' -> '.join(st['name'] for st in sheets)}): {q}")
     vs = list(views or []) + (list(T.spec.get("views") or []) if spec_views else [])
@@ -180,11 +181,11 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
         return tt.questions_data(q)
     cfg = T.spec.get("export") or {}
     if styles_only:
-        from . import terrain_style
+        from . import terrain_style_files
         out = Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles"
-        sec = terrain_style.export_styles(T, out)
+        sec = terrain_style_files.export_styles(T, out)
         return f"styles written to {out} (styles.json + manifest.json's \"styles\" if it exists)\n" + \
-            terrain_style.summary(sec)
+            terrain_style_files.summary(sec)
     if tiles:
         from . import terrain_tile_jobs, terrain_tiles
         out = Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles"

@@ -117,7 +117,8 @@ def test_fold_map_and_layers():
 def test_folds_are_geometry():
     """skin.folds reshape the FIELD (skinfolds): a groove and a roll where asked, nothing elsewhere, nothing at amount
     0, the build key untouched without folds, the displacement off the lid margins and clear of the eyeball."""
-    from hifipushie import images, sdf
+    from hifipushie import sdf
+    from hifipushie import images_frame
     from hifipushie.spec import compile_prims, geometry
     plain = head_spec(age=30)
     assert "tissue" not in geometry(plain) and "tissue" not in geometry(head_spec(age=30, folds={"nasolabial": 0}))
@@ -146,7 +147,7 @@ def test_folds_are_geometry():
     # the keep-out: nothing moves at the lid's margin or on the lips
     keep = sf.keep_lines(J)
     assert len(keep) > 20
-    assert np.abs(sdf.field_at(body, keep) - sdf.field_at(images.prims_on(sf.without(spec), ["body"]), keep)).max() < 1e-5
+    assert np.abs(sdf.field_at(body, keep) - sdf.field_at(images_frame.prims_on(sf.without(spec), ["body"]), keep)).max() < 1e-5
     # profile: a fold with a roll is a step (steep under the roll, a long wall on the other side)
     pr = {"G": np.array([0.001]), "sg": np.array([0.001]), "O": np.array([0.001]), "Pl": np.array([0.0]), "lee": 2.2, "has_roll": True,
           "r0": 0.004, "so": 0.002, "sh": 0.002, "has_plat": False, "ph": 0.001}
@@ -339,12 +340,13 @@ def test_folds_under_expression():
     """skinfolds2: a fold's gain per face shape goes into that shape's morph target: on a blink (gain 0) the lid
     fold's vertices move back onto the fold-free skin; the other side's shape and a shape without a gain add nothing;
     skin.fold_expressions = False turns it off."""
-    from hifipushie import images, sdf
+    from hifipushie import sdf
+    from hifipushie import images_frame
     spec = head_spec(age=30, folds={"lid_fold": 1.0, "nasolabial": 1.0})
     J = skin._joints(spec)
     ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["lid_fold"])
     q = ps[("lid_fold", ".L")]
-    full, free = images.prims_on(spec, ["body"]), images.prims_on(sf.without(spec), ["body"])
+    full, free = images_frame.prims_on(spec, ["body"]), images_frame.prims_on(sf.without(spec), ["body"])
     # vertices ON the folded surface, 2 mm over the fold's line (its roll), along the path's middle third
     i = np.arange(len(q["P"]) // 3, 2 * len(q["P"]) // 3)
     X = q["P"][i] + 0.002 * q["across"][i]

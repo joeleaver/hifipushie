@@ -4,7 +4,8 @@ atlas through a known camera, and the de-lighting against a KNOWN albedo shaded 
 own light transport."""
 import numpy as np
 
-from hifipushie import assets, humanfit as hf, skin, skin_project as sp
+from hifipushie import assets, skin, skin_project as sp
+from hifipushie import humanfit_views
 from hifipushie import skin_project_atlas, skin_project_detail, skin_project_light, skin_project_lookup, skin_project_model, skin_project_sample
 from hifipushie import likeness_render
 from hifipushie.spec import SpecError
@@ -70,7 +71,7 @@ def test_sample_view():
     cam = {"r": [0.0, 0.0, 0.0], "yaw": 0.0, "centre": L[:68].mean(0).tolist(), "t": [0.0, 0.0, 1.6], "f": 2400.0, "size": [w, h]}
     photo = np.full((h, w, 3), 128, np.uint8)
     yy, xx = np.mgrid[0:h, 0:w]
-    u, v = hf.project(cam, L[30][None])[0]                    # a red dot at the nose tip
+    u, v = humanfit_views.project(cam, L[30][None])[0]                    # a red dot at the nose tip
     photo[(xx - u) ** 2 + (yy - v) ** 2 < 6 ** 2] = (255, 0, 0)
     s = skin_project_sample.sample_view(at, mesh, cam, photo)
     X = skin_project_atlas.interp(at, at["V"])
@@ -171,8 +172,9 @@ def test_cut_continuous():
     if not _have():
         return
     fr, f, P, images = _cut_case()
+    from hifipushie import images_project
     N = np.tile([0.0, 1.0, 0.0], (len(P), 1))
-    m, _ = images._one(fr, P, N)
+    m, _ = images_project._one(fr, P, N)
     ua, va, w0 = skin_project_lookup.lookup(B, P)
     w = skin_project_lookup.lookup(B, P, both=True)[5]
     ok = w > 0.95                                   # (the neck's fade from the body: not the cut's business)
@@ -196,7 +198,7 @@ def test_cut_continuous():
     pix = images.pixels(fr["path"])
 
     def at_uv(uu, vv):
-        return images.sample(pix, (uu - u0) / (u1 - u0), (vv - v0) / (v1 - v0))[:, 3]
+        return images_project.sample(pix, (uu - u0) / (u1 - u0), (vv - v0) / (v1 - v0))[:, 3]
     val = at_uv(M[:, 0], M[:, 1]) * (1 - M[:, 4]) + at_uv(M[:, 2], M[:, 3]) * M[:, 4]
     want = 0.5 * (f(P[a]) + f(P[b]))
     assert np.abs(val - want).max() < 0.05, np.abs(val - want).max()

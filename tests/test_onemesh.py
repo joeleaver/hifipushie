@@ -176,13 +176,14 @@ def test_whole_person_builds_and_measures_as_the_old_path():
 def test_weights_by_index():
     """The rig's template weights for the one mesh: rows sum to 1, the crown is Head's, a fingertip its finger's, and
     above the stitch nothing is left on the arm's side."""
-    from hifipushie import base, humans, rig, rig_template
+    from hifipushie import base, humans, rig_template
+    from hifipushie import rig_report
     from hifipushie import base_surface
     from hifipushie.spec import expand_mirror
     sp = humans.spec(age=30, sex=1.0, seed=5, skin=False, source="human")
     e = expand_mirror(sp)
     sf = base_surface.surface(e, sp["base"])
-    rb = rig.rig_bones(sp)
+    rb = rig_report.rig_bones(sp)
     W = rig_template.template_weights(sp, rb, sf)
     assert W is not None and W.shape == (len(sf["quads"][0]), len(rb))
     assert np.abs(W.sum(1) - 1).max() < 1e-6
@@ -217,13 +218,14 @@ def test_face_shapes_by_index_on_own_quads():
     offsets by vertex index (no projection), GNM's mouth sock closes the mouth, its interior surfaces aren't snapped
     onto the field, and the neutral's lips meet on GNM's contact ring. jawOpen moves evenly (the projected path's
     strands read 3.2 on the same mesh)."""
-    from hifipushie import faceshapes, humans, retopo
+    from hifipushie import faceshapes, humans
+    from hifipushie import retopo_wrap
     from hifipushie import faceshapes_apply
     from hifipushie import faceshapes
     sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human",
                      head={"interior": {"teeth": {"show": 0.0035}, "tongue": True}})  # (GNM's own lips: no mouth_gap)
     sp.setdefault("parts", {}).setdefault("body", {})["topology"] = "wrap"
-    r = retopo.wrap(sp, log=[])
+    r = retopo_wrap.wrap(sp, log=[])
     V, L, S, gnm = r["verts"], r["loops"], r["sizes"], np.asarray(r["gnm"])
     assert (gnm >= 0).sum() > 10000 and any(x.startswith("mouth:") for x in r["log"])
     st = np.r_[0, np.cumsum(S)[:-1]]

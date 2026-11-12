@@ -1,5 +1,5 @@
 """Loose hair (hair_loose.py: groom.loose), curls, and the solid surface inside a loose mass of cards
-(hair_cards.mass_shell). No Blender. `uv run pytest tests/test_hair_loose.py`.
+(hair_cards_mass.mass_shell). No Blender. `uv run pytest tests/test_hair_loose.py`.
 
 What these hold: hair that falls must never enter the head or the shoulders, keeps its length, frames the face
 instead of hanging over it (the first look had a curtain over one eye), a one-length cut ends at its level, an
@@ -19,6 +19,7 @@ from test_hair_strands import _hanging, _lock, _strands  # noqa: E402
 from hifipushie import hair, hair_loose as hl  # noqa: E402
 from hifipushie import hair_groom, hair_head, hair_seat
 from hifipushie import hair_cards as hc  # noqa: E402
+from hifipushie import hair_cards_mass
 from hifipushie import hair_strands as hs  # noqa: E402
 
 
@@ -423,12 +424,12 @@ def test_mass_shell():
     D = _strands(locks, per=400, spread=0.03, n=40)
     D["pts"][:, 1] += np.random.default_rng(1).normal(0, 0.008, len(D["pts"])).astype(np.float32)
     tiles = [{"kind": "dense", "u0": 0.0, "u1": 0.13}]
-    m = hc.mass_shell(D, locks, np.array([0.0, 0.0, 0.1]), tiles, triangles=600)
+    m = hair_cards_mass.mass_shell(D, locks, np.array([0.0, 0.0, 0.1]), tiles, triangles=600)
     assert m is not None and 100 < len(m["tris"]) <= 620, None if m is None else len(m["tris"])
     V = m["verts"]
     assert V[:, 2].min() > -0.32 and V[:, 2].max() < 0.03 and np.abs(V[:, 1] - 0.12).max() < 0.04
     assert (m["layer"] == -1).all() and m["uv"][:, 0].max() <= 0.13 + 1e-6
-    assert hc.mass_shell(D, _hanging(4), np.zeros(3), tiles) is None  # (a tail's locks: tail_cores' job)
+    assert hair_cards_mass.mass_shell(D, _hanging(4), np.zeros(3), tiles) is None  # (a tail's locks: tail_cores' job)
 
 def test_swoop_lifts_the_front_lock_and_turns_it_over():
     """`swoop`: locks rooted at the front hairline near `at` stand higher off the forehead and their tips go over to
@@ -507,7 +508,7 @@ def test_carried_groom_keeps_its_hairline_on_the_head():
 
 
 def test_carried_tie_scales_its_absolute_metres():
-    """A tied style writes the dome, wisp lengths and tail sways in absolute metres (hair_flow.style); fit_to_head
+    """A tied style writes the dome, wisp lengths and tail sways in absolute metres (hair_flow_style.style); fit_to_head
     scaled only the older metre keys, so th_W18 on a 15 % bigger head kept its dome and wisps at the old size while
     its tail grew. Now they scale by this head over fit.abs_r (the head they were grown at), shares stay, and a groom
     on its own head (abs_r = its radius) is unchanged."""

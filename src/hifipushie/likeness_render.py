@@ -201,7 +201,7 @@ def render(mesh: dict, cam: dict, box, px: int = likeness.RENDER_PX, brows: bool
     lip, the brow's on the lid): the cues a photo shows and the readers compare (passes then also has "lit": the
     direct light's visibility per pixel, "ao" per pixel)."""
     from PIL import Image, ImageDraw
-    from . import humanfit
+    from . import humanfit_views
     if not likeness._RUN:
         likeness._RUN.append(_raster())
     if ao or shadow:
@@ -214,12 +214,12 @@ def render(mesh: dict, cam: dict, box, px: int = likeness.RENDER_PX, brows: bool
     nimg = np.zeros((H, W, 3))
     pimg = np.full((H, W, 3), -1.0)
     zn, zq = np.full((H, W), np.inf), np.full((H, W), np.inf)
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     parts = [(mesh["V"], mesh["F"], None)] + list(mesh["eyes"])
     for pi, (V, F, col) in enumerate(parts):
         if passes or light is not None:
             Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
-            P = humanfit.project(cam, V)
+            P = humanfit_views.project(cam, V)
             fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
             keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > likeness.NEAR).all(1)
             vn = np.zeros_like(Xc)
@@ -231,7 +231,7 @@ def render(mesh: dict, cam: dict, box, px: int = likeness.RENDER_PX, brows: bool
             likeness._RUN[0](*args, np.ascontiguousarray(np.full_like(vn, float(min(pi, 1)))), W, H, pimg, zq)
     for V, F, col in parts:
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
-        P = humanfit.project(cam, V)
+        P = humanfit_views.project(cam, V)
         fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
         keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > likeness.NEAR).all(1)   # facing the camera
         vn = np.zeros_like(Xc)
@@ -248,7 +248,7 @@ def render(mesh: dict, cam: dict, box, px: int = likeness.RENDER_PX, brows: bool
                 np.ascontiguousarray(C), W, H, img, zb)
     im = Image.fromarray(img.astype(np.uint8))
     if brows:
-        L = humanfit.project(cam, mesh["L"])
+        L = humanfit_views.project(cam, mesh["L"])
         d = ImageDraw.Draw(im)
         wpx = max(2, int(round(_mm_per_px(cam, mesh["L"]) ** -1 * 4.0 * k)))  # ~4 mm thick
         for a, b in ((17, 22), (22, 27)):
@@ -288,11 +288,11 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
     """render() with ambient occlusion and / or cast shadows: the ambient and the direct terms are rasterised
     separately (per-vertex, interpolated) and the direct one is multiplied per pixel by the key's visibility."""
     from PIL import Image, ImageDraw
-    from . import humanfit
+    from . import humanfit_views
     x0, y0, x1, y1 = box
     k = px / max(x1 - x0, y1 - y0)
     W, H = int(round((x1 - x0) * k)), int(round((y1 - y0) * k))
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     aov = ambient_occlusion(mesh) if ao else np.ones(len(mesh["V"]))
     key_c = np.asarray(light[1], float) if light is not None else likeness.KEY
     key_w = Rc.T @ (key_c / max(np.linalg.norm(key_c), 1e-12))   # world direction to the light
@@ -303,7 +303,7 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
     zn, zq, zo = (np.full((H, W), np.inf) for _ in range(3))
     for pi, (V, F, col, av) in enumerate(parts):
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
-        P = humanfit.project(cam, V)
+        P = humanfit_views.project(cam, V)
         fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
         keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > likeness.NEAR).all(1)
         vn = np.zeros_like(Xc)
@@ -361,7 +361,7 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
     img[~on] = 238.0
     im =Image.fromarray(img.astype(np.uint8))
     if brows:
-        L = humanfit.project(cam, mesh["L"])
+        L = humanfit_views.project(cam, mesh["L"])
         d = ImageDraw.Draw(im)
         wpx = max(2, int(round(_mm_per_px(cam, mesh["L"]) ** -1 * 4.0 * k)))
         for a, b in ((17, 22), (22, 27)):
@@ -375,6 +375,6 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
 
 def _mm_per_px(cam: dict, X) -> float:
     """mm per picture pixel at the depth of these points (the mean)."""
-    from . import humanfit
-    Xc = (np.asarray(X, float).mean(0) - np.asarray(cam["centre"])) @ humanfit._cam_rot(cam).T + np.asarray(cam["t"])
+    from . import humanfit_views
+    Xc = (np.asarray(X, float).mean(0) - np.asarray(cam["centre"])) @ humanfit_views._cam_rot(cam).T + np.asarray(cam["t"])
     return float(Xc[2] / cam["f"] * 1000.0)

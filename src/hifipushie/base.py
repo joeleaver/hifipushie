@@ -5,7 +5,7 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
 
 - Joints: the template's skeleton (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle/toe, fingerN_k,
   thumb_k .L) is added to the spec's joints where the spec doesn't give them (`inject`, before kits), with radii
-  measured from the template. Moving a joint moves the base with it (`retopo._skeleton_warp`: per bone segment a
+  measured from the template. Moving a joint moves the base with it (`retopo_warp._skeleton_warp`: per bone segment a
   rotation and a stretch, radii kept, times "girth" {segment start joint: scale}, e.g. {"shoulder.L": 1.15} for a
   thicker upper arm). Rotations by forward kinematics down every chain from rigid fits where several bones start
   (pelvis + hips, chest, palm; `retopo._body_rotations`), a bone ending at a fit twisting into it along its length
@@ -27,7 +27,7 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
   and head points over it make one IMLS point set, weighted by C2 ramps across +-SEAM (the k nearest are raised
   there). Blending two fields across a band showed as a collar; points cut hard at the plane left a crack; a tube
   matched only at the plane stood proud of the head's narrowing neck and flecked.
-- Topology payoff: `retopo.wrap` of a base-built body starts from the same template, so the export quads follow.
+- Topology payoff: `retopo_wrap.wrap` of a base-built body starts from the same template, so the export quads follow.
 
 Where the code is (split by responsibility, C417): this module holds the constants, `source` and `template_joints`.
 base_imls: Catmull-Clark, normals, the IMLS field. base_identity: GNM's data, identity fits, the posed expression,
@@ -43,6 +43,7 @@ import json
 import numpy as np
 
 from . import retopo
+from . import moved
 
 VERSION = 107  # bump when the base field changes: builds and live grids are keyed on it (107: GNM's own eyeball and mouth)
 K = 32
@@ -175,7 +176,7 @@ EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
 # GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
 # piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
 # min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips; the export now takes
-# GNM's own quads for the rows (asset.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
+# GNM's own quads for the rows (asset_hidden.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
 TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
 MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
                "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
@@ -199,3 +200,4 @@ _LIPC: dict = {}
 # Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("base_imls", "base_identity", "base_head_shape", "base_gnm_parts", "base_gnm_head", "base_measures",
            "base_tubes", "base_surface", "base_implied")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

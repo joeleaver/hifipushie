@@ -248,8 +248,8 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                    "Import the impostor atlases WITH mipmaps (Godot: mipmaps/generate=true; the normal atlas as plain RGBA, "
                    "not a normal map: its alpha is the depth): without mips a far impostor costs ~40x more GPU time")
     if c.get("style"):
-        from . import veg_style
-        ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))
+        from . import veg_style_small
+        ground += "\n" + "\n".join(veg_style_small.lines(c["style"]) + veg_style_small.warnings(c["style"]))
     return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB), {c['total']} triangles"
             + (f" for a budget of {triangles}" if triangles else "") + f": wood {c['wood_triangles']} triangles"
             + (f" (wood thinner than {c['wood_min_radius_m'] * 1000:.0f} mm left out)" if c["wood_min_radius_m"] else "")

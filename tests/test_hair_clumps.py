@@ -3,6 +3,7 @@
 import numpy as np
 
 from hifipushie import hair_cards as hc
+from hifipushie import hair_cards_atlas, hair_cards_mesh
 from hifipushie import hair_clumps as hk
 from hifipushie import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
 
@@ -182,13 +183,13 @@ def test_atlas_stacks_the_bake_and_remaps_tile_uvs():
     cards = hair_clumps_cut.cut(D, locks, C, S, side_of=side_of, triangles=600)
     St = cards[0].pop("_St")
     Sx = {**hc.STRANDS, "atlas": 256, "source": "drawn"}
-    top = hc.atlas(Sx, {})
+    top = hair_cards_atlas.atlas(Sx, {})
     W = top["color"].shape[1]
     B = hair_clumps_bake.bake(cards, St, W, 128)
-    at = hc.atlas(Sx, {}, bake={**B, "key": "t"})
+    at = hair_cards_atlas.atlas(Sx, {}, bake={**B, "key": "t"})
     assert at["color"].shape[0] == top["color"].shape[0] + 128 and at["rows"] == top["color"].shape[0]
     m = {"uv": np.array([[0.1, 0.0], [0.2, 1.0]], np.float32)}
-    r = hc.remap_v(m, at)
+    r = hair_cards_atlas.remap_v(m, at)
     vb = 128 / at["rows_total"]
     assert np.allclose(r["uv"][:, 1], [vb, 1.0])
     # a baked card's uv lands in its island
@@ -197,7 +198,7 @@ def test_atlas_stacks_the_bake_and_remaps_tile_uvs():
     c = dict(cards[0])
     c["island"] = ((x + 0.5) / W, (x + w - 0.5) / W, 1 - (Ht + y + 0.5) / Hall, 1 - (Ht + y + h - 0.5) / Hall)
     c["tone_k"] = at["bake_k"]
-    mm = hc.mesh([c], Sx, {}, at["tiles"])
+    mm = hair_cards_mesh.mesh([c], Sx, {}, at["tiles"])
     assert mm["baked"].all()
     assert mm["uv"][:, 0].min() >= x / W - 1e-6 and mm["uv"][:, 0].max() <= (x + w) / W + 1e-6
     assert mm["uv"][:, 1].min() >= 1 - (Ht + y + h) / Hall - 1e-6 and mm["uv"][:, 1].max() <= 1 - (Ht + y) / Hall + 1e-6
@@ -233,7 +234,7 @@ def test_shade_is_deeper_under_more_hair():
 
 def test_centre_line_does_not_kink_where_strands_end():
     """Staggered strand ends at different offsets made the clump mean jump (crumpled tail ends, b12)."""
-    from hifipushie.hair_cards import _clump
+    from hifipushie.hair_cards_clumps import _clump
     rng = np.random.default_rng(1)
     m, n = 12, 60
     A = np.full((m, n, 3), np.nan)

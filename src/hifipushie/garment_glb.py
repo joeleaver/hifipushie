@@ -2,9 +2,9 @@
 
 meshes: [{"name", "V" (Blender axes), "T", "uv" (optional, [0, 1]), "N" (optional), "colour" [r, g, b] 0..1, "J", "W"
 (optional: bone indices / weights, 4 per vertex), "double_sided", "metallic", "roughness" (optional), "textures"
-(optional, T14: {"base", "mr", "normal"}: PNG paths on the uv; "alpha_cut": an alpha-tested base)}]; bones as rig.rig_bones gives them
+(optional, T14: {"base", "mr", "normal"}: PNG paths on the uv; "alpha_cut": an alpha-tested base)}]; bones as rig_report.rig_bones gives them
 ({"name", "head", "parent", "twist"?}): a joint node per bone at its head (parents first), twist bones turned as
-asset.write_glb turns them, one skin. The <glb>.json beside it carries bounds_blender (asset.preview's cameras).
+asset_glb.write_glb turns them, one skin. The <glb>.json beside it carries bounds_blender (asset_export.preview's cameras).
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ _Z_TO_Y = np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]], np.float64)  # (asset._Z_
 
 def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = None, frame: list | None = None) -> Path:
     """frame: [min, max] (Blender axes) the look's cameras frame (default: every mesh)."""
-    from .asset import _arc_quat, _quat_matrix
+    from .asset_glb import _arc_quat, _quat_matrix
     path = Path(path)
     buf, views, accs = bytearray(), [], []
 
@@ -57,7 +57,7 @@ def write(path: Path, name: str, meshes: list[dict], bones: list[dict] | None = 
             ref = head[b["parent"]] if b["parent"] >= 0 else np.zeros(3)
             nodes.append({"name": b["name"], "translation": (head[i] - ref).tolist()})
             tw = b.get("twist")
-            if tw:  # (asset.write_glb) a twist bone's local +Y is its segment's axis
+            if tw:  # (asset_glb.write_glb) a twist bone's local +Y is its segment's axis
                 q = _arc_quat(np.array([0.0, 1.0, 0.0]), _Z_TO_Y @ np.asarray(tw["axis"], float))
                 R = _quat_matrix(q)
                 nodes[-1]["rotation"] = [float(x) for x in q]

@@ -45,9 +45,13 @@ def strays(base: str, mods: list) -> list:
     base_consts = {n for node in ast.parse((SRC / f"{base}.py").read_text()).body for n in (const_names(node) or [])}
     bad = []
     for m in mods:
-        for node in ast.parse((SRC / f"{m}.py").read_text()).body:
+        body = ast.parse((SRC / f"{m}.py").read_text()).body
+        own = {n.name for n in body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        for node in body:
             names = const_names(node)
-            if names:
+            if names and not ({x.id for x in ast.walk(node) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load)} & own):
+                # (a table of the module's own functions, OPS = {"dots": op_dots, ...}, is code, not a knob: it needs
+                # the functions when the module is imported, so it lives with them and is read as <module>.OPS)
                 bad.append(f"{m}.py:{node.lineno} defines {', '.join(names)}: it belongs in {base}.py")
             if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module in fam:
                 copied = [a.name for a in node.names if a.name in base_consts or CONST.match(a.name)]
@@ -65,3 +69,24 @@ def test_a_split_modules_constants_stay_in_it():
     bad = [b for base, mods in families().items() for b in strays(base, mods)]
     assert not bad, "constants outside their family's base module:\n  " + "\n  ".join(bad[:40]) + \
         (f"\n  ... {len(bad) - 40} more" if len(bad) > 40 else "")
+
+
+def test_only_a_familys_base_module_runs_code_at_import():
+    """Importing the base module alone leaves its constants complete. hair.CARD_TIERS gets its "triangles" from a
+    loop below it; when the constants went back to hair.py (C422) that loop stayed in hair_job.py, and the entries
+    existed only once hair_job had been imported. So a family's other modules hold functions, classes and imports,
+    and nothing that runs when they are imported (a table of their own functions aside)."""
+    bad = []
+    for base, mods in families().items():
+        for m in mods:
+            body = ast.parse((SRC / f"{m}.py").read_text()).body
+            own = {n.name for n in body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+            for node in body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom)):
+                    continue
+                if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                    continue
+                if const_names(node) and {x.id for x in ast.walk(node) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load)} & own:
+                    continue
+                bad.append(f"{m}.py:{node.lineno}: {ast.unparse(node)[:70]!r} belongs in {base}.py")
+    assert not bad, "code that runs at import outside its family's base module:\n  " + "\n  ".join(bad[:30])

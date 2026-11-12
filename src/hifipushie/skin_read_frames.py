@@ -30,10 +30,11 @@ def stage_spec(spec: dict) -> dict:
 
 
 def _code() -> str:
-    from . import base as basemod
+    from . import base as basemod, paint as paintmod
     src = Path(__file__).parent
     return hashlib.sha1(b"".join((src / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "skin_folds.py", "paint.py",
+                                  *(f"{m}.py" for m in paintmod.MODULES),  # (paint.py was split, C427)
                                   "paintnodes.py", "blender_scene.py", "base.py", *(f"{m}.py" for m in basemod.MODULES),  # (base.py was split, C417)
                                   "skin_look.py", "scene.py"))).hexdigest()[:12]
 
@@ -60,8 +61,8 @@ def stage(name: str, spec: dict | None = None, log=print) -> str:
 
 def fitted_frame(cam: dict, crop, name: str) -> dict:
     """A fitted camera + a SQUARE pixel crop [x0, y0, x1, y1] of its picture -> a render frame (lens shift)."""
-    from . import humanfit
-    R = humanfit._cam_rot(cam)
+    from . import humanfit_views
+    R = humanfit_views._cam_rot(cam)
     eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
     fwd = R.T @ np.array([0.0, 0.0, 1.0])
     up = R.T @ np.array([0.0, -1.0, 0.0])
@@ -146,7 +147,8 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
     "facing", "parse" {skin, hair, figure..: picture-parser probabilities}, "mm" per pixel, "box", "cam"}].
     spec: a variant of the model's spec to dress the stage with (default: the saved one). render=False: no R."""
     from PIL import Image
-    from . import humanfit, resources, store
+    from . import resources, store
+    from . import humanfit_views
     from . import likeness_render
     from . import blockin_models
     spec = spec or store.load(name)
@@ -175,7 +177,7 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
         ii, jj = np.nonzero(on)
         z = zb[ii, jj]
         u, vv = box[0] + (jj + 0.5) / k, box[1] + (ii + 0.5) / k
-        Rc = humanfit._cam_rot(cam)
+        Rc = humanfit_views._cam_rot(cam)
         Xc = np.c_[(u - w / 2) / cam["f"] * z, (vv - h / 2) / cam["f"] * z, z]
         X = np.zeros((skin_read.N, skin_read.N, 3))
         X[ii, jj] = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
@@ -287,13 +289,13 @@ class Albedo:
         self.log = log
 
     def _mask(self, spec: dict, name: str, ly: dict) -> np.ndarray:
-        from . import paint
+        from . import paint_apply
         skip = ("color", "opacity", "roughness", "specular", "metallic", "height", "mix", "part", "_pre", "_detail", "_blink", "_of")
         gens = {k: v for k, v in ly.items() if k not in skip}
         key = hashlib.sha1(json.dumps([name.endswith(".L"), gens], sort_keys=True, default=str).encode()).hexdigest()
         if key not in self.masks:
             t = time.time()
-            self.masks[key] = paint.layer_mask(spec, name, ly, paint._View(self.pts, np.arange(len(self.pts))))
+            self.masks[key] = paint_apply.layer_mask(spec, name, ly, paint_apply._View(self.pts, np.arange(len(self.pts))))
             if self.log and time.time() - t > 2:
                 self.log(f"  mask {name}: {time.time() - t:.1f} s")
         return self.masks[key]

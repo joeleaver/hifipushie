@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from . import paint
+from . import paint_apply, paint_patterns
 from .spec import SpecError
 
 NATIVE = {"facing", "axis", "noise", "ao", "sky", "thickness", "cavity", "near", "mask", "tiles", "cells", "rings",
@@ -65,7 +66,7 @@ class _Compiler:
         return name
 
     def stretch(self, st):
-        """[dx, dy, dz, factor], or ["grain", factor, seed attr] along each vertex's element (paint._stretch)."""
+        """[dx, dy, dz, factor], or ["grain", factor, seed attr] along each vertex's element (paint_patterns._stretch)."""
         if not st:
             return None
         if st.get("dir") == "element":
@@ -132,7 +133,7 @@ class _Compiler:
                     "seed": int(nz.get("seed", 0)), "warp": float(nz.get("warp", 0.0)),
                     "stretch": self.stretch(st),
                     "range": list(nz.get("range", [0.45, 0.6]))}
-        if gen == "tiles":  # laid on the three axis planes, u along the direction, w across (paint._planar)
+        if gen == "tiles":  # laid on the three axis planes, u along the direction, w across (paint_patterns._planar)
             t = e["tiles"]
             planes = []
             for ax in range(3):
@@ -180,34 +181,34 @@ class _Compiler:
             return {**out, "gen": "near", "attr": self.attr("dist", layer, nr, key=(json.dumps(nr, sort_keys=True),), parts=self.parts),
                     "within": within, "soft": soft}
         if gen == "spot":  # soft balls / a tapered line round resolved points: per pixel from wpos
-            s = paint.resolve_spot(self.spec, e["spot"], f"paint {layer!r}")
+            s = paint_patterns.resolve_spot(self.spec, e["spot"], f"paint {layer!r}")
             return {**out, "gen": "spot", "c": np.round(s["c"], 6).tolist(), "r": np.round(s["r"], 6).tolist(),
                     "soft": s["soft"], "line": s["line"]}
         if gen == "tile":  # a tiling grey image, triplanar, per pixel (mip-mapped: no sparkle from afar)
             t = e["tile"]
-            path, size = paint.tile_source(t)
+            path, size = paint_patterns.tile_source(t)
             return {**out, "gen": "tile", "path": str(path), "size": size, "vary": bool(t.get("vary", True)),
                     "rotate": bool(t.get("rotate")),
                     "seed": int(t.get("seed", 0)), "range": [float(x) for x in t.get("range", [0.0, 1.0])],
                     "vary_k": list(paint.TILE_VARY)}
-        if gen == "image":  # a projected decal, drawn per pixel from the image file (images.frame)
-            from . import images
+        if gen == "image":  # a projected decal, drawn per pixel from the image file (images_frame.frame)
+            from . import images_frame, images_project
             parts = None if "*" in self.parts else list(self.parts)
-            fr = images.frame(self.spec, e["image"], self.expanded(), what=f"paint {layer!r} image", parts=parts)
+            fr = images_frame.frame(self.spec, e["image"], self.expanded(), what=f"paint {layer!r} image", parts=parts)
             if self.mirror_images:  # a ".L" layer of decals: the mirrored placement too, the picture unmirrored
                 fr["mirror"] = True
             keys = ("c", "right", "up", "dir", "o", "k", "seam", "dc")
             ent = {**out, "gen": "image", **{k: fr[k] for k in ("path", "wrap", "c", "right", "up", "dir", "w", "h",
                                                                   "depth", "facing", "channel", "flip", "mirror")},
-                   "mirrored": {k: v for k, v in images.mirrored(fr).items() if k in keys},
+                   "mirrored": {k: v for k, v in images_project.mirrored(fr).items() if k in keys},
                    "key": hashlib.sha1(json.dumps(e["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]}
             if fr["wrap"] in ("cylinder", "sphere"):  # drawn per pixel from wpos (atan2, asin in nodes)
                 ent.update({k: fr[k] for k in ("o", "k", "r0", "phic", "seam", "dc", "su", "sv", "m", "unroll", "ta", "Rc",
                                                "sg") if k in fr})
-            elif fr["wrap"] in ("surface", "uv"):  # coordinates measured per vertex (decalmap / the model's atlas; images.project)
+            elif fr["wrap"] in ("surface", "uv"):  # coordinates measured per vertex (decalmap / the model's atlas; images_project.project)
                 from . import decalmap
                 ver = (decalmap.VERSION, decalmap.method()) if fr["wrap"] == "surface" else ("uv", fr["geo"], {k: v for k, v in e["image"].items() if k in ("box",)}, "cut2")
-                # wrap "uv": u, v, weight + the second coordinate set across the atlas' cut (u2, v2, s; images.project both=True)
+                # wrap "uv": u, v, weight + the second coordinate set across the atlas' cut (u2, v2, s; images_project.project both=True)
                 def uvw(mir):
                     return [self.attr("decal", layer, e["image"], parts, mir, comp,
                                       key=("decal", e["image"] if fr["wrap"] == "surface" else None, parts, mir, comp, *ver), parts=self.parts)
@@ -218,7 +219,7 @@ class _Compiler:
             return ent
         if gen == "mask":
             sub = e["mask"]
-            return {**out, "gen": "mask", "entries": [self.entry(s, tag, paint._tag(tag, i), None, layer)
+            return {**out, "gen": "mask", "entries": [self.entry(s, tag, paint_apply._tag(tag, i), None, layer)
                                                      for i, s in enumerate(sub)]}
         raise SpecError(f"paint {name!r}: unknown generator {gen!r}")
 
@@ -247,14 +248,14 @@ class _Compiler:
         decals = name.endswith(".L") and _only_images(stack)
         if decals:  # decals alone: drawn per pixel at both placements (a measured mask would be per vertex: mush)
             self.mirror_images = True
-            entries = [self.entry(e, name, paint._tag(name, t), p) for e, t, p in zip(stack, tags, paths)]
+            entries = [self.entry(e, name, paint_apply._tag(name, t), p) for e, t, p in zip(stack, tags, paths)]
             self.mirror_images = False
         elif name.endswith(".L"):  # mirrored: the whole mask measured here (max of the point and its mirror)
             entries = [{"gen": "input", "attr": self.attr("layer", name, key=("layer", name, ly), parts=self.parts), "range": None, "blend": "multiply",
                         "weight": 1.0, "post": {}, "expose": {}}]
         else:
             try:
-                entries = [self.entry(e, name, paint._tag(name, t), p) for e, t, p in zip(stack, tags, paths)]
+                entries = [self.entry(e, name, paint_apply._tag(name, t), p) for e, t, p in zip(stack, tags, paths)]
             except NotImplementedError:
                 entries = [{"gen": "input", "attr": self.attr("layer", name, key=("layer", name, ly), parts=self.parts), "range": None, "blend": "multiply",
                             "weight": 1.0, "post": {}, "expose": {}}]
@@ -275,7 +276,7 @@ def compile(spec: dict) -> dict:
     layers = [c.layer(n, ly) for n, ly in every.items() if not ly.get("_pre")]
     pre = {n: ly for n, ly in every.items() if ly.get("_pre")}
     pre_attrs, pre_layers = {}, []
-    if pre:  # composited per vertex into the part's base (paint.precomposite): five measured scalars
+    if pre:  # composited per vertex into the part's base (paint_apply.precomposite): five measured scalars
         from . import skin
         part, base = skin.part_base(spec)
         base = _pre_base(spec, part, base)
@@ -391,7 +392,7 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
                 full = np.zeros((len(pos), 5), np.float32)
                 if len(idx):
                     base = _pre_base(spec, ppart, skin.part_base(spec)[1])
-                    full[idx] = paint.precomposite(spec, paint._View(pts, idx), base, paint.pre_layers(spec))
+                    full[idx] = paint_apply.precomposite(spec, paint_apply._View(pts, idx), base, paint_apply.pre_layers(spec))
                 decals["pre"] = full
             val = decals["pre"][:, comp].copy()
         elif kind == "dist":
@@ -401,14 +402,14 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
             _, lname, img, on, mir, comp = fb
             ck = json.dumps([img, on, mir], sort_keys=True, default=str)
             if ck not in decals:
-                from . import images
-                fr = images.frame(spec, img, paint._expanded(spec), what=f"paint {lname!r} image", parts=on)
+                from . import images_frame, images_project
+                fr = images_frame.frame(spec, img, paint._expanded(spec), what=f"paint {lname!r} image", parts=on)
                 if mir:
-                    fr = images.mirrored(fr)
+                    fr = images_project.mirrored(fr)
                 full = np.zeros((len(pos), 6), np.float32)
                 full[:, [0, 1, 3, 4]] = -1.0
                 if len(idx):
-                    full[idx] = np.stack(images.project(fr, pos[idx], nrm[idx], both=True), 1)
+                    full[idx] = np.stack(images_project.project(fr, pos[idx], nrm[idx], both=True), 1)
                 decals[ck] = full
             val = decals[ck][:, comp].copy()
         else:
@@ -417,14 +418,14 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
             if kind == "gen":
                 _, lname, sname, e, tag = fb
             if len(idx):
-                view = paint._View(pts, idx)
+                view = paint_apply._View(pts, idx)
                 if kind == "layer":
-                    val[idx] = paint.layer_mask(spec, lname, ly, view)
+                    val[idx] = paint_apply.layer_mask(spec, lname, ly, view)
                 else:
                     gen = next(g for g in paint.GENERATORS if g in e)
-                    g = paint._generate(spec, sname, gen, e, tag, view)
+                    g = paint_apply._generate(spec, sname, gen, e, tag, view)
                     if "blur" in e:
-                        g = paint._blurred(lambda v: paint._generate(spec, sname, gen, e, tag, v), view,
+                        g = paint_apply._blurred(lambda v: paint_apply._generate(spec, sname, gen, e, tag, v), view,
                                            float(e["blur"]), g)
                     val[idx] = g
         out[attr] = val
@@ -475,5 +476,5 @@ def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
             d = np.minimum(d, line_distance(pos, p.params, side))
             continue
         dd = sdf.SDF[p.kind](pos, p.params)
-        d = np.minimum(d, np.abs(dd) if side == "both" else dd)  # (side "both": unsigned, as paint._near_mask)
+        d = np.minimum(d, np.abs(dd) if side == "both" else dd)  # (side "both": unsigned, as paint_masks._near_mask)
     return d

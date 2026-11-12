@@ -7,6 +7,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import images, paint, skin, skin_marks as mk, store
+from hifipushie import images_frame, images_project
 from hifipushie.skin_features import freckle_options, stubble_options
 from test_skin import head_spec
 
@@ -113,13 +114,13 @@ def test_fade_band_never_darker_than_full():
     V, N, _ = mk.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
     d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
-    fr = images.frame(spec, {"file": path, **place, "channel": "b"}, parts=["body"])
-    u, v, w = images.project(fr, V, N)
+    fr = images_frame.frame(spec, {"file": path, **place, "channel": "b"}, parts=["body"])
+    u, v, w = images_project.project(fr, V, N)
     # (the shadow channel carries the under-skin shafts' grain: compared as the eye takes it from a step back, ~1.5 mm)
     from scipy.ndimage import gaussian_filter
     pix = np.array(images.pixels(pathlib.Path(path)), dtype=np.float32)
     pix[..., 2] = gaussian_filter(pix[..., 2], 0.0015 / 0.00006)
-    px = images.sample(pix, u, v)
+    px = images_project.sample(pix, u, v)
     inside = (w > 0.9) & (u > 0.02) & (u < 0.98) & (v > 0.05) & (v < 0.98)
     full, band = (d > 0.85) & inside, (d > 0.03) & (d < 0.4) & inside
     assert full.sum() > 50 and band.sum() > 50
@@ -156,10 +157,10 @@ def test_stubble_fade_is_fine_and_light():
     V, N, _ = mk.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
     d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
-    fr = images.frame(spec, {"file": path, **place, "channel": "r"}, parts=["body"])
-    u, v, w = images.project(fr, V, N)
+    fr = images_frame.frame(spec, {"file": path, **place, "channel": "r"}, parts=["body"])
+    u, v, w = images_project.project(fr, V, N)
     pix = np.array(images.pixels(pathlib.Path(path)), dtype=np.float32)
-    px = images.sample(gaussian_filter(pix[..., 0], 0.001 / 0.00006)[..., None].repeat(3, 2), u, v)
+    px = images_project.sample(gaussian_filter(pix[..., 0], 0.001 / 0.00006)[..., None].repeat(3, 2), u, v)
     inside = (w > 0.9) & (u > 0.02) & (u < 0.98) & (v > 0.05) & (v < 0.98)
     full, band = (d > 0.85) & inside, (d > 0.03) & (d < 0.3) & inside
     assert full.sum() > 50 and band.sum() > 50

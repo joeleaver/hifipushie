@@ -1,4 +1,4 @@
-"""The lips' astray-texel gate (asset.bake, LIP_ASTRAY_WARN) fires on the case it was made for.
+"""The lips' astray-texel gate (asset_bake.bake, LIP_ASTRAY_WARN) fires on the case it was made for.
 
 x32 (r17's retopo.SOCK_FALLOFF = 6) baked torn streaks across the closed upper lip: the lips' texels projected onto
 the moved mouth sock's exact surface instead of the lip. The whole head's astray share only went 3.75 -> 4.89%, so
@@ -16,15 +16,16 @@ import sys
 from pathlib import Path
 
 from hifipushie import asset, retopo, store
+from hifipushie import asset_bake
 
 
 def _share(out: Path, name: str) -> tuple[float, bool]:
     """The body's lips' front share, re-measured from the export's texel dump (HP_ASTRAY_DUMP) with the current
-    asset.lip_front_share, and whether the export's log warned."""
+    asset_bake.lip_front_share, and whether the export's log warned."""
     import numpy as np
     d = json.loads((out / f"{name}.json").read_text())
     z = np.load(out / "astray_body_0.npz")
-    share, n = asset.lip_front_share(z["P"], z["bad"], z["lipw"])
+    share, n = asset_bake.lip_front_share(z["P"], z["bad"], z["lipw"])
     assert share is not None, f"{out}: no lips' texels found"
     warned = any("lips' texels projected astray" in ln for ln in d["log"])
     return share, warned

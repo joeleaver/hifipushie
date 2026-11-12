@@ -43,6 +43,7 @@ def test_a_wider_jaw_measures_wider():
         assets.pack("gnm")
         assets.pack("makehuman")
         from hifipushie import humanfit as hf
+        from hifipushie import humanfit_solve
         from hifipushie import likeness_detect, likeness_render
         if not likeness_detect.detector_available():
             raise RuntimeError("no detector")
@@ -52,7 +53,7 @@ def test_a_wider_jaw_measures_wider():
     b = {"body": {"source": "human", "age": 34, "sex": 1.0}, "head": {"seed": 3, "spread": 0.3}}
     got = {}
     for z in (-2.0, 2.0):
-        bb = hf._with_identity(b, hm.apply(hf.identity(b), {"jaw_width": z}, held=True))
+        bb = humanfit_solve._with_identity(b, hm.apply(hf.identity(b), {"jaw_width": z}, held=True))
         mesh = likeness_render.model_mesh(bb)
         L = np.asarray(mesh["L"], float)
         cam = {"r": [0.0, 0.0, 0.0], "yaw": 0.0, "centre": L[:68].mean(0).tolist(), "t": [0.0, 0.0, 1.5], "f": 2000.0, "size": [640, 640]}

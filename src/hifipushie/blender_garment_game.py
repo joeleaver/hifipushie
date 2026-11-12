@@ -6,7 +6,7 @@ job = {"occluders_glb": GLB whose meshes (minus `skip` names) occlude the AO bak
        "garments": [{"name", "low": npz (V, T, uv, N, outer_faces), "high": npz (V, F), "size": px,
                      "color": "#rrggbb", "roughness": r, "out_glb", "out_dir"}]}
 Normal: tangent space (OpenGL, +Y), Cycles selected-to-active through a per-vertex cage (each low vertex pushed out
-by 1.5x its faces' stray from the high + 2 mm, as asset.cage_verts). AO: from the high, everything else in the scene
+by 1.5x its faces' stray from the high + 2 mm, as asset_scene.cage_verts). AO: from the high, everything else in the scene
 occluding, the low and cage invisible to rays. Only the outer faces are baked; the inner faces share their uvs.
 """
 import json

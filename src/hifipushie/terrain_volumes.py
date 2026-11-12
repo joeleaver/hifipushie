@@ -161,7 +161,7 @@ def stacks(T):
         top = sea + float(a["height"])
         from .terrain_sea import STACK_CORE
         rc = STACK_CORE * float(a["radius"]) + 0.11 * float(a["height"]) + 0.8  # (the core, spread at 84 deg, + margin)
-        from .terrain_style import stack_form
+        from .terrain_style_zones import stack_form
         # its rock runs down into the sea floor round it (the lowest ground within twice its radius, 1.5 m in)
         r2 = 2.0 * terrain_mesh.STACK["radius"] * float(a["radius"]) + 2.0 * T.cell
         near = np.hypot(T.X - xy[0], T.Y - xy[1]) < r2

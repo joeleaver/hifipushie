@@ -33,13 +33,13 @@ def _fold_view(f: dict, q: dict, fd: dict, ldir=None) -> dict | None:
     """One fold's path in one view: per station the valley across it in the picture, in ours, and in the picture
     over ours (the differential), or None when the view does not show the path."""
     from scipy import ndimage
-    from . import humanfit
+    from . import humanfit_views
     Yv = np.array([0.2126, 0.7152, 0.0722])
     box = f["box"]
     k = skin_read.N / (box[2] - box[0])
     P, ac = q["P"], q["across"]
-    p0 = (humanfit.project(f["cam"], P) - np.asarray(box[:2])) * k
-    v = (humanfit.project(f["cam"], P + 0.001 * ac) - np.asarray(box[:2])) * k - p0       # px per mm across
+    p0 = (humanfit_views.project(f["cam"], P) - np.asarray(box[:2])) * k
+    v = (humanfit_views.project(f["cam"], P + 0.001 * ac) - np.asarray(box[:2])) * k - p0       # px per mm across
     sc = np.linalg.norm(v, axis=1)
     flank = float(fd.get("flank", max(1.5 * fd["width"], 3.0)))
     U = fd["search"] + flank
@@ -307,7 +307,8 @@ def _lid_read(c: Context, nominal: dict) -> dict:
     for the upper lid's fold, searched up from the PICTURE's lash line in the most frontal view fine enough
     (lidfold.read_lid; see LID_COLS); {} when no view allows it (then the path's valley read stands)."""
     from PIL import Image
-    from . import humanfit, lidfold, skin_folds as sf
+    from . import lidfold, skin_folds as sf
+    from . import humanfit_views
     from . import blockin_clay, blockin_models
     from .likeness_eyes import frame as eye_frame
     fd = sf.FOLDS["lid_fold"]
@@ -349,20 +350,20 @@ def _lid_read(c: Context, nominal: dict) -> dict:
             continue
         o = P[lidfold.INNER[s_]]
         span = float((P[lidfold.OUTER[s_]] - o) @ ex)
-        X = humanfit.project(f["cam"], q["P"]) - o
+        X = humanfit_views.project(f["cam"], q["P"]) - o
         xt, xh = X @ ex, -(X @ ey)                      # along the eye, up the face (px)
         order = np.argsort(xt * np.sign(span))
         # the lid leans back from the picture plane: a millimetre ALONG THE SKIN across the fold is this many up the
         # picture (0.4-0.6 on Tess's lids). The shift is asked in skin millimetres: the picture's are divided by it
         # (skinfolds2: laid 1:1, a fold read 1.6 mm over our path came out 0.8 over it)
-        Xa = humanfit.project(f["cam"], q["P"] + 0.001 * q["across"]) - o
+        Xa = humanfit_views.project(f["cam"], q["P"] + 0.001 * q["across"]) - o
         lean = np.clip((-(Xa @ ey) - xh) * mm, 0.35, 1.0)
         # OUR lid margin through the same camera (the upper lid's landmarks): the path's height over OUR lashes
         h_own = None
         try:
             from . import skin as skinmod
             Jl = skinmod._joints(c.st)
-            Mg = humanfit.project(f["cam"], np.array([Jl[k_ + sd] for k_ in ("lm_eye_inner", "lm_lid_upper_in", "lm_lid_upper", "lm_lid_upper_out", "lm_eye_outer")])) - o
+            Mg = humanfit_views.project(f["cam"], np.array([Jl[k_ + sd] for k_ in ("lm_eye_inner", "lm_lid_upper_in", "lm_lid_upper", "lm_lid_upper_out", "lm_eye_outer")])) - o
             mt, mh = (Mg @ ex) * np.sign(span), -(Mg @ ey)
             om = np.argsort(mt)
             co_m = np.polyfit(mt[om], mh[om], 2)                    # (a lid margin is an arc)

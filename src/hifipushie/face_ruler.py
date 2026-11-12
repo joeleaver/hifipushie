@@ -28,7 +28,7 @@ sd near its population sd (NOT READ), never as a confident number. `span=True` f
   observe(head, views)             the observations: picture vs model, with their Jacobians
   solve(obs, head)                 -> {"dc", "gaps": rows as gnm_mm.gaps + "err", "read"}
   read(head, views)                observe + solve; text(rows) prints the table with the `mm:` move per row
-A view = {"img": PIL image, "cam": fitted camera (humanfit.project), "kind": "front" | "3q" | "profile",
+A view = {"img": PIL image, "cam": fitted camera (humanfit_views.project), "kind": "front" | "3q" | "profile",
 "style": "clay" | "dressed" | "photo"}; "scale" / "origin" if the image is a crop of the camera's picture.
 ERR: the validated reader error per measure (spikes/faceruler/validate.py; the notes' "## faceruler").
 
@@ -41,6 +41,7 @@ distance, landmarks, anchors, dense) and face_ruler_compare (reference_views, co
 from __future__ import annotations
 
 import numpy as np
+from . import moved
 
 STEP_MM = 1.5            # outline sample spacing
 SIG = {"outline": 0.3, "iris": 0.12, "lips": 0.25, "brows": 0.2}     # mm: each observation's noise (validated)
@@ -151,8 +152,8 @@ def clay(head: dict, cam: dict, passes: bool = False, light=None):
 
 def _cam_points(cam, X):
     """camera-frame coordinates and pixels of world points."""
-    from . import humanfit
-    Xc = (np.asarray(X, float) - np.asarray(cam["centre"], float)) @ humanfit._cam_rot(cam).T + np.asarray(cam["t"], float)
+    from . import humanfit_views
+    Xc = (np.asarray(X, float) - np.asarray(cam["centre"], float)) @ humanfit_views._cam_rot(cam).T + np.asarray(cam["t"], float)
     w, h = cam["size"]
     return Xc, np.stack([cam["f"] * Xc[:, 0] / Xc[:, 2] + w / 2, cam["f"] * Xc[:, 1] / Xc[:, 2] + h / 2], 1)
 
@@ -160,8 +161,8 @@ def _cam_points(cam, X):
 def _proj_jac(cam, head, idx, w=None):
     """d(pixel) / d(comp) of the world point sum_j w_j V[idx_j] (or one vertex): (2, K) px per unit comp, + its
     mm / px."""
-    from . import humanfit
-    Rc = humanfit._cam_rot(cam)
+    from . import humanfit_views
+    Rc = humanfit_views._cam_rot(cam)
     idx = np.atleast_1d(idx)
     w = np.full(len(idx), 1.0 / len(idx)) if w is None else np.asarray(w, float)
     X = (w[:, None] * head["V"][idx]).sum(0)
@@ -249,8 +250,8 @@ SIG_LIMBUS_SIDE = (0.5, 0.9)
 # ---- a block-in model against its reference pictures ------------------------------------------------------------------
 def _proj_jac_pt(cam, X, Bx):
     """as _proj_jac for a world point X with basis Bx (K, 3)."""
-    from . import humanfit
-    Rc = humanfit._cam_rot(cam)
+    from . import humanfit_views
+    Rc = humanfit_views._cam_rot(cam)
     Xc = (np.asarray(X, float) - np.asarray(cam["centre"], float)) @ Rc.T + np.asarray(cam["t"], float)
     Bc = np.asarray(Bx, float) @ Rc.T
     f = cam["f"]
@@ -455,3 +456,4 @@ DISAGREE = 2.0        # a read group left at more than this many of its own sigm
 # The modules this one was split into (C417). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("face_ruler_outline", "face_ruler_jaw", "face_ruler_solve", "face_ruler_orbit", "face_ruler_blockin",
            "face_ruler_features", "face_ruler_nose", "face_ruler_camera", "face_ruler_compare")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

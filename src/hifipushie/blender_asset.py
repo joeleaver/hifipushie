@@ -1032,7 +1032,7 @@ def preview(job):
                 kb.slider_min = min(kb.slider_min, -1.0)
                 kb.value = float(pose.get(kb.name, 0.0))
         # "turns": {joint: [x, y, z, deg]}: each joint turned about a model-space axis through its own head, on top
-        # of its parent's turn (rig.pose's convention). The importer gives bones its own rest axes, so the turn is
+        # of its parent's turn (rig_model.pose's convention). The importer gives bones its own rest axes, so the turn is
         # carried into each bone's rest frame.
         turns = pose.get("turns") or {}
         for arm in arms:
@@ -1069,7 +1069,7 @@ def _render_views(job, scene, cam, cam_data, sfx):
 
 def graft_topology(job):
     """A body's quads (the template wrap) and a grafted head's own quads, each already cut at a clean neck loop
-    (retopo.graft_head), joined: the head un-subdivided `unsub` times (GNM's 12k quads to ~6k), the two open neck
+    (retopo_fit.graft_head), joined: the head un-subdivided `unsub` times (GNM's 12k quads to ~6k), the two open neck
     loops bridged (`cuts` rings between). Writes {verts, loops, sizes, bridge (new vertex mask)}."""
     import bmesh
     _clear()

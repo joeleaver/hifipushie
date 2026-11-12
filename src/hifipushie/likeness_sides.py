@@ -21,11 +21,11 @@ def _refs(name: str) -> dict:
 
 
 def _lm_from_points(points: dict) -> np.ndarray:
-    from . import humanfit
+    from . import humanfit_views
     lm = np.full((70, 2), np.nan)
     for k, uv in points.items():
         try:
-            lm[humanfit.point_index(k)] = uv
+            lm[humanfit_views.point_index(k)] = uv
         except ValueError:
             pass
     return lm
@@ -89,7 +89,7 @@ def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool =
     own landmarks projected, its passes (depth, normals), the light fitted to the photo on its normals and the
     residual shading, and a render lit like the photo for the panels. mesh may be a list (one per
     photo)."""
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_shape as ls
     meshes = mesh if isinstance(mesh, list) else None   # (one per photo: each picture's own expression, blockin)
     mesh = None if meshes else (mesh or model_mesh(base))
@@ -105,7 +105,7 @@ def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool =
         P = None if P is None else P / k + [box[0], box[1]]
         mmpx = _mm_per_px(cam, mesh["L"])
         md = {"img": im, "k": k, "cam": cam, "passes": ps, "cam_res": cres, "mmpx": mmpx, "mesh": mesh,
-              "side": Side(P, humanfit.project(cam, mesh["L"]), "detector" if P is not None else "landmarks")}
+              "side": Side(P, humanfit_views.project(cam, mesh["L"]), "detector" if P is not None else "landmarks")}
         md["shade"] = _shade(ph, md)
         if md["shade"]:
             md["img_lit"] = render(mesh, cam, box, light=(md["shade"]["c0"], md["shade"]["w"], md["shade"]["med"]))[0]

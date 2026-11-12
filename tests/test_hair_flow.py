@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_loose import _ball_head  # noqa: E402
 
 from hifipushie import hair, hair_flow as hf, hair_tied as ht  # noqa: E402
+from hifipushie import hair_flow_gather, hair_flow_style
 from hifipushie import hair_groom, hair_spec
 
 
@@ -126,11 +127,11 @@ def test_tightness_is_lift_and_sag():
     _, _, _, loose = _grow({"tightness": 0.0})
     h = lambda L: np.mean([np.max(np.asarray(lk["pts"])[:, 2]) for k, lk in L.items() if k.startswith("tg")])  # noqa: E731
     assert h(loose) > h(tight) + 0.008, (h(loose), h(tight))
-    assert hf.style({"tightness": 1.0})["tie"]["gather"]["sag"] == 0.0
+    assert hair_flow_style.style({"tightness": 1.0})["tie"]["gather"]["sag"] == 0.0
     # (lift is the default of `volume`: without lift, no dome; with volume 0 it is the few mm of puff as before)
-    assert "volume" not in hf.style({"tightness": 0.2, "lift": 0.0})["tie"]["gather"]
-    assert hf.style({"tightness": 0.2})["tie"]["gather"]["volume"]["crown"] > 0.02
-    assert hf.style({"tightness": 0.2, "lift": 0.0, "volume": 0})["tie"]["gather"]["puff"] < hf.style({"tightness": 0.2, "volume": 0})["tie"]["gather"]["puff"]
+    assert "volume" not in hair_flow_style.style({"tightness": 0.2, "lift": 0.0})["tie"]["gather"]
+    assert hair_flow_style.style({"tightness": 0.2})["tie"]["gather"]["volume"]["crown"] > 0.02
+    assert hair_flow_style.style({"tightness": 0.2, "lift": 0.0, "volume": 0})["tie"]["gather"]["puff"] < hair_flow_style.style({"tightness": 0.2, "volume": 0})["tie"]["gather"]["puff"]
 
 
 def test_tail_hangs():
@@ -207,7 +208,7 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
     assert soft(_grow({"neatness": 0.3})[3])
     assert hair_groom.needs_body(g)  # they lie on the body's own surface
     # softness: wider, more hairs
-    so = lambda v: hf.style({"wisps": {"amount": 0.5, "softness": v}})["tie"]["wisps"]  # noqa: E731
+    so = lambda v: hair_flow_style.style({"wisps": {"amount": 0.5, "softness": v}})["tie"]["wisps"]  # noqa: E731
     assert so(1.0)["hairs"][1] > so(0.0)["hairs"][1]
     for bad in ({"wisps": {"amount": 0.5, "where": ["chin"]}}, {"wisps": {"ammount": 1}}):
         try:
@@ -268,7 +269,7 @@ def test_tail_fullness_is_volume_and_wave_is_every_locks_own():
     # out of step: neighbouring locks' sideways offsets at one height do not agree
     tp = ht.params(g["tie"])[0]
     assert tp["tail"]["bulge"] == 1.0 and tp["tail"]["lock_wave"] > 0
-    assert hf.style({"tail": {"wave": 1.0}})["tie"]["tail"]["lock_wave"] > 4 * hf.style({"tail": {"wave": 0.0}})["tie"]["tail"]["lock_wave"]
+    assert hair_flow_style.style({"tail": {"wave": 1.0}})["tie"]["tail"]["lock_wave"] > 4 * hair_flow_style.style({"tail": {"wave": 0.0}})["tie"]["tail"]["lock_wave"]
     for T in (bushy, wavy):
         _, _, h = sc.coords(np.concatenate([_world(sc, lk) for lk in T]))
         assert h.min() > -1e-6
@@ -282,7 +283,7 @@ def test_hairline_is_a_band_that_thins_out():
     locks are narrow and carry fewer, finer strands the nearer the line they root; the temple / sideburn strip is
     rooted again (thin at its rim, full a few mm in); inner locks near the hairline have soft sides; the part
     wanders. hairline 0 = the one row of full locks (round four)."""
-    assert hf.style({"tightness": 0.9})["tie"]["gather"]["edge"] > 0.3  # (the default: every hairline is soft)
+    assert hair_flow_style.style({"tightness": 0.9})["tie"]["gather"]["edge"] > 0.3  # (the default: every hairline is soft)
     sc, g, line, locks = _grow({"tightness": 0.9, "hairline": 1.0, "volume": 0})
     ga = ht.params(g["tie"])[0]["gather"]
     assert ga["edge"] == 1.0 and ga["zig"] > 0.001
@@ -321,9 +322,9 @@ def test_hairline_is_a_band_that_thins_out():
     assert near and far and np.mean([lk["width"] for lk in near]) < np.mean([lk["width"] for lk in far])
     # the part's own line wanders (never a ruled line), each bank still on its side
     ga2 = {**ga, "_zig": (0.3, 1.1, 0.025)}
-    z = hf._zig(ga2, np.linspace(0, 0.08, 50))
+    z = hair_flow_gather._zig(ga2, np.linspace(0, 0.08, 50))
     assert 0.002 < np.abs(z).max() < 0.012 and (z > 0).any() and (z < 0).any()
-    assert np.allclose(hf._zig(ga, np.linspace(0, 0.08, 5)), 0)  # (no phases: the straight line)
+    assert np.allclose(hair_flow_gather._zig(ga, np.linspace(0, 0.08, 5)), 0)  # (no phases: the straight line)
     # the strand job: a lock's density / fine / rim reach Blender as per-lock attributes
     from hifipushie import hair_cards as hc, hair_strands as hs
     lk = dict(next(iter(band.values())), name="tg0_0")
@@ -416,7 +417,7 @@ def test_tail_tousle_is_a_ragged_end_and_strays():
     # a raw hanging tail without these keys is round four's
     assert ht.TIE["tail"]["ragged"] == 0.0 and ht.TIE["tail"]["strays"] == 0 and ht.TIE["tail"]["in_step"] == 0.0
     # default: by the wave (a straight sleek tail is brushed)
-    d = lambda w: hf.style({"tail": {"wave": w}})["tie"]["tail"]  # noqa: E731
+    d = lambda w: hair_flow_style.style({"tail": {"wave": w}})["tie"]["tail"]  # noqa: E731
     assert d(0.9)["ragged"] > d(0.0)["ragged"] and d(0.9)["strays"] > d(0.0)["strays"]
 
 
@@ -425,7 +426,7 @@ def test_tousle_is_soft_not_straw():
     wavy): the tousle no longer points the locks, flicks them out or clumps their strands. It is `soft`: locks
     loosened out of the bundle, open ends, fine strands at a higher count, longer strays; the hang is the brushed
     tail's."""
-    st = lambda to: hf.style({"tail": {"length": 0.22, "fullness": 0.5, "wave": 0.6, "tousle": to}})  # noqa: E731
+    st = lambda to: hair_flow_style.style({"tail": {"length": 0.22, "fullness": 0.5, "wave": 0.6, "tousle": to}})  # noqa: E731
     a, b = st(0.0), st(0.8)
     ta, tb = a["tie"]["tail"], b["tie"]["tail"]
     assert ta["flick"] == tb["flick"]  # no kick of its own
@@ -458,16 +459,16 @@ def test_front_is_looser_than_the_rest():
     only, lets it hang over the forehead's corners, and adds thick locks that swoop from beside the part across the
     corner and tuck back. The back of the head and a style without the word are unchanged."""
     base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "wisps": 0.6}
-    s0, s1 = hf.style(base), hf.style({**base, "front": {"looseness": 0.6, "drape": 0.6}})
+    s0, s1 = hair_flow_style.style(base), hair_flow_style.style({**base, "front": {"looseness": 0.6, "drape": 0.6}})
     assert "front" not in s0["tie"]["gather"] and "swoop" not in s0["tie"]["wisps"]
     assert s1["tie"]["gather"]["front"]["loose"] > 0.4 and s1["tie"]["gather"]["front"]["drape"] == 0.6
     assert s1["tie"]["gather"]["sag"] == s0["tie"]["gather"]["sag"]  # the head's own tightness is kept
     assert s1["tie"]["wisps"]["swoop"] == 2 and s1["tie"]["wisps"]["count"] > s0["tie"]["wisps"]["count"]
     assert s1["strands"]["wisp"]["thickness"] > s0["strands"]["wisp"]["thickness"]
-    assert hf.style({**base, "front": 0.5})["tie"]["gather"]["front"]["drape"] == 0.5
-    assert hf.style({**base, "tie": "high", "front": 0.8})["tie"]["wisps"].get("swoop") is None  # none toward a high tie
+    assert hair_flow_style.style({**base, "front": 0.5})["tie"]["gather"]["front"]["drape"] == 0.5
+    assert hair_flow_style.style({**base, "tie": "high", "front": 0.8})["tie"]["wisps"].get("swoop") is None  # none toward a high tie
     try:
-        hf.style({**base, "front": {"loosness": 1}})
+        hair_flow_style.style({**base, "front": {"loosness": 1}})
         raise AssertionError("accepted a wrong key")
     except ValueError as e:
         assert "looseness" in str(e)
@@ -505,17 +506,17 @@ def test_volume_stands_up_from_the_root_and_arcs():
     in layers, keeps it until just before the tie, and its way first FALLS sideways / down from the root before it
     turns to the tie (convex). volume 0 = the cap of before, exactly."""
     base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "wisps": 0}
-    s0, s1 = hf.style({**base, "volume": 0}), hf.style({**base, "volume": 0.6})
+    s0, s1 = hair_flow_style.style({**base, "volume": 0}), hair_flow_style.style({**base, "volume": 0.6})
     assert "volume" not in s0["tie"]["gather"]
     v = s1["tie"]["gather"]["volume"]
     assert 0.015 < v["crown"] < 0.03 and v["nape"] < v["side"] and 0 < v["rise"] < 0.03 and v["arc"] > 0.4
     # default: the style's lift (1 - tightness): a sleek head stays a cap, a loose one has body
-    assert hf.style({"tightness": 0.95})["tie"]["gather"].get("volume", {"crown": 0})["crown"] < 0.003
-    assert hf.style({"tightness": 0.2})["tie"]["gather"]["volume"]["crown"] > 0.02
-    assert hf.style({**base, "volume": {"amount": 0.6, "crown": 0.5}})["tie"]["gather"]["volume"]["crown"] < v["crown"] * 0.6
-    assert hf.style({**base, "volume": {"amount": 0.6, "root": 1.0}})["tie"]["gather"]["volume"]["rise"] < v["rise"]
+    assert hair_flow_style.style({"tightness": 0.95})["tie"]["gather"].get("volume", {"crown": 0})["crown"] < 0.003
+    assert hair_flow_style.style({"tightness": 0.2})["tie"]["gather"]["volume"]["crown"] > 0.02
+    assert hair_flow_style.style({**base, "volume": {"amount": 0.6, "crown": 0.5}})["tie"]["gather"]["volume"]["crown"] < v["crown"] * 0.6
+    assert hair_flow_style.style({**base, "volume": {"amount": 0.6, "root": 1.0}})["tie"]["gather"]["volume"]["rise"] < v["rise"]
     try:
-        hf.style({**base, "volume": {"amout": 1}})
+        hair_flow_style.style({**base, "volume": {"amout": 1}})
         raise AssertionError("accepted a wrong key")
     except ValueError as e:
         assert "amount" in str(e)
@@ -564,13 +565,13 @@ def test_volume_is_gated_for_up_styles_and_half_up():
     volume a high ponytail had radial ridges round the hairline and scalp specks at the crown, half up a bare pit
     behind the crown. By default those styles get no volume (what they were before the word); asked for on an
     up-style it is a smooth pouf: no fall, one shell, no separate locks."""
-    assert hf.style({"tie": "low", "tightness": 0.4})["tie"]["gather"]["volume"]["crown"] > 0.015
+    assert hair_flow_style.style({"tie": "low", "tightness": 0.4})["tie"]["gather"]["volume"]["crown"] > 0.015
     for st in ({"tie": "high", "tightness": 0.4, "part": "none"}, {"tie": "top", "tightness": 0.4, "tail": "bun"},
                {"tie": "mid", "half": True, "tightness": 0.4}):
-        assert "volume" not in hf.style(st)["tie"]["gather"], st
-    v = hf.style({"tie": "high", "part": "none", "volume": 0.5})["tie"]["gather"]["volume"]
+        assert "volume" not in hair_flow_style.style(st)["tie"]["gather"], st
+    v = hair_flow_style.style({"tie": "high", "part": "none", "volume": 0.5})["tie"]["gather"]["volume"]
     assert v["crown"] > 0.01 and v["arc"] == 0.0 and v["layers"] == 0.0 and v["locks"] == 0.0
-    lo = hf.style({"tie": "low", "volume": 0.5})["tie"]["gather"]["volume"]
+    lo = hair_flow_style.style({"tie": "low", "volume": 0.5})["tie"]["gather"]["volume"]
     assert lo["arc"] > 0.4 and lo["layers"] > 0.5 and lo["locks"] == 0.4 and lo["cross"] == 1.0
     # the old gather exactly for a default high ponytail: same locks as with volume 0
     _, _, _, a = _grow({"tie": "high", "tightness": 0.6, "part": "none"})
@@ -585,10 +586,10 @@ def test_escaped_curls_are_fine_separate_locks_near_the_face():
     front of the ears, each with its own length and curl, hanging close to the face and never over an eye. Under hair
     with volume the flat clumps on the skin are cut back (they were a grey veil)."""
     base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "volume": 0.5, "wisps": {"amount": 0.6}}
-    st = hf.style(base)
+    st = hair_flow_style.style(base)
     assert st["tie"]["wisps"]["curls"] == 5
-    assert st["tie"]["wisps"]["count"] < hf.style({**base, "volume": 0})["tie"]["wisps"]["count"]
-    assert hf.style({**base, "wisps": {"amount": 0.6, "curls": 0}})["tie"]["wisps"]["curls"] == 0
+    assert st["tie"]["wisps"]["count"] < hair_flow_style.style({**base, "volume": 0})["tie"]["wisps"]["count"]
+    assert hair_flow_style.style({**base, "wisps": {"amount": 0.6, "curls": 0}})["tie"]["wisps"]["curls"] == 0
     sc, g, line, L = _grow({**base, "wisps": {"amount": 0.6, "curls": 8}})
     cu = {k: lk for k, lk in L.items() if k.startswith("tk")}
     assert 10 <= len(cu) <= 16, len(cu)
@@ -619,9 +620,9 @@ def test_halo_stands_off_the_top_layer_and_crosses_the_part():
     read as hair and ours as a surface"): wisps.halo = fine single hairs on the TOP layer of the gathered hair, a few mm
     off it, some crossing the part; with volume by default, none on an up-style or a cap."""
     base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "volume": 0.5, "wisps": {"amount": 0.6, "curls": 0}}
-    assert hf.style(base)["tie"]["wisps"]["halo"] > 200
-    assert hf.style({**base, "volume": 0})["tie"]["wisps"].get("halo", 0) == 0
-    assert hf.style({**base, "tie": "high", "part": "none"})["tie"]["wisps"].get("halo", 0) == 0
+    assert hair_flow_style.style(base)["tie"]["wisps"]["halo"] > 200
+    assert hair_flow_style.style({**base, "volume": 0})["tie"]["wisps"].get("halo", 0) == 0
+    assert hair_flow_style.style({**base, "tie": "high", "part": "none"})["tie"]["wisps"].get("halo", 0) == 0
     sc, g, line, L = _grow({**base, "wisps": {"amount": 0.6, "curls": 0, "halo": 120}})
     H = {k: lk for k, lk in L.items() if k.startswith("th")}
     assert len(H) == 120
@@ -653,22 +654,22 @@ def test_sideburn_grows_no_lock_to_the_tie():
 
 
 def test_style_words():
-    s = hf.style({})
+    s = hair_flow_style.style({})
     assert s["tie"]["at"] == [180.0, -6.0] and s["parting"]["side"] == "centre"
-    assert hf.style({"tie": "high", "side": "left"})["tie"]["at"] == [150.0, 40.0]
-    assert hf.style({"side": "right"})["tie"]["at"][0] == 210.0
-    assert hf.style({"part": "none"})["parting"] == {"side": "none"}
-    assert hf.style({"tail": "bun"})["tie"]["tail"]["coil"] > 0
-    assert hf.style({"tail": {"kind": "plait"}})["tie"]["tail"]["plait"]
-    assert hf.style({"tail": "none"})["tie"]["tail"] is False
-    assert hf.style({"ears": "covered"})["tie"]["gather"]["ears"] > 0
-    assert hf.style({"neatness": 0.1})["strands"]["halo"] > hf.style({"neatness": 0.9})["strands"]["halo"]
-    assert hf.style({"detail": {"tie": {"gather": {"spacing": 0.03}}}})["tie"]["gather"]["spacing"] == 0.03
-    half = hf.style({"half": True, "length": 0.35})
+    assert hair_flow_style.style({"tie": "high", "side": "left"})["tie"]["at"] == [150.0, 40.0]
+    assert hair_flow_style.style({"side": "right"})["tie"]["at"][0] == 210.0
+    assert hair_flow_style.style({"part": "none"})["parting"] == {"side": "none"}
+    assert hair_flow_style.style({"tail": "bun"})["tie"]["tail"]["coil"] > 0
+    assert hair_flow_style.style({"tail": {"kind": "plait"}})["tie"]["tail"]["plait"]
+    assert hair_flow_style.style({"tail": "none"})["tie"]["tail"] is False
+    assert hair_flow_style.style({"ears": "covered"})["tie"]["gather"]["ears"] > 0
+    assert hair_flow_style.style({"neatness": 0.1})["strands"]["halo"] > hair_flow_style.style({"neatness": 0.9})["strands"]["halo"]
+    assert hair_flow_style.style({"detail": {"tie": {"gather": {"spacing": 0.03}}}})["tie"]["gather"]["spacing"] == 0.03
+    half = hair_flow_style.style({"half": True, "length": 0.35})
     assert half["loose"]["length"] == 0.35 and half["tie"]["gather"]["above"] is not None
     for bad in ({"tie": "sideways"}, {"side": "up"}, {"part": "zigzag"}, {"tail": {"kind": "mullet"}}, {"hieght": 1}):
         try:
-            hf.style(bad)
+            hair_flow_style.style(bad)
             raise AssertionError(f"accepted {bad}")
         except ValueError:
             pass

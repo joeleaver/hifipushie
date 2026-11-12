@@ -65,3 +65,31 @@ def test_the_check_sees_a_name_read_but_never_bound():
 def test_no_module_reads_a_name_it_never_binds():
     bad = {p.name: names for p in sorted(SRC.glob("*.py")) if (names := unbound(p.read_text(), p.name))}
     assert not bad, f"read as globals but never bound in their module: {bad}"
+
+
+def test_no_test_file_reads_a_name_it_never_binds():
+    """The tests too: most slow tests never run in the fast suite, so a name a move left behind in one is only found
+    when someone runs it (test_exported_squint_matches_fit read likeness_render inside a nested function whose
+    import the rewrite had not added; it is skipped without its environment, so nothing ever said)."""
+    bad = {p.name: names for p in sorted(Path(__file__).parent.glob("*.py")) if (names := unbound(p.read_text(), p.name))}
+    assert not bad, f"read as globals but never bound in their test file: {bad}"
+
+
+def test_no_function_deletes_a_name_it_never_binds():
+    """`del name` of a local the function does not bind is an UnboundLocalError when the line runs (onemesh._carried
+    imported retopo and ended with `del retopo`; a caller rewrite dropped the import and kept the del)."""
+    bad = []
+    for p in sorted(SRC.glob("*.py")):
+        for f in ast.walk(ast.parse(p.read_text())):
+            if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            dels = [x for x in ast.walk(f) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Del)]
+            if not dels:
+                continue
+            a = f.args
+            bound = {y.arg for y in a.args + a.kwonlyargs + a.posonlyargs + [z for z in (a.vararg, a.kwarg) if z]} | \
+                {x.id for x in ast.walk(f) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Store)} | \
+                {(al.asname or al.name).split(".")[0] for x in ast.walk(f) if isinstance(x, (ast.Import, ast.ImportFrom))
+                 for al in x.names} | {g for x in ast.walk(f) if isinstance(x, ast.Global) for g in x.names}
+            bad += [f"{p.name}:{d.lineno} del {d.id} in {f.name}" for d in dels if d.id not in bound]
+    assert not bad, bad

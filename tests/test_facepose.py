@@ -20,7 +20,8 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from hifipushie import asset, facepose, faceshapes, store  # noqa: E402
+from hifipushie import facepose, faceshapes, store  # noqa: E402
+from hifipushie import asset_glb, asset_split
 from hifipushie import faceshapes_apply, faceshapes_face
 from hifipushie.spec import SpecError  # noqa: E402
 
@@ -104,8 +105,8 @@ def test_rest_in_the_glb():
     assert rest["jawOpen_mouthSmile"] == pytest.approx(0.4)
     spec = store.load(name)
     fine = faceshapes_face.Face(spec).voxels()
-    ctx = asset.split(spec, RES, True, [], min_share=1, voxels=fine)
-    path = asset.mesh_parts(ctx, Path(_TMP) / "high.npz")
+    ctx = asset_split.split(spec, RES, True, [], min_share=1, voxels=fine)
+    path = asset_split.mesh_parts(ctx, Path(_TMP) / "high.npz")
     with np.load(path) as z:
         V, F, P, names = z["verts"], z["faces"], z["part"], [str(n) for n in z["part_names"]]
     parts = {}
@@ -126,7 +127,7 @@ def test_rest_in_the_glb():
     png = Path(_TMP) / "flat.png"
     Image.new("RGBA", (4, 4), (128, 128, 255, 255)).save(png)
     glb = Path(_TMP) / "gob.glb"
-    asset.write_glb(glb, "gob", parts, [("0", {"basecolor": png, "orm": png, "normal": png, "specular": png})])
+    asset_glb.write_glb(glb, "gob", parts, [("0", {"basecolor": png, "orm": png, "normal": png, "specular": png})])
     got = faceshapes_apply.read_glb(glb)
     body = got["body"]
     ws = dict(zip(body["names"], body["weights"]))

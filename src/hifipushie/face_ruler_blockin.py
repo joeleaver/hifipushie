@@ -46,7 +46,7 @@ def _expr_fields(names) -> np.ndarray:
 
 def model_head(spec: dict, c=None, kappa=None, expr=None) -> dict:
     """A block-in model (the one human mesh, GNM's head on it) as the ruler's model: the whole mesh for the picture's
-    mask, the head's vertices with their move per GNM identity comp (as humanfit._silhouette: the head's carry and the
+    mask, the head's vertices with their move per GNM identity comp (as humanfit_views._silhouette: the head's carry and the
     stitch's fade), the measures of its GNM identity (gnm_mm, GNM's own mm). c: another identity (170) on the same model."""
     import copy
     from . import blockin as bi, gnm_mm, headfit, humanfit, onemesh

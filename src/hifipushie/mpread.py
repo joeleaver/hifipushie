@@ -101,8 +101,8 @@ def available() -> bool:
 def cam_yaw(cam: dict) -> float:
     """The camera's place round the head in the correspondence's convention: degrees, + = the camera on the subject's
     LEFT (+X), 0 = in front."""
-    from . import humanfit
-    d = -humanfit._cam_rot(cam).T @ np.array([0.0, 0.0, 1.0])          # from the head toward the camera, world
+    from . import humanfit_views
+    d = -humanfit_views._cam_rot(cam).T @ np.array([0.0, 0.0, 1.0])          # from the head toward the camera, world
     return float(np.degrees(np.arctan2(d[0], -d[1])))
 
 

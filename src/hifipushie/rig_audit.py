@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .rig import PREFIX, _seg_dist, _segments, pose
+from .rig import PREFIX, _segments
+from .rig_model import _seg_dist, pose
 
 
 def read_glb(path) -> dict:
@@ -187,10 +188,10 @@ def flesh_distances(spec: dict, bones: list[dict], V: np.ndarray):
     a base body (its flesh is one surface: nothing to tell bones apart by)."""
     if spec.get("base"):
         return None
-    from . import rig
-    ids, carry = rig._flesh_tree(spec, bones)
+    from . import rig_flesh, rig_model
+    ids, carry = rig_flesh._flesh_tree(spec, bones)
     V = np.asarray(V, np.float64)
-    D = np.stack([np.min([rig._flesh(p, c.get("cuts", ()), V) for p in c["prims"]], 0) for c in carry], 1)
+    D = np.stack([np.min([rig_model._flesh(p, c.get("cuts", ()), V) for p in c["prims"]], 0) for c in carry], 1)
     return np.asarray(list(ids)), D
 
 
@@ -204,15 +205,15 @@ def fused_limbs(spec: dict, bones: list[dict], limit: float = 0.2) -> list[str]:
     5 stations x 12 directions): the share of it under another, unrelated bone's flesh."""
     if spec.get("base"):
         return []
-    from . import rig
-    ids, carry = rig._flesh_tree(spec, bones)
+    from . import rig_flesh, rig_model
+    ids, carry = rig_flesh._flesh_tree(spec, bones)
     ids = list(ids)
     names = [b["name"] for b in bones]
     seg = _segments(bones)
 
     def dist(k, P):
         c = carry[k]
-        return np.min([rig._flesh(p, c.get("cuts", ()), P) for p in c["prims"]], 0)
+        return np.min([rig_model._flesh(p, c.get("cuts", ()), P) for p in c["prims"]], 0)
     out = []
     for k, i in enumerate(ids):
         nm = names[i].split(":")[-1]

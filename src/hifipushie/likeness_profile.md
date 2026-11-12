@@ -31,7 +31,7 @@ What to know before believing them:
   exists on any chin, but on a round one it slides.
 
 The fit (`fit_likeness(name, "profile")`, also run inside the nose and chin_jaw stages when the lines exist): the
-contour's miss at the model vertices that make its contour becomes targets for `humanfit.fit_region` (GNM identity
+contour's miss at the model vertices that make its contour becomes targets for `humanfit_views.fit_region` (GNM identity
 components inside the nose region / the chin + lower lip region, every other landmark held, integrity-guarded), with
 the part's landmarks held where the FRONT picture has them (a turned view says how far forward things stand; heights
 and widths are the front view's), one camera through all rounds, up to five rounds judged on the contour's own rms.

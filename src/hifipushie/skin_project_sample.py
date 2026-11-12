@@ -13,7 +13,7 @@ def sample_view(at: dict, mesh: dict, cam: dict, photo: np.ndarray, maps: dict |
     (its expression). photo: (h, w, 3) sRGB 0..255. maps: {name: (h, w) picture-pixel maps} sampled the same way.
     Returns {"rgb" (n, 3) linear, "vis" (seen by the camera), "facing" (cos), "X", "N" (world), "uv" (picture px),
     "mm" (the picture's mm per pixel at the head), "maps": {name: (n,)}, "clip" (a channel clipped)}."""
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     from .likeness_read import PROJECT_TOL
     V = np.asarray(mesh["V"], float)
@@ -21,7 +21,7 @@ def sample_view(at: dict, mesh: dict, cam: dict, photo: np.ndarray, maps: dict |
     N = interp(at, likeness_render._vertex_normals(V, np.asarray(mesh["F"])))
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
     w, h = cam["size"]
-    R = humanfit._cam_rot(cam)
+    R = humanfit_views._cam_rot(cam)
     Xc = (X - np.asarray(cam["centre"], float)) @ R.T + np.asarray(cam["t"], float)
     us, vs = cam["f"] * Xc[:, 0] / Xc[:, 2] + w / 2, cam["f"] * Xc[:, 1] / Xc[:, 2] + h / 2
     spx = int(min(max(w, h), 2000))
@@ -138,7 +138,7 @@ def exclude(at: dict, s: dict, mesh: dict, cam: dict, img, view: dict, parse: st
     """(ok (n,) 0..1: this texel's picture pixel IS this skin, notes). s: sample_view's (with the parse maps)."""
     from scipy import ndimage
     from scipy.spatial import cKDTree
-    from . import humanfit
+    from . import humanfit_views
     n = len(s["vis"])
     seen = s["vis"] & (s["facing"] > skin_project.FACE[0])
     ok = np.ones(n)
@@ -181,7 +181,7 @@ def exclude(at: dict, s: dict, mesh: dict, cam: dict, img, view: dict, parse: st
         from . import blockin_clay
         P = blockin_clay.detect_view(img, view)
         if P is not None:
-            Pm = humanfit.project(cam, L[:68])
+            Pm = humanfit_views.project(cam, L[:68])
             from . import likeness as lk
             P = np.asarray(P, float)
             P = P[np.asarray(lk.MP68)] if len(P) > 68 else P

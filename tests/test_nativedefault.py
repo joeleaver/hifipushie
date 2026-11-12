@@ -134,6 +134,7 @@ def test_carried_cameras_are_exact_for_one_shape():
     """carry_cameras: the same identity on the body-carried head and on the native head: every landmark lands on the
     same pixel to a fraction of the face (the two differ only by the old path's blend with the body's head)."""
     from hifipushie import humanfit
+    from hifipushie import humanfit_views
     idn = {f"head_{i:03d}": float(x) for i, x in enumerate(bi.data()["m_f"][:170])}
     b0 = {"body": {"source": "human", "age": 22.0, "sex": 0.0, "weight": 0.15, "height": 1.636},
           "head": {"identity": idn, "gnm_base": 1.0, "dimorphism": 0.0, "eyes": 1.0, "lip_close": True}}
@@ -142,7 +143,7 @@ def test_carried_cameras_are_exact_for_one_shape():
     L0, L1 = (np.asarray(humanfit.state(b)["L"], float)[:68] for b in (b0, b1))
     cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 1.2], "f": 3000.0, "size": [1000, 1000], "centre": L0.mean(0).tolist(), "yaw": 30.0}
     (cam1,), cc = blockin_models.carry_cameras(b0, b1, [cam])
-    P0, P1 = humanfit.project(cam, L0), humanfit.project(cam1, L1)
+    P0, P1 = humanfit_views.project(cam, L0), humanfit_views.project(cam1, L1)
     spread = float(np.sqrt(((P0 - P0.mean(0)) ** 2).sum(1).mean()))
     assert 1.05 < cc["scale"] < 1.3
     assert np.abs(P1 - P0).max() < 0.03 * spread, (np.abs(P1 - P0).max(), spread)

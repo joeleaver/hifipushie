@@ -17,8 +17,8 @@
 
 ## How the fade ships (sh8)
 - hair_fade.build: the map (scalp-chart coords) + skull radius; hair_fade.sample / bake_into: the same lookup as the look's
-  node tree (blender_cards.skin_fade), numpy. asset._export builds it from hair.export.fade (ctx["skin_fade"]) after
-  scene_maps; asset.bake mixes it into the skin part's LINEAR base colour per texel (exact surface point X). Roughness
+  node tree (blender_cards.skin_fade), numpy. asset_export._export builds it from hair.export.fade (ctx["skin_fade"]) after
+  scene_maps; asset_bake.bake mixes it into the skin part's LINEAR base colour per texel (exact surface point X). Roughness
   unchanged. No extra maps: any engine shows it. blender_scene.py untouched (head-stage code hash).
 - Proof: GLB base-colour crops $HG/shells/sh8/glb_f_{nape,sideburn}.png (read from the GLB); re-imported judge run
   sh8c_shipr_8f880a9b (export ship_fr, rigged); sheet $HG/shells/sh8/sheet_photo_ship8c_sh7T.png. Blind A/B sh8c vs sh7T 2-1.

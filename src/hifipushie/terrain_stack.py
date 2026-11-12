@@ -13,7 +13,7 @@ together (a tapering spire), the waterline is undercut by a notch and the foot h
 Every face's offset is the column's polygon offset minus its `cuts` (each a box window in (height, position along the
 face) with soft edges `ramp` m wide, never a jump: a jump meshes as shards), leaning in `batter` deg and wandering
 slowly; the faces meet in a smooth max with `bevel` m (rounded arrises). Every number has a default here (`FORM`); a
-terrain style can override them per stack (sheet `rock.stack`, terrain_style.stack_form). Pointwise and deterministic:
+terrain style can override them per stack (sheet `rock.stack`, terrain_style_zones.stack_form). Pointwise and deterministic:
 tiles agree."""
 from __future__ import annotations
 

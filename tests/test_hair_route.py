@@ -9,7 +9,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_loose import _ball_head  # noqa: E402
 
-from hifipushie import hair, hair_read, hair_route as hr, server, store  # noqa: E402
+from hifipushie import hair, hair_route as hr, server, store  # noqa: E402
+from hifipushie import hair_read_start
 from hifipushie import hair_head, hair_spec
 
 
@@ -136,7 +137,7 @@ def test_every_route_reply_ends_next(model):
 
 
 def test_hair_from_reference_reply_ends_next(model, monkeypatch):
-    monkeypatch.setattr(hair_read, "apply", lambda *a, **k: {"text": "read"})
+    monkeypatch.setattr(hair_read_start, "apply", lambda *a, **k: {"text": "read"})
     assert _last(server.hair_from_reference("m")).startswith("next: ")
 
 

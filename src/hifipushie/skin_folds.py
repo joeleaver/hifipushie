@@ -313,8 +313,8 @@ def field_surface(prims: list, J: dict) -> _FieldSurface:
 
 def surface(spec: dict, part: str, J: dict) -> _FieldSurface:
     """The skin part's fold-free field as a surface (`spec`: the model; its own folds are left out)."""
-    from . import images
-    return field_surface(images.prims_on(without(spec), [part]), J)
+    from . import images_frame
+    return field_surface(images_frame.prims_on(without(spec), [part]), J)
 
 
 def map_surface(spec: dict, part: str, J: dict) -> _Surface:
@@ -768,7 +768,8 @@ def expression(spec: dict, parts: dict, log: list) -> dict:
     vertex the fold's own displacement there is measured on the field (the part's field without that fold minus with
     it, along the fold-free normal); a shape with gain g adds (g - 1) x it. skin["fold_expressions"] = False turns it
     off. Returns {fold side: {shape: max mm}}."""
-    from . import images, sdf
+    from . import sdf
+    from . import images_frame
     from .faceshapes import vertex_normals
     sk = spec.get("skin") or {}
     if geometry_key(sk) is None or sk.get("fold_expressions", True) is False:
@@ -778,7 +779,7 @@ def expression(spec: dict, parts: dict, log: list) -> dict:
     for pn, p in parts.items():
         if pn.split("/")[-1].split("~")[0] != part or not p.get("shapes"):
             continue
-        prims_all = images.prims_on(spec, [part])
+        prims_all = images_frame.prims_on(spec, [part])
         folds = [q for q in prims_all if q.kind == "tissue"]
         if not folds:
             continue

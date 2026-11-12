@@ -20,6 +20,7 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
     integrity-guarded and checked against the earlier stages' items (re-measured against `start`). (base, compare,
     note)."""
     from . import humanfit
+    from . import humanfit_integrity
     path, step, (lo, hi), dflt = lever
     kind = _item(ids[0])["measure"]["kind"]
     views = likeness.LEVER_VIEWS.get(kind)
@@ -39,8 +40,8 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
         nb, refused = with_lever(base, path, x, force)
         if refused:
             return None
-        it = humanfit.integrity(nb, None, st0)
-        if not it["ok"] and not force and humanfit._newly_broken(base, it):
+        it = humanfit_integrity.integrity(nb, None, st0)
+        if not it["ok"] and not force and humanfit_integrity._newly_broken(base, it):
             log.append(f"    {path} = {x:.4g}: BROKEN ({'; '.join(it['broken'])[:120]})")
             return None
         c = compare(name, nb, photos=photos)
@@ -74,12 +75,13 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
 def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = False, save: bool = False,
               panels: str | None = None) -> dict:
     """One stage of the likeness fit: the stage's controls run on the model, the checklist measured before and after.
-    Controls: humanfit.solve on the stage's solver measures (front view), fit_outline (widths), fit_hood (eyes), and
+    Controls: humanfit_solve.solve on the stage's solver measures (front view), fit_outline (widths), fit_hood (eyes), and
     1-D lever fits (LEVERS: shape.hollow / planes / jaw_angle / under_eye, features.brow_ridge, pose.smile, nudges of
     eye corners and nose tip) on the items' own misses. Every result is integrity-guarded (refused if it breaks the
     mesh) and PINNED to the earlier stages' checklist items, re-measured: a step that makes one worse (> 0.5 x tol, past
     tol) is not taken (a solve is retried with half its asks first). save=True stores the result (and the cameras)."""
     from . import humanfit, store
+    from . import humanfit_integrity, humanfit_solve, humanfit_views
     sp = store.load(name)
     base = base or sp["base"]
     refs = _refs(name)
@@ -96,7 +98,7 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
     want, pins, gaps = stage_wants(start, stage, skip=biased)
     rep["want"], rep["pins"] = want, pins
     if stage == "widths":
-        nb, r = humanfit.fit_outline(cur, refs["views"], [m["cam"] for m in start["models"]], force=force)
+        nb, r = humanfit_views.fit_outline(cur, refs["views"], [m["cam"] for m in start["models"]], force=force)
         c = compare(name, nb, photos=photos)
         und = _undone(start, c, k)
         rep["steps"].append(("fit_outline", r))
@@ -107,7 +109,7 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
     if want:
         for frac in (1.0, 0.5):
             ask = {m: f"{float(v) * frac:+.2f}" for m, v in want.items()}
-            nb, r = humanfit.solve(cur, {**pins, **ask}, force=force)
+            nb, r = humanfit_solve.solve(cur, {**pins, **ask}, force=force)
             if r.get("refused"):
                 rep["steps"].append((f"solve {ask}", r))
                 break
@@ -119,7 +121,7 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
                 break
             rep["log"].append(f"  solve x{frac}: undoes {[u[1]['id'] for u in und]}" + ("; retry at half" if frac == 1.0 else "; not taken"))
     if stage == "eyes" and "eye_opening" not in biased:
-        nb, r = humanfit.fit_hood(cur, _views_with(refs, list(humanfit.HOOD_LIDS)), [m["cam"] for m in cur_cmp["models"]], force=force)
+        nb, r = humanfit_views.fit_hood(cur, _views_with(refs, list(humanfit.HOOD_LIDS)), [m["cam"] for m in cur_cmp["models"]], force=force)
         c = compare(name, nb, photos=photos)
         if not _undone(start, c, k) and not r.get("refused"):
             cur, cur_cmp = nb, c
@@ -160,7 +162,7 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         rep["gap"] = f"nothing wired for {stage}" + (": judge the panels" if gaps else "")
     after = cur_cmp
     rep["refused"] = [f"{n}: {r['refused']}" for n, r in rep["steps"] if isinstance(r, dict) and r.get("refused")]
-    rep["integrity"] = humanfit.verdict(humanfit.integrity(cur, None, humanfit.state(base))) if cur is not base else "unchanged"
+    rep["integrity"] = humanfit_integrity.verdict(humanfit_integrity.integrity(cur, None, humanfit.state(base))) if cur is not base else "unchanged"
     bmap = {(r["id"], r["vi"]): r for r in start["rows"]}
     rep["rows"] = [(bmap[(r["id"], r["vi"])], r) for r in after["rows"]
                    if (r["id"], r["vi"]) in bmap and order.index(r["stage"]) == k]
@@ -184,7 +186,7 @@ def _front_holds(cmp, part) -> list:
     contour says how far things stand along the front camera's line of sight; heights and widths are the front
     picture's. Landmarks alone (round 1) left the subnasale free to slide 3 mm down (philtrum, lower third): now
     PROFILE_HOLD_N vertices spread over the region, so what is left to the solve is depth."""
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_profile as lp
     out = []
     for vi, (ph, md) in enumerate(zip(cmp["photos"], cmp["models"])):
@@ -201,7 +203,7 @@ def _front_holds(cmp, part) -> list:
             ids = np.nonzero(np.linalg.norm(V - c, axis=1) < 0.032)[0]
         if len(ids) > likeness.PROFILE_HOLD_N:
             ids = ids[np.linspace(0, len(ids) - 1, likeness.PROFILE_HOLD_N).astype(int)]
-        uv = humanfit.project(md["cam"], V[ids])
+        uv = humanfit_views.project(md["cam"], V[ids])
         out += [{"view": vi, "tpl": [int(a)] * 3, "bary": [1.0, 0.0, 0.0], "uv": [float(u[0]), float(u[1])], "hold": True}
                 for a, u in zip(ids, uv)] * likeness.PROFILE_HOLD_W
     return out
@@ -236,10 +238,11 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
                 start: dict | None = None, k: int | None = None, photos=None) -> tuple:
     """(base, cmp, log): the nose and the chin fitted to a turned view's contours. Each round: the contour's miss at
     the model vertices that MAKE its contour (likeness_profile.targets, the camera's offset on the bony upper face
-    taken out) -> humanfit.fit_region (GNM identity components inside the nose / chin + lower lip region, the other
+    taken out) -> humanfit_views.fit_region (GNM identity components inside the nose / chin + lower lip region, the other
     landmarks held, integrity-guarded). A round is kept only if the part's contour items score better and (in a staged
     fit: start, k) no earlier stage's pinned item is undone."""
-    from . import humanfit, store
+    from . import store
+    from . import humanfit_views
     from . import likeness_profile as lp
     from . import likeness_shape as ls
     sp = store.load(name)
@@ -267,7 +270,7 @@ def fit_profile(name: str, base: dict | None = None, parts=("nose", "chin"), for
             if miss < likeness.PROFILE_DONE:
                 log.append(f"  {part}: contour within {miss:.1f} mm rms")
                 break
-            nb, r = humanfit.fit_region(cur, cams0, tg + _front_holds(cmp, part), group, hold=hold, force=force,
+            nb, r = humanfit_views.fit_region(cur, cams0, tg + _front_holds(cmp, part), group, hold=hold, force=force,
                                         name=f"likeness_{part}")
             if r.get("refused"):
                 log.append(f"  {part} round {rnd + 1}: REFUSED ({r['refused'][:90]})")

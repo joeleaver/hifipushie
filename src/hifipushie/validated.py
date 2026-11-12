@@ -27,9 +27,9 @@ GATE_MEASURES = (
     "hifipushie.hair_checks.colour",
     "hifipushie.hair_checks.stamps",
     "hifipushie.hair_checks.straight_share",
-    "hifipushie.asset.hair_budget",            # the export's hair-card budget refusal
-    "hifipushie.asset.budget_check",           # the export's per-part budget lines
-    "hifipushie.asset.face_light_check",       # the export's shipped-vs-approved lid / forehead WARNINGs
+    "hifipushie.asset_budget.hair_budget",     # the export's hair-card budget refusal
+    "hifipushie.asset_budget.budget_check",    # the export's per-part budget lines
+    "hifipushie.asset_gates.face_light_check",  # the export's shipped-vs-approved lid / forehead WARNINGs
     "hifipushie.cloth_check.seams",            # the pattern checklist's seam ease / notch rows
     "hifipushie.pattern_form.placement_error",  # the dress form's neck point on the body's HPS (pattern stage)
     "hifipushie.cloth_check.neckline_standoff_mm",  # the pattern gate's neckline row (cloth_check.pattern_gate)

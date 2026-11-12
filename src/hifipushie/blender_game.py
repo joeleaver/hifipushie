@@ -759,7 +759,7 @@ if arm is not None and arm.animation_data:
 
 
 def preview_frames():
-    """asset.preview's job: explicit cameras (render.view_frames: dir, up, center + scale (ortho) or eye + fov, out)
+    """asset_export.preview's job: explicit cameras (render.view_frames: dir, up, center + scale (ortho) or eye + fov, out)
     for each of job["poses"] ({ARKit name: weight, "turns": {bone: [x, y, z, deg]}}; None = the rest pose once)."""
     poses = job.get("poses")
     for i, pose in enumerate(poses if poses is not None else [{}]):
@@ -948,7 +948,7 @@ for pz in job.get("shots", []):
     cam_d.type = "ORTHO" if pz.get("ortho") else "PERSP"
     if pz.get("ortho"):
         cam_d.ortho_scale = float(pz["ortho"]) * max(1.0, scene.render.resolution_x / scene.render.resolution_y)
-    if pz.get("dump"):  # (r54) the posed meshes for asset.cull_exposed_keep: every mesh object's rest and posed world
+    if pz.get("dump"):  # (r54) the posed meshes for asset_hidden.cull_exposed_keep: every mesh object's rest and posed world
         # vertices (armature + shapes evaluated) to an npz: "<object>:rest", "<object>:posed"; views [] renders nothing
         import numpy as np
         dg = bpy.context.evaluated_depsgraph_get()

@@ -9,7 +9,8 @@ wrong there. Picture pixels are for judging only: nothing here reaches the model
 import numpy as np
 from PIL import Image, ImageDraw
 
-from . import humanfit, likeness_read as lr, store
+from . import likeness_read as lr, store
+from . import humanfit_views
 from . import likeness_render
 from . import blockin_clay, blockin_expression, blockin_models
 
@@ -21,7 +22,7 @@ def _source(mesh: dict, cam: dict, view: dict) -> dict:
     w, h = cam["size"]
     _, k, ps = likeness_render.render(mesh, cam, (0.0, 0.0, float(w), float(h)), px=min(max(w, h), SOURCE_PX), passes=True)
     return {"photo": np.asarray(Image.open(view["image"]).convert("RGB"), float), "cam": cam, "k": k, "zb": ps["zb"],
-            "R": humanfit._cam_rot(cam)}
+            "R": humanfit_views._cam_rot(cam)}
 
 
 def _lay(img: np.ndarray, X: np.ndarray, n: np.ndarray, ii: np.ndarray, jj: np.ndarray, s: dict) -> None:
@@ -53,7 +54,7 @@ def _skinned(mesh: dict, cam: dict, box: tuple, sources: list, px: int) -> tuple
     u, v = box[0] + (jj + 0.5) / k, box[1] + (ii + 0.5) / k
     w, h = cam["size"]
     Xc = np.c_[(u - w / 2) / cam["f"] * z, (v - h / 2) / cam["f"] * z, z]
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     X = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
     n = ps["nrm"][ii, jj] @ Rc
     clay = np.asarray(im.convert("RGB"), float)

@@ -41,7 +41,7 @@ GLTF_NOTES = {
 
 
 # Where each term of a hair card's albedo lives (applied ONCE: the shader adds no shade of its own, "aux_shade": None).
-# hair_cards.atlas bakes the clump depth and the value per strand into the colour; hair_cards.mesh puts the root
+# hair_cards_atlas.atlas bakes the clump depth and the value per strand into the colour; hair_cards_mesh.mesh puts the root
 # ramp, the tip lift and the lock's tone into COLOR_0. The notes once had the shader multiply all three again from aux.
 HAIR_ALBEDO_TERMS = {"clump_depth": "atlas", "strand_value": "atlas", "root_ramp": "COLOR_0", "tip_lift": "COLOR_0",
                      "lock_tone": "COLOR_0"}
@@ -84,7 +84,7 @@ def _map(path: str, key: str) -> dict:
 
 def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | None = None,
           eyes_part: str | None = None) -> dict:
-    """The shading json from the export's report (asset._export's info)."""
+    """The shading json from the export's report (asset_export._export's info)."""
     skin = info.get("skin") or {}
     skin_part = skin.get("part", "body")
     mats = []

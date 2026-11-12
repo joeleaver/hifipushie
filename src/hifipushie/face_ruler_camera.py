@@ -272,16 +272,16 @@ def _dense_obs(head, view, pred):
 def view_yaw(cam: dict) -> float:
     """How far the head is turned from the camera, from the FITTED camera itself (degrees; 0 = facing it, 90 = a true
     profile): the angle between the camera's line of sight and the head's forward axis, about the vertical."""
-    from . import humanfit
-    f = humanfit._cam_rot(cam) @ np.array([0.0, -1.0, 0.0])      # the head's forward (-Y) in the camera's frame
+    from . import humanfit_views
+    f = humanfit_views._cam_rot(cam) @ np.array([0.0, -1.0, 0.0])      # the head's forward (-Y) in the camera's frame
     return float(np.degrees(np.arctan2(f[0], -f[2])))
 
 
 def view_pitch(cam: dict) -> float:
     """How far the camera looks DOWN on the head (degrees; 0 = level with it, + = from above: the head reads as nodded
     forward), from the fitted camera: the head's up axis against the picture's vertical, in the camera's frame."""
-    from . import humanfit
-    u = humanfit._cam_rot(cam) @ np.array([0.0, 0.0, 1.0])      # the head's up (+Z) in the camera's frame (y down, z away)
+    from . import humanfit_views
+    u = humanfit_views._cam_rot(cam) @ np.array([0.0, 0.0, 1.0])      # the head's up (+Z) in the camera's frame (y down, z away)
     return float(np.degrees(np.arctan2(-u[2], -u[1])))
 
 

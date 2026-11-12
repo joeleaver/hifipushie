@@ -60,17 +60,18 @@ SNOW_DEPTH = 0.5    # x the tallest LYING winter blade: a light snow, tips pokin
 
 def season_factors(p: dict) -> dict:
     """{season: linear factor on the blades' colour}: the TERRAIN's own seasonal tint of the grass layer under this
-    sward (terrain_style.season_colours: turf for mown, grass otherwise, in the same style), so blades and ground turn
+    sward (terrain_style_zones.season_colours: turf for mown, grass otherwise, in the same style), so blades and ground turn
     together. Snow = winter's (what pokes through the snow is winter straw; the white is the snow, not the blades)."""
     from . import terrain_style
+    from . import terrain_style_zones
     try:
         st = terrain_style.sheet(p["style_name"])
     except Exception:
         st = terrain_style.sheet("realistic")
-    sc = terrain_style.season_colours(st, "turf" if p["variant"] == "mown" else "grass", p["ground"])
+    sc = terrain_style_zones.season_colours(st, "turf" if p["variant"] == "mown" else "grass", p["ground"])
     out = {se: [float(x) for x in sc[se]["tint_linear"]] if se in sc else [1.0, 1.0, 1.0] for se in SEASONS if se != "snow"}
     out["snow"] = out["winter"]
-    return out, [round(float(x), 4) for x in terrain_style.snow_numbers(st)["color_linear"]]
+    return out, [round(float(x), 4) for x in terrain_style_zones.snow_numbers(st)["color_linear"]]
 KEYS = set(SWARD) | set(VARIANTS["meadow"]) | {"rings"}
 
 

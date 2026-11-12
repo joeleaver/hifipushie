@@ -97,8 +97,8 @@ def _key(spec: dict, resolution: int, voxels: dict) -> str:
 
 
 def fine_mesh(name: str, spec: dict, resolution: int, log: list) -> Path:
-    """The model meshed as export_asset meshes it for face shapes (asset.split with the face's voxels), cached."""
-    from . import asset
+    """The model meshed as export_asset meshes it for face shapes (asset_split.split with the face's voxels), cached."""
+    from . import asset_split
     face = faceshapes_apply.face_of(spec)
     vox = face.voxels()
     key = _key(spec, resolution, vox)
@@ -109,8 +109,8 @@ def fine_mesh(name: str, spec: dict, resolution: int, log: list) -> Path:
         log.append("face mesh: cached")
         return path
     t = time.time()
-    ctx = asset.split(spec, resolution, True, log, min_share=1, voxels=vox)
-    asset.mesh_parts(ctx, path)
+    ctx = asset_split.split(spec, resolution, True, log, min_share=1, voxels=vox)
+    asset_split.mesh_parts(ctx, path)
     meta.write_text(json.dumps({"key": key, "voxels": vox}))
     log.append(f"face mesh: meshed as the export does ({', '.join(f'{k} {v * 1000:.2f} mm' for k, v in vox.items())})"
                f" in {time.time() - t:.1f}s (cached until the geometry changes)")

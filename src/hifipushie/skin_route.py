@@ -169,10 +169,11 @@ def form_lines(spec: dict) -> str:
     """Fold relief in mm against what skin may carry, and the head against the approval record: the two export gates,
     said here (they used to fire only in the export, after a 24 GB job)."""
     from . import asset
+    from . import asset_gates
     out = ""
     folds = (spec.get("skin") or {}).get("folds") or {}
     if folds:
-        mm = {k: asset.fold_form(k, v) for k, v in folds.items()}
+        mm = {k: asset_gates.fold_form(k, v) for k, v in folds.items()}
         out += "fold relief: " + ", ".join(f"{k} {v:.2f} mm" for k, v in mm.items()) + f" (skin carries <= {asset.FOLD_FORM_MAX_MM:g} mm)\n"
         over = [k for k, v in mm.items() if v > asset.FOLD_FORM_MAX_MM + 1e-9]
         if over:

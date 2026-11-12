@@ -18,7 +18,7 @@
 - Every skin tool's reply ends with next:. The export refuses skin.projection.opacity > 0, and texture_from_reference
   refuses on skin.stack.
 - Code: src/hifipushie/skin_route.py (new), skin_look.beside, small hooks in server.py / next_steps.after_look(how=) /
-  asset._export. Tests: tests/test_skin_route.py (18). codified C265-C269.
+  asset_export._export. Tests: tests/test_skin_route.py (18). codified C265-C269.
 
 ## Not verified (machine load 80-100 all run)
 - NO real look_skin(beside) image yet. tp_k19's first 1 mm head stage did not finish meshing in 2 x 25-40 min under

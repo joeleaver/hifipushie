@@ -22,6 +22,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import anatomy, kits, retopo, sdf, surface
+from . import retopo_fit, retopo_patches
 
 RING = 16          # vertices round a limb ring
 BODY_TRIANGLES = 12000  # the part's decimated body (parts.<p>.topology_triangles)
@@ -88,7 +89,7 @@ def _ring(prims, c, n, ref, r, lift=0.0):
     e2 = np.cross(n, ref)
     a = np.linspace(0, 2 * np.pi, RING, endpoint=False)
     dirs = _unit(np.cos(a)[:, None] * ref + np.sin(a)[:, None] * e2 + lift * n)
-    P, t = retopo._exit(prims, c, dirs, REACH * r)
+    P, t = retopo_patches._exit(prims, c, dirs, REACH * r)
     return P, ref
 
 
@@ -127,7 +128,7 @@ def tube(prims, limb: dict, voxel: float):
     rr = float(np.mean(limb["r"]))
     step = 2 * np.pi * rr / RING
     dend = _unit(C[-1] - C[-2])
-    tip_t = retopo._exit(prims, C[-1], dend[None], 4 * limb["r"][-1])[1][0]
+    tip_t = retopo_patches._exit(prims, C[-1], dend[None], 4 * limb["r"][-1])[1][0]
     Cx = np.r_[C, C[-1:] + dend * tip_t]
     cum = _arc(Cx)
     end = cum[-1] - 0.6 * step
@@ -194,7 +195,7 @@ def tube(prims, limb: dict, voxel: float):
     R, _ = _ring(prims, c, d, ref, rr, lift=1.0)
     rings.append(R)
     labels.append(None)
-    tip = retopo._exit(prims, c, d[None], 4 * rr)[0][0]
+    tip = retopo_patches._exit(prims, c, d[None], 4 * rr)[0][0]
     return rings, tip, labels, step, (root[1], root[2])
 
 
@@ -463,7 +464,7 @@ def build(spec: dict, prims, V, F, voxel: float, body_triangles: int, part: str 
     fx = np.zeros(len(Vout), bool)
     fx[fixed] = True
     Vout = _relax_zip(prims, Vout, L, S, fx, voxel)
-    Vout = retopo._untangle(Vout, L, S, prims, voxel, fx, log=log)
+    Vout = retopo_fit._untangle(Vout, L, S, prims, voxel, fx, log=log)
     log.append(f"limbs: {len(S)} faces ({(S == 4).mean():.0%} quads, {int((S - 2).sum())} triangles), body "
                f"decimated to {len(Fd)} triangles ({int(cut.sum())} fine vertices cut for the limbs)")
     return {"verts": Vout, "loops": L, "sizes": S, "rings": keyrings, "planes": planes}
@@ -533,5 +534,5 @@ def quality(V, L, S, spec: dict, prims, part: str = "body", planes: dict | None 
     fd = np.abs(sdf.field_at(prims, V, clip=False)) * 1000
     return {"rings": rc, "closed": f"{sum(v['ring'] for v in rc.values())}/{len(rc)}",
             "field_mm": (round(float(fd.mean()), 2), round(float(np.percentile(fd, 99)), 1)),
-            "turned": int(retopo.turned(V, T, prims).sum()), "quads": round(float((S == 4).mean()), 2),
+            "turned": int(retopo_fit.turned(V, T, prims).sum()), "quads": round(float((S == 4).mean()), 2),
             "faces": len(S), "triangles": int((S - 2).sum())}

@@ -6,6 +6,7 @@ import colorsys
 import numpy as np
 
 from hifipushie import paint, skin, skin_measure, skin_swatch
+from hifipushie import paint_apply, paint_check, paint_patterns
 from hifipushie.spec import SpecError
 
 LM = {"lm_nose_bridge": [0, -0.156, 1.644], "lm_nose_tip": [0, -0.185, 1.591], "lm_nose_base": [0, -0.172, 1.572],
@@ -65,7 +66,7 @@ def test_zones_and_layers():
     L = paint.layers(spec)
     assert all(k.startswith("skin:") for k in L) and "skin:midface_red" in L and "skin:micro_pores" in L
     assert '"zone"' not in str(L).replace("'", '"'), "zones expand to spots before anything else sees them"
-    paint.validate(spec)
+    paint_check.validate(spec)
     # a zone is where it says: the left cheek spot holds the point under the left eye, not the right one
     from hifipushie.surface import Points
     J = skin._joints(spec)
@@ -73,10 +74,10 @@ def test_zones_and_layers():
     pts = np.array([J["lm_lid_lower.L"] + io * np.array([0.12, 0.1, -0.6]), J["lm_lid_lower.R"] + io * np.array([-0.12, 0.1, -0.6]),
                     J["lm_nose_bridge"] + io * np.array([0, 0.2, 0.9])])
     P = Points(spec, pts, np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
-    view = paint._View(P, np.arange(3))
+    view = paint_apply._View(P, np.arange(3))
     for z, want in (("cheek.L", [1, 0, 0]), ("cheek.R", [0, 1, 0]), ("cheek", [1, 1, 0]), ("forehead", [0, 0, 1])):
         ly = skin.expand_zones(spec, {"color": [1, 0, 0], "zone": z})
-        m = paint.layer_mask(spec, "t", ly, view)
+        m = paint_apply.layer_mask(spec, "t", ly, view)
         assert (m > 0.5).astype(int).tolist() == want, (z, m)
     # the model's own paint can address zones, and sits over the skin's layers
     spec["paint"] = {"blush": {"color": "#d06060", "opacity": 0.4, "zone": "cheekbone"}}
@@ -111,7 +112,7 @@ def test_only_some_groups():
     assert {"skin:eye_L", "skin:eye_R"} <= set(L) and all(v["part"] == "eyes" for v in L.values())
     assert skin.part_base(spec) is None and not skin.shaded(spec) and skin.shaded(full)
     assert L["skin:eye_L"] == paint.layers(full)["skin:eye_L"]  # the same picture as the whole description's
-    paint.validate(spec)
+    paint_check.validate(spec)
     # the rims are on the skin: ordinary layers (nothing is composited into a base that isn't the description's)
     rims = paint.layers(head_spec(only=["eyes", "eye_rims"]))
     assert "skin:caruncle" in rims and not any(v.get("_pre") for v in rims.values())
@@ -126,7 +127,7 @@ def test_only_some_groups():
     assert CL["skin:eye_canthus_L"]["mask"][0]["spot"]["at"][0][0] > 0 > CL["skin:eye_canthus_R"]["mask"][0]["spot"]["at"][0][0]
     assert skin.group_of("skin:eye_canthus_L") == "eyes" and skin.group_of("skin:canthus") == "eye_rims"
     assert CL["skin:canthus"].get("_pre")
-    paint.validate(cs)
+    paint_check.validate(cs)
     # every layer of a full description belongs to a group, and the groups add up to it
     names = set(paint.layers(full))
     got = set()
@@ -163,7 +164,7 @@ def test_description_drives_layers():
 def test_spot_and_tile():
     s = {"c": np.array([[0, 0, 0.0], [0.1, 0, 0]]), "r": np.full((2, 3), 0.01), "soft": 0.5, "line": True}
     v = np.array([[0.05, 0, 0], [0.05, 0.004, 0], [0.05, 0.0075, 0], [0.05, 0.02, 0], [-0.02, 0, 0]])
-    m = paint.spot_mask(s, v)
+    m = paint_patterns.spot_mask(s, v)
     assert m[0] == 1 and m[1] == 1 and 0 < m[2] < 1 and m[3] == 0 and m[4] == 0, m
     for kind in skin_swatch.KINDS:
         d = skin_swatch.depth(kind)
@@ -174,7 +175,7 @@ def test_spot_and_tile():
         assert seam < 2.5 * inside, (kind, seam, inside)
     n = np.tile([0.0, -1.0, 0.0], (4, 1))
     p = np.array([[0.001, 0, 0.002], [0.001 + skin_swatch.PERIOD["pores"], 0, 0.002], [0.004, 0, 0.007], [0.0, 0, 0.0]])
-    t = paint.tile_mask({"swatch": "pores", "vary": False}, p, n)
+    t = paint_patterns.tile_mask({"swatch": "pores", "vary": False}, p, n)
     assert abs(t[0] - t[1]) < 1e-6 and 0 <= t.min() and t.max() <= 1, t
 
 
@@ -222,7 +223,7 @@ def test_features_and_shader_budget(tmp=None):
         try:
             spec = head_spec(**FULL)
             L = paint.layers(spec)
-            paint.validate(spec)
+            paint_check.validate(spec)
             pre = {k for k, v in L.items() if v.get("_pre")}
             fine = {k: v for k, v in L.items() if not v.get("_pre")}
             for want in ("skin:freckles", "skin:stubble_shadow", "skin:brow_hairs", "skin:stubble", "skin:wrinkle_forehead", "skin:scar0_cut",
@@ -256,9 +257,9 @@ def test_features_and_shader_budget(tmp=None):
             P = Points(spec, pts, np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
             plain = head_spec(tone={"fitzpatrick": 3}, age=60)
             base = skin.part_base(plain)[1]
-            c = paint.precomposite(plain, paint._View(P, np.arange(3)), base, paint.pre_layers(plain))
+            c = paint_apply.precomposite(plain, paint_apply._View(P, np.arange(3)), base, paint_apply.pre_layers(plain))
             assert c.shape == (3, 5) and c[0, 0] / c[0, 1] > c[1, 0] / c[1, 1], c  # r/g: cheek vs forehead
-            c2 = paint.precomposite(spec, paint._View(P, np.arange(3)), base, paint.pre_layers(spec))
+            c2 = paint_apply.precomposite(spec, paint_apply._View(P, np.arange(3)), base, paint_apply.pre_layers(spec))
             assert c2[2, 3] < 0.25 < c[2, 3], (c2[2], c[2])  # glossy lipstick's roughness on the lower lip
             from hifipushie import paintnodes
             prog = paintnodes.compile(spec)
@@ -288,7 +289,8 @@ def test_brows_mirror():
     """Both brows' hairs run from the nose outward: the right brow is the left one's mirror image (it was laid
     unmirrored: "the left eyebrow is backwards")."""
     import tempfile
-    from hifipushie import images, store
+    from hifipushie import store
+    from hifipushie import images_frame, images_project
     with tempfile.TemporaryDirectory() as d:
         home, store.HOME = store.HOME, __import__("pathlib").Path(d)
         try:
@@ -296,8 +298,8 @@ def test_brows_mirror():
             ly = paint.layers(spec)["skin:brow_hairs"]
             img = next(e["image"] for e in [ly] + list(ly.get("mask") or []) if isinstance(e, dict) and "image" in e)
             assert img["mirror"] and img["mirror_image"]
-            fr = images.frame(spec, img)
-            mr = images.mirrored(fr)
+            fr = images_frame.frame(spec, img)
+            mr = images_project.mirrored(fr)
             M = np.array([-1.0, 1, 1])
             for k in ("c", "right", "up", "dir"):  # a pure reflection of the left brow's frame
                 assert np.allclose(np.array(mr[k]), np.array(fr[k]) * M), k
@@ -305,8 +307,8 @@ def test_brows_mirror():
             P = np.array(fr["c"]) + rng.uniform(-1, 1, (400, 1)) * 0.5 * fr["w"] * np.array(fr["right"]) \
                 + rng.uniform(-1, 1, (400, 1)) * 0.5 * fr["h"] * np.array(fr["up"])
             N = np.tile(fr["dir"], (400, 1))
-            a, _ = images.evaluate(fr, P, N)
-            b, _ = images.evaluate(fr, P * M, N * M)
+            a, _ = images_project.evaluate(fr, P, N)
+            b, _ = images_project.evaluate(fr, P * M, N * M)
             assert a.max() > 0.5 and np.allclose(a, b, atol=1e-6)  # the hair picture at mirrored points is the same
         finally:
             store.HOME = home
@@ -344,7 +346,7 @@ def test_lash_line_is_a_line():
             spec["joints"]["lm_eye_outer.L"]["pos"] = (on(5) + [0.013, 0.004, 0]).tolist()
         P = Points(spec, pts, np.tile([0, -1.0, 0], (2, 1)), np.zeros(2, int), ["body"], 0.002)
         ly = skin.expand_zones(spec, {"color": [0, 0, 0], "zone": "lash_upper.L"})
-        m = paint.layer_mask(spec, "t", ly, paint._View(P, np.arange(2)))
+        m = paint_apply.layer_mask(spec, "t", ly, paint_apply._View(P, np.arange(2)))
         assert (m > 0.5).astype(int).tolist() == want, (with_margin, m)
 
 
@@ -421,7 +423,7 @@ def test_lip_rim_lower():
         spec = head_spec(tone={"fitzpatrick": 2}, age=30, lips={"rim_lower": rl})
         L = paint.layers(spec)
         P = Points(spec, np.array([above, below, inside]), np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
-        got[rl] = paint.layer_mask(spec, "skin:lip_border", L["skin:lip_border"], paint._View(P, np.arange(3)))
+        got[rl] = paint_apply.layer_mask(spec, "skin:lip_border", L["skin:lip_border"], paint_apply._View(P, np.arange(3)))
     for rl, m in got.items():
         assert m[0] > 0.2 and m[2] < 0.05, (rl, m)     # the rim over the upper lip stays; nothing inside the red
     assert got[0.0][1] < 0.05 < got[0.5][1] < got[1.0][1], {k: v.round(3).tolist() for k, v in got.items()}
@@ -445,7 +447,7 @@ def test_lip_under_shade():
     ly = L["skin:lip_under_shade"]
     assert ly["mix"] == "multiply" and 0 < ly["opacity"] <= 1
     P = Points(spec, np.array([mid, side, red]), np.tile([0, -1.0, 0], (3, 1)), np.zeros(3, int), ["body"], 0.002)
-    m = paint.layer_mask(spec, "skin:lip_under_shade", ly, paint._View(P, np.arange(3)))
+    m = paint_apply.layer_mask(spec, "skin:lip_under_shade", ly, paint_apply._View(P, np.arange(3)))
     assert m[0] > 0.1 and m[0] > 2 * m[1] and m[2] < 0.05, m
     assert "skin:lip_under_shade" not in paint.layers(head_spec(tone={"fitzpatrick": 2}, age=30, lips={"under_shade": 0}))
 
@@ -562,8 +564,9 @@ def test_export_bakes_skin_detail_into_the_parts_maps():
     import tempfile
     from hifipushie import asset, shading, store
     assert asset.BAKE_SKIN_DETAIL is True
-    src = inspect.getsource(asset)
-    assert 'ctx["bake_detail"] = BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)
+    from hifipushie import asset_export
+    src = inspect.getsource(asset_export)  # (_export: asset.py was split; a constant is read as asset.NAME)
+    assert 'ctx["bake_detail"] = asset.BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)
     with tempfile.TemporaryDirectory() as d:
         home, store.HOME = store.HOME, __import__("pathlib").Path(d)
         try:

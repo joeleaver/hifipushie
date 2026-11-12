@@ -807,7 +807,7 @@ def _debug_layers(m):
 
 
 def card_object(name: str, path: str, mat, coll):
-    """A card mesh (hair_cards.mesh's npz) as an object: uv, its bent normals as custom normals, hp_col, hp_tangent."""
+    """A card mesh (hair_cards_mesh.mesh's npz) as an object: uv, its bent normals as custom normals, hp_col, hp_tangent."""
     z = np.load(path)
     V, T = z["verts"], z["tris"]
     me = bpy.data.meshes.new(name)

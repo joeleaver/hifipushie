@@ -338,17 +338,18 @@ def hair_from_reference(name: str, out: str = "", read_only: bool = False, autho
     read_only: the read alone. out: groom a copy. authority: the colour view (default the most frontal). compare
     {view index: render png through that fitted camera}: the same read on our renders, ours | picture.
     Details: guide(topic="hair_from_reference")."""
-    from . import hair_read, hair_route
+    from . import hair_route
+    from . import hair_read_compare, hair_read_read, hair_read_start
     if compare:
-        c = hair_read.compare(name, {int(k): v for k, v in _spec_arg(compare).items()}, authority=authority)
-        st = hair_read.colour_step(c, (store.load(name).get("hair") or {}).get("look") or {})
+        c = hair_read_compare.compare(name, {int(k): v for k, v in _spec_arg(compare).items()}, authority=authority)
+        st = hair_read_compare.colour_step(c, (store.load(name).get("hair") or {}).get("look") or {})
         return (c["text"] + ("\ncolour step (authority view): " + st["why"] if st.get("why") else "") + "\n"
                 + hair_route.compare_next(name))
     if read_only:
-        r = hair_read.read(name, authority=authority, log=lambda s: None)
-        return r["text"] + "\n" + hair_read.start(r, store.load(name))["text"] + "\n(read only: nothing saved)\n" \
+        r = hair_read_read.read(name, authority=authority, log=lambda s: None)
+        return r["text"] + "\n" + hair_read_start.start(r, store.load(name))["text"] + "\n(read only: nothing saved)\n" \
             + hair_route.reader_next(name, out, True)
-    return (hair_read.apply(name, out=out or None, authority=authority, seed=seed, log=lambda s: None)["text"] + "\n"
+    return (hair_read_start.apply(name, out=out or None, authority=authority, seed=seed, log=lambda s: None)["text"] + "\n"
             + hair_route.reader_next(name, out, False))
 
 

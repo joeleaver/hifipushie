@@ -49,14 +49,14 @@ def test_template_joints_follow_the_head():
 def test_camera_distance_is_a_freedom_that_keeps_the_picture_scale():
     """cam_moved(dist=): the camera further away with the lens to match: the head's centre stays where it is in the
     picture and as large; points nearer / further than the centre move (perspective). _cam_columns has its column."""
-    from hifipushie import humanfit
+    from hifipushie import humanfit_views
     from hifipushie import face_ruler_solve
     from hifipushie import face_ruler
     cam = {"r": [0.02, 0.0, 0.01], "t": [0.01, -0.02, 0.8], "f": 2700.0, "size": [1152, 1536], "centre": [0.0, -0.13, 1.58], "yaw": -40.0}
     far = face_ruler_solve.cam_moved(cam, dist=30.0)
     assert abs(far["t"][2] / cam["t"][2] - np.exp(0.3)) < 1e-9 and abs(far["f"] / cam["f"] - np.exp(0.3)) < 1e-9
     X = np.array([cam["centre"], [0.07, -0.05, 1.5], [0.0, -0.2, 1.6]])
-    a, b = humanfit.project(cam, X), humanfit.project(far, X)
+    a, b = humanfit_views.project(cam, X), humanfit_views.project(far, X)
     assert np.allclose(a[0], b[0], atol=1e-6)                 # the centre: unmoved
     assert np.abs(a[1:] - b[1:]).max() > 2.0                  # depth off the centre: perspective changes
     obs = [{"type": "landmark", "view": "3q", "name": f"lm{i}.{ax}", "o": 0.0, "J": np.zeros(170), "sig": 1.0, "p": list(map(float, a[i])), "X": list(map(float, X[i]))}

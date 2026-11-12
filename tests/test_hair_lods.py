@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import lods
+from hifipushie import lods_part
 from hifipushie import hair_export
 
 
@@ -64,7 +65,7 @@ def test_ribbon_lod():
     c = T.ravel()
     p = {"verts": V, "corner_vert": c, "uv": np.zeros((len(c), 2), np.float32), "normal": np.zeros((len(c), 3)),
          "tangent": np.zeros((len(c), 3)), "sign": np.ones(len(c))}
-    q, r = lods.ribbon_lod(p, 0.25)
+    q, r = lods_part.ribbon_lod(p, 0.25)
     assert r["ribbons"] == 10 and r["triangles"] == 10 * 2 * seg, r
     assert len(q["uv"]) == len(q["corner_vert"]) and len(q["verts"]) == len(V)
     Tq = q["corner_vert"].reshape(-1, 3)
@@ -72,7 +73,7 @@ def test_ribbon_lod():
     assert abs(w - 0.0002 * lods.RIBBON_WIDEN) < 1e-6, w  # widened (capped) for coverage
     xs = np.unique(np.round(q["verts"][np.unique(Tq)][:, 0], 3))
     assert xs.min() == 0.0 and xs.max() == round((n - 1) * 0.01, 3)  # spread along the lid, not the first ten
-    q1, r1 = lods.ribbon_lod(p, 1.0)
+    q1, r1 = lods_part.ribbon_lod(p, 1.0)
     assert r1["triangles"] == len(T)
 
 def _ribbons(n, seg=4):
@@ -91,19 +92,20 @@ def _ribbons(n, seg=4):
 
 def test_lash_budget_fit():
     """Round 29: Tess's eyes_mouth_lashes was 5,699 of the hero's 5,000. The lashes fit what the eyes / teeth / tongue
-    leave (asset.lash_cap + lods.ribbon_fit), whole lashes, widened; under the cap nothing changes; the lower lid's
+    leave (asset_budget.lash_cap + lods_part.ribbon_fit), whole lashes, widened; under the cap nothing changes; the lower lid's
     lashes are 2 segments (lashes.triangles counts per lid)."""
-    from hifipushie import asset, lashes
+    from hifipushie import lashes
+    from hifipushie import asset_budget
     rb = {"parts": {"eyes_mouth_lashes": {"default": 5000}}}
     rep = {"eyes": {"triangles": 795}, "teeth_lower": {"triangles": 24}, "body": {"triangles": 30000}}
-    cap = asset.lash_cap(rb, rep)
+    cap = asset_budget.lash_cap(rb, rep)
     assert cap == 5000 - 819, cap
-    assert asset.lash_cap({"parts": {}}, rep) is None
+    assert asset_budget.lash_cap({"parts": {}}, rep) is None
     p = _ribbons(300)  # 2400 triangles
-    q, r = lods.ribbon_fit(p, 2000)
+    q, r = lods_part.ribbon_fit(p, 2000)
     assert r["triangles"] <= 2000 and r["triangles"] >= 2000 - 8, r  # as many whole lashes as fit
     assert r["widen"] > 1.0 and len(q["verts"]) == len(p["verts"])
-    q2, r2 = lods.ribbon_fit(p, 5000)
+    q2, r2 = lods_part.ribbon_fit(p, 5000)
     assert q2 is p and r2["triangles"] == 2400
     cfg = lashes.wanted({"base": {"body": {"source": "human", "sex": 0.0}, "head": {"x": 1}, "lashes": {}}})
     n = lashes.triangles({"base": {"body": {"source": "human", "sex": 0.0}, "head": {"x": 1}, "lashes": {}}})
@@ -114,21 +116,23 @@ def test_lash_budget_fit():
 def test_halo_card_rules():
     """Round 29: lower tiers' pooled halo cards stood 1-3 cm over the crown (LOD1-3 only): the hero's rules apply to
     every tier: no card for a single hair rooted over the crown, or one that loops."""
-    from hifipushie import hair_cards, hair_clumps
+    from hifipushie import hair_clumps
+    from hifipushie import hair_cards_clumps
     C = np.array([0.0, 0.0, 1.5])
     up = np.linspace(0, 1, 6)[:, None]
     low = {"pts": C + [0.08, 0, 0] + up * [0, -0.05, -0.05]}  # rooted at the side, below the crown line
     crown = {"pts": C + [0, 0, hair_clumps.FLY_CROWN + 0.03] + up * [0, -0.05, 0]}
     loop = {"pts": C + [0.08, 0, 0] + 0.01 * np.c_[np.cos(up[:, 0] * 6), np.sin(up[:, 0] * 6), 0 * up[:, 0]]}
-    assert hair_cards.halo_card_ok(low, C)
-    assert not hair_cards.halo_card_ok(crown, C)
-    assert not hair_cards.halo_card_ok(loop, C)
+    assert hair_cards_clumps.halo_card_ok(low, C)
+    assert not hair_cards_clumps.halo_card_ok(crown, C)
+    assert not hair_cards_clumps.halo_card_ok(loop, C)
 
 
 def test_far_fly_dropped():
     """Round 30: LOD1-3 had thin fly cards standing 35-80 mm off the tail by the tie: the hero's FLY_FAR at every
     tier (a fly card further than that off the hair that isn't few single hairs gets none; face-framing ones stay)."""
-    from hifipushie import hair_cards, hair_clumps
+    from hifipushie import hair_clumps
+    from hifipushie import hair_cards_clumps
     t = np.linspace(0, 0.2, 41)  # (strand_grid: GRID stations a lock)
     A = np.stack([np.c_[t, 0 * t + k * 0.002, 0 * t] for k in range(4)])  # lock 0: a mass of 4 strands along x
     G = {"A": A, "lock": np.zeros(4, int)}
@@ -137,7 +141,7 @@ def test_far_fly_dropped():
     far = {"P": np.c_[t, 0 * t + hair_clumps.FLY_FAR + 0.02, 0 * t], "kind": "fly", "lock": "wisp"}
     face = {"P": np.c_[t, 0 * t + 0.08, 0 * t], "kind": "fly", "lock": "cheek"}
     dense = {"P": np.c_[t, 0 * t + 0.08, 0 * t], "kind": "dense", "lock": "mass"}
-    kept = hair_cards.drop_far_fly([near, far, face, dense], G, locks)
+    kept = hair_cards_clumps.drop_far_fly([near, far, face, dense], G, locks)
     assert [c["lock"] + c["kind"] for c in kept] == ["wispfly", "cheekfly", "massdense"]
 
 

@@ -5,6 +5,7 @@ mcp_app.py; each domain's tools are in tools_<domain>.py; shared helpers in tool
 `from hifipushie import server; server.<tool>(...)` calls any tool as a plain function."""
 from __future__ import annotations
 
+from . import moved
 from .mcp_app import CORE, INSTRUCTIONS, TOOL_GROUPS, _register_core, enable_all, mcp  # noqa: F401
 from .tools_cloth import (  # noqa: F401
     body_tape, chain_garment, draft_pattern, export_garment, garment_appearance, garment_details, garment_plan,
@@ -47,6 +48,11 @@ from .tools_skin import (  # noqa: F401
 from .tools_terrain import (  # noqa: F401
     check_terrain, export_terrain, look_terrain, set_terrain, terrain_history,
 )
+
+# A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
+__getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
+                                      "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
+                                      "tools_terrain", "tools_plants", "tools_clutter"))
 
 _register_core()
 

@@ -6,7 +6,8 @@ import sys
 
 import numpy as np
 
-from hifipushie import assets, humanfit as hf, likeness_texture as lt
+from hifipushie import assets, likeness_texture as lt
+from hifipushie import humanfit_views
 from hifipushie import likeness_render
 
 
@@ -36,14 +37,14 @@ def setup():
     marks = {30: (255, 0, 0), 54: (0, 255, 0), 27: (0, 0, 255)}         # nose tip, the left mouth corner, nasion
     yy, xx = np.mgrid[0:h, 0:w]
     for i, c in marks.items():
-        u, v = hf.project(cam, L[i][None])[0]
+        u, v = humanfit_views.project(cam, L[i][None])[0]
         photo[(xx - u) ** 2 + (yy - v) ** 2 < 5 ** 2] = c
     _C.update(b=b, mesh=mesh, L=L, cam=cam, photo=photo, marks=marks)
     return _C
 
 
 def _texel(r, cam_o, X):
-    u, v = hf.project(cam_o, np.asarray(X, float)[None])[0]
+    u, v = humanfit_views.project(cam_o, np.asarray(X, float)[None])[0]
     return r["rgba"][int(round(v - 0.5)), int(round(u - 0.5))]
 
 

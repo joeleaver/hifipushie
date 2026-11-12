@@ -96,14 +96,14 @@ The same list drives the first fit, not only the check. `likeness(name, targets=
 
 | stage | controls (wired) | items they move | gaps (no control) |
 |---|---|---|---|
-| proportions | humanfit.solve | face height, middle third | lower third, mouth line, face index (ratios) |
+| proportions | humanfit_solve.solve | face height, middle third | lower third, mouth line, face index (ratios) |
 | widths | fit_outline (front outline) | every width | - |
 | structure | levers: shape.hollow, shape.planes, shape.jaw_angle, shape.under_eye, features.brow_ridge | cheek hollow, temple / cheekbone / jaw planes, under-eye (fill only), brow ridge, gonial angle and the angle's height | nasolabial fold, ramus angle, lower border, neck step |
-| eyes | humanfit.solve + fit_hood + a nudge of the outer corners | spacing, intercanthal, eye width, lid opening, canthal tilt | eye shape (follows from width and hood) |
-| brows | humanfit.solve | brow height | arch, slant |
-| nose | humanfit.solve + nudges of the tip | alar width, length to the tip, projection | nasolabial angle, bridge profile, nostril base (base.head.regions by hand) |
-| mouth | humanfit.solve + lever pose.smile | mouth width, philtrum, lip heights, corner tilt | lip ratio, lip projection |
-| chin_jaw | humanfit.solve | chin height | chin projection, chin shape, neck |
+| eyes | humanfit_solve.solve + fit_hood + a nudge of the outer corners | spacing, intercanthal, eye width, lid opening, canthal tilt | eye shape (follows from width and hood) |
+| brows | humanfit_solve.solve | brow height | arch, slant |
+| nose | humanfit_solve.solve + nudges of the tip | alar width, length to the tip, projection | nasolabial angle, bridge profile, nostril base (base.head.regions by hand) |
+| mouth | humanfit_solve.solve + lever pose.smile | mouth width, philtrum, lip heights, corner tilt | lip ratio, lip projection |
+| chin_jaw | humanfit_solve.solve | chin height | chin projection, chin shape, neck |
 | ears | none | - | everything |
 
 A LEVER is a 1-D fit: the control is stepped once, the item re-measured (a full render + detection), a secant step

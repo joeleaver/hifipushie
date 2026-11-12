@@ -154,7 +154,7 @@ class _GnmMouth:
 
     def _smooth_sock(self, Xn: np.ndarray, d: np.ndarray, index, rest: bool = False) -> np.ndarray:
         """(one mesh, own quads) A shape's offsets with the mouth sock's POSED shape smoothed (Taubin, no shrinking)
-        over GNM's quads, the skin held: the export's sock is tucked in behind the lips (retopo._with_mouth_sock
+        over GNM's quads, the skin held: the export's sock is tucked in behind the lips (retopo_wrap._with_mouth_sock
         narrows it 45% within 4 mm of the lips' loop), and opened by a shape that fold folds into crumpled walls
         beside the teeth (clay: faceted folds lit pink with dark voids between, "torn lining", expr_r7..r13). The
         rest pose's own shape is the smoothing's zero: only what the shape adds to the sock's unevenness goes; the

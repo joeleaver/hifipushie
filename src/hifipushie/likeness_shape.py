@@ -480,18 +480,18 @@ def model_jaw(Q_photo, zb, k, box, along_mm, mmpx, nrm=None):
 # ---- the camera: refit on the detector's points (photo) against the model's surface under them (render) -----------
 
 def unproject(cam, uv, z):
-    """Picture pixels + camera depth -> world points (the inverse of humanfit.project)."""
-    from . import humanfit
+    """Picture pixels + camera depth -> world points (the inverse of humanfit_views.project)."""
+    from . import humanfit_views
     w, h = cam["size"]
     Xc = np.c_[(uv[:, 0] - w / 2) * z / cam["f"], (uv[:, 1] - h / 2) * z / cam["f"], z]
-    return (Xc - np.asarray(cam["t"])) @ humanfit._cam_rot(cam) + np.asarray(cam["centre"])
+    return (Xc - np.asarray(cam["t"])) @ humanfit_views._cam_rot(cam) + np.asarray(cam["centre"])
 
 
 def refit_camera(cam, uv_photo, X, prior: float = 0.02):
     """(camera, per-point residual px): pose and focal by least squares (soft_l1) of the model's points X onto the
     photo's points, held near the given camera."""
     from scipy.optimize import least_squares
-    from . import humanfit
+    from . import humanfit_views
     sz = max(cam["size"])
     x0 = np.r_[cam["r"], cam["t"], cam["f"]]
 
@@ -499,9 +499,9 @@ def refit_camera(cam, uv_photo, X, prior: float = 0.02):
         return {**cam, "r": x[:3].tolist(), "t": x[3:6].tolist(), "f": float(x[6])}
 
     def res(x):
-        r = (humanfit.project(un(x), X) - uv_photo).ravel() / sz * 400
+        r = (humanfit_views.project(un(x), X) - uv_photo).ravel() / sz * 400
         return np.r_[r, prior * 400 * (x[:3] - x0[:3]), prior * 40 * (x[6] / x0[6] - 1)]
     s = least_squares(res, x0, loss="soft_l1", f_scale=2.0,
                       x_scale=np.r_[0.05, 0.05, 0.05, 0.02, 0.02, 0.1 * max(abs(x0[5]), 1e-3), 0.05 * x0[6]])
     c = un(s.x)
-    return c, np.linalg.norm(humanfit.project(c, X) - uv_photo, axis=1)
+    return c, np.linalg.norm(humanfit_views.project(c, X) - uv_photo, axis=1)

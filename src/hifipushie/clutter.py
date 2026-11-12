@@ -30,6 +30,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from . import moved
 
 HERE = Path(__file__).parent
 ROCK_SRGB = [0.36, 0.34, 0.31]  # terrain_rock.base_colour's grey rock: the reference a style turns
@@ -321,3 +322,4 @@ TERRAIN_KINDS = {
 # The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("clutter_forms", "clutter_solid", "clutter_mesh", "clutter_bake", "clutter_build", "clutter_export",
            "clutter_kit")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

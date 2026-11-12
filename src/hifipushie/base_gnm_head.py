@@ -66,7 +66,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         from . import headfit
         V = V + headfit.field_vertices(head["field"]) * float(abs(J[2][0] - J[3][0]))
     if head.get("warp"):  # (headfit.py) what the identity space couldn't make of the body's head, as a smooth warp;
-        # a list = several warps, each with its own reach, applied in order (humanfit.fit_outline adds a shorter one)
+        # a list = several warps, each with its own reach, applied in order (humanfit_views.fit_outline adds a shorter one)
         for wp in (head["warp"] if isinstance(head["warp"], list) else [head["warp"]]):
             P_, C_ = np.asarray(wp["at"], float), np.asarray(wp["coef"], float)
             for a in range(0, len(V), 4096):

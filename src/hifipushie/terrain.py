@@ -31,6 +31,7 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
+from . import moved
 
 PROFILES = {"V": 1.0, "U": 2.2, "gorge": 0.6, "open": 1.5, "straight": 1.0, "concave": 1.6, "convex": 0.7}
 RIVER_KEYS = {"source", "through", "mouth", "into", "hanging", "concavity", "valley", "water", "bed", "falls"}
@@ -308,3 +309,4 @@ def _accumulate(rec, levels, cell):
 # The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py. The terrain cache hashes the code of all of them (terrain_cache).
 MODULES = ("terrain_model", "terrain_views", "terrain_skeleton", "terrain_harmonic", "terrain_features",
            "terrain_landforms", "terrain_measure")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

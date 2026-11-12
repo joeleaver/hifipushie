@@ -58,23 +58,24 @@ def test_hair_budget_numbers_are_budgets_json():
 
 
 def test_hair_budget_refuses_drawn_over_max_and_counts_card_faces():
-    from hifipushie import asset, budgets
+    from hifipushie import budgets
+    from hifipushie import asset_budget
     from hifipushie import hair
-    asset.hair_budget.selftest()
-    asset.budget_check.selftest()
+    asset_budget.hair_budget.selftest()
+    asset_budget.budget_check.selftest()
     rb = budgets.role("crowd")
     rep = {"hair": {"triangles": 1600, "cards": True, "back_faces": True, "vertices": 900,
                     "layers": {"cap": [0, 100], "layer0": [100, 1500]}}}
-    g = asset.budget_check(rb, rep, {})
+    g = asset_budget.budget_check(rb, rep, {})
     assert g["fail"] and g["hair"]["card_faces"] == 850 and g["hair"]["vertices"] == 900
     assert hair.BUDGET_UNIT == "card_faces"  # the cards are fitted to card faces, not drawn triangles
-    src = (ROOT / "src/hifipushie/asset.py").read_text()
+    src = (ROOT / "src/hifipushie/asset_export.py").read_text()  # (_export: asset.py was split)
     assert 'if budget_gate["fail"]:' in src and "vertices=len(hpart[\"verts\"])" in src
 
 
 # -- 6. hair previews: a single-sided card material needs the cards' own back faces --------------------------------
 def test_single_sided_cards_without_back_faces_are_refused(tmp_path):
-    from hifipushie import asset
+    from hifipushie import asset_glb
     png = tmp_path / "flat.png"
     Image.new("RGBA", (4, 4), (128, 128, 255, 255)).save(png)
     V = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], np.float32)
@@ -85,10 +86,10 @@ def test_single_sided_cards_without_back_faces_are_refused(tmp_path):
 
     def look(bf, ds):
         return {"hair": {"alpha_cutoff": 0.3, "double_sided": ds, "extras": {"hifipushie_hair": {"back_faces": bf}}}}
-    asset.write_glb(tmp_path / "ok.glb", "h", {"hair": dict(part)}, maps, looks=look(True, False))
-    asset.write_glb(tmp_path / "ok2.glb", "h", {"hair": dict(part)}, maps, looks=look(False, True))
+    asset_glb.write_glb(tmp_path / "ok.glb", "h", {"hair": dict(part)}, maps, looks=look(True, False))
+    asset_glb.write_glb(tmp_path / "ok2.glb", "h", {"hair": dict(part)}, maps, looks=look(False, True))
     with pytest.raises(ValueError, match="half the cards"):
-        asset.write_glb(tmp_path / "bad.glb", "h", {"hair": dict(part)}, maps, looks=look(False, False))
+        asset_glb.write_glb(tmp_path / "bad.glb", "h", {"hair": dict(part)}, maps, looks=look(False, False))
 
 
 # -- 8. reviews: no captions / sheets / claims in; a review that didn't run is not 0 MAJORs ------------------------
@@ -142,11 +143,12 @@ def test_undeclared_heavy_job_is_refused():
 
 
 def test_human_export_declares_24_gb():
-    from hifipushie import asset, resources
+    from hifipushie import resources
+    from hifipushie import asset_budget
     assert resources.EXPORT_HUMAN_GB >= 24
-    assert asset.export_gb({"base": {"head": {}}}) >= 24 and asset.export_gb({"hair": {}}) >= 24
-    assert asset.export_gb({"joints": {}}) < 24  # a prop keeps the measured estimate
-    assert "gb=export_gb(" in (ROOT / "src/hifipushie/asset.py").read_text()
+    assert asset_budget.export_gb({"base": {"head": {}}}) >= 24 and asset_budget.export_gb({"hair": {}}) >= 24
+    assert asset_budget.export_gb({"joints": {}}) < 24  # a prop keeps the measured estimate
+    assert "gb=asset_budget.export_gb(" in (ROOT / "src/hifipushie/asset.py").read_text()
 
 
 # -- 10. git guards --------------------------------------------------------------------------------------------------
@@ -284,35 +286,37 @@ def test_build_version_bumped_when_meshing_output_changes():
 # -- 1 / 2. approved head geometry; skin folds may not reshape it (code on the export branches, merging to main) ----
 def test_export_gates_on_the_approved_head_and_fold_form():
     from hifipushie import asset
-    if not hasattr(asset, "approved_head") or not hasattr(asset, "FOLD_FORM_MAX_MM"):
-        pytest.skip("asset.approved_head / FOLD_FORM_MAX_MM not on this branch yet (export branches; coordinator merges)")
+    from hifipushie import asset_gates
+    if not hasattr(asset_gates, "approved_head") or not hasattr(asset, "FOLD_FORM_MAX_MM"):
+        pytest.skip("asset_gates.approved_head / FOLD_FORM_MAX_MM not on this branch yet (export branches; coordinator merges)")
     assert asset.FOLD_FORM_MAX_MM <= 1.0
-    src = (ROOT / "src/hifipushie/asset.py").read_text()
+    src = (ROOT / "src/hifipushie/asset_export.py").read_text()  # (_export: asset.py was split)
     assert "is not the approved head" in src and "skin.folds change the head's form" in src
     with tempfile.TemporaryDirectory() as d:
         Path(d, "approved.json").write_text(json.dumps({"approved": {}}))
         with pytest.raises(ValueError):
-            asset.approved_head({"base": {"head_approved": "head/nobody", "head": {}}}, [], Path(d, "approved.json"))
+            asset_gates.approved_head({"base": {"head_approved": "head/nobody", "head": {}}}, [], Path(d, "approved.json"))
 
 
 def test_mixed_view_transforms_are_refused():
     """Rule 5: a colour comparison or a game-light render that mixes view transforms (AgX vs Khronos PBR Neutral vs
     Standard) refuses loudly; face_light_check must be told both renders' views."""
     from hifipushie import asset
+    from hifipushie import asset_gates
     img = np.full((64, 64, 3), 128.0)
-    with pytest.raises(asset.MixedViewTransform):
-        asset.face_light_check(img, img, views=("AgX", "Khronos PBR Neutral"))
-    with pytest.raises(asset.MixedViewTransform):
-        asset.same_view({"lights": []}, asset.GAME_LIGHT)   # a look naming no view renders AgX
+    with pytest.raises(asset_gates.MixedViewTransform):
+        asset_gates.face_light_check(img, img, views=("AgX", "Khronos PBR Neutral"))
+    with pytest.raises(asset_gates.MixedViewTransform):
+        asset_gates.same_view({"lights": []}, asset.GAME_LIGHT)   # a look naming no view renders AgX
     with pytest.raises(ValueError):
-        asset.face_light_check(img, img)                    # views undeclared
-    assert asset.same_view(asset.GAME_LIGHT, "Khronos PBR Neutral") == "Khronos PBR Neutral"
-    with pytest.raises(asset.MixedViewTransform):
-        asset.game_light_view({**asset.GAME_LIGHT, "view": "AgX"}, "look")
-    with pytest.raises(asset.MixedViewTransform):
-        asset.game_light_view({**asset.GAME_LIGHT, "view": "Standard"}, "look")
-    asset.game_light_view(asset.GAME_LIGHT)                 # the game rig under its own view
-    asset.game_light_view({"lights": [{"dir": [0, 0, 1], "energy": 1.0}], "view": "AgX"})  # another rig: free
+        asset_gates.face_light_check(img, img)                    # views undeclared
+    assert asset_gates.same_view(asset.GAME_LIGHT, "Khronos PBR Neutral") == "Khronos PBR Neutral"
+    with pytest.raises(asset_gates.MixedViewTransform):
+        asset_gates.game_light_view({**asset.GAME_LIGHT, "view": "AgX"}, "look")
+    with pytest.raises(asset_gates.MixedViewTransform):
+        asset_gates.game_light_view({**asset.GAME_LIGHT, "view": "Standard"}, "look")
+    asset_gates.game_light_view(asset.GAME_LIGHT)                 # the game rig under its own view
+    asset_gates.game_light_view({"lights": [{"dir": [0, 0, 1], "energy": 1.0}], "view": "AgX"})  # another rig: free
 
 
 def test_review_refuses_a_contact_sheet_grid():
