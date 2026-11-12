@@ -51,8 +51,8 @@ generated mesh as input); every trial by a blind Opus 5.5 medium agent with the 
 
 ## Decisions in force, and dead ends
 - Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches;
-  what a subject's features are is the sculptor's judgement per subject (the page names no subject).
-- Dead: a mass measured with everything on it; halos dropped by a share of the feature's largest change.
+  what a subject's features are is the sculptor's judgement per subject (the page names no subject). Dead: a
+  mass measured with everything on it; halos dropped by a share of the feature's largest change.
 
 ## Commands
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (this worktree's src; freeze a copy per
