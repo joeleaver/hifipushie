@@ -131,9 +131,9 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
 @mcp.tool(structured_output=False)
 def build_masses(name: str, how: dict, symmetry: bool = True, view: str | None = None, save: str | None = None):
     """Turn masses of the feature map into shapes, their numbers read off the marks: no coordinate typed. how:
-    {feature: {"as": "ball" (one rounded lump) | "trunk" (an upright mass through cross-sections) | "tube" (a limb
-    or horn along its own axis, as bones), "round": 2 = round .. higher = squarer, "sections" / "joints": how
-    many, "along": "x" | "y" | "z", "part": its own part, "blend": m, "depth" / "y" / "x": what no mark shows}}.
+    {feature: {"as": "ball" (a rounded lump) | "drum" (a cylinder) | "trunk" (an upright mass through
+    cross-sections) | "tube" (a limb or horn along its own axis, as bones), "round": 2 = round .. higher =
+    squarer, "sections" / "joints": how many, "along": "x" | "y" | "z", "part", "blend": m, "depth" / "y" / "x"}}.
     Makes the model if there is none; a feature built again replaces what was built for it. Returns what was
     made, what had to be assumed, and the feature report with a picture. Details: guide(topic="build_masses"); the page: guide(topic="features")."""
     from . import featuremap, featuresee, masses

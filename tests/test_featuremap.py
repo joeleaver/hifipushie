@@ -264,6 +264,8 @@ def test_masses_are_built_from_their_marks(fig):
         assert len(bad) <= 1, bad
         with pytest.raises(ValueError, match="as is one of"):
             masses.build("fig", {"snout": {"as": "blob"}})
+        drum = masses.build("fig", {"snout": {"as": "drum", "along": "y"}})["spec"]["blobs"]["snout"]
+        assert drum["shape"] == "cylinder" and drum["rot"] == [90, 0, 0] and abs(drum["size"][2] - 0.06) < 0.012, drum
     finally:
         store.save("fig", true, "the true figure again")
         fm = featuremap.load("fig")

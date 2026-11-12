@@ -93,6 +93,8 @@ Example (a made-up subject):
 Build once the map owes nothing. For every mass say what it is, `"as"`:
 
 - `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks.
+- `"drum"`: a made, straight-sided thing: a cylinder along its long axis (`"along"` if it picks the wrong one),
+  its rims rounded by `"edge"` metres.
 - `"trunk"`: one upright mass through cross-sections: at each height its width from the front (or back) mark,
   its depth and its lean from the side mark. For a mass that stands up and sits on the centre line.
 - `"tube"`: something long that tapers, along its own axis: up, sideways or forward, and it may bend. Built as a
@@ -109,6 +111,10 @@ side mark you must give `"y"` (where it sits front to back). `.L` is built and m
 
     build_masses("jug", {"body": {"as": "trunk", "round": 2.2}, "handle": {"as": "tube", "joints": 5, "y": 0.0},
                          "knob": {"as": "ball"}})
+
+A small mass that sits ON a bigger one (an eye on a head) must stand proud of it to be seen. If it comes back
+HIDDEN, the mass under it is too full there: a trunk's or ball's `"round"` nearer 2 pulls its corners in, and a
+head that is narrower in front than behind is better as two masses than one.
 
 It answers with the feature report for the masses and a picture. A mass that is OFF is fixed in its MARK (redraw
 it, in the view that is wrong) or in what you said it is, then built again: building a feature again replaces

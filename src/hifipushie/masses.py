@@ -8,6 +8,9 @@ already hold those numbers.
 A mass is built `as`:
   "ball"   one rounded lump: its middle and three half sizes from the marks' boxes (an eye, a nose, a hoof, a head
            that is nearly a ball). `round`: 2 = an ellipsoid, higher = squarer (a soft block).
+  "drum"   a made, straight-sided thing: a cylinder along its long axis (a can, a wheel, a post), its radii and
+           length from the marks' boxes. `along` x / y / z if the axis it picks is wrong; `edge`: metres its rims
+           are rounded by.
   "trunk"  one upright mass through cross-sections: at each height its width from the front (or back) mark and its
            depth and lean from the side mark (a torso, an upright head, a neck). `round` as above, per section.
            `sections`: how many (default 7).
@@ -27,7 +30,7 @@ import numpy as np
 
 from . import featuremap, refread, store
 
-KINDS = ("ball", "trunk", "tube")
+KINDS = ("ball", "drum", "trunk", "tube")
 
 
 def _flat(fm: dict, name: str, feature: str) -> dict:
@@ -109,6 +112,18 @@ def _ball(feature: str, f: dict, how: dict, notes: list) -> dict:
     return {"blobs": {feature: {"shape": "super", "at": [round(cx, 4), round(cy, 4), round((z0 + z1) / 2, 4)],
                                 "size": [round(max(rx, 0.002), 4), round(max(ry, 0.002), 4), round(max(rz, 0.002), 4)],
                                 "squareness": float(how.get("round", 2.0))}}}
+
+
+def _drum(feature: str, f: dict, how: dict, notes: list) -> dict:
+    b = _ball(feature, f, how, notes)["blobs"][feature]
+    hx, hy, hz = b["size"]
+    axis = how.get("along") or "xyz"[int(np.argmax([hx, hy, hz]))]
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"{feature}: along is x, y or z")
+    # a cylinder runs along its local z: turn that onto the axis; its two radii are what is left
+    rot, size = {"x": ([0, 90, 0], [hz, hy, hx]), "y": ([90, 0, 0], [hx, hz, hy]), "z": ([0, 0, 0], [hx, hy, hz])}[axis]
+    return {"blobs": {feature: {"shape": "cylinder", "at": b["at"], "rot": rot, "size": [round(v, 4) for v in size],
+                                "round": float(how.get("edge", 0.12 * min(size[:2])))}}}
 
 
 def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
@@ -228,8 +243,9 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
             raise ValueError(f"{feature} is a {c['kind']}: build_masses builds masses (a form is laid on a mass)")
         kind = (h or {}).get("as")
         if kind not in KINDS:
-            raise ValueError(f"{feature}: as is one of {KINDS} (a ball: one rounded lump; a trunk: an upright mass "
-                             f"through cross-sections; a tube: a limb or horn along its own axis)")
+            raise ValueError(f"{feature}: as is one of {KINDS} (a ball: one rounded lump; a drum: a straight-sided "
+                             f"cylinder; a trunk: an upright mass through cross-sections; a tube: a limb or horn "
+                             f"along its own axis)")
         tw = featuremap.twin(feature)
         sym = bool(spec.get("symmetry", True))
         if sym and feature.endswith(".R") and tw in how:
@@ -241,7 +257,7 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
         if flip:  # build it as the .L it mirrors from
             src = {k: v * np.array([-1.0 if k == "xz" else 1.0, 1.0]) for k, v in src.items()}
         target = tw if flip else feature
-        part = {"ball": _ball, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
+        part = {"ball": _ball, "drum": _drum, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
         for old in c.get("built") or []:  # what was built for it before goes
             for k in ("joints", "bones", "blobs"):
                 spec[k].pop(old, None)
