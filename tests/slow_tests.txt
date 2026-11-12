@@ -193,3 +193,5 @@ tests/test_faceslide.py::test_slider_recovered_from_a_render
 tests/test_fieldjit.py::test_alps
 tests/test_fieldjit.py::test_pebble
 tests/test_facepose.py::test_pose_is_the_exports_shapes
+# N1b: the 24k-point chain_solve benchmark (minutes by design; added by hand with the test)
+tests/test_chain_solve.py::test_garment_sized_network_solves_in_time
