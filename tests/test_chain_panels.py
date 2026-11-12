@@ -214,3 +214,19 @@ def test_mirrored_fold_rows_turn_the_same_way_about_the_body():
         n = pan.normal(TH[b], b, h["mid"][None])[0]  # (both flats wound the same way: +z is the same side of the cloth)
         zs.append(float((pan.place(TH[t], t, pan.panels[t]["c"][None])[0] - m) @ n))
     assert zs[0] * zs[1] > 0 and min(map(abs, zs)) > 0.01, zs  # (both turned to the same side of the cloth)
+
+
+def test_fold_over_two_rows_reads_its_whole_turn_on_the_faces():
+    """A fold drafted as two rows turns half at each: the faces read the SUM against the plan (N2e: read at half)."""
+    from hifipushie.chain_lay import _fold_turns
+    u, F = grid(21, 11, 0.2, 0.1)
+    M, _ = pattern([("a", u, F)])
+    rows = [np.array([c * 11 + j for j in range(11)]) for c in (14, 15)]
+    M["folds"] = [{"piece": "a", "name": "f", "rows": rows, "sign": 1.0}]
+    c = _net(M)
+    plan = {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 90.0}}}
+    pan = Panels(c, plan)
+    TH0 = pan.fit_start(np.c_[c.uv, np.zeros(c.n)])
+    TH, rd = ca.assemble(pan, TH0, np.array([[[5, 5, 5], [5, 5, 6]]], float))
+    got = _fold_turns(c, pan.positions(TH), plan)["f"]
+    assert abs(got["median"] - 90.0) < 8.0, (got, rd["hinges"])
