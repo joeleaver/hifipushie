@@ -74,15 +74,34 @@ class Panels:
                 self._add(nm, ids)
                 continue
             S = np.stack([_side(cnet.uv, r, cnet.uv[ids]) for r, *_ in rows], 1)
-            for k, (r, _, _, _) in enumerate(rows):  # (the smaller side of each row is its turned side)
-                sm = [np.ptp(cnet.uv[ids[S[:, k] == s_]], 0).prod() if (S[:, k] == s_).any() else 0 for s_ in (1, -1)]
-                if sm[0] > sm[1]:
-                    S[:, k] *= -1  # (-1: the base side, +1: the turned side)
-            sig = np.unique(S[(S != 0).all(1)], axis=0)
-            pan = {}
-            for g in sig:
-                m = ((S == g) | (S == 0)).all(1)
-                pan[tuple(g)] = self._add(nm, ids[m])
+            # (the turned side of a fold's first row is its smaller side; every row of that fold turns the same way:
+            # its base side is the one holding the base's farthest point from the first row)
+            for bid in dict.fromkeys(b for *_, b in rows):
+                ks = [k for k, rr in enumerate(rows) if rr[3] == bid]
+                k0 = ks[0]
+                sm = [np.ptp(cnet.uv[ids[S[:, k0] == s_]], 0).prod() if (S[:, k0] == s_).any() else 0 for s_ in (1, -1)]
+                base = -1.0 if sm[0] <= sm[1] else 1.0
+                cand = np.where(S[:, k0] == base)[0]
+                dist = np.min(np.linalg.norm(cnet.uv[ids[cand]][:, None] - cnet.uv[rows[k0][0]][None], axis=2), axis=1)
+                far = cand[np.argmax(dist)]
+                for k in ks:
+                    if S[far, k] > 0:
+                        S[:, k] *= -1  # (-1: the base side, +1: the turned side)
+            # (a panel per side pattern; a row point counts on both sides of its row, so the strip between two rows
+            # with no cloth point between them is a panel of its own rows' points)
+            cands = set()
+            for s_ in np.unique(S, axis=0):
+                z = np.where(s_ == 0)[0]
+                for bits in range(2 ** len(z)):
+                    g = s_.copy()
+                    g[z] = [1 if (bits >> q) & 1 else -1 for q in range(len(z))]
+                    cands.add(tuple(g))
+            sig, pan = [], {}
+            for g in sorted(cands):
+                m = ((S == np.array(g)) | (S == 0)).all(1)
+                if m.sum() >= 4 and (np.ptp(cnet.uv[ids[m]], 0) > 1e-3).all():
+                    sig.append(np.array(g))
+                    pan[g] = self._add(nm, ids[m])
             # (a hinge between two panels of the piece sharing a line of points: the rows between them turn together,
             # e.g. a hem's two rows with no cloth point between them)
             for g in sig:
