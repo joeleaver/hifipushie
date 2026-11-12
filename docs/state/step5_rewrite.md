@@ -3,58 +3,54 @@
 Step 5 = ONE solve with nothing held: lengths given, only bends chosen. Runs N1 (solver) -> N2 (seed from tapes, plies /
 layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4 (shirt, hussar) -> T (blind trials).
 
-## Current best (N1, branch n1-solver)
-- `src/hifipushie/chain_solve.py` (spec in its docstring): `solve(net, X0, body, ties, folds, pulls, stiffness)`
-  -> (X, report). NOT wired into GarmentBuild (N3). `chain_solve_terms.py` (terms off the Network, the report),
-  `chain_solve_gn.py` (the LM pass).
-- Method: quasi-static projective dynamics (constant matrix, factored once; LOW spring weights, W_LINK 0.03, because
-  PD springs lock rotations) -> Levenberg-Marquardt on the whole energy (rotations linearised every pass; exact
-  dihedral gradient for folds; contact a residual) -> fast projection over every point (links exact, edges exact /
-  at most, ties, contact). Deterministic; no held set exists (a test parses the module for one).
-- Bending: per-vertex affine stencils from the flat (X_i - sum w_j X_j: zero for any rigid placement, linear); fold-row
-  vertices bend only across the row (row_rows keeps the line itself from kinking).
-- Report: links (% off the cut, worst piece, over 2 %), edges, ties (mm), folds (deg off), pulls (mm), contact
-  (inside, under gap, deepest), hard_ok.
+## Current best (N1 + N1b + N1c, branch n1c-speed)
+- `chain_solve.py` (spec in its docstring): `solve(net, X0, body, ties, folds, pulls, stiffness)` -> (X, report). NOT
+  wired into GarmentBuild (N3). `chain_solve_terms.py` (terms, report), `chain_solve_gn.py` (the LM pass, `Factor`).
+- Method: projective dynamics (W_LINK 0.03; 200 passes, then PD_STIFFEN x10, x100 at 100 each) -> Levenberg-Marquardt on
+  the whole energy (rejected steps halved + retracted, stop at LM_DROP 0.1 %) -> fast projection over every point.
+- Factors: CHOLMOD (scikit-sparse 0.5.1 on the system libsuitesparse), METIS, supernodal, ONE BLAS/OpenMP thread
+  (threadpoolctl), analysed once per solve and refactored per pass. The Jacobian keeps inactive at-most rows as zeros,
+  so the LM pattern is fixed (Factor.values raises if it ever changes). No splu left in chain_solve*.
+- _Near.REACH 1 mm (was 1 cm): only which points are asked again; same result to the bit.
 
-## Numbers (tests/test_chain_solve.py, 9 tests, ~11 s)
-- strip 30 % stretched -> links 0.0 %; compressed 50 % -> 0.0 %, order kept, no face over.
-- stiff strip (stiffness 8) on a neckline arc -> links 0.0003 %, pull max 1.5 mm / mean 0.26, width lines straight
-  (median 0, free corners curl ~1.1 mm).
-- tube of two pieces round a cylinder -> links 0.0003 %, 0 inside; fold to 170 -> 0.001 deg off, halves 8.8 deg apart
-  (10 planned); tie at LAYER -> 0.0 mm; pulls 2x the strip apart -> links 0.0 %, pulls reported 108 mm.
+## Numbers (machine shared: load 40-70 on 24 cores from another session's full test run)
+- tests/test_chain_solve.py: 9 pass (~10-20 s) at their numbers: stiff strip pull max 1.52 mm / mean 0.27, width
+  1.04 mm; fold 0.001 deg off, halves 8.8 deg; tube 0 inside; ties 0.0 mm; pulls 102.9 mm reported, links 0.0 %.
+- Per factor (fresh LM matrix, /mnt/data/hifipushie/n1c/fac6k*.log, fac24k.log): 6k splu 1.0-2.7 s vs CHOLMOD 0.13-0.44
+  (1 thread; 4 threads 1-10 s); 24k splu 18.5-31.8 s vs CHOLMOD metis 0.64-1.83 (amd 1.9-3.0, nesdis 1.0-2.9), analysis
+  2.1 s once. LM pass at 24k (lm_parts.py): factor+solve 1.23, residuals+J 0.45, values 0.19, JtJ 0.13, trial 0.27.
+- Bench 6k: 19.5-28 s (N1b 63.5). 24k (b24k_v3.log): 69.4 s at load 68->55, pd 34.5, lm 30.1 (12 factors), project
+  0.3, links 0.0 %, 0 inside (N1b: 601 s at load 135, lm 516). Slow test 24k: 61.7 s at load ~40 (limit 150).
 
 ## Open faults (ranked)
-1. SPEED, the blocker for N3: 24k points ~974 s before N1b; see N1b below.
-2. stiffness 40 (5x canvas) converges badly (pulls 14 mm): PD stops early, LM crawls. Realistic max is 8.
-3. Curved fold rows: row_rows pulls a row towards straight (weak); fine for straight rows only.
-4. No self-contact (two plies may cross); N2 adds plies / layers as constraints.
+1. 24k is ~1 min only under load ~40-60; PD (400 passes, ~85 ms each: push-out queries, targets, solve) is half.
+2. stiffness 40 (5x canvas) converges badly (pulls 14 mm). Realistic max is 8.
+3. Curved fold rows: row_rows pulls a row towards straight (weak). 4. No self-contact (N2: plies / layers).
+
+## Coarse step-5 mesh: NOT done (not small); the plan for N3
+- Spacing is set in cloth.build (cloth.py ~7529-7553: h = g["resolution"] 0.01 default, coarse 0.02, mesh(Bp, hs, fw)),
+  reached through chain_garment.load (~line 301, place_only) with pattern_form.form_refine (FORM_REFINE_LAPEL / SHIRT:
+  h 2-6 mm near collar, fronts) and RING_H re-meshing of stiff rings (chain_garment.py ~306).
+- Step 6 reads the SAME mesh: Build.X per vertex; SURFACES = chain_net.fill (Laplace fill over the pattern F from the
+  chain vertices) in chain_soft.py ~462 / chain_fall.py ~190; gate chain_stages.gate_surfaces. No fine mesh exists.
+- Plan (N3, which replaces cloth.build(place_only) with cloth.pieces() + mesh() anyway): mesh twice from one pieces()
+  (step 5 at ~2 cm with fold rows and rolls still refined; step 6 at the resolution); map each fine vertex to its coarse
+  triangle in the same piece by uv (barycentric), X_fine = interpolated; seams agree when both sides are sampled by arc
+  fraction (check cloth.mesh's shared seam arcs); then chain_net.project on the fine links, then fill / threads.
+  Test: a tube solved coarse, filled fine: links exact, seams closed, nothing inside.
 
 ## Decisions in force
 - No held / fixed / pinned set, no role names, no wear state in chain_solve* (tests 8, 9 enforce).
-- Pulls are soft; hard terms win and the soft residual is reported (test 7).
+- Pulls are soft; hard terms win and the soft residual is reported. One factor route (CHOLMOD), no fallback.
 
 ## Dead ends
-- PD with stiff springs (W_LINK 1e3): 27 mm off pulls, folds curl. LM alone from flat: crawls (stiff links vs big
-  rotation). Pushing points out of the body after each LM step: undoes lengths (E 0.3 -> 7e4).
-- splu without SymmetricMode on the LM matrix: 2.7 s a factor at 1.5k points.
+- PD with stiff springs; LM alone from flat; pushing points out after each LM step; contact rows in PD's matrix; CG
+  preconditioned by a stale factor; chord steps; lower LM link weights; node-level ND orderings (N1b, C426).
+- CHOLMOD with OpenBLAS's default 4 threads on a loaded box (threads spin: 1-10 s a factor at 6k). PD 100 first passes
+  (LM +5 factors, dearer than the passes saved).
 
-## N1b (branch n1b-speed, run 2, stopped at budget; deliverable NOT met)
-- Kept: PD_STIFFEN stages (links/edges x10, x100 after the 400 passes): LM starts at E ~1 (1.5k) / 30 (6k), not 6e3 /
-  1.6e5. LM: rejected steps halved along their direction (no refactor), trial steps retracted onto the lengths
-  (gn.retract, 6 Jacobi PBD sweeps), stop at LM_DROP 0.1 % gain, a round stops when the projection leaves E within 1 %.
-  rep["lm_factors"] counts factors. Tests all pass at their numbers (stiff strip pull max 1.52 mm vs 1.50; width 1.04).
-- Bench (machine load 60-140 on 24 cores from other jobs: walls ~3-4x inflated, compare factor counts): 1.5k ~11+4
-  factors, 6k 13 factors (was 60+ passes, 2 caps). 24k: 10 factors, 1 round (was 166 factors), hard_ok, links 0.0 %,
-  0 inside; wall 601 s at load 135 (pd 75, lm 516, project 0.6): NOT timed idle. Log /mnt/data/hifipushie/n1b/b24k_v3.log.
-- Dead ends (measured): contact rows in PD's matrix (isotropic rows stick nodes where they touch: LM start E 10-25x
-  UP); CG preconditioned by a stale LM factor (26 of 29 passes no convergence in 40); chord steps with the last factor
-  (zigzag, step 1 / 1/16, no fewer factors); lower LM link weights (LM stalls); node-level / geometric ND orderings
-  (no better than SuperLU MMD: 24k factor 3.4-4.2 s, fill 27M); CHOLMOD via ctypes on the system libcholmod.so.5
-  (works, scripts /mnt/data/hifipushie/n1b/chol_ctypes.py, but 16 s a factor under load vs splu 10.6).
-- WHY still slow: LM needs ~13 factors at 6k (it crawls: a penalty LM on stiff links), each ~4 s at 24k unloaded.
-  Ways out: a constrained step (SQP on the links / projection inside each pass) so LM needs ~3 factors; or a fast
-  Cholesky (scikit-sparse needs libsuitesparse-dev headers: Joe's call); measure on an idle machine.
-Run: `uv run pytest -q tests/test_chain_solve.py`; bench `uv run python tests/chain_solve_bench.py [scale] [--log]`.
+Run: `uv run pytest -q tests/test_chain_solve.py`; bench `uv run python tests/chain_solve_bench.py [scale] [--log]`;
+logs and scripts /mnt/data/hifipushie/n1c/ (fac_bench, pd_bench, pd_sweep, lm_parts, reach). Ledger C426, C429.
 
-NEXT: N1b run 3 on an idle machine: time 24k with the kept changes, then LM as SQP (soft step in the links' tangent +
-projection) to cut factors to ~3; only then N2 (seed from tapes; plies / layers as constraints).
+NEXT: N2 (seed from tapes; plies / layers as constraints). If 24k must be faster: PD's push-out query (candidate
+triangles cached per point) and LM as SQP (step in the links' tangent + projection: ~3 factors); coarse mesh in N3.

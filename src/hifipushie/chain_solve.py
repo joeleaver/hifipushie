@@ -36,6 +36,9 @@ THE METHOD, and why. Rounds of
    PROJ_TOL. Why: PD's springs only approach a length; the projection makes it exact. It is the last word of the solve.
 The report reads the residuals at the end (chain_solve_terms.report). Deterministic: no random numbers, fixed orders,
 direct factorisations. Self-contact is not handled here (N1); plies and layers are N2's constraints.
+Factors (PD's and LM's): CHOLMOD, METIS ordering, supernodal, analysed once per solve and refactored (gn.Factor says why,
+with N1c's numbers). PD runs 200 passes, then 100 per stiffening (N1c, 6k points: 400 first passes gave LM the same 11
+factors and E 4.32 vs 4.33; 100 cost LM 5 more factors, dearer than the 100 passes saved).
 """
 from __future__ import annotations
 
@@ -43,7 +46,8 @@ import time
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import splu
+from sksparse.cholmod import CholeskyFactor
+from threadpoolctl import threadpool_limits
 
 from . import chain_net as cn
 from . import chain_solve_gn as gn
@@ -112,6 +116,7 @@ class _PD:
         ei, ej, eL, ex = t["edges"]
         self.t = t
         self.stiff = 1.0
+        self.F = None  # (CHOLMOD: analysed once, the pattern is the same at every stiffening; gn.Factor's notes)
         B = []  # (S, W, kind)
         B.append((_diff_rows(li, lj, nn), W_LINK / np.maximum(L, 1e-9) ** 2, "link"))
         B.append((_diff_rows(ei, ej, nn), W_EDGE / np.maximum(eL, 1e-9) ** 2, "edge"))
@@ -153,7 +158,13 @@ class _PD:
         A = sp.identity(nn, format="csr") * (PROX / REF ** 2)
         for S, W, _ in B:
             A = A + S.T @ sp.diags(W) @ S
-        self.lu = splu(A.tocsc())
+        self.M = sp.hstack([S.T @ sp.diags(W) for S, W, _ in B], format="csr")  # (a pass's right side: one product)
+        A = sp.tril(A, format="csc")
+        A.sort_indices()
+        with threadpool_limits(1):
+            if self.F is None:
+                self.F = CholeskyFactor(A, lower=True, order="metis", supernodal_mode="supernodal")
+            self.F.factorize(A)
 
     def targets(self, Xn):
         t = self.t
@@ -199,10 +210,9 @@ class _PD:
         return np.r_[tc, td]
 
     def step(self, Xn):
-        rhs = Xn * (PROX / REF ** 2)
-        for (S, W, _), P in zip(self.B, self.targets(Xn)):
-            rhs = rhs + S.T @ (W[:, None] * P)
-        return self.lu.solve(rhs)
+        rhs = Xn * (PROX / REF ** 2) + self.M @ np.concatenate(self.targets(Xn))
+        with threadpool_limits(1):
+            return self.F.solve(rhs)
 
 
 class _Near:
@@ -210,7 +220,8 @@ class _Near:
     can't be nearer than d - m (distance is 1-Lipschitz), so it is asked again only when d - m < gap + REACH. Every
     caller only acts on points nearer than the gap, so the answer is exact where it is used; elsewhere sd is that bound
     and the normal zero. (The full query costs ~40 us a point: 400 PD passes over ~24k points would be minutes.)"""
-    REACH = 0.01
+    REACH = 0.001  # (only which points are asked again: any it skips is provably outside the gap; N1c: 1 cm -> 1 mm, same
+    # result to the bit at 6k points, fewer queries)
 
     def __init__(self, ct, gap):
         self.ct, self.gap = ct, float(gap)
@@ -319,7 +330,7 @@ def _project(Xn, t, ct, gap, iters: int = 40, log=None):
 
 
 def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness=None, gap: float = GAP,
-          pd_iters: int = 400, polish_rounds: int = 2,
+          pd_iters: int = 200, polish_rounds: int = 2,
           lm_iters: int = 30, log=None) -> tuple:
     """Every point free; see the module doc. Returns (X per vertex, report)."""
     t0 = time.time()

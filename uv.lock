@@ -231,7 +231,9 @@ dependencies = [
     { name = "potpourri3d" },
     { name = "pyfqmr" },
     { name = "scikit-image" },
+    { name = "scikit-sparse" },
     { name = "scipy" },
+    { name = "threadpoolctl" },
 ]
 
 [package.dev-dependencies]
@@ -249,7 +251,9 @@ requires-dist = [
     { name = "potpourri3d", specifier = ">=1.4.0" },
     { name = "pyfqmr", specifier = ">=0.5.0" },
     { name = "scikit-image", specifier = ">=0.26.0" },
+    { name = "scikit-sparse", specifier = ">=0.5.1" },
     { name = "scipy", specifier = ">=1.18.1" },
+    { name = "threadpoolctl", specifier = ">=3.8.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1080,6 +1084,17 @@ wheels = [
 ]
 
 [[package]]
+name = "scikit-sparse"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/d1/8456849062eb0fa5bcede0d3ca867abd03bde960c47563677ebf32b134bd/scikit_sparse-0.5.1.tar.gz", hash = "sha256:4adece3f378ac9185d17ba93482ea19ba87e55b1088d385f0c24bca8984afc08", size = 107443, upload-time = "2026-11-11T22:38:44.411Z" }
+
+[[package]]
 name = "scipy"
 version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1174,6 +1189,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/cb/6a6a47d5b464bd08695d254f3da6e7986cc70c9fa5d778eda57538edfe56/starlette-1.6.0-py3-none-any.whl", hash = "sha256:a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c", size = 75969, upload-time = "2026-08-08T18:27:56.196Z" },
+]
+
+[[package]]
+name = "threadpoolctl"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/97/b4748951a683e369513691c8eea33d100298d556308dcb0ab66b132a67f0/threadpoolctl-3.8.0.tar.gz", hash = "sha256:01080674ad7ac6182429c918a79de92da789bb448acc02fc0b620b1abd6b6137", size = 39424, upload-time = "2026-11-05T11:08:51.112Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/1b/831f2de4840a25db1dd7b1afea433ccafe6bb10aca07e13264f2079462d0/threadpoolctl-3.8.0-py3-none-any.whl", hash = "sha256:f1b49c82704d50f13ffae019c727b0fa4f6791a58f48f06a09c45face1be66da", size = 32091, upload-time = "2026-11-05T11:08:49.773Z" },
 ]
 
 [[package]]
