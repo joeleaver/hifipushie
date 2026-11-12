@@ -1,29 +1,21 @@
-"""CHAIN SETTLE (N2c of docs/proposals/step5_rewrite.md, "The build" 3): the ASSEMBLED garment (chain_lay.lay: every seam
-one chain, every link at its cut) goes onto the body by bends only. Nothing is ever apart, so nothing is closed here.
-
-Joe (2026-11-12): "in real life, the pieces would get assembled _before_ they get put on the body." A dresser puts the
-made garment round the wearer; here the body GROWS inside it instead (the same thing seen from the garment):
+"""CHAIN SETTLE: the body's frame and the tapes' pulls the rolled panels are assembled and dressed with (N2d of
+docs/proposals/step5_rewrite.md; chain_assemble). N2c's growing body (the garment settled by a full chain solve while the
+body grew inside it) is gone with N2c's placement.
 - skeleton(body): the body's centre lines from its landmarks (torso from the crotch to the neck, head, shoulder line to
-  each wrist and on to the hand, legs): a general frame, nothing per garment.
-- grown(body, s): every body vertex moved towards its nearest skeleton point, to s of its distance (s = 1: the body).
-  The garment is assembled round grown(body, ASSEMBLE_S) (arms through sleeves, neck through the collar: which way
-  round) and then settled at each GROW stage.
+  each wrist and on to the hand, legs): a general frame, nothing per garment. Assembly keeps the panels off it (which
+  way round: arms in sleeves, neck in the collar).
 - girth_pulls: step 3's girth loops each piece was drafted on (step 4's tapes) pull the piece's chain points at that
   height towards the loop at their own angle round it (soft; where the body was measured: never a pin).
-- settle: chain_solve at each stage (links hard, seams one chain, contact with the grown body, bending, folds, the
-  taped edge's and the girths' pulls, followers as a term) and chain_lay.measures after each.
+- pull_report: mm from each pull's points to their targets.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from . import chain_lay, chain_solve
-from .chain_core import Body, hand_of
+from .chain_core import hand_of
 
-ASSEMBLE_S = 0.3  # the frame the garment is assembled round: the body shrunk to this fraction towards its skeleton
-GROW = (0.65, 1.0)  # the body's sizes the garment is settled at, in turn
 GIRTH_BAND = 0.02  # m: chain points this near a girth loop's plane are pulled towards it
-GIRTH_W = 0.3  # weight of a girth pull (the taped edge's is 1)
+GIRTH_W = 0.3  # weight of a girth pull
 
 
 def skeleton(body) -> np.ndarray:
@@ -44,23 +36,6 @@ def skeleton(body) -> np.ndarray:
         lx = 0.5 * float(np.abs(V[np.abs(V[:, 2] - zc + 0.1) < 0.02][:, 0]).max()) if len(V) else 0.09
         S += [(np.array([sg * lx, yc, zc]), np.array([sg * lx, yc, V[:, 2].min()]))]
     return np.array([np.array(s) for s in S])
-
-
-def _nearest(P, S):
-    a, b = S[:, 0], S[:, 1]
-    ab = b - a
-    t = np.clip(((P[:, None] - a[None]) * ab[None]).sum(2) / np.maximum((ab * ab).sum(1), 1e-12)[None], 0, 1)
-    Q = a[None] + t[..., None] * ab[None]
-    d = np.linalg.norm(P[:, None] - Q, axis=2)
-    return Q[np.arange(len(P)), d.argmin(1)]
-
-
-def grown(body, s: float, segs=None) -> Body:
-    """The body with every vertex at s of its distance from its nearest skeleton point (module doc)."""
-    segs = skeleton(body) if segs is None else segs
-    V = np.asarray(body.V, float)
-    Q = _nearest(V, segs)
-    return Body(Q + s * (V - Q), body.T, dict(body.at))
 
 
 def girth_pulls(cnet, X, weight=GIRTH_W, band=GIRTH_BAND) -> list:
@@ -91,20 +66,3 @@ def pull_report(X, pulls) -> dict:
     """mm from each pull's points to their targets: {name: [mean, max]}."""
     return {p["name"]: [round(float(d.mean()) * 1e3, 1), round(float(d.max()) * 1e3, 1)]
             for p in pulls for d in [np.linalg.norm(X[p["ids"]] - p["to"], axis=1)]}
-
-
-def settle(cnet, S, body, plan, stages=GROW, log=None) -> tuple:
-    """(X, [report per stage]) (module doc)."""
-    segs = skeleton(body)
-    X = S["X0"]
-    pulls = list(S["pulls"]) + girth_pulls(cnet, X)
-    reps = []
-    for s in stages:
-        b = grown(body, s, segs)
-        X, rep = chain_solve.solve(cnet, X, body=b, ties=S["ties"], folds=S["folds"], pulls=pulls, plies=S["plies"],
-                                   log=log)
-        rep["grown"] = s
-        rep["measures"] = chain_lay.measures(cnet, X, plan, b.contact)
-        rep["pulls_mm"] = pull_report(X, pulls)
-        reps.append(rep)
-    return X, reps
