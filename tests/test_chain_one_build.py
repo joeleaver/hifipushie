@@ -49,7 +49,7 @@ def _ties_of(tie):
 def test_a_front_with_no_tie_gets_no_tie_constraint():
     t, fr = _ties_of({"fastened": [], "of": 3})
     assert len(t) == 0 and fr["closed"] == [False] * 3 and len(fr["v"]) == 3  # (every pair kept, none tied: free)
-    assert cp.first_tied(fr, UV) is None and not cp.top_tied(fr, UV)
+    assert cp.first_tied(fr, UV) is None
     t, _ = _ties_of({"fastened": [], "legacy": "open"})  # (an old record's open front: the same)
     assert len(t) == 0
 
@@ -57,7 +57,7 @@ def test_a_front_with_no_tie_gets_no_tie_constraint():
 def test_a_front_tied_at_its_top_pair_ties_only_that_pair():
     t, fr = _ties_of({"fastened": [1], "of": 3})
     assert t[:, :2].astype(int).tolist() == [[1, 2]] and fr["closed"] == [True, False, False]
-    assert cp.first_tied(fr, UV) == (1, 2) and cp.top_tied(fr, UV)
+    assert cp.first_tied(fr, UV) == (1, 2)
     t, fr = _ties_of({"fastened": [2, 3], "of": 3})  # (the top undone: tied from the second down)
     assert t[:, :2].astype(int).tolist() == [[3, 4], [5, 6]] and cp.first_tied(fr, UV) == (3, 4)
 

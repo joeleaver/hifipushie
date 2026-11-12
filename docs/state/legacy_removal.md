@@ -28,7 +28,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     GnmFace (1,788 lines) keeps its name, its methods in five mixins.
   5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10 modules; blockin_models._refs read late. Its check
     for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py guards all modules.
-  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C423; branch split-terrain-clutter-2) -> 8, 8, 6 modules, none over
+  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424; branch split-terrain-clutter-2) -> 8, 8, 6 modules, none over
     500 lines; class Terrain (1,726 lines) in terrain_model with five mixins; terrain.MODULES in the terrain cache's hash.
 - CONSTANTS STAY (C422, landed 2026-11-11): export scripts outside the repo set module.NAME (assembly/exp.py
   HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants; for hair and faceshapes

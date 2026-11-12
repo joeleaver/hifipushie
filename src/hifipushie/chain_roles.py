@@ -10,13 +10,14 @@ else the role its name reads as, garment_design.role_of). Names never pick a sta
 - FALL: a piece with a "roll" fold. BAND: the wholly interfaced piece the fall is sewn to (a shirt's collar band).
 - STAND (R3c, C399): a wholly interfaced part resting on the body, sewn along the body cloth's NECKLINE (neck_part: its
   seam to the panels reaches within NECK_REACH of the high point, where the panels' own lengths put them), with nothing
-  sewn on top of it: the BAND stage's ring of its own neckline length, resting on the high points, upright; its top is its
-  own free edge (a band's top is its seam to the fall). Built by stand_ring(), never as a ring round a limb. Its neck
-  ends meet at CF where the front's top pair is tied; its own closure untied = the top ends left free. Read from the
+  sewn on top of it: upright, its top its own free edge (a band's top is its seam to the fall). Built by stand_ring():
+  its neck edge LAID ON THE TAPE step 4 names for it (P2, piece_start.lay_on_tape: from CB, the -X half mirrored), never
+  a ring guessed round the neck; where its neck ends lie is the tape's (a jacket's collar ends at the lapel notches, a
+  shirt stand's at CF); its own closure untied = the top ends left free. Read from the
   construction only: a declared role or a name never makes a stand (it did: collar_stand / neckband; a stiff collar
   with no roll whose name read collar_fall was refused, the suit jacket's collar among them).
 - RINGS: other wholly interfaced pieces (cuffs, waistbands).
-- TUBE: a soft piece sewn to itself, OR several soft pieces of a limb role (sleeve, leg) on one side sewn to each other
+- TUBE: soft pieces closed round girths measured on their side (piece_start.tube_groups; P2: sewn to itself alone is no tube), OR several soft pieces of a limb role (sleeve, leg) on one side sewn to each other
   (a two-piece sleeve: top sleeve + undersleeve). A group is started round the limb's axis piece after piece, each over
   its share of the girth at that height (tube_group_points); every later stage treats its pieces as tube cloth.
 - PANELS: every other soft piece, wrapped round the torso; a back cut in halves (back.L / back.R from a CB seam) counts
@@ -97,10 +98,12 @@ def zip_pairs(net, front: dict) -> dict:
 
 
 def _tube_groups(net, soft: list, role: dict, self_sewn: set, sewn: dict) -> dict:
-    """{piece: [its tube's pieces]}: a self-sewn soft piece alone; limb-role soft pieces of one side sewn to each other."""
+    """{piece: [its tube's pieces]}: limb-role soft pieces of one side sewn to each other. (P2: a piece sewn to itself is a
+    tube only round girths measured on its side, piece_start.tube_groups: the jacket's fronts, sewn to themselves at the
+    fish dart, read as tubes here and were started round the ARM's joint axis, looping out at the hips.)"""
     from .chain_garment import hand_of
-    out = {p: [p] for p in soft if p in self_sewn}
-    limb = [p for p in soft if role[p] in TUBE_ROLES and p not in out]
+    out: dict = {}
+    limb = [p for p in soft if role[p] in TUBE_ROLES]
     seen: set = set()
     for p in limb:
         if p in seen:
@@ -397,13 +400,12 @@ def body_cloth(R) -> list:
 
 
 def stand_ring(b):
-    """The STAND: the band stage's ring with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
+    """The STAND: its neck edge laid on its tape (P2), then solved with its own top edge (module doc). Sets b.sb / b.st / b._band_lines like
     band_closed, so fill_band, stiff_last and the soft network hold it as they hold a band."""
     import math
     from . import chain_net as cn
     from .chain_garment import GAP, REST, ChainRefused, hand_of
     from .chain_net import BendSolve
-    from .chain_rest import rest_ring
     net, R = b.net, b.roles
     uv, rs = net.uv, net.root
     soft_sewn = set()
@@ -419,12 +421,9 @@ def stand_ring(b):
     mid = int(np.argmin(np.abs(sB - C / 2)))
     left = [p for p in body_cloth(R) if hand_of(p) > 0 and b.sewn_with(R.band, p)]
     su = float(np.sign(np.mean([uv[q, 0] for q in b.sewn_with(R.band, left[0])]) - uv[sb[mid], 0])) if left else 1.0
-    a, bb_, yc, zc, dz = b._neck_ring(C)
-    th = (sB - sB[mid]) / C * 2 * np.pi * su
-    hz = b.body.p("hps.L")[2]
-    B = np.c_[a * np.sin(th), yc + bb_ * np.cos(th), zc + dz * np.cos(th) + (hz - zc) * np.sin(th) ** 2]
-    sidep = B[np.argmax(B[:, 0])]
-    B, b.reads["band_rest"] = rest_ring(B, b.body.contact, GAP, np.array([0.0, sidep[1], sidep[2]]))
+    from .piece_start import lay_on_tape  # (P2: its neck edge on the tape step 4 names for it, from CB; was a ring
+    # guessed round the neck, which pulled the jacket's gorge up off the lapel: held_length 13415 %)
+    B, b.reads["band_rest"] = lay_on_tape(b, R.band, sb, mid=mid, su=su)
     kb = cKDTree(uv[sb])
     cross = np.array([(j, int(kb.query(uv[v])[1])) for j, v in enumerate(st)])
     hgt = np.linalg.norm(uv[st] - uv[sb[cross[:, 1]]], axis=1)
@@ -463,10 +462,9 @@ def stand_ring(b):
             S.add_contact(ne[1:-1], b.body.contact, GAP)
     S.add_contact(nt, b.body.contact, GAP)
     S.add_contact(nb, b.body.contact, GAP, rest=REST)
-    rows = []
-    from .chain_plan import top_tied
-    front_shut = top_tied(R.front, uv)  # (C399: the front's TOP pair tied; was every pair, the pairs above dropped)
-    ends = [(nb[0], nb[-1])] if front_shut else []  # the fronts below meet at CF: so do the stand's neck ends
+    rows = [([q], [1.0], k, float(B[j, k]), 1.0) for j, q in enumerate(nb) for k in range(3)]  # (P2: on its tape;
+    # where its neck ends lie is the tape's, never "meet at CF": a jacket's collar ends at the lapel notches)
+    ends = []
     if getattr(b, "band_tied", False):  # (C399: as its tie says, chain_garment.Build.band_tied)
         ends.append((nt[0], nt[-1]))  # its own closure done: the top ends meet too
     for p0, p1 in ends:
@@ -507,7 +505,7 @@ def stand_ring(b):
     cbk = int(np.argmin(np.abs(ev[:, 1] - mid)))
     lt = np.linalg.norm(np.diff(b.X[nt], axis=0), axis=1)
     b.reads["stand"] = {"rise_deg_median": round(float(np.median(rise)), 1), "rise_deg_min": round(float(rise.min()), 1),
-                        "rise_deg_cb": round(float(rise[cbk]), 1), "ends_meet": [bool(e) for e in (front_shut,)],
+                        "rise_deg_cb": round(float(rise[cbk]), 1),
                         "top_mm": [round(float(lt.sum() * 1e3), 1), round(float(Lt.sum() * 1e3), 1)],
                         "neck_mm": round(float(LB.sum() * 1e3), 1),
                         "top_worst_link_pct": round(float(np.abs(lt / np.maximum(Lt, 1e-9) - 1).max() * 100), 1),

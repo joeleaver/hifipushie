@@ -18,7 +18,7 @@ Pipeline (oldest first, like a history):
  7. lakes fill to their own level (not a global depression fill: an enclosed valley isn't one big lake).
  8. cover masks from the final ground.
 
-Where the code is (split by responsibility, C423): this module is the family's base: EVERY constant, the spec's terms
+Where the code is (split by responsibility, C424): this module is the family's base: EVERY constant, the spec's terms
 and `normalise`, the curves (Line), flow receivers and accumulation. It imports none of the others. terrain_model:
 class Terrain (init, addresses, texture) and `load`; its other methods are in mixins: terrain_skeleton (ridges,
 rivers), terrain_harmonic (the solve, `_base`), terrain_features (basins, hills, ribs, divides), terrain_landforms
@@ -305,6 +305,6 @@ def _accumulate(rec, levels, cell):
     return acc
 
 
-# The modules this one was split into (C423). Its constants stay HERE (C422): tests/test_constants_address.py. The terrain cache hashes the code of all of them (terrain_cache).
+# The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py. The terrain cache hashes the code of all of them (terrain_cache).
 MODULES = ("terrain_model", "terrain_views", "terrain_skeleton", "terrain_harmonic", "terrain_features",
            "terrain_landforms", "terrain_measure")

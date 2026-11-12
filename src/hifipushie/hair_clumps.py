@@ -18,7 +18,7 @@ cards carries the part's own picture (hair_strands.cap_chart).
 Everything is numpy + PIL: `cut` returns card dicts like hair_cards' (P, X, N, hw, u, s, kind, layer, prio, ...) with an
 "island" key, and `bake` draws the islands into one block that hair_cards.atlas puts under its tiles.
 
-Where the code is (split by responsibility, C423): this module holds EVERY constant of the family (set at
+Where the code is (split by responsibility, C424): this module holds EVERY constant of the family (set at
 hair_clumps.NAME by export scripts and hair_cards_job; the other modules read hair_clumps.NAME) and strands, features,
 kmeans. hair_clumps_fit: a card fitted to a clump, the envelope, seating and offsets. hair_clumps_part: the part, its
 cover, the arch row. hair_clumps_cut: `cut`, the flow and hairline rows. hair_clumps_layout: the atlas layout.
@@ -484,5 +484,5 @@ TILE_REP_DRAWN = 0.5  # (c8, Garrett) a tile's picture is its medoid card's own 
 TILE_REP_TRY = 24
 
 
-# The modules this one was split into (C423). Its constants stay HERE (C422): tests/test_constants_address.py.
+# The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair_clumps_fit", "hair_clumps_part", "hair_clumps_cut", "hair_clumps_layout", "hair_clumps_bake")

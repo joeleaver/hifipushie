@@ -20,7 +20,7 @@ the plant contract (veg_export.CONTRACT; `<stem>_seasons.json` with grade "clutt
 Metres, Z up; the asset is authored at scale 1 = 1 m largest plan dimension, pivot at the ground line (`sink_m` of it
 is below).
 
-Where the code is (split by responsibility, C423): this module holds EVERY constant of the family, the presets,
+Where the code is (split by responsibility, C424): this module holds EVERY constant of the family, the presets,
 styles and `resolve`. clutter_forms: Stone, Wood, Bush. clutter_solid: cells, spray tile, bush cards, `Solid`.
 clutter_mesh: meshing, checks, silhouettes, charts, LODs. clutter_bake: paint, micro relief, `bake_variant`.
 clutter_build: `build`. clutter_export: the GLB writer, litter, `export`. clutter_kit: `look`, the manifest, `kit`."""
@@ -318,6 +318,6 @@ TERRAIN_KINDS = {
 }
 
 
-# The modules this one was split into (C423). Its constants stay HERE (C422): tests/test_constants_address.py.
+# The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("clutter_forms", "clutter_solid", "clutter_mesh", "clutter_bake", "clutter_build", "clutter_export",
            "clutter_kit")

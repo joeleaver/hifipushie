@@ -6,7 +6,7 @@ carries only PATTERN_KEYS, so a fit has no way in.
 ROLES come from the pattern's construction, never from names (read_roles, chain_holds.read): a stiff piece with a "roll"
 fold is a FALL; the wholly interfaced piece it is sewn to is its BAND; a stiff part sewn along the body cloth's neckline
 with nothing on it is a STAND (chain_roles.neck_part); other wholly interfaced pieces closed on themselves are RINGS
-(cuffs, waistbands); a soft piece sewn to itself is a TUBE (sleeves); other soft pieces are PANELS wrapped round the
+(cuffs, waistbands); a soft piece closed round girths measured on its side is a TUBE (sleeves); other soft pieces are PANELS wrapped round the
 torso. A closure between two pieces is the FRONT. A role the core can't build is refused by name; no fallback path.
 
 THE ORDER (R3c, C399; each from a visible fault, C259-C262): ONE sequence for every garment, read from what holds what
@@ -21,10 +21,11 @@ input, chain_drape: R3e folds them into this sequence.
 1. A STIFF PART ON THE NECKLINE (rest_part): the ring of its own neckline length resting on the high points
    (chain_rest.rest_ring, C280): chains + exact lines, stiff all along, keeps its own shape (can't sink in, a light rest
    pull, never follows the surface). With a part sewn on top (a fall) its top is that seam (band_closed); nothing on top,
-   it stands with its own top edge (stand_ring). Its own closure TIED: closed on its own button. UNTIED (band_untied): the
+   it stands with its own top edge (stand_ring), its neck edge laid on the tape step 4 names for it (P2: never a ring).
+   A piece naming no step-3 tape is refused by name before anything is placed (piece_start.refuse_untaped). Its own closure TIED: closed on its own button. UNTIED (band_untied): the
    pressed curve kept round the back, relaxed straight past the side necks, started swung open; the sewn fronts held to
    the topmost TIED front pair (started on the torso: nothing soft is built yet), and with none tied held by nothing.
-   A stand's neck ends meet where the front's top pair is tied. Worn straight = mirror symmetric.
+   A stand's neck ends lie where its tape ends (P2). Worn straight = mirror symmetric.
 2. A PART RESTING ON A PART (a fall on its band): roll line, outer edge, ends: exact chains; lines across may shorten
    where the leaf curves, full width where it lies flat at the back; the point's triangle is rigid. Outside faces out.
    Its band untied: its points spread as the plan's bend says.
@@ -166,6 +167,8 @@ class GarmentBuild(SoftStages, StiffStages, HangJob, Build):
         included), every edge neither sewn nor tied free; plies follow their hosts. No branch on a worn state or a role.
         Draped pieces (step 1's hang "draped") are still their own input, chain_drape (R3e folds them in)."""
         t0 = time.time()
+        from .piece_start import refuse_untaped
+        refuse_untaped(self)  # (P2: a piece with no tape is refused by name before anything is placed, never guessed)
         if getattr(self, "drape", None):  # (T13 C297: an INPUT, not a mode: step 1's draped pieces, R3e folds them in)
             from .chain_drape import build_drape
             build_drape(self, t0)

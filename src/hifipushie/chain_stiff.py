@@ -163,10 +163,10 @@ class StiffStages:
     def rest_part(self, part):
         """One stiff part, by its construction (never its name or role):
         - resting on another part (a fall on its band): built on it, fall_build, then the stiff surfaces;
-        - resting on the body, sewn along the body cloth's neckline (chain_roles.neck_part): the ring of its own neckline
-          length on the high points. A part resting on it (a fall sewn on top): its top is that seam, band_closed, tied on
-          its own button or, untied, opened (band_untied). Nothing on it: it stands with its own top edge (stand_ring),
-          its ends meeting as its own tie and the front's top pair say;
+        - resting on the body, sewn along the body cloth's neckline (chain_roles.neck_part): a part resting on
+          it (a fall sewn on top): the ring of its own neckline length on the high points, its top that seam, band_closed,
+          tied on its own button or, untied, opened (band_untied; P3 lays it on its tape). Nothing on it: its neck edge
+          laid on the tape step 4 names for it (P2, piece_start.lay_on_tape), standing with its own top edge (stand_ring);
         - resting on the body otherwise: a ring of its own closed length round the limb or the body it is sewn to."""
         from .chain_roles import stand_ring
         if part.rests_on != ["body"]:

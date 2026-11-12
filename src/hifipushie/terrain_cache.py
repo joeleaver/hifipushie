@@ -47,7 +47,7 @@ def key(spec: dict) -> str:
     h = hashlib.sha1()
     h.update(json.dumps(flat, sort_keys=True).encode())
     h.update(b"\0kinds\0" + json.dumps(kinds, sort_keys=True).encode())
-    h.update(b"\0code\0" + codehash.digest("terrain", *terrain.MODULES).encode())  # (terrain.py was split, C423)
+    h.update(b"\0code\0" + codehash.digest("terrain", *terrain.MODULES).encode())  # (terrain.py was split, C424)
     return h.hexdigest()
 
 
