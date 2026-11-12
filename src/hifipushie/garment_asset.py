@@ -22,6 +22,9 @@ parts(name, recs, out_dir, log) -> (cparts, weights, looks, left_out, lods):
     (None: the LOD leaves the part out, details too small to see there). A shipped garment with NO LOD files is
     logged as a WARNING naming export_garment: asset_export then decimates it like any part.
 take_lods(own, parts, lp, lr, rep, bones) -> log line: one LOD's chain parts into asset_export's LOD (its LOD loop).
+skin_through(p, covers, P0, under0) -> keep per triangle: skin that comes THROUGH a garment's own LOD cloth and was
+    under a garment at LOD0 is cut at that LOD (C440): a 9-12 cm grid's flat faces sink further under the skin than
+    the push-under looks (2 cm) or moves (1 cm), and moving the cloth out instead bloats the garment.
 bone_weights(weights, bones) -> {part name: (J, W)} in the export rig's bone order.
 read(glb) -> the garment GLB as arrays in Blender axes (garment_glb.write's inverse).
 """
@@ -369,6 +372,29 @@ def take_lods(own: dict, parts: dict, lp: dict, lr: dict | None, rep: dict, bone
         rep[pn] = {"triangles0": n0, "triangles": len(q["corner_vert"]) // 3, "own_lod": True}
         bits.append(f"{pn} {rep[pn]['triangles']} ({share:g} of its budget)")
     return "the garments' own LOD files (export_garment's re-grid; not decimated): " + ", ".join(bits)
+
+
+THROUGH_REACH = 0.05  # m: how far along a skin vertex's normal, either way, a LOD's cloth is looked for
+
+
+def skin_through(p: dict, covers: list, P0: np.ndarray, under0: np.ndarray, reach: float = THROUGH_REACH) -> np.ndarray:
+    """keep mask per triangle of `p` (a LOD of the skin, or of any part worn under garments): False where a corner
+    lies OUTSIDE the nearest surface of `covers` (this LOD's chain garments, their own LOD files) and every corner's
+    nearest LOD0 point (P0, lods_under.under_at_lod0's) was under a garment (under0). What was covered at LOD0 and
+    sticks through the coarser cloth is hidden skin showing: cut. Skin that was never covered (a wrist past the cuff,
+    the chest in the collar's opening) has no such LOD0 point and stays."""
+    from scipy.spatial import cKDTree
+    from . import lods_under
+    T = np.asarray(p["corner_vert"], np.int64).reshape(-1, 3)
+    under0 = np.asarray(under0, bool)
+    if not covers or not len(P0) or not under0.any() or not len(T):
+        return np.ones(len(T), bool)
+    V = np.asarray(p["verts"], np.float64)
+    vid, _, _, t = lods_under.under_depth(p, covers, reach)
+    out = np.zeros(len(V), bool)
+    out[np.asarray(vid)[np.isfinite(t) & (t < 0)]] = True
+    was = under0[cKDTree(np.asarray(P0, np.float64)).query(V)[1]]
+    return ~(was[T].all(1) & out[T].any(1))
 
 
 def bone_weights(weights: dict, bones: list) -> dict:
