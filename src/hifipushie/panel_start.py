@@ -110,29 +110,49 @@ def _edge_ids(cnet, nm, arc, idx):
     return np.array(out, np.int64)
 
 
-def _edge(cnet, nm, ids, em, T, body, idx):
+def _edge(cnet, nm, ids, em, T, body, idx, Xs=None):
     """Start positions of an edge-taped piece and the pulls of its edge points to their tape (module doc)."""
     names = sorted({e["tape"] for e in em.values()})
     if len(names) != 1 or names[0] not in T:
         raise ChainRefused(f"{nm}: its edge must name one step-3 tape, it names {names}: back to step 4")
     Q = from_centre(T[names[0]]["kind"], T[names[0]]["pts"])
     E = np.unique(np.concatenate([_edge_ids(cnet, nm, e["arc"], idx) for e in em.values()]))
-    # (the edge's points ordered along the outline, arc length from the centre line: |flat x| smallest)
+    # (the edge's points ordered along the OUTLINE, arc length measured along it (never across a gap between the
+    # edge's arcs): from the centre line's crossing nearer the edge (a centre piece), or from the end nearer x = 0)
     lp = np.array(cnet.loop(nm))
-    E = lp[np.isin(lp, E)]
-    U = cnet.uv[E]
-    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(U, axis=0), axis=1))]
-    gap = np.linalg.norm(np.diff(U, axis=0), axis=1)
-    if len(gap) and gap.max() > 5 * np.median(gap):  # (the loop wrapped: start after the big jump)
-        k = int(np.argmax(gap)) + 1
-        E = np.r_[E[k:], E[:k]]
-        U = cnet.uv[E]
-        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(U, axis=0), axis=1))]
+    U = cnet.uv[lp]
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(np.r_[U, U[:1]], axis=0), axis=1))]
+    per, at = cum[-1], cum[:-1]
+    on = np.isin(lp, E)
     if hand_of(nm):
+        k = np.flatnonzero(on)
+        sp = (at[k] - at[k[0]]) % per
+        gap = np.diff(np.r_[np.sort(sp), per])
+        st0 = at[k[(np.argsort(sp)[(int(np.argmax(gap)) + 1) % len(k)])]]  # (the arc starts after its largest gap)
+        s = (at[k] - st0) % per
+        o = np.argsort(s)
+        E, s = lp[k[o]], s[o]
+        U = cnet.uv[E]
         d = s if abs(U[0, 0]) <= abs(U[-1, 0]) else s[-1] - s
-    else:  # (a centre piece: the half whose cloth outside (flat +z x winding) faces out with its flat +x at -X, seen
-        # from behind with the grain up, is the worn -X half)
-        d = np.abs(s - s[int(np.argmin(np.abs(U[:, 0])))]) * np.sign(-_wind(cnet, ids) * U[:, 0])
+    else:  # (a centre piece: each half goes to the side of the started pieces it is sewn to (C443: a winding rule put
+        # both halves on the wrong side, crossing every seam); sewn to none started: the half whose cloth outside (flat
+        # +z x winding) faces out with its flat +x at -X, seen from behind with the grain up, is the worn -X half)
+        xs = np.flatnonzero(np.sign(U[:, 0]) != np.sign(np.roll(U[:, 0], -1)))  # (outline crossings of x = 0)
+        sd = lambda c: (at[on] - at[c] + per / 2) % per - per / 2
+        c = xs[np.argmin([np.abs(sd(c)).mean() for c in xs])]
+        E, U = lp[on], cnet.uv[lp[on]]
+        side = -_wind(cnet, ids)
+        if Xs is not None:
+            mine = cnet.piece == cnet.pid(nm)
+            a, b = cnet.sew[:, 0], cnet.sew[:, 1]
+            a, b = np.r_[a, b], np.r_[b, a]
+            k = mine[a] & ~mine[b] & ~np.isnan(Xs[b, 0])
+            vote = float((np.sign(cnet.uv[a[k], 0]) * np.sign(Xs[b[k], 0])).sum())
+            side = np.sign(vote) if vote else side
+        d = np.abs(sd(c)) * np.sign(side * U[:, 0])
+        o = np.argsort(sd(c))
+        E, U, d = E[o], U[o], d[o]
+        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(U, axis=0), axis=1))]
     sgn = -1.0 if hand_of(nm) < 0 else 1.0
     P, L = _at(Q, np.abs(d))
     P[d * sgn < 0] *= [-1, 1, 1]
@@ -153,7 +173,7 @@ def _edge(cnet, nm, ids, em, T, body, idx):
     D = cnet.uv[ids] - U[k]
     X = P[k] + (D * tf[k]).sum(1)[:, None] * t3[k] + np.abs((D * nf[k]).sum(1))[:, None] * np.array([0, 0, 1.0])
     pull = {"ids": E, "to": P, "weight": 1.0, "name": f"{nm} edge on {names[0]}"}
-    return X, pull, {"tapes": "edge", "tape": names[0], "edge_mm": round(float(s[-1] * 1e3), 1),
+    return X, pull, {"tapes": "edge", "tape": names[0], "edge_mm": round(float(d.max() - min(d.min(), 0.0)) * 1e3, 1),
                      "tape_mm": round(L * 1e3, 1)}
 
 
@@ -168,14 +188,17 @@ def starts(cnet, keep, body, skip=(), spin=None):
     Xs = np.full((cnet.n, 3), np.nan)
     pulls, rd = [], {}
     groups: dict = {}
-    for p, nm in enumerate(cnet.names):
+    edged = lambda nm: (st.get("edges") or {}).get(nm) or (st.get("edges") or {}).get(nm[:-2] if hand_of(nm) else nm)
+    order = sorted(range(len(cnet.names)), key=lambda p: bool(edged(cnet.names[p])))  # (edge-taped last: sides by seams)
+    for p in order:
+        nm = cnet.names[p]
         if nm in skip:
             continue
         ids = np.where(cnet.piece == p)[0]
-        em = (st.get("edges") or {}).get(nm) or (st.get("edges") or {}).get(nm[:-2] if hand_of(nm) else nm) or {}
+        em = edged(nm) or {}
         loops, paths = _tapes(st, nm)
         if em:
-            X, pull, r = _edge(cnet, nm, ids, em, T, body, idx)
+            X, pull, r = _edge(cnet, nm, ids, em, T, body, idx, Xs)
             pulls.append(pull)
         elif loops:
             X, r = _girth(cnet, nm, ids, loops, paths, spin.get(nm, 0.0))
