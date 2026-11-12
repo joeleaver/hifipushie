@@ -101,17 +101,20 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
     from . import featuresee
     rep = featuresee.report(name, elements, views, resolution)
     by = rep["by_feature"]
-    count = {s: sum(1 for v in by.values() if v == s) for s in ("right", "OFF", "HIDDEN", "NOT MADE", "IN ITS MASS")}
+    CANT = "CAN'T MEASURE"
+    count = {s: sum(1 for v in by.values() if v == s)
+             for s in ("right", "OFF", "HIDDEN", "NOT MADE", "IN ITS MASS", "CAN'T MEASURE")}
     lines = [f"{name}: {len(by)} features: {count['right']} right, {count['OFF']} off, {count['HIDDEN']} hidden, "
              f"{count['NOT MADE']} NOT MADE" + (f", {count['IN ITS MASS']} said to be in their mass (not measured)"
-                                                if count["IN ITS MASS"] else "")]
+                                                if count["IN ITS MASS"] else "")
+             + (f", {count[CANT]} could not be measured" if count[CANT] else "")]
     if rep["skipped_views"]:
         lines.append(f"  views with no camera yet (fit_concept_camera): {rep['skipped_views']}")
     not_made = sorted(f for f, s in by.items() if s == "NOT MADE")
     if not_made:
         lines.append("NOT MADE: " + ", ".join(not_made))
     for r in rep["rows"]:
-        if r["status"] in ("OFF", "HIDDEN"):
+        if r["status"] in ("OFF", "HIDDEN", "CAN'T MEASURE"):
             lines.append(f"  {r['status']} {r['feature']} ({r['view']}): {r['why']}")
     ok = [f"{r['feature']} ({r['view']}, covers {r['iou']:.0%})" for r in rep["rows"] if r["status"] == "right"]
     if ok:

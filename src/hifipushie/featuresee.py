@@ -20,6 +20,8 @@ Per feature and view (rows where the map has a mark and the view has a camera):
             model has form along most of it
   OFF       otherwise, with the worst number first
   IN ITS MASS  elements ["="]: the sculptor says the mass's own shape makes this form. Not measured: its tile is.
+  CAN'T MEASURE  its elements can't be taken out of the model on their own (something else is built on them), or
+            they shape nothing; the reason is given
 Elements are named as the model has them (get_model): a blob's, bone's, stroke's or kit's own name (a stroke's or
 kit's generated pieces come with it; ".R" is the mirrored twin of ".L"), a shell-style pattern ("fr*", "bib?.L"),
 or "part:<part>" for every element of a part. They are taken out of the SPEC, so a cut that is folded into the
@@ -133,8 +135,26 @@ def resolve(ex: dict, patterns, kits=()) -> tuple[set[str], list[str]]:
 
 
 def without(ex: dict, names: set[str]) -> dict:
-    return {**ex, "blobs": {k: v for k, v in ex["blobs"].items() if k not in names},
-            "bones": {k: v for k, v in ex["bones"].items() if k not in names}}
+    """The expanded spec less the named blobs and bones, and less any cut that shaped only them (a cut's `targets`
+    lose the names that went; a cut left with no target goes too)."""
+    gone = set(names)
+    out = {**ex, "blobs": {k: v for k, v in ex["blobs"].items() if k not in gone},
+           "bones": {k: v for k, v in ex["bones"].items() if k not in gone}}
+    again = True
+    while again:
+        again = False
+        for kind in ("blobs", "bones"):
+            for k, v in list(out[kind].items()):
+                t = v.get("targets")
+                left = [x for x in t if x not in gone] if t else t
+                if t and len(left) != len(t):
+                    if left:
+                        out[kind][k] = {**v, "targets": left}
+                    else:
+                        del out[kind][k]
+                        gone.add(k)
+                        again = True
+    return out
 
 
 def _mass_of(fm: dict, feature: str) -> str | None:
@@ -308,10 +328,10 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
                 continue
             row = _row(f, v, ref, fp["masks"][(f, v)], k, tol, bool(c["marks"][v].get("line")))
             if f in fp["notes"]:
-                row.update(status="HIDDEN", why=fp["notes"][f])
+                row.update(status="CAN'T MEASURE", why=fp["notes"][f])
             rows.append(row)
     worst = {}
-    rank = {"NOT MADE": 4, "OFF": 3, "HIDDEN": 2, "IN ITS MASS": 1, "right": 0}
+    rank = {"NOT MADE": 5, "OFF": 4, "CAN'T MEASURE": 3, "HIDDEN": 2, "IN ITS MASS": 1, "right": 0}
     for r in rows:
         if rank[r["status"]] >= rank.get(worst.get(r["feature"]), -1):
             worst[r["feature"]] = r["status"]
