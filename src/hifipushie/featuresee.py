@@ -478,7 +478,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 10  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 11  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
@@ -566,6 +566,11 @@ def _report(name: str, elements, views, resolution: int, tol, peek: bool = False
             cam = cams[v]
             k = cam.get("m_per_px") or float(np.nanmedian(np.where(np.isfinite(fp["depth"][v]), fp["depth"][v], np.nan))) / cam["f_px"]
             ref = seen_mark(name, fm, f, v)
+            if c["kind"] == "mass":  # where the model has another marked mass in front, inside that mass's own mark,
+                # this one is rightly hidden (a thigh under shorts): a mark may run under a neighbour
+                for g, cg in fm["features"].items():
+                    if g != f and cg["kind"] == "mass" and v in cg["marks"] and (g, v) in fp["masks"] and made.get(g):
+                        ref &= ~(fp["masks"][(g, v)] & featuremap.mask(name, g, v))
             if not ref.any():  # nothing of it shows past the masses on it: nothing to measure in this view
                 continue
             if made[f] == [IN_MASS]:

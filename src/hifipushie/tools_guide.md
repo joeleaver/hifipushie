@@ -303,7 +303,13 @@ longest; a flap: a sheet along its broadest mark's long axis); a trunk is a loft
 (width from the front or back mark, depth and lean from the side mark); a tube is a chain of bones along the
 mark's long axis ("along" x / y / z overrides), "joints" stations. A ".L" is built and mirrored. What no mark
 shows is listed as ASSUMED. The built elements are written into the map, and the feature report follows.
-The sculptor's page: guide(topic="features").
+Per feature: "as" (required); "round" 2 = round in section .. 12 = square (ball 2, trunk 2.3 by default); "sections"
+(trunk, 7); "joints" (tube 3, flap 4: stations along it); "along" "x" | "y" | "z" (drum, tube, flap: the axis, when
+the longest extent is not it); "edge" (drum: metres its rims are rounded); "thick", "cup", "puff" (flap: metres
+thick, metres its edges lift, 0 = a slab .. 1 = a lens); "socket" true | metres (ball: hollow the mass it is on
+round it); "part" (any name: its own piece); "blend" (metres: 0.003 crisp .. 0.02 the default .. 0.04 no line);
+"depth", "depth_ratio", "x", "y" (what a missing view would have given). There is no way to tilt a ball or drum:
+a slanted thing is a tube or a flap. The sculptor's page: guide(topic="features").
 
 ### `feature_report`
 

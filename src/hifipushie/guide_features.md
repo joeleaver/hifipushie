@@ -77,8 +77,9 @@ Marks are in each view's own pixels: read them off the rulers. Every mark is cli
 Names ending `.L` are the creature's left. In a front view its left is at the picture's RIGHT.
 Mark every feature in every view that shows it: one view gives no depth.
 Draw round a mass as you see it. What sits `on` it and is a mass of its own (an eye on a head) is taken out of its
-mark for you when the model is measured, so each mass is compared by what shows of the thing itself. Where
-something that is NOT on it stands in front (an arm across a belt), leave that part out of the mark yourself.
+mark for you when the model is measured, so each mass is compared by what shows of the thing itself. Draw
+a mass's WHOLE extent, also where it runs under another mass you have marked (a thigh inside shorts, a neck
+behind a beard): it is built from its whole mark, and what the model hides there is not held against it.
 Split masses where the subject is jointed, not where the outline happens to turn: a limb's segments, a hand apart
 from its forearm.
 
@@ -96,14 +97,18 @@ Example (a made-up subject):
 
 Build once the map owes nothing. For every mass say what it is, `"as"`:
 
-- `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks.
+- `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks. It fills its
+  box, so it suits what is nearly round; a mass that is wider at one end (a pear, a wedge) is a trunk.
+  `"socket": true` for a thing set INTO the mass it is `on` (an eyeball): that mass is hollowed round it, so it
+  shows. Build the mass it sits in first.
 - `"drum"`: a made, straight-sided thing: a cylinder along its long axis (`"along"` if it picks the wrong one),
   its rims rounded by `"edge"` metres.
 - `"flap"`: a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
   long axis of its broadest mark, its width read across, its thickness from its other view (or `"thick"`,
   metres). `"cup"`: metres its edges lift, for a hollow side. A ball or a tube would make it a fat lump.
-- `"trunk"`: one upright mass through cross-sections: at each height its width from the front (or back) mark,
-  its depth and its lean from the side mark. For a mass that stands up and sits on the centre line.
+- `"trunk"`: one upright mass through cross-sections: at each height its width from the front and back marks
+  together, its depth and its lean from the side mark. For a mass that stands up and sits on the centre line. Its
+  two ends are domes.
 - `"tube"`: something long that tapers, along its own axis: up, sideways or forward, and it may bend. Built as a
   chain of bones through `"joints"` stations (3 by default; more for a curve), each station's middle and half
   sizes read across the axis in both views. `"along": "x" | "y" | "z"` if the long axis it picks is wrong.
@@ -121,9 +126,9 @@ side mark you must give `"y"` (where it sits front to back). `.L` is built and m
     build_masses("jug", {"body": {"as": "trunk", "round": 2.2}, "handle": {"as": "tube", "joints": 5, "y": 0.0},
                          "knob": {"as": "ball"}})
 
-A small mass that sits ON a bigger one (an eye on a head) must stand proud of it to be seen. If it comes back
-HIDDEN, the mass under it is too full there: a trunk's or ball's `"round"` nearer 2 pulls its corners in, and a
-head that is narrower in front than behind is better as two masses than one.
+A small mass that sits ON a bigger one must stand proud of it to be seen. If it comes back HIDDEN, the mass
+under it is too full there: set it in a `"socket"`, or pull the big mass's corners in (`"round"` nearer 2), or
+make a mass that is narrower in front than behind out of two.
 
 It answers with the feature report for the masses and a picture. A mass that is OFF is fixed in its MARK (redraw
 it, in the view that is wrong) or in what you said it is, then built again: building a feature again replaces

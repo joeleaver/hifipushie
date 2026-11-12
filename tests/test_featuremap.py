@@ -269,6 +269,11 @@ def test_masses_are_built_from_their_marks(fig):
         assert ear["shape"] == "sheet" and len(ear["spine"]) >= 3 and all(s_["half_thickness"] < s_["half_width"] for s_ in ear["stations"])
         rows = [r for r in featuresee.report("fig", resolution=128)["rows"] if r["feature"] == "ear.L"]
         assert rows and all(r["status"] == "right" for r in rows), rows
+        sock = masses.build("fig", {"eye.L": {"as": "ball", "socket": True}})["spec"]["blobs"]
+        assert sock["eye_socket.L"]["op"] == "subtract" and sock["eye_socket.L"]["targets"] == ["head"]
+        assert featuremap.load("fig")["features"]["eye.L"]["elements"] == ["eye.L"]   # (the socket is the head's)
+        rows = [r for r in featuresee.report("fig", resolution=128)["rows"] if r["feature"] in ("eye.L", "eye.R", "head")]
+        assert all(r["status"] == "right" for r in rows), rows
         drum = masses.build("fig", {"snout": {"as": "drum", "along": "y"}})["spec"]["blobs"]["snout"]
         assert drum["shape"] == "cylinder" and drum["rot"] == [90, 0, 0] and abs(drum["size"][2] - 0.06) < 0.012, drum
     finally:

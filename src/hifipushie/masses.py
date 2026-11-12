@@ -7,7 +7,8 @@ already hold those numbers.
 
 A mass is built `as`:
   "ball"   one rounded lump: its middle and three half sizes from the marks' boxes (an eye, a nose, a hoof, a head
-           that is nearly a ball). `round`: 2 = an ellipsoid, higher = squarer (a soft block).
+           that is nearly a ball). `round`: 2 = an ellipsoid, higher = squarer (a soft block). `socket`: true (or
+           metres): it is set INTO the mass it is `on`, which is hollowed round it so that it shows (an eyeball).
   "drum"   a made, straight-sided thing: a cylinder along its long axis (a can, a wheel, a post), its radii and
            length from the marks' boxes. `along` x / y / z if the axis it picks is wrong; `edge`: metres its rims
            are rounded by.
@@ -112,9 +113,16 @@ def _ball(feature: str, f: dict, how: dict, notes: list) -> dict:
         notes.append(f"{feature}: no side mark: depth {2 * ry * 1000:.0f} mm at y {cy:+.3f} is your word, not the picture's")
     else:
         ry, cy = (y1 - y0) / 2, (y0 + y1) / 2
-    return {"blobs": {feature: {"shape": "super", "at": [round(cx, 4), round(cy, 4), round((z0 + z1) / 2, 4)],
-                                "size": [round(max(rx, 0.002), 4), round(max(ry, 0.002), 4), round(max(rz, 0.002), 4)],
-                                "squareness": float(how.get("round", 2.0))}}}
+    out = {feature: {"shape": "super", "at": [round(cx, 4), round(cy, 4), round((z0 + z1) / 2, 4)],
+                     "size": [round(max(rx, 0.002), 4), round(max(ry, 0.002), 4), round(max(rz, 0.002), 4)],
+                     "squareness": float(how.get("round", 2.0))}}
+    if how.get("socket") and how.get("_targets"):  # the mass it sits on is cut back round it (a little wider)
+        more = 0.15 * min(rx, ry, rz) if how["socket"] is True else float(how["socket"])
+        side = feature[-2:] if feature[-2:] in (".L", ".R") else ""
+        out[f"{feature[:len(feature) - len(side)]}_socket{side}"] = {
+            "shape": "ellipsoid", "at": out[feature]["at"], "size": [round(v + more, 4) for v in out[feature]["size"]],
+            "op": "subtract", "targets": list(how["_targets"]), "blend": round(min(0.006, more), 4)}
+    return {"blobs": out}
 
 
 def _drum(feature: str, f: dict, how: dict, notes: list) -> dict:
@@ -179,7 +187,20 @@ def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
     xz = _need(f, feature, "xz")
     yz = f.get("yz")
     n = int(how.get("sections", 7))
-    st, z0, z1 = _stations(xz, 1, n)
+    z0, z1 = float(xz[:, 1].min()), float(xz[:, 1].max())
+    tall = z1 - z0
+    caps = []
+    for end in (z0 + 0.15 * tall, z1 - 0.15 * tall):  # each end's dome: 0.4 of its half width there, within reason
+        w = _span(xz, 1, end, end, max(tall / 30, 0.002))
+        caps.append(float(np.clip(0.4 * (w[1] - w[0]) / 2 if w else 0.1 * tall, 0.05 * tall, 0.3 * tall)))
+    half = max(tall / (2.5 * n), 0.002)
+    st = []
+    for z in np.linspace(z0 + caps[0], z1 - caps[1], n):
+        w = _span(xz, 1, z, z, half)
+        if w:
+            st.append((float(z), w[0], w[1]))
+    if len(st) < 2:
+        raise ValueError(f"{feature}: its mark is too small to read sections from")
     cx = float(np.mean([(a + b) / 2 for _, a, b in st]))
     if yz is None:
         notes.append(f"{feature}: no side mark: its depth is taken as {how.get('depth_ratio', 0.85):.2f} of its width, upright")
@@ -260,6 +281,9 @@ def _tube(feature: str, f: dict, how: dict, notes: list) -> dict:
     lo, hi = float(run.min()), float(run.max())
     P[0][ai] = lo + min(max(half[0]), 0.4 * (hi - lo))
     P[-1][ai] = hi - min(max(half[-1]), 0.4 * (hi - lo))
+    gap = 0.08 * (P[-1][ai] - P[0][ai])  # stations the end joints have passed, or crowd, go
+    keep = [0] + [i for i in range(1, len(P) - 1) if P[0][ai] + gap < P[i][ai] < P[-1][ai] - gap] + [len(P) - 1]
+    P, half = [P[i] for i in keep], [half[i] for i in keep]
     joints, bones = {}, {}
     for i, (p, (w, h)) in enumerate(zip(P, half)):
         joints[f"{base}_j{i}{side}"] = {"pos": [round(c, 4) for c in p], "r": round(max(min(w, h), 0.002), 4)}
@@ -306,6 +330,14 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
         if flip:  # build it as the .L it mirrors from
             src = {k: v * np.array([-1.0 if k == "xz" else 1.0, 1.0]) for k, v in src.items()}
         target = tw if flip else feature
+        h = dict(h)
+        if h.get("socket"):
+            on = fm["features"].get(c.get("on") or "", {})
+            under = [n for n in on.get("elements") or [] if n in spec["blobs"] or n in spec["bones"]]
+            if kind != "ball" or not under:
+                raise ValueError(f"{feature}: socket is for a ball set into the mass it is on, and that mass "
+                                 f"({c.get('on')!r}) must be built first (in an earlier call, or earlier in this one)")
+            h["_targets"] = [featuremap.twin(n) or n for n in under] if flip else under
         part = {"ball": _ball, "drum": _drum, "flap": _flap, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
         for old in c.get("built") or []:  # what was built for it before goes
             for k in ("joints", "bones", "blobs"):
@@ -319,7 +351,7 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
         names = []
         for k in ("joints", "bones", "blobs"):
             for n, e in (part.get(k) or {}).items():
-                if k != "joints":
+                if k != "joints" and e.get("op") != "subtract":
                     if h.get("part"):
                         e["part"] = h["part"]
                     if "blend" in h:
