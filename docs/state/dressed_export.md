@@ -1,52 +1,64 @@
 # STATE: a dressed character out as one GLB (export_asset + chain garments) -- 2026-11-12
 
 Goal: one character with its clothes out the far end as one game-ready GLB, by tools alone (the area re-review's first
-move: /mnt/data/hifipushie/review_20261112/export.md). Code: garment_asset.py (the hand-over), asset_export.py (the clothes
-branch and the rig block), tools_export.py (the answer's first line). Tests: tests/test_garment_asset.py. Ledger C434.
+move: /mnt/data/hifipushie/review_20261112/export.md). Code: garment_export.py + garment_export_tool.py (step 10 and its
+LOD files), garment_asset.py (the hand-over), asset_export.py (the clothes branch, the rig block, the LOD loop),
+garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_garment_export.py. Ledger C434, C439.
 
 ## Current best
 - export_asset ships a chain garment (a garment with a garment record) AS export_garment WROTE IT at step 10: its mesh,
   pattern UVs, step 9a's maps and its own skin weights (matched to the export rig by bone name). Its details (buttons)
-  are one part on a palette texture. Nothing is rebuilt. The old route (cloth.export_part, a re-simulation of the draft)
-  gets only garments without a record.
+  are one part on a palette texture. Nothing is rebuilt; cloth.export_part gets only garments without a record.
+- LODs (C439): export_garment also writes <garment>_LOD1..3.glb: the same pattern re-grid at a coarser grid, at the
+  role's clothing budget per LOD (0.25 / 0.11 / 0.05), stiff pieces 4 / 2 / 1 rows, weights read off the body again.
+  The character's LOD k takes that file; nothing of a chain garment is decimated. A detail piece under 2 px at the
+  LOD's switch size is left out (the shirt's buttons at LOD3), the others simplified and seated on the LOD's cloth.
 - A garment whose look (step 9) is not approved, or with no current step 10, is LEFT OUT, and the answer's first line
-  says NOT IN THIS EXPORT with the call that puts it in. A step 10 whose own gate FAILED ships with a WARNING.
+  says NOT IN THIS EXPORT with the call that puts it in. A step 10 whose own gate FAILED ships with a WARNING naming
+  the rows; a garment exported before the LOD files is decimated with a WARNING naming export_garment.
+- Seams: a seam is shared per stretch (garment_game.boundaries). Before, armholes, the neckline and the cuffs were
+  open loops that only read closed at LOD0's grid. The shirt's outer mesh now has 3 openings at every LOD.
 - Proof: cf_shirt + shirt, on a copy of the T14 proof workspace (approvals stubbed test-only):
-  /mnt/data/hifipushie/dressed_export/out1/cf_shirt.glb (rigged, 87 bones, role main_npc, LOD1-3, 18 min under load).
-  In the character's GLB the shirt IS the garment's file: 10,296 + 1,440 triangles; positions, UVs, normals and weights
-  equal to float32. The body under it is culled as for any garment (clothing 11,736 of 12,000 in the budget line).
-- Looks (coordinator's read, EEVEE): dressed_export/look_dressed_close.png (the garment's own step-10 look above, the
-  character's GLB below: the same shirt, collar, placket, check on the grain); look_dressed_lods.png.
+  export_garment 188 s: LOD0 10,226 + 1,440 triangles (27 mm), LOD1 2,552 + 360 (76 mm), LOD2 1,156 + 162 (87 mm),
+  LOD3 584 + 0 (119 mm); 0 open pattern edges each. export_asset (out3, 4 min once it had memory): the character's
+  LOD1 / 2 / 3 carry exactly those counts (the log: "the garments' own LOD files ... not decimated").
+  NOT YET CHECKED: each LOD's shirt equal to the garment's file vertex by vertex (the script ran last, with proof 4).
+- Looks (coordinator's read, EEVEE): dressed_export/look_dressed_lods_before_after.png (before left, after right;
+  LOD1-3 top to bottom); ws/cf_shirt/garments/shirt/step10_lods.png (the LOD files alone); look_dressed_close.png.
 
 ## Open faults (worst first)
-1. LODs: the chain shirt goes through the generic LOD decimation. LOD1 (3,244 triangles) reads; LOD2 kinks the chest
-   and the yoke; LOD3 (950) tears the fronts and the collar. AGREED with the garment session (2026-11-12): export_garment
-   writes <garment>_LOD1..3.glb at step 10 (garment_export.fit_budget at each LOD's share, weights by garment_bend.skin)
-   and the character's export takes those files; garment_asset then reads one file per LOD. Not started.
-2. Skin shows through both sleeves at the forearm in small patches. It is in the garment's own step-10 look too (the
-   build / hang), carried here, not made here. The layers audit: "body through cloth_shirt: 144 vertices, worst 21.3 mm".
-3. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
-4. The record keeps no NAMES for step 10's gate rows (garment_record._row keeps "id"; step 10 writes "row"), so the
-   WARNING can only count them. The garment session asked for the fix on the LOD branch: one key, the other removed.
-5. export_garment's "next:" does not name export_asset (same branch, asked for by the garment session), and
-   find_tool("export the dressed character as one GLB") still leads with export_garment.
-6. Not proven: a character with a head, skin and hair AND a chain garment (no such model has a step-10 garment yet);
-   one garment over another (the spec's "over"); an alpha-cut base map (carried as alpha_cutoff 0.5, no real case).
+1. NOT LANDED. Branch garment-lods (worktree .claude/worktrees/garment-lods), stopped at 98 % of the week's usage.
+   No fast suite on its head yet (targeted: tests/test_garment_export.py, _asset.py, _game.py, _record.py pass).
+2. Skin through the coarse sleeves. Proof 3 (before the lift): the shirt itself clean at LOD1-3 (no kink, no torn
+   front), but skin patches at both armpits and forearms at LOD3, upper arms at LOD2, two at LOD1
+   (look_dressed_lods_before_after_proof3.png; body poking after the push-under 41 / 64 / 157, decimated 6 / 0 / 33).
+   garment_export.clear_body (a LOD's cloth lifted off the body where its faces cut under the skin) was added for it;
+   its proof was RUNNING when the run stopped: read dressed_export/logs/proof_4.log (each LOD's "lifted clear" line),
+   logs/equal_4.log (ALL EQUAL expected) and look_dressed_lods_before_after.png before trusting it.
+3. Skin through both sleeves at the forearm at LOD0 too: the build's own (in the garment's step-10 look), not made here.
+4. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
+5. A character's LOD GLB has no .json / _shading.json beside it, so asset_export.preview cannot draw a LOD (the sheets
+   copied LOD0's by hand); find_tool("export the dressed character as one GLB") still leads with export_garment.
+6. Not proven: the bend check at the LODs; a character with a head, skin, hair AND a chain garment; one garment over
+   another (an under garment's LOD0 cull is not applied to its own LOD file); an alpha-cut base map.
 
 ## Decisions in force
-- The character takes step 10's FILE, never the garment's pickle or a rebuild: what was looked at is what ships.
-- Weights map by bone name; a bone the rig no longer has is refused with "export_garment again" (an index would move
-  the cloth with the wrong bone).
+- The character takes step 10's FILES, never the garment's pickle, a rebuild or a decimation: what was looked at ships.
+- Weights map by bone name; a bone the rig no longer has is refused with "export_garment again".
 - A failed step-10 gate ships with a WARNING (its bend rows fail today on the body's own elbow tear): one line in
   garment_asset.exported turns that into "left out" if Joe wants it stricter.
+- A LOD over its share is information; a LOD with an open pattern edge fails step 10's gate.
+- The LOD look is the garment alone (the whole body under a coarse LOD shows through everywhere: it says nothing).
 
 ## Commands
-- The proof again (copy first; never write into /mnt/data/hifipushie/t14):
+- The proof again (copy first; never write into /mnt/data/hifipushie/t14). Env for both calls:
   HIFIPUSHIE_HOME=/mnt/data/hifipushie/dressed_export/ws HIFIPUSHIE_APPROVED=/mnt/data/hifipushie/dressed_export/approved_stub.json
-  HIFIPUSHIE_ASSETS=<main checkout>/workspace/_templates bin/capped uv run python -c
-  'from hifipushie import server; print(server.export_asset("cf_shirt", "<out>", role="main_npc", rig=True, preview=False))'
-- Equal to the garment's file: garment_asset.read(<garment glb>) against garment_asset.read(<character glb>), matched on
-  position + uv together (554 seam vertices share a position).
+  HIFIPUSHIE_ASSETS=<main checkout>/workspace/_templates bin/capped uv run python -c '...':
+  `from hifipushie import garment_export_tool as g; print(g.run("cf_shirt", "shirt", "open", "main_npc", True)[1])`
+  `from hifipushie import server; print(server.export_asset("cf_shirt", "<out>", role="main_npc", rig=True, preview=False))`
+- Equal to the garment's files: garment_asset.read(<garment LOD glb>) against garment_asset.read(<character LOD glb>),
+  matched on position + uv together (seam vertices share a position).
 
-NEXT (waits for Joe's word on usage, 84 % of the week on 2026-11-12): one branch for faults 1, 4 and 5; the garment
-session has none of garment_export*, garment_bend*, garment_glb, garment_game in flight.
+NEXT: read proof 4 (fault 2). Sleeves clean: one bin/suite on the branch head, then land it (main is merged in,
+ledger row C439 is written), remove the worktree, tell the garment session. Not clean: clear_body's reach / cap
+first. After that docs/state/mcp_rules.md items 5, 6, 10.
