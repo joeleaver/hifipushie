@@ -46,7 +46,6 @@ generated mesh as input); every trial by a blind Opus 5.5 medium agent with the 
    an agent. matched.mask_of lost a white tuft against a light background (read_reference says check, takes mask=).
 5. No FORM measure (the model's form lines against the picture's): a form made by its mass's shape is ["="],
    unmeasured. featuresee.py is 540 lines: align_flat wants its own module.
-
 ## Decisions in force, and dead ends
 - Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches;
   what a subject's features are is the sculptor's judgement per subject (the page names no subject).
@@ -57,6 +56,5 @@ generated mesh as input); every trial by a blind Opus 5.5 medium agent with the 
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (`fm` points at frozen1 = c34ad512:
   repoint PYTHONPATH first). Troll re-measure: troll/recheck.py (the agent's map: troll/features_as_the_agent_left_them).
 - `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py`
-
 NEXT: open fault 1 (ownership, then trial 2 on the troll). Then run 2: masses from their outlines (a feature marked
 in two flat views becomes a shape: axis and widths from the marks, roundness and join stated), with fault 2.
