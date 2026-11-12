@@ -17,6 +17,9 @@ A mass is built `as`:
   "tube"   a tapering limb or horn along the mark's own long axis, which may run up, sideways or forward and may
            bend: a chain of bones through `joints` + 1 stations (default 2 bones), each station's middle and half
            sizes read across the axis in both views. The bones are the limb's bones later, for the rig.
+  "flap"   a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
+           long axis of its broadest mark, its width read across that axis, its thickness from its other view
+           (or `thick`, metres). `cup`: metres its edges lift (a hollow); `joints`: stations along it (4).
 What the two views can't give is said, never silently guessed: a mass marked in one flat view takes its depth from
 its width (or `depth`, metres), and its place along the missing axis from `y` / `x` (or the mass it is `on`).
 
@@ -30,7 +33,7 @@ import numpy as np
 
 from . import featuremap, refread, store
 
-KINDS = ("ball", "drum", "trunk", "tube")
+KINDS = ("ball", "drum", "flap", "trunk", "tube")
 
 
 def _flat(fm: dict, name: str, feature: str) -> dict:
@@ -124,6 +127,52 @@ def _drum(feature: str, f: dict, how: dict, notes: list) -> dict:
     rot, size = {"x": ([0, 90, 0], [hz, hy, hx]), "y": ([90, 0, 0], [hx, hz, hy]), "z": ([0, 0, 0], [hx, hy, hz])}[axis]
     return {"blobs": {feature: {"shape": "cylinder", "at": b["at"], "rot": rot, "size": [round(v, 4) for v in size],
                                 "round": float(how.get("edge", 0.12 * min(size[:2])))}}}
+
+
+def _flap(feature: str, f: dict, how: dict, notes: list) -> dict:
+    xz, yz = f.get("xz"), f.get("yz")
+    if xz is None and yz is None:
+        raise ValueError(f"{feature}: no mark in a flat view")
+    area = lambda p: 0.0 if p is None else float(np.ptp(p[:, 0]) * np.ptp(p[:, 1]))  # noqa: E731
+    broad, key = (xz, "xz") if area(xz) >= area(yz) else (yz, "yz")
+    other = yz if key == "xz" else xz
+    side_axis = 0 if key == "xz" else 1          # world index of the broad view's sideways axis (x or y)
+    thin_axis = 1 if key == "xz" else 0          # the axis the broad view looks along
+    run = 0 if np.ptp(broad[:, 0]) >= np.ptp(broad[:, 1]) else 1  # along the broad mark: sideways (0) or up (1)
+    if how.get("along"):
+        want = "xyz".index(how["along"])
+        if want not in (side_axis, 2):
+            raise ValueError(f"{feature}: its broadest mark lies in {'xz'[side_axis] if key == 'xz' else 'y'}-z: along is one of those")
+        run = 0 if want == side_axis else 1
+    n = int(how.get("joints", 4))
+    st, _, _ = _stations(broad, run, n, 0.1)
+    if len(st) < 2:
+        raise ValueError(f"{feature}: its mark is too small to find a run of stations")
+    if other is not None:
+        thin_mid = float(other[:, 0].mean())
+        thick = float(how["thick"]) if "thick" in how else float(np.ptp(other[:, 0]))
+    else:
+        if "thick" not in how or ("y" if thin_axis == 1 else "x") not in how:
+            raise ValueError(f"{feature}: marked in one view only: give thick (metres) and "
+                             f"{'y' if thin_axis == 1 else 'x'} (where it sits along the missing axis)")
+        thin_mid, thick = float(how["y" if thin_axis == 1 else "x"]), float(how["thick"])
+        notes.append(f"{feature}: one view only: {thick * 1000:.0f} mm thick at {thin_mid:+.3f} is your word, not the picture's")
+    spine, stations = [], []
+    for i, (t, a, b) in enumerate(st):
+        p = [0.0, 0.0, 0.0]
+        p[thin_axis] = thin_mid
+        if run == 0:   # the sheet runs sideways: its width is up and down
+            p[side_axis], p[2] = t, (a + b) / 2
+        else:          # it runs up: its width is sideways
+            p[2], p[side_axis] = t, (a + b) / 2
+        hw = max((b - a) / 2, 0.004)
+        spine.append([round(c, 4) for c in p])
+        stations.append({"t": round(i / (len(st) - 1), 3), "half_width": round(hw, 4),
+                         "half_thickness": round(min(max(thick / 2, 0.002), 0.9 * hw), 4),
+                         "cup": float(how.get("cup", 0.0)), "puff": float(how.get("puff", 0.4))})
+    wide = [0.0, 0.0, 0.0]
+    wide[2 if run == 0 else side_axis] = 1.0
+    return {"blobs": {feature: {"shape": "sheet", "spine": spine, "width_axis": wide, "stations": stations}}}
 
 
 def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
@@ -244,8 +293,8 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
         kind = (h or {}).get("as")
         if kind not in KINDS:
             raise ValueError(f"{feature}: as is one of {KINDS} (a ball: one rounded lump; a drum: a straight-sided "
-                             f"cylinder; a trunk: an upright mass through cross-sections; a tube: a limb or horn "
-                             f"along its own axis)")
+                             f"cylinder; a flap: a thin thing seen broad from one side; a trunk: an upright mass "
+                             f"through cross-sections; a tube: a limb or horn along its own axis)")
         tw = featuremap.twin(feature)
         sym = bool(spec.get("symmetry", True))
         if sym and feature.endswith(".R") and tw in how:
@@ -257,7 +306,7 @@ def build(name: str, how: dict, symmetry: bool = True) -> dict:
         if flip:  # build it as the .L it mirrors from
             src = {k: v * np.array([-1.0 if k == "xz" else 1.0, 1.0]) for k, v in src.items()}
         target = tw if flip else feature
-        part = {"ball": _ball, "drum": _drum, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
+        part = {"ball": _ball, "drum": _drum, "flap": _flap, "trunk": _trunk, "tube": _tube}[kind](target, src, h, notes)
         for old in c.get("built") or []:  # what was built for it before goes
             for k in ("joints", "bones", "blobs"):
                 spec[k].pop(old, None)

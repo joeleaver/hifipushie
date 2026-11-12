@@ -39,22 +39,25 @@ def align_flat(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
         mod = outline(cam)[:ref.shape[0], :ref.shape[1]]
         if not mod.any():
             continue
-        my, ry = np.where(mod.any(1))[0], np.where(ref.any(1))[0]
-        if scale is None:  # the sheet's scale: the model's drawn height against the picture's
-            scale = (my[-1] - my[0] + 1) / (ry[-1] - ry[0] + 1)
+        # the model's own height and lowest point, in metres (an outline drawn in the view can be cut by its edge)
+        zi = np.where((whole.field < 0).any((0, 1)))[0]
+        z_lo, z_hi = whole.origin[2] + zi[0] * whole.voxel, whole.origin[2] + zi[-1] * whole.voxel
+        rows = np.where(fig.any(1))[0]
         k0 = cam["m_per_px"]
-        k = k0 * scale if abs(scale - 1) > 0.01 else k0
+        if scale is None:  # the sheet's scale: the model's height over the figure's drawn height
+            scale = float((z_hi - z_lo) / ((rows[-1] - rows[0] + 1) * k0))
+        k = k0 * scale if abs(scale - 1) > 0.015 else k0
         side = rec["kind"] in ("side", "side_r")
-        trial = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"], rec["ground_px"])
+        ground = int(round(rows[-1] + 1 + z_lo / k))  # the model's lowest point on the figure's lowest row
+        dy = ground - rec["ground_px"]
+        trial = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"], ground)
         mod = outline(trial)[:ref.shape[0], :ref.shape[1]]
-        best, at = -1.0, (0, 0)
-        for dy in range(-12, 13):
-            for dx in (range(-mod.shape[1] // 4, mod.shape[1] // 4 + 1) if side else (0,)):
-                m2 = np.roll(np.roll(mod, dy, 0), dx, 1)
-                i = _iou(m2, ref)
-                if i > best:
-                    best, at = i, (dx, dy)
-        dx, dy = 2 * at[0], 2 * at[1]
+        best, at = _iou(mod, ref), 0
+        for sx in (range(-mod.shape[1] // 4, mod.shape[1] // 4 + 1) if side else ()):
+            i = _iou(np.roll(mod, sx, 1), ref)
+            if i > best:
+                best, at = i, sx
+        dx = 2 * at
         if k != k0 or abs(dx) >= 3 or abs(dy) >= 3:
             new = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"] + dx, rec["ground_px"] + dy)
             cam.update({q: new[q] for q in ("f_px", "aim", "m_per_px")})
@@ -62,9 +65,9 @@ def align_flat(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
             matched.cam_path(name, v).write_text(_json.dumps(cam))
             why = []
             if k != k0:
-                why.append(f"the model is {1 / scale:.2f} x the height the sheet was read at")
+                why.append(f"the model is {scale:.2f} x the height the sheet was read at")
             if abs(dy) >= 3:
-                why.append(f"its lowest point is {abs(dy) * k * 1000:.0f} mm {'below' if dy < 0 else 'above'} the ground line")
+                why.append(f"its lowest point is {abs(z_lo) * 1000:.0f} mm {'below' if z_lo < 0 else 'above'} its own zero")
             if abs(dx) >= 3:
                 why.append(f"its centre line is {abs(dx) * k * 1000:.0f} mm from where the drawn feet put it")
             notes.append(f"{v}: {'; '.join(why)}. The view now sits on the model (outlines overlap {best:.0%})")

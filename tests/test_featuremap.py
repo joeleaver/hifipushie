@@ -178,11 +178,11 @@ def test_the_true_model_is_right_and_planted_faults_are_found(fig):
     # moved: the eyes 3 cm higher
     store.save("fig", _spec(eye=(0.06, -0.125, 0.70)), "eye up")
     r = _status(featuresee.report("fig", resolution=128))[("eye.L", "front")]
-    assert r["status"] == "OFF" and "high" in r["why"] and 20 < r["dy_mm"] < 40, r
+    assert r["status"] == "OFF" and "above the mark" in r["why"] and 20 < r["dy_mm"] < 40, r
     # shrunk: a snout half the size
     store.save("fig", _spec(snout=0.03), "small snout")
     r = _status(featuresee.report("fig", resolution=128))[("snout", "front")]
-    assert r["status"] == "OFF" and "as wide" in r["why"] and r["wide"] < 0.7, r
+    assert r["status"] == "OFF" and "as wide as the mark" in r["why"] and r["wide"] < 0.7, r
     # buried: the eyes sunk inside the head
     store.save("fig", _spec(eye=(0.06, -0.06, 0.67)), "eye buried")
     assert _status(featuresee.report("fig", resolution=128))[("eye.L", "front")]["status"] == "HIDDEN"
@@ -191,7 +191,7 @@ def test_the_true_model_is_right_and_planted_faults_are_found(fig):
     rep = featuresee.report("fig", resolution=128)
     assert {r["status"] for r in rep["rows"]} == {"right"}, [r for r in rep["rows"] if r["status"] != "right"]
     said = " ".join(rep["moved_views"])
-    assert "below the ground line" in said and "centre line" in said, rep["moved_views"]
+    assert "below its own zero" in said and "centre line" in said, rep["moved_views"]
     store.save("fig", _spec(), "back")
     assert featuresee.report("fig", resolution=128)["moved_views"]  # (and back again)
     # a line mark has no size: right where the model has form along it, off where it has none
@@ -264,6 +264,11 @@ def test_masses_are_built_from_their_marks(fig):
         assert len(bad) <= 1, bad
         with pytest.raises(ValueError, match="as is one of"):
             masses.build("fig", {"snout": {"as": "blob"}})
+        flap = masses.build("fig", {"ear.L": {"as": "flap"}})
+        ear = flap["spec"]["blobs"]["ear.L"]
+        assert ear["shape"] == "sheet" and len(ear["spine"]) >= 3 and all(s_["half_thickness"] < s_["half_width"] for s_ in ear["stations"])
+        rows = [r for r in featuresee.report("fig", resolution=128)["rows"] if r["feature"] == "ear.L"]
+        assert rows and all(r["status"] == "right" for r in rows), rows
         drum = masses.build("fig", {"snout": {"as": "drum", "along": "y"}})["spec"]["blobs"]["snout"]
         assert drum["shape"] == "cylinder" and drum["rot"] == [90, 0, 0] and abs(drum["size"][2] - 0.06) < 0.012, drum
     finally:

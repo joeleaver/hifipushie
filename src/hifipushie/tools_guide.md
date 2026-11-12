@@ -299,7 +299,7 @@ the map. Marks and fields: guide(topic="features").
 
 Builds masses of the feature map into the model from their marks (masses.py): how {feature: {"as": "ball" |
 "drum" | "trunk" | "tube", ...}}. A ball is a super blob from the marks' boxes (a drum: a cylinder along the
-longest); a trunk is a loft with a section per height
+longest; a flap: a sheet along its broadest mark's long axis); a trunk is a loft with a section per height
 (width from the front or back mark, depth and lean from the side mark); a tube is a chain of bones along the
 mark's long axis ("along" x / y / z overrides), "joints" stations. A ".L" is built and mirrored. What no mark
 shows is listed as ASSUMED. The built elements are written into the map, and the feature report follows.

@@ -69,14 +69,18 @@ Marks are in each view's own pixels: read them off the rulers. Every mark is cli
   generously.
 - `"mirror": true` on a front or back view also marks the `.L` / `.R` twin IN THAT VIEW, reflected about the
   view's centre line (the pixel column `read_reference` prints). Use it only where the picture really is the
-  same on both sides; other views still need their own marks.
+  same on both sides; other views still need their own marks. In a BACK view the creature's left is at the
+  picture's LEFT.
 - Every call adds to the map. Naming a feature again changes only the fields and the views' marks that call
   gives; `"side": null` clears that view's mark; `remove=[...]` drops whole features.
 
 Names ending `.L` are the creature's left. In a front view its left is at the picture's RIGHT.
 Mark every feature in every view that shows it: one view gives no depth.
 Draw round a mass as you see it. What sits `on` it and is a mass of its own (an eye on a head) is taken out of its
-mark for you when the model is measured, so each mass is compared by what shows of the thing itself.
+mark for you when the model is measured, so each mass is compared by what shows of the thing itself. Where
+something that is NOT on it stands in front (an arm across a belt), leave that part out of the mark yourself.
+Split masses where the subject is jointed, not where the outline happens to turn: a limb's segments, a hand apart
+from its forearm.
 
 Example (a made-up subject):
 
@@ -95,6 +99,9 @@ Build once the map owes nothing. For every mass say what it is, `"as"`:
 - `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks.
 - `"drum"`: a made, straight-sided thing: a cylinder along its long axis (`"along"` if it picks the wrong one),
   its rims rounded by `"edge"` metres.
+- `"flap"`: a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
+  long axis of its broadest mark, its width read across, its thickness from its other view (or `"thick"`,
+  metres). `"cup"`: metres its edges lift, for a hollow side. A ball or a tube would make it a fat lump.
 - `"trunk"`: one upright mass through cross-sections: at each height its width from the front (or back) mark,
   its depth and its lean from the side mark. For a mass that stands up and sits on the centre line.
 - `"tube"`: something long that tapers, along its own axis: up, sideways or forward, and it may bend. Built as a
@@ -103,8 +110,10 @@ Build once the map owes nothing. For every mass say what it is, `"as"`:
 
 `"round"`: 2 is round in section, higher is squarer, like a soft block (a ball's or trunk's own judgement call:
 look at the outline's corners). `"sections"`: how many heights a trunk is read at (7; more for a wavy outline).
-`"part"`: its own part for a thing that is separate. `"blend"`: metres, how softly it melts into what it touches
-(small for a thing that sits ON another, larger for one that grows OUT of it; the `join` you wrote says which).
+`"part"`: any name: the mass becomes its own piece (its own mesh and colour later) and never melts into the
+rest; give it to a thing that is separate. `"blend"`: metres, how softly a mass melts into what it touches: 0.003
+for a thing that sits ON another with a crisp line round it, 0.02 (what you get if you say nothing) for an
+ordinary join, 0.04 for one that grows OUT of the other with no line at all. The `join` you wrote says which.
 
 Both views are needed for a shape: what a missing view would give is listed as ASSUMED, and for a ball with no
 side mark you must give `"y"` (where it sits front to back). `.L` is built and mirrored to `.R`.
@@ -147,6 +156,12 @@ and forms (paint is colour: a later stage): NOT MADE (no element makes it), HIDD
 from that view), OFF (with how far, how big, how much of the mark it covers), right, IN ITS MASS (`["="]`),
 CAN'T MEASURE (with the reason). A form's elements count as part of the mass it is on. A feature is measured by
 what shows of the thing itself: clothing over a limb is the clothing's, not the limb's.
+
+A row's words compare the MODEL'S footprint with YOUR MARK: "the model's is 12 mm to the picture's left and 5 mm
+below the mark" means move the mark that way if the model is right, or the model the other way if the mark is.
+The report's picture is drawn in the view's own pixels, with rulers: a mark can be read straight off it. Tiny
+things (a few pixels) are judged by place only. A perspective picture is measured once it has a camera: when the
+model exists, `fit_concept_camera(name, <that view's saved picture>, label=<the view's name>)`.
 
 A picture can't say how tall a model was built, where its ground is, or where its origin lies along its length.
 So the report first lays each flat view on the model (one scale for the sheet, each view's ground row, a side

@@ -23,7 +23,7 @@ how tall a model was built or where its origin is. The whole outline's overlap w
 Per feature and view (rows where the map has a mark and the view has a camera):
   NOT MADE  no model element is named for it        HIDDEN   made, but not seen from this view
   right     centre within `off` (mm, or a share of the mark's smaller side), both sizes within `size`, overlap
-            (IoU of footprint and mark) at least `iou`; a mark that is only a LINE has no size: right when the
+            (how much of each lies within 2 mm of the other, averaged) at least `iou`; a mark that is only a LINE has no size: right when the
             model has form along most of it; a mark of a few pixels is measured by its place only.
             The footprint's pieces that reach the mark are the ones compared (taking a thigh out also moves the
             hip: not the leg the picture marks), and only changes inside the removed shapes' own bounds count (a
@@ -50,7 +50,7 @@ from .featurerays import depth_image, first_hit, rays, relief  # noqa: F401  (th
 from .spec import compile_prims
 
 TOL = {"off_mm": 5.0, "off_share": 0.2, "size": (0.75, 1.33), "iou": 0.5, "line_mm": 6.0, "line_along": 0.6,
-       "small_px": 40}
+       "small_px": 40, "give_mm": 2.0}
 IN_MASS = "="  # elements ["="]: the form is made by the shape of the mass it is on, with no element of its own
 
 
@@ -98,8 +98,11 @@ def resolve(ex: dict, patterns, kits=()) -> tuple[set[str], list[str]]:
             got = {n for n in names if part[n] == pat[5:]}
         else:
             got = {n for n in names if fnmatch.fnmatchcase(n, pat) or fnmatch.fnmatchcase(_canon(n), pat)}
-            if not got and pat in kits:  # a kit's pieces carry its name in front
-                got = {n for n in names if n.startswith(pat + "_")}
+            if not got and pat in kits:  # a kit's pieces carry its name in front, and its side at the end
+                side = pat[-2:] if pat[-2:] in (".L", ".R") else ""
+                base = pat[:len(pat) - len(side)]
+                got = {n for n in names if n.startswith(base + "_") and n.endswith(side)
+                       and (side or n[-2:] not in (".L", ".R"))} or {n for n in names if n.startswith(base + "_")}
         if not got:
             import difflib
             pool = sorted({_canon(n) for n in names} | {f"part:{p}" for p in set(part.values())} | set(kits))
@@ -416,6 +419,7 @@ def _line_row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float,
     along = float((ref & near).sum() / max(ref.sum(), 1))
     ok = along >= tol["line_along"]
     return {"feature": f, "view": v, "status": "right" if ok else "OFF", "along": round(along, 2), "iou": round(along, 2),
+            "how": f"form along {along:.0%} of the line",
             "why": "" if ok else f"the model's form runs along {along:.0%} of the line (within {tol['line_mm']:.0f} mm)"}
 
 
@@ -446,31 +450,35 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
         my, mx = np.where(mod)
         d = float(np.hypot(mx.mean() - rx.mean(), my.mean() - ry.mean())) * m_per_px * 1000
         ok = d <= max(tol["off_mm"], 1.5 * m_per_px * 1000)
-        return {"feature": f, "view": v, "status": "right" if ok else "OFF", "iou": 0.0, "small": True,
-                "why": "" if ok else f"centre {d:.0f} mm from the mark (too small in this picture to measure its size)"}
+        return {"feature": f, "view": v, "status": "right" if ok else "OFF", "iou": 1.0 if ok else 0.0, "small": True,
+                "how": "in place (too small in this picture to measure its size)",
+                "why": "" if ok else f"the model's is {d:.0f} mm from the mark (too small in this picture to measure its size)"}
     my, mx = np.where(mod)
     dx = (mx.mean() - rx.mean()) * m_per_px * 1000
     dy = (ry.mean() - my.mean()) * m_per_px * 1000   # up is +
     rw, rh = _span(rx), _span(ry)
     sw, shh = _span(mx) / rw, _span(my) / rh
-    iou = float((ref & mod).sum() / max((ref | mod).sum(), 1))
+    give = max(1, int(round(tol["give_mm"] / 1000 / m_per_px)))  # each side may be this far out before it counts
+    rd, md = ndimage.binary_dilation(ref, iterations=give), ndimage.binary_dilation(mod, iterations=give)
+    iou = 0.5 * float((ref & md).sum() / max(ref.sum(), 1) + (mod & rd).sum() / max(mod.sum(), 1))
     limit = max(tol["off_mm"], tol["off_share"] * min(rw, rh) * m_per_px * 1000)
     faults = []
     if np.hypot(dx, dy) > limit:
-        faults.append((np.hypot(dx, dy) / limit, f"centre {abs(dx):.0f} mm {'right' if dx > 0 else 'left'}, "
-                                                 f"{abs(dy):.0f} mm {'high' if dy > 0 else 'low'} in the picture"))
+        faults.append((np.hypot(dx, dy) / limit, f"the model's is {abs(dx):.0f} mm to the picture's "
+                                                 f"{'right' if dx > 0 else 'left'} and {abs(dy):.0f} mm "
+                                                 f"{'above' if dy > 0 else 'below'} the mark"))
     for s, word in ((sw, "wide"), (shh, "tall")):
         if not tol["size"][0] <= s <= tol["size"][1]:
-            faults.append((max(s, 1 / s), f"{s:.0%} as {word} as the picture's"))
+            faults.append((max(s, 1 / s), f"the model's is {s:.0%} as {word} as the mark"))
     if iou < tol["iou"]:
-        faults.append((tol["iou"] / max(iou, 0.05), f"covers the mark {iou:.0%}"))
+        faults.append((tol["iou"] / max(iou, 0.05), f"model and mark overlap {iou:.0%}"))
     faults.sort(key=lambda t: -t[0])
     return {"feature": f, "view": v, "status": "OFF" if faults else "right", "dx_mm": round(float(dx), 1),
             "dy_mm": round(float(dy), 1), "wide": round(float(sw), 2), "tall": round(float(shh), 2),
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 9  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 10  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
@@ -597,9 +605,13 @@ def draw(name: str, rep: dict, view: str, width: int = 620) -> Image.Image:
         mod = rep["footprints"]["masks"].get((f, view))
         if mod is not None and mod.any():
             right[mod & ~ndimage.binary_erosion(mod, iterations=2)] = (30, 160, 60) if st == "right" else (225, 40, 40)
+    from . import refread
     s = width / left.shape[1]
     size = (width, int(left.shape[0] * s))
-    out = Image.new("RGB", (2 * width + 10, size[1]), (255, 255, 255))
-    out.paste(Image.fromarray(left).resize(size, Image.LANCZOS), (0, 0))
-    out.paste(Image.fromarray(right).resize(size, Image.LANCZOS), (width + 10, 0))
+    box = (0, 0, left.shape[1], left.shape[0])
+    tiles = [refread._ruler(Image.fromarray(a).resize(size, Image.LANCZOS), box, s, refread.nice_step(box[2]))
+             for a in (left, right)]  # the view's own pixels: a mark can be read straight off either panel
+    out = Image.new("RGB", (tiles[0].width + tiles[1].width + 10, tiles[0].height), (255, 255, 255))
+    out.paste(tiles[0], (0, 0))
+    out.paste(tiles[1], (tiles[0].width + 10, 0))
     return out
