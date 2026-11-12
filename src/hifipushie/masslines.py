@@ -38,7 +38,8 @@ def middle(pts: np.ndarray, res: float, touch: np.ndarray | None = None, bands: 
     """The middle line of a mark given as a point cloud [n, 2] (metres; `res`: the size of the picture's pixel the
     points came from; `touch`: those of its points that lie against another mass's mark): {"c": [m, 2] points from
     one end to the other, "half": [m] half widths across it, "s": [m] metres along it, "length", "cut": [bool,
-    bool]: that end is the middle of a cut across it (the mass runs on there), not a free tip}."""
+    bool]: that end is the middle of a cut across it (the mass runs on there), not a free tip, "lump": it is a
+    short uncut lump and the line is only its long axis}."""
     from scipy import ndimage
     from skimage.graph import MCP_Geometric
     lo = pts.min(0) - 2 * res
@@ -176,7 +177,7 @@ def middle(pts: np.ndarray, res: float, touch: np.ndarray | None = None, bands: 
         hp = np.pad(half, 1, mode="edge")
         half = np.array([np.median(hp[i:i + 3]) for i in range(len(half))])
     s = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(c, axis=0).T))])
-    return {"c": c, "half": half, "s": s, "length": float(s[-1]), "cut": cut}
+    return {"c": c, "half": half, "s": s, "length": float(s[-1]), "cut": cut, "lump": bool(not any(cut) and lump)}
 
 
 def _resample(line: dict, n: int) -> dict:
@@ -228,15 +229,19 @@ def tube(feature: str, f: dict, how: dict, notes: list) -> dict:
         raise ValueError(f"{feature}: its mark is too small to find a middle line in")
     # the view that shows its length; one where it was cut off the outline shows it better than one where it lies
     # over the body
-    key = max(lines, key=lambda k: lines[k]["length"] * (1.5 if any(lines[k]["cut"]) else 1.0)
-              * (0.01 if f.get("line_" + k) else 1.0))
+    # (and a slender mark shows a run better than a fat one of the same length: a horn from the side, not the front)
+    key = max(lines, key=lambda k: lines[k]["length"] ** 2 / max(2 * float(np.median(lines[k]["half"])), 1e-6)
+              * (1.5 if any(lines[k]["cut"]) else 1.0) * (1e-4 if f.get("line_" + k) else 1.0)
+              * (0.05 if lines[k]["lump"] else 1.0))  # (a lump's line is only its long axis: a guess)
     okey = "yz" if key == "xz" else "xz"
     fine = 33
     P = _resample(lines[key], fine)
     third, depth, said = None, None, None
     if okey in lines:
         O = _resample(lines[okey], fine)
-        long_o = O["length"] >= 1.6 * 2 * float(np.max(O["half"]))
+        # long enough there to have a middle line worth lining up (2.5 breadths); a stubbier mark's line leans
+        # as its corners do, not as the thing does
+        long_o = O["length"] >= 2.5 * 2 * float(np.median(O["half"])) and not lines[okey]["lump"]
         zp, zo = np.ptp(P["c"][:, 1]), np.ptp(O["c"][:, 1])
         if long_o and zo >= 0.5 * max(zp, 1e-6) and zp >= 0.35 * P["length"]:  # both show it running up or down
             fwd, cf = _warp(P["c"][:, 1], O["c"][:, 1])
@@ -249,11 +254,28 @@ def tube(feature: str, f: dict, how: dict, notes: list) -> dict:
             fl = float(np.abs(O["c"][:, 1] - P["c"][:, 1]).sum() > np.abs(O["c"][::-1, 1] - P["c"][:, 1]).sum())
             oc, oh = (O["c"][::-1], O["half"][::-1]) if fl else (O["c"], O["half"])
             third, depth = oc[:, 0].copy(), oh.copy()
-        else:  # seen end on, or as a lump: one place, and a depth that follows the width
+        else:  # seen end on, or as a lump
             p = views[okey]
-            third = np.full(fine, float((p[:, 0].min() + p[:, 0].max()) / 2))
-            depth = float(np.ptp(p[:, 0])) / 2 * P["half"] / max(float(P["half"].max()), 1e-9)
-            said = "its other view shows it end on or as a lump: one place and one depth from there"
+            zp_, zl = P["c"][:, 1], (float(p[:, 1].min()), float(p[:, 1].max()))
+            if zp >= 0.35 * P["length"] and zl[1] - zl[0] >= 0.5 * zp:
+                # a lump that spans the heights the line runs through (a horn seen from the front, foreshortened):
+                # at each height its middle is where the thing is, and its half breadth how deep. A splay shows here
+                gap = max(3.0 * float(f.get("px") or 0.002), 0.02 * (zl[1] - zl[0]))
+                zc = np.clip(zp_, zl[0] + gap, zl[1] - gap)
+                rows = [p[np.abs(p[:, 1] - z) <= gap, 0] for z in zc]
+                mid = np.array([(r_.min() + r_.max()) / 2 if len(r_) else np.nan for r_ in rows])
+                wid = np.array([(r_.max() - r_.min()) / 2 if len(r_) else np.nan for r_ in rows])
+                ok = np.isfinite(mid)
+                idx = np.arange(fine)
+                third, depth = np.interp(idx, idx[ok], mid[ok]), np.interp(idx, idx[ok], wid[ok])
+                kk = np.ones(5) / 5  # one row's edge is ragged: smooth along the line
+                third = np.convolve(np.pad(third, 2, mode="edge"), kk, mode="valid")
+                depth = np.convolve(np.pad(depth, 2, mode="edge"), kk, mode="valid")
+                said = "its other view shows it foreshortened: where it is at each height, and how deep, from there"
+            else:  # one place, and a depth that follows the width
+                third = np.full(fine, float((p[:, 0].min() + p[:, 0].max()) / 2))
+                depth = float(np.ptp(p[:, 0])) / 2 * P["half"] / max(float(P["half"].max()), 1e-9)
+                said = "its other view shows it end on or as a lump: one place and one depth from there"
     else:
         other_axis = "y" if key == "xz" else "x"
         third = np.full(fine, float(how.get(other_axis, 0.0)))

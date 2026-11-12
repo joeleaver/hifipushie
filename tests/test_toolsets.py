@@ -25,6 +25,7 @@ ADDED = {"fit_concept_camera", "look_matched", "feature_tiles", "join_report",  
          "fit_matched",  # (fit a part to fitted-camera pictures: its seen outline, a press limit; Baynard gap 33)
          "read_reference", "mark_features", "feature_report",  # (the feature map: a sculpt read from its pictures)
          "build_masses",  # (masses from their marked outlines)
+         "build_forms",  # (forms laid on the masses from their marks, as strokes)
          "garment_details", "pattern_parts", "garment_appearance", "export_garment", "block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
          "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference", "hair_from_reference", "skin_project",
          "pattern_check", "review_view", "judge_asset",  # (the garment gates as tools, 2026-10-19)

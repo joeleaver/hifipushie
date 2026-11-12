@@ -67,6 +67,9 @@ def read_reference(name: str, image: str | None = None, views: list[str] | None 
                      + (f" | ({r['at_m'][0]:+.3f}, {r['at_m'][1]:.3f})" if "at_m" in r else ""))
     if len(rows) > 60:
         lines.append(f"  ... and {len(rows) - 60} smaller: pass focus= to list a region's")
+    if rec.get("notches"):
+        lines.append(f"{view}: notches (where the outline pinches in; a cut's ends) @px: "
+                     + ", ".join(f"n{i} ({x:.0f}, {y:.0f})" for i, (x, y) in enumerate(rec["notches"], 1)))
     return [_out(refread.draw(name, view, rec, focus), save), "\n".join(lines)]
 
 
@@ -161,6 +164,37 @@ def build_masses(name: str, how: dict, symmetry: bool = True, view: str | None =
             lines.append(f"  {r['status']} {r['feature']} ({r['view']}): {r['why']}")
     forms = sum(1 for f, s in by.items() if fm["features"][f]["kind"] == "form" and s == "NOT MADE")
     lines.append(f"forms not made yet: {forms} (they are laid on the masses once the masses are right)")
+    view = view or next(iter(rep["cams"]), None)
+    if view is None:
+        return "\n".join(lines)
+    return [_out(featuresee.draw(name, rep, view), save), "\n".join(lines)]
+
+
+@mcp.tool(structured_output=False)
+def build_forms(name: str, how: dict, view: str | None = None, save: str | None = None):
+    """Lay forms of the feature map on the built masses as strokes, their paths read off the marks: no surface
+    address typed. how: {feature: {"as": "raise" (it stands out of the mass) | "sink" (pressed in: a hollow, a
+    groove) | "rim" (a raised ring round its mark), "depth": metres out or in, "width": metres (half across, for
+    a line or a rim), "profile": "soft" | "round" | "flat" | "sharp", "view": the flat view to lay it from}}.
+    A form laid again replaces what was laid for it. Returns what was laid, what had to be assumed, and the
+    feature report for the forms with a picture. Details: guide(topic="build_forms"); the page: guide(topic="features")."""
+    from . import featuresee, forms
+    res = forms.build(name, how)
+    lines = [f"saved {name} v{res['version']}: laid {len(res['made'])} forms: " + ", ".join(sorted(res["made"]))]
+    lines += [f"  ASSUMED {n}" for n in res["notes"]]
+    rep = featuresee.report(name)
+    by, fm = rep["by_feature"], rep["map"]
+    for st in ("NOT MADE", "OFF", "HIDDEN", "CAN'T MEASURE", "IN ITS MASS", "right"):
+        fs = sorted(f for f, s in by.items() if s == st and fm["features"][f]["kind"] == "form")
+        if fs:
+            lines.append(f"forms {st}: " + ", ".join(fs))
+    for r in rep["rows"]:
+        if r["status"] in ("OFF", "HIDDEN", "CAN'T MEASURE") and fm["features"][r["feature"]]["kind"] == "form":
+            lines.append(f"  {r['status']} {r['feature']} ({r['view']}): {r['why']}")
+    off = sorted(f for f, s in by.items() if s in ("OFF", "NOT MADE") and fm["features"][f]["kind"] == "mass")
+    if off:
+        lines.append("masses not right (a form laid on one moves with it): " + ", ".join(off))
+    lines.append("The numbers place a form; whether it READS is seen in a clay look, close up, beside the picture.")
     view = view or next(iter(rep["cams"]), None)
     if view is None:
         return "\n".join(lines)

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from hifipushie import featuremap, featuresee, masses, matched, refread, sdf, store
+from hifipushie import featuremap, featuresee, forms, masses, matched, refread, sdf, store
 from hifipushie.spec import compile_prims
 
 K, W, H, GROUND = 0.0025, 200, 350, 340
@@ -324,3 +324,47 @@ def test_the_view_to_believe_is_measured_against(fig):
         assert np.array_equal(featuresee.fitted("fig", fm, "ear.L", "front"), featuremap.mask("fig", "ear.L", "front"))
     finally:
         featuremap.mark("fig", {"ear.L": {"marks": {"side": fig["marks"]["ear.L"]["side"]}, "authority": None}})
+
+
+def test_forms_are_laid_from_their_marks(fig):
+    """A form marked on a flat view becomes a stroke on the mass it is on, its path the mark seen from that view:
+    the surface moves where the mark is, and nowhere a number was typed."""
+    featuremap.mark("fig", _features(fig["marks"]))
+    featuresee.report("fig", {n: [n] for n in fig["marks"]}, resolution=128)
+    true = store.load("fig")
+    rec = featuremap.load("fig")["views"]["front"]
+    k = rec["m_per_px"]
+
+    def px(x, z):  # a place on the creature -> the front view's own pixels
+        return [rec["centre_px"] + x / k, rec["ground_px"] - z / k]
+    featuremap.mark("fig", {
+        "belly_pad": {"kind": "form", "on": "body", "marks": {"front": {"ellipse": [*px(0, 0.25), 14, 9]}}},
+        "rib.L": {"kind": "form", "on": "body", "marks": {"front": {"line": [px(0.06, 0.31), px(0.095, 0.19)]}}},
+        "rib.R": {"kind": "form", "on": "body", "marks": {"front": {"line": [px(-0.06, 0.31), px(-0.095, 0.19)]}}},
+        "badge": {"kind": "form", "on": "body", "marks": {"front": {"ellipse": [*px(0, 0.375), 12, 12],
+                                                                    "minus": {"ellipse": [*px(0, 0.375), 7, 7]}}}}})
+    try:
+        res = forms.build("fig", {"belly_pad": {"as": "raise", "depth": 0.012}, "rib.L": {"as": "sink", "width": 0.006, "depth": 0.004},
+                                  "rib.R": {"as": "sink"}, "badge": {"as": "rim"}})
+        st = res["spec"]["strokes"]
+        assert set(st) == {"belly_pad", "rib.L", "badge"} and res["made"]["rib.R"] == ["rib.R"]   # (.R is the mirror)
+        assert st["belly_pad"]["op"] == "clay" and st["rib.L"]["op"] == "crease" and st["rib.L"]["path"][0]["dir"] == [0.0, -1.0, 0.0]
+        ring = np.array([q["at"] for q in st["badge"]["path"]])
+        r = np.hypot(ring[:, 0], ring[:, 2] - 0.375)
+        assert len(ring) >= 9 and np.allclose(ring[0], ring[-1]) and abs(r.mean() - 9.5 * k) < 0.004, (len(ring), r.mean())
+        assert any("badge: no depth given" in n for n in res["notes"])
+        # the true body's front skin at the pad's middle is 0.13 out: it has moved about 12 mm further
+        prims = compile_prims(res["spec"])
+        f = sdf.field_at(prims, np.array([[0.0, -0.136, 0.25], [0.0, -0.150, 0.25], [0.11, -0.136, 0.12]]))
+        assert f[0] < 0 < f[1] and f[2] > 0, f
+        rows = {(r_["feature"], r_["view"]): r_ for r_ in featuresee.report("fig", resolution=128)["rows"]}
+        assert rows[("belly_pad", "front")]["status"] == "right", str(rows[("belly_pad", "front")])
+        with pytest.raises(ValueError, match="is a mass"):
+            forms.build("fig", {"body": {"as": "raise"}})
+        with pytest.raises(ValueError, match="as is one of"):
+            forms.build("fig", {"belly_pad": {"as": "bump"}})
+        again = forms.build("fig", {"belly_pad": {"as": "sink", "depth": 0.01}})["spec"]["strokes"]
+        assert again["belly_pad"]["op"] == "crease" and set(again) == {"belly_pad", "rib.L", "badge"}  # replaced, not added
+    finally:
+        featuremap.mark("fig", {}, remove=["belly_pad", "rib.L", "rib.R", "badge"])
+        store.save("fig", true, "the true figure again")

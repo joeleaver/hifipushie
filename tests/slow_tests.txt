@@ -203,3 +203,4 @@ tests/test_featuremap.py::test_the_true_model_is_right_and_planted_faults_are_fo
 tests/test_featuremap.py::test_the_tools_return_a_picture_and_the_table
 tests/test_featuremap.py::test_masses_are_built_from_their_marks
 tests/test_featuremap.py::test_the_view_to_believe_is_measured_against
+tests/test_featuremap.py::test_forms_are_laid_from_their_marks

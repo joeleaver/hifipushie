@@ -111,3 +111,16 @@ def test_a_cut_that_parts_nothing_is_refused():
     assert ok[20:95].sum() > 0 and not ok[110:].any()
     with pytest.raises(ValueError, match="cut 2 .* changes nothing"):
         featuremap._piece(fig, {"piece": [100, 40], "cuts": [[[10, 100], [190, 100]], [[80, 60], [120, 60]]]}, "front", {}, "x")
+
+
+def test_a_foreshortened_view_still_gives_the_lean():
+    """A horn seen from the front is a short fat lump, but its lean outward shows only there: at each height the
+    lump's middle is where the thing is (one mean place built every horn straight up)."""
+    side = _cloud(_box)                                           # the view that shows its length: z 0.05 .. 0.165
+    lump = _cloud(lambda x, y: (np.abs(x - (0.06 + 0.35 * (y - 0.05))) < 0.045) & (y > 0.05) & (y < 0.165))
+    notes: list = []
+    out = masslines.tube("horn.L", {"yz": side, "xz": lump, "px": K}, {"joints": 5}, notes)
+    j = sorted((out["joints"][n]["pos"] for n in out["joints"]), key=lambda p: p[2])
+    xs, zs = np.array([p[0] for p in j]), np.array([p[2] for p in j])
+    assert np.all(np.diff(xs) > 0) and np.allclose(xs, 0.06 + 0.35 * (zs - 0.05), atol=0.008), (xs, zs)
+    assert any("foreshortened" in n for n in notes), notes

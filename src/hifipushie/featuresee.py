@@ -215,9 +215,10 @@ def fitted(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
     return out
 
 
-def seen_mark(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
-    """The feature's mark in a view, less the marks of the masses on it: what the picture shows of the thing itself."""
-    mk = fitted(name, fm, feature, view)
+def seen_mark(name: str, fm: dict, feature: str, view: str, fit: bool = True) -> np.ndarray:
+    """The feature's mark in a view, less the marks of the masses on it: what the picture shows of the thing itself
+    (fit=False: as it was drawn on the picture, not fitted to the view to believe)."""
+    mk = fitted(name, fm, feature, view) if fit else featuremap.mask(name, feature, view).copy()
     for ch in featuremap.children(fm, feature):
         c = fm["features"][ch]
         if c.get("kind") == "mass" and view in c["marks"]:
@@ -417,7 +418,12 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
                     da, dr = depth_image(g_all, cam, box), depth_image(g_rest, cam, box)
                     near = np.minimum(da, dr)
                     with np.errstate(invalid="ignore"):
-                        moved = (np.isfinite(da) != np.isfinite(dr)) | (np.abs(da - dr) > max(0.6 * voxel, 0.0008))
+                        # what counts as moved: 0.6 of a cell, or an eighth of this piece's own largest move where
+                        # that is less (a brow 3 mm proud is all under a coarse cell's 0.6), never under 0.3 mm
+                        dd = np.abs(da - dr)
+                        most = float(np.nanmax(np.where(np.isfinite(dd), dd, np.nan))) if np.isfinite(dd).any() else 0.0
+                        thr = max(min(max(0.6 * voxel, 0.0008), 0.125 * most), 0.0003)
+                        moved = (np.isfinite(da) != np.isfinite(dr)) | (dd > thr)
                     # only inside the shapes that went: beside them the blend sags a millimetre or two on their
                     # neighbours (a foot's rim when a shin goes), which is not the feature
                     inside = np.zeros(da.shape, bool)
@@ -504,7 +510,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 13  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 14  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
@@ -594,6 +600,8 @@ def _report(name: str, elements, views, resolution: int, tol, peek: bool = False
             if not made[f]:
                 rows.append({"feature": f, "view": v, "status": "NOT MADE", "why": "no model element is named for it"})
                 continue
+            if c["kind"] == "form" and c.get("laid") and v not in c["laid"]:
+                continue  # laid from another view: from here it is seen in profile, which a footprint can't judge
             cam = cams[v]
             k = cam.get("m_per_px") or float(np.nanmedian(np.where(np.isfinite(fp["depth"][v]), fp["depth"][v], np.nan))) / cam["f_px"]
             ref = seen(f, v).copy()
@@ -652,7 +660,8 @@ def draw(name: str, rep: dict, view: str, width: int = 620) -> Image.Image:
     for f, st in status.items():
         ref = seen_mark(name, fm, f, view)
         edge = ref & ~ndimage.binary_erosion(ref, iterations=1)
-        left[edge] = (0, 0, 0)
+        drawn = seen_mark(name, fm, f, view, fit=False)  # on the picture: the mark where it was drawn
+        left[drawn & ~ndimage.binary_erosion(drawn, iterations=1)] = (0, 0, 0)
         right[edge] = (0, 0, 0) if st != "NOT MADE" else (40, 90, 235)
         mod = rep["footprints"]["masks"].get((f, view))
         if mod is not None and mod.any():

@@ -312,6 +312,24 @@ round it); "part" (any name: its own piece); "blend" (metres: 0.003 crisp .. 0.0
 "depth", "depth_ratio", "x", "y" (what a missing view would have given). There is no way to tilt a ball or drum:
 a slanted thing is a tube or a flap. The sculptor's page: guide(topic="features").
 
+
+### `build_forms`
+
+`build_forms(name, how, view=None, save=None)`
+
+Lays FORMS of the feature map on the built masses as strokes (forms.py): how = {feature: {"as": "raise" | "sink"
+| "rim", ...}}. The stroke's path is read off the form's mark in ONE flat view, every point a ray from that view
+onto the part of the mass the form is `on` (a mass of another part in front is not in the way). "raise": clay
+along the mark's own middle line, as wide at each place as the mark is there (a round mark: one dab; a `line`
+mark: a ridge, "width" metres half across); "sink": the same pressed in (a hollow; a line: a groove or crease);
+"rim": a raised ring, along the middle of a mark with a hole in it, or just inside the edge of a filled mark
+("width": half its breadth). A mark in separate pieces (a row of rings, two bumps) is one stroke per piece.
+"depth": metres out or in; left out it is guessed from the breadth and listed as ASSUMED (one view can't show it:
+look from the side). "profile": "soft" | "round" | "flat" | "sharp". "view": the flat view to lay it from (default:
+where its mark is largest). Places of a mark that miss the mass from that view are left out and said. A ".L" is
+laid and mirrored. Laying a form again replaces its strokes. Returns the forms' rows of the feature report and a
+picture (a stroke's footprint is what changes when it is taken out). The sculptor's page: guide(topic="features").
+
 ### `feature_report`
 
 `feature_report(name, elements=None, views=None, view=None, resolution=144, save=None)`

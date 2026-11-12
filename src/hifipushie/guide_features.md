@@ -23,7 +23,9 @@ so the sculpt is built from them and measured against each one. Make it BEFORE a
    large, with rulers: check every mark there before building.
 3. `build_masses(name, how)`: turns the map's masses into shapes, their numbers read off your marks. You say
    what each mass IS; you type no coordinate. It makes the model if there is none.
-4. `feature_report(name, elements)`: says for every feature whether it is made, and how far it is from its mark.
+4. `build_forms(name, how)`: lays the map's forms on the built masses, their paths read off your marks. You say
+   what each form IS and how far it stands out or sinks.
+5. `feature_report(name, elements)`: says for every feature whether it is made, and how far it is from its mark.
    `elements` says which of the model's elements make a feature (build_masses writes that itself).
 
 ## What a feature is
@@ -68,7 +70,9 @@ Marks are in each view's own pixels: read them off the rulers. Every mark is cli
   shortest way through, which is how a limb is cut off at its root. A pixel `[x, y]` off the rulers works too.
   The mark's edge is then the picture's own outline to the pixel, which is what a shape is built from.
   Each cut parts off ONE neighbour, and a cut stops where it first leaves the figure: a mass with three
-  neighbours takes three cuts. A cut that parts nothing is refused by number: it missed the outline or stopped
+  neighbours takes three cuts. Where two notches don't seal a part off (it touches a third thing between them),
+  add a cut from one notch `"up"` / `"down"`: it is safe however far it runs. Wrists and ankles have no notch:
+  cut between two pixels just outside the figure on either side. `read_reference` lists every notch's pixels. A cut that parts nothing is refused by number: it missed the outline or stopped
   short of it. Look at the mark drawn large before you build from it.
 - `{"patches": [12, 13]}`: the numbered patches. The quick way for a form or paint the patches follow.
 - `{"box": [x0, y0, x1, y1]}`, `{"ellipse": [cx, cy, rx, ry]}`, `{"polygon": [[x, y], ...]}`: for what lies
@@ -121,19 +125,23 @@ Build once the map owes nothing. For every mass say what it is, `"as"`:
 - `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks. It fills its
   box, so it suits what is nearly round; a mass that is wider at one end (a pear, a wedge) is a trunk.
   `"socket": true` for a thing set INTO the mass it is `on` (an eyeball): that mass is hollowed round it, so it
-  shows. Build the mass it sits in first.
+  shows. A number instead of true is the clearance round it, metres (0.02 opens the hollow wider). Build the
+  mass it sits in first.
 - `"drum"`: a made, straight-sided thing: a cylinder along its long axis (`"along"` if it picks the wrong one),
   its rims rounded by `"edge"` metres.
 - `"flap"`: a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
   long axis of its broadest mark, its width read across, its thickness from its other view (or `"thick"`,
-  metres). A flap that sticks out sideways leans the way its other view shows it. `"cup"`: metres its edges
-  lift, for a hollow side. A ball or a tube would make it a fat lump.
+  metres). It lies in the plane of the view that shows it broadest: a flap marked broad from the back is thin
+  from the side. A flap that sticks out sideways leans the way its other view shows it. `"cup"`: metres its
+  edges lift, for a hollow side. A ball or a tube would make it a fat lump.
 - `"trunk"`: one upright mass through cross-sections: at each height its width from the front and back marks
   together, its depth and its lean from the side mark. For a mass that stands up and sits on the centre line. Its
   two ends are domes. It follows its mark: where the mark's edge is a straight cut, so is the trunk's side.
 - `"tube"`: a limb, a horn, a tail: something long, whichever way it runs and however it bends. It follows its
   mark's own MIDDLE LINE, and its thickness is read ACROSS that line, so a slanted limb is as thick as it is
-  drawn. Built as a chain of bones through `"joints"` stations (4 by default; more for a curve). The end that was
+  drawn. Built as a chain of bones through `"joints"` stations (4 by default, so 3 bones; more for a curve). Its
+  second view gives where it is at each height, also when it is foreshortened there (a horn seen from the front
+  shows its splay): mark it there by its own outline. The end that was
   cut from another mass runs on under that mass; a free end stops where its mark stops. The answer says how long
   and how thick it read each tube, and which ends it took as cut: check those against the picture.
 
@@ -151,7 +159,9 @@ views' marks are fitted to that one before it is built, and the report measures 
 mark. A trunk reads its outline smoothed over a tenth of its height; a real step in the outline wants its own mass.
 
 Both views are needed for a shape: what a missing view would give is listed as ASSUMED, and for a ball with no
-side mark you must give `"y"` (where it sits front to back). `.L` is built and mirrored to `.R`.
+side mark you must give `"y"` (where it sits front to back). `.L` is built and mirrored to `.R`: the `.R`'s
+own marks are then only measured against, so where the picture is not the same on both sides the `.R` reads OFF.
+That is the picture's doing; say so and move on.
 
     build_masses("jug", {"body": {"as": "trunk", "round": 2.2}, "handle": {"as": "tube", "joints": 5, "y": 0.0},
                          "knob": {"as": "ball"}})
@@ -163,6 +173,38 @@ make a mass that is narrower in front than behind out of two.
 It answers with the feature report for the masses and a picture. A mass that is OFF is fixed in its MARK (redraw
 it, in the view that is wrong) or in what you said it is, then built again: building a feature again replaces
 what was built before. Don't move on to forms until every mass is right from every view.
+
+## Laying the forms
+
+Once every mass is right, lay the forms: this is where the subject starts to look like itself. For every form
+say what it is, `"as"`:
+
+- `"raise"`: it stands out of the mass: a brow, a pad, a bulge, a lock, a cuff. Clay is laid along the mark's own
+  middle line, as wide at each place as the mark is there; a round mark is one dab. A `line` mark is a ridge
+  along the line (`"width"`: metres, half across).
+- `"sink"`: it is pressed in: a hollow, a nostril; a `line` mark is a groove or a crease.
+- `"rim"`: a raised ring. Mark the ring itself (an ellipse `minus` a smaller one) and it runs along the ring's
+  middle; on a filled mark it runs just inside the edge (`"width"`: half its breadth).
+
+`"depth"`: metres, how far out or in. ONE VIEW CAN'T SHOW IT: left out, it is guessed from the form's breadth and
+listed as ASSUMED. Look at the form from the side, in the picture and in the clay, and set it. A thick, puffy
+form wants more than the guess; a shallow one less. `"profile"`: `"soft"` melts in, `"round"` is a dome with an
+edge, `"flat"` a plateau, `"sharp"` a cusp (a crease). `"view"`: the flat view it is laid from: the one that
+looks most squarely at it (by default the one where its mark is largest). A form on a mass's side is laid from
+the side view; laid from the front it would smear along the mass's edge.
+
+    build_forms("jug", {"rim": {"as": "raise", "depth": 0.004}, "spout_groove": {"as": "sink", "width": 0.003},
+                        "badge": {"as": "rim", "depth": 0.002, "view": "front"}})
+
+A mark in separate pieces (a row of rings, a pair of bumps) is laid as one stroke per piece. A form is laid on
+the mass it is `on`, and lands on that mass's own part: an eyeball or a held thing of another `part` in front of
+it is not in the way. Where a mark overruns the mass (the picture is fuller there than the model), those places
+are left out and said: fix the mass if it matters. A thing that sticks out past the outline and has a thickness
+of its own (a tuft standing on a crown, a tooth) is a MASS, not a form: mark and build it as one.
+
+It answers with the forms' rows of the report and a picture. Then LOOK: a close clay look of each region beside
+the picture (`look` with `"focus": [x, y, z]` and `"zoom"`), from the front, the side and three-quarter. A form
+that measures right and reads wrong is wrong: change its depth, breadth or profile, or its mark, and lay it again.
 
 ## What the map owes
 
