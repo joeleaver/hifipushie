@@ -55,6 +55,7 @@ def test_rolled_rectangle_is_isometric_for_any_numbers():
     for _ in range(5):
         TH = rng.normal(0, 1, (pan.n, NP))
         TH[:, 7] = rng.uniform(-10, 10)
+        TH[:, 8] = 0.0
         X = pan.positions(TH)
         assert ca.links_pct(c, X)["max"] < 0.05  # (exact on the surface; a link is its chord: (k L)^2 / 24)
 
@@ -142,3 +143,74 @@ def test_seam_along_two_pieces_is_one_chain_through_the_junction():
     assert len(j) == 1
     partners = {int(b) if a == j[0] else int(a) for a, b in sew if j[0] in (a, b)}
     assert {b0 + 4, c0 + 0} <= partners
+
+
+def test_cone_is_isometric_and_a_cylinder_at_zero_taper():
+    u, F = grid(41, 21, 0.3, 0.15)
+    M, _ = pattern([("a", u, F)])
+    c = _net(M)
+    pan = Panels(c)
+    rng = np.random.default_rng(2)
+    for _ in range(5):
+        TH = rng.normal(0, 1, (pan.n, NP))
+        TH[:, 7] = rng.uniform(-10, 10)
+        TH[:, 8] = rng.uniform(-0.8, 0.8)
+        assert ca.links_pct(c, pan.positions(TH))["max"] < 0.1
+    TH[:, 8] = 0.0
+    A = pan.positions(TH)
+    TH[:, 8] = 2e-4
+    assert np.abs(pan.positions(TH) - A).max() < 2e-3  # (the cone runs into the cylinder as its taper goes to 0)
+
+
+def _sector(sb=0.4, n_r=6, n_a=41):
+    """A flat annular sector that closes into a cone of sin(half-angle) sb (a cap-like piece): its two straight
+    edges sewn to each other point for point."""
+    A = 2 * np.pi * sb
+    rr, aa = np.meshgrid(np.linspace(0.15, 0.25, n_r), np.linspace(0, A, n_a), indexing="ij")
+    uv = np.c_[(rr * np.cos(aa)).ravel(), (rr * np.sin(aa)).ravel()]
+    _, F = grid(n_r, n_a, 1, 1)
+    M, _ = pattern([("s", uv, F)])
+    M["sew"] = np.array([(i * n_a, i * n_a + n_a - 1) for i in range(n_r)])
+    return M, A
+
+
+def test_cone_panel_closes_a_cap_like_seam_a_cylinder_cannot():
+    M, A = _sector()
+    c = _net(M)
+    pan = Panels(c)
+    # (start: the flat wrapped round a cylinder, as a cap starts round the arm)
+    r, a = np.linalg.norm(c.uv, axis=1), np.arctan2(c.uv[:, 1], c.uv[:, 0])
+    R0 = 0.2 * A / (2 * np.pi)
+    X0 = np.c_[R0 * np.cos(a * 2 * np.pi / A), R0 * np.sin(a * 2 * np.pi / A), r]
+    TH0 = pan.fit_start(X0)
+    keep = np.array([[[0, 0, 5.0], [0, 0, 6.0]]], float)
+    gap0 = max(ca.seam_gaps(pan, TH0)["s ~ s"])
+    TH, rd = ca.assemble(pan, TH0, keep, iters=200)
+    gap = max(rd["seam_gaps_mm"]["s ~ s"])
+    assert gap < 3.0 and gap < 0.2 * gap0, (gap0, gap)
+    assert abs(TH[0, 8]) > 0.2, TH[0]  # (the fit chose a cone: nothing named it)
+
+
+def test_mirrored_fold_rows_turn_the_same_way_about_the_body():
+    u, F = grid(21, 11, 0.2, 0.1)
+    um = u * [-1, 1]
+    M, off = pattern([("a.L", u, F), ("a.R", um, F[:, ::-1])])  # (the mirrored flat wound the same way, as drafted)
+    row = [16 * 11 + j for j in range(11)]
+    M["folds"] = [{"piece": "a.L", "name": "f", "rows": [np.array(row)], "sign": 1.0},
+                  {"piece": "a.R", "name": "f", "rows": [np.array(row) + off[1]], "sign": -1.0}]
+    c = _net(M)
+    plan = {"folds": {"f.L": {"on": "a.L", "fold": "f", "turn_deg": 90.0},
+                      "f.R": {"on": "a.R", "fold": "f", "turn_deg": 90.0}}}
+    pan = Panels(c, plan)
+    assert len(pan.hinges) == 2
+    TH0 = pan.fit_start(np.c_[c.uv, np.zeros(c.n)] + [0, 0, 0.2])
+    keep = np.array([[[5, 5, 5], [5, 5, 6]]], float)
+    TH, rd = ca.assemble(pan, TH0, keep)
+    zs = []
+    for h in pan.hinges:
+        assert abs(rd["hinges"][h["name"]]["got"] - 90.0) < 3.0, rd["hinges"]
+        b, t = h["base"], h["turned"]
+        m = pan.place(TH[b], b, h["mid"][None])[0]
+        n = pan.normal(TH[b], b, h["mid"][None])[0]  # (both flats wound the same way: +z is the same side of the cloth)
+        zs.append(float((pan.place(TH[t], t, pan.panels[t]["c"][None])[0] - m) @ n))
+    assert zs[0] * zs[1] > 0 and min(map(abs, zs)) > 0.01, zs  # (both turned to the same side of the cloth)
