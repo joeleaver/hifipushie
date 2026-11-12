@@ -19,16 +19,24 @@ from pathlib import Path
 
 import pytest
 
-os.environ["HIFIPUSHIE_HOME"] = tempfile.mkdtemp(prefix="hp_artist_")
-os.environ["XDG_STATE_HOME"] = tempfile.mkdtemp(prefix="hp_artist_state_")  # the runner's status file
-os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="hp_artist_config_")  # token file, saved settings
 TESTS = Path(__file__).parent
 sys.path.insert(0, str(TESTS))
-os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [str(TESTS), os.environ.get("PYTHONPATH")]))
 
 from hifipushie import artist  # noqa: E402
 
 TOKEN = "test-token"
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _artist_env():
+    """This module's own workspace, runner state and config, set only while its tests run. Set at import, they leaked
+    into every module collected after it (test_body_tape read HIFIPUSHIE_HOME at its import: 25 tests skipped)."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("HIFIPUSHIE_HOME", tempfile.mkdtemp(prefix="hp_artist_"))
+        mp.setenv("XDG_STATE_HOME", tempfile.mkdtemp(prefix="hp_artist_state_"))  # the runner's status file
+        mp.setenv("XDG_CONFIG_HOME", tempfile.mkdtemp(prefix="hp_artist_config_"))  # token file, saved settings
+        mp.setenv("PYTHONPATH", os.pathsep.join(filter(None, [str(TESTS), os.environ.get("PYTHONPATH")])))
+        yield
 
 
 @pytest.fixture(autouse=True)
