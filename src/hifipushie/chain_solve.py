@@ -12,6 +12,8 @@ solve(net, X0, body, ties, folds, pulls, stiffness) -> (X, report)
   point to), weight, name}. turn 0 = flat on; 180 = right back onto itself (chain_crease's measure).
 - pulls: {ids, to (k, 3), weight, name}: soft pulls of points towards where the body was measured (the tapes). Never pins.
 - stiffness: per-vertex bending weight (default chain_net.BEND_BASE x net.bend: interfacing high, plain cloth low).
+- plies: bindings of plies, floating layers and inside pieces to their host (chain_solve_plies.bind, N2): each point a
+  LAYER off its host's surface, on its host's inner face, as a TERM of this solve (never a copied or held position).
 
 HARD: every link at its cut (reported past TOL_PCT), every other mesh edge exact where interfaced at both ends else at
 most its flat length, no point nearer the body than gap, every tie at its gap. SOFT: bending (each point towards its
@@ -35,7 +37,7 @@ THE METHOD, and why. Rounds of
    solved in one sparse system per pass (J J^T lambda = C), moving the points as little as possible until each holds to
    PROJ_TOL. Why: PD's springs only approach a length; the projection makes it exact. It is the last word of the solve.
 The report reads the residuals at the end (chain_solve_terms.report). Deterministic: no random numbers, fixed orders,
-direct factorisations. Self-contact is not handled here (N1); plies and layers are N2's constraints.
+direct factorisations. Self-contact is not handled here; plies and layers are a term (chain_solve_plies, N2).
 Factors (PD's and LM's): CHOLMOD, METIS ordering, supernodal, analysed once per solve and refactored (gn.Factor says why,
 with N1c's numbers). PD runs 200 passes, then 100 per stiffening (N1c, 6k points: 400 first passes gave LM the same 11
 factors and E 4.32 vs 4.33; 100 cost LM 5 more factors, dearer than the 100 passes saved).
@@ -51,6 +53,7 @@ from threadpoolctl import threadpool_limits
 
 from . import chain_net as cn
 from . import chain_solve_gn as gn
+from . import chain_solve_plies as plies_
 from . import chain_solve_terms as terms
 from .chain_core import GAP
 
@@ -70,10 +73,10 @@ PD_STIFFEN = (10.0, 100.0)  # the warm start's later stages: link and edge weigh
 PD_STAGE_ITERS = 100  # PD passes per later stage
 PUSH_EVERY = 4  # PD passes between pushes out of the body (a body query is the PD pass's dearest part)
 # the Levenberg-Marquardt pass's weights (chain_solve_gn): it linearises directions, so the hard terms may be stiff
-W_GN = {"link": 1e4, "edge": 1e3, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF}
+W_GN = {"link": 1e4, "edge": 1e3, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF, "ply": plies_.W_PLY}
 
 
-def _blocks(net, X0, ties, folds, pulls, stiffness, ct):
+def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
     """The solve's terms on nodes (sewn groups) and everything the report reads."""
     nid, nn = terms.nodes_of(net)
     cnt = np.bincount(nid, minlength=nn).astype(float)
@@ -98,7 +101,7 @@ def _blocks(net, X0, ties, folds, pulls, stiffness, ct):
         P.append({"ids": ids, "to": np.asarray(p["to"], float).reshape(len(ids), 3), "w": float(p.get("weight", 1.0)),
                   "name": p.get("name", f"pull{k}")})
     return {"nid": nid, "nn": nn, "Xn": Xn, "links": (li, lj, L, lp), "edges": (ei, ej, eL, ex), "folds": fq,
-            "Sb": Sb, "Wb": Wb, "ties": T, "pulls": P, "ct": ct}
+            "Sb": Sb, "Wb": Wb, "ties": T, "pulls": P, "ct": ct, "plies": plies_.blocks(plies, nid, nn)}
 
 
 def _diff_rows(i, j, nn):
@@ -134,6 +137,8 @@ class _PD:
             ta = nid[np.array([x[0] for x in t["ties"]])]
             tb = nid[np.array([x[1] for x in t["ties"]])]
             B.append((_diff_rows(ta, tb, nn), np.full(len(ta), W_TIE / REF ** 2), "tie"))
+        for b in t["plies"]:
+            B.append((b["S"], np.full(len(b["p"]), plies_.W_PLY * b["weight"] / REF ** 2), "ply"))
         self.B = B
 
     def finish(self, net, stiffen: float = 1.0):
@@ -172,7 +177,7 @@ class _PD:
         fk = 0
         _, _, L, _ = t["links"]
         _, _, eL, ex = t["edges"]
-        pk = 0
+        pk = yk = 0
         for S, W, kind in self.B:
             D = S @ Xn
             if kind == "link":
@@ -188,6 +193,9 @@ class _PD:
             elif kind == "fold":
                 out.append(self._fold_target(Xn, t["folds"][fk]))
                 fk += 1
+            elif kind == "ply":
+                out.append(plies_.target(Xn, t["plies"][yk]))
+                yk += 1
             elif kind == "tie":
                 g = np.array([x[2] for x in t["ties"]])
                 out.append(cn.unit(D) * g[:, None])
@@ -329,14 +337,14 @@ def _project(Xn, t, ct, gap, iters: int = 40, log=None):
     return Xn, it + 1
 
 
-def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness=None, gap: float = GAP,
+def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness=None, gap: float = GAP, plies=(),
           pd_iters: int = 200, polish_rounds: int = 2,
           lm_iters: int = 30, log=None) -> tuple:
     """Every point free; see the module doc. Returns (X per vertex, report)."""
     t0 = time.time()
     ct = None if body is None else getattr(body, "contact", body)
     near = None if ct is None else _Near(ct, gap)
-    t = _blocks(net, X0, ties, folds, pulls, stiffness, ct)
+    t = _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies)
     pd = _PD(t)
     pd.finish(net)
     Xn = _push_out(t["Xn"], near, gap)
@@ -377,6 +385,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     t["Xn"] = Xn
     X = Xn[t["nid"]]
     rep = terms.report(net, X, t, None if ct is None else (ct, gap), TOL_PCT)
+    rep["plies"] = plies_.report(Xn, t["plies"])
     rep["seconds"] = round(time.time() - t0, 2)
     rep["points"] = int(net.n)
     rep["projection_passes"] = passes
