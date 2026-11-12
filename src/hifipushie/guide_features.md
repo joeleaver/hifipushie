@@ -114,8 +114,10 @@ from that view), OFF (with how far, how big, how much of the mark it covers), ri
 CAN'T MEASURE (with the reason). A form's elements count as part of the mass it is on. A feature is measured by
 what shows of the thing itself: clothing over a limb is the clothing's, not the limb's.
 
-A side view's centre line is only a guess until a model exists (a picture can't say where a model's origin is
-along its length). The report slides a side view to sit on the model and says so in a MOVED line. Fix NOT MADE first, biggest feature first; an
+A picture can't say how tall a model was built, where its ground is, or where its origin lies along its length.
+So the report first lays each flat view on the model (one scale for the sheet, each view's ground row, a side
+view's centre line) and says what moved in a MOVED line: "the model is 1.04 x the height the sheet was read at"
+is a finding about the model. Features are then placed relative to the whole figure, as an eye compares them. Fix NOT MADE first, biggest feature first; an
 OFF feature is fixed at the element that makes it. The numbers place and size a feature; whether its SHAPE reads
 right is judged by eye, on same-view tiles beside the picture (`feature_tiles(name, ..., label=<view>)` works
 from every view read here) and by the blind review. A table with nothing wrong is where that look starts.

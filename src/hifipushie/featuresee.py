@@ -13,6 +13,10 @@ the body has no footprint: HIDDEN). Measured in the feature's own box at a finer
 The picture's side of the comparison is the same thing: the feature's mark, less the marks of the masses on it.
 Paint has no shape and is not measured here.
 
+Before measuring, each flat view is laid on the model (align_flat): the sheet's scale, each view's ground row and
+a side view's centre line are fitted to the model's outline and what moved is reported, because no picture says
+how tall a model was built or where its origin is. The whole outline's overlap with each picture leads the report.
+
 Per feature and view (rows where the map has a mark and the view has a camera):
   NOT MADE  no model element is named for it        HIDDEN   made, but not seen from this view
   right     centre within `off` (mm, or a share of the mark's smaller side), both sizes within `size`, overlap
@@ -51,6 +55,50 @@ def rays(cam: dict, xy: np.ndarray):
     return C, Fw[None] + ((xy[:, 0] - W / 2) / f)[:, None] * R[None] - ((xy[:, 1] - H / 2) / f)[:, None] * U[None], Fw
 
 
+_MARCH = None
+
+
+def _march_kernel():
+    """The compiled ray march (numba), or False without numba / with HIFIPUSHIE_JIT=0: the numpy march below is
+    the same sampling, some 50 x slower (a 40-feature report: minutes instead of seconds)."""
+    global _MARCH
+    if _MARCH is None:
+        import os
+        _MARCH = False
+        if os.environ.get("HIFIPUSHIE_JIT", "1") != "0":
+            try:
+                from numba import njit
+
+                @njit(cache=True)
+                def march(field, origin, voxel, C, d, zs, out):
+                    nx, ny, nz = field.shape
+                    for r in range(d.shape[0]):
+                        pf, pz, hit = 1.0, zs[0], np.inf
+                        for k in range(zs.shape[0]):
+                            z = zs[k]
+                            x = (C[0] + z * d[r, 0] - origin[0]) / voxel
+                            y = (C[1] + z * d[r, 1] - origin[1]) / voxel
+                            w = (C[2] + z * d[r, 2] - origin[2]) / voxel
+                            if x < 0 or y < 0 or w < 0 or x > nx - 1 or y > ny - 1 or w > nz - 1:
+                                f = 1.0
+                            else:
+                                i, j, m = min(int(x), nx - 2), min(int(y), ny - 2), min(int(w), nz - 2)
+                                a, b, c = x - i, y - j, w - m
+                                f = ((field[i, j, m] * (1 - a) + field[i + 1, j, m] * a) * (1 - b)
+                                     + (field[i, j + 1, m] * (1 - a) + field[i + 1, j + 1, m] * a) * b) * (1 - c) + (
+                                    (field[i, j, m + 1] * (1 - a) + field[i + 1, j, m + 1] * a) * (1 - b)
+                                    + (field[i, j + 1, m + 1] * (1 - a) + field[i + 1, j + 1, m + 1] * a) * b) * c
+                            if f < 0:
+                                hit = z if k == 0 else pz + min(max(pf / max(pf - f, 1e-9), 0.0), 1.0) * (z - pz)
+                                break
+                            pf, pz = f, z
+                        out[r] = hit
+                _MARCH = march
+            except Exception:  # noqa: BLE001  (no numba, or it can't compile here: the numpy march)
+                _MARCH = False
+    return _MARCH
+
+
 def first_hit(grid: sdf.Grid, cam: dict, xy: np.ndarray) -> np.ndarray:
     """Camera depth of the first surface along each pixel's ray through the grid (inf: none), to a fraction of a voxel."""
     C, d, Fw = rays(cam, xy)
@@ -59,6 +107,11 @@ def first_hit(grid: sdf.Grid, cam: dict, xy: np.ndarray) -> np.ndarray:
     z = (corners - C) @ Fw
     zs = np.arange(max(z.min() - grid.voxel, 1e-3), z.max() + grid.voxel, grid.voxel * 0.7)
     out = np.full(len(xy), np.inf)
+    march = _march_kernel() if min(grid.field.shape) >= 2 else False
+    if march:
+        march(np.ascontiguousarray(grid.field, np.float64), np.asarray(grid.origin, np.float64), float(grid.voxel),
+              np.asarray(C, np.float64), np.ascontiguousarray(d, np.float64), zs, out)
+        return out
     for a in range(0, len(xy), CHUNK):
         P = C + zs[None, :, None] * d[a:a + CHUNK, None, :]
         idx = ((P - grid.origin) / grid.voxel).reshape(-1, 3).T
@@ -154,6 +207,10 @@ def without(ex: dict, names: set[str]) -> dict:
                         del out[kind][k]
                         gone.add(k)
                         again = True
+    left = {v.get("part", "body") for kind in ("blobs", "bones") for v in out[kind].values()}
+    parts = out.get("parts") or {}
+    if any(isinstance(d, dict) and d.get("shell") and k not in left for k, d in parts.items()):
+        out["parts"] = {k: d for k, d in parts.items() if not (isinstance(d, dict) and d.get("shell") and k not in left)}
     return out
 
 
@@ -187,11 +244,23 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
     kits = tuple(spec.get("kits") or ())
     prims = compile_prims(ex)
     prints = {sdf.fingerprint(p) for p in prims}
-    whole = sdf.evaluate(prims, resolution)
-    moved_views = align_side(name, fm, cams, whole) if name else []
+    frame = sdf.frame(prims, resolution)
+    by_part = {ps[0].part: sdf.evaluate(ps, at=frame) for ps in sdf.streams(prims)}
+    part_ids = list(by_part)
+    whole = sdf.Grid(np.minimum.reduce([g.field for g in by_part.values()]), frame[0], frame[1])
+    moved_views = align_flat(name, fm, cams, whole) if name else []
     deep = {}
-    for v in views:  # the whole model's first surface: what stands in front of what
+    front = {}
+    for v in views:  # the whole model's first surface, and which part it belongs to: what stands in front of what
         deep[v] = depth_image(whole, cams[v])
+        W, H = cams[v]["size"]
+        ys, xs = np.mgrid[0:H, 0:W]
+        C, d, _ = rays(cams[v], np.stack([xs.ravel() + 0.5, ys.ravel() + 0.5], 1))
+        hit = np.isfinite(deep[v]).ravel()
+        P = C + np.where(hit, deep[v].ravel(), 0.0)[:, None] * d
+        idx = ((P - whole.origin) / whole.voxel).T
+        val = np.stack([ndimage.map_coordinates(g.field, idx, order=1, mode="constant", cval=1.0) for g in by_part.values()])
+        front[v] = np.where(hit, val.argmin(0), -1).reshape(H, W)
     lo_all = np.min([p.lo for p in prims], 0)
     hi_all = np.max([p.hi for p in prims], 0)
     out, notes = {}, {}
@@ -200,6 +269,7 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         if not marked or not pats:
             continue
         names, _ = resolve(ex, pats, kits)
+        own_names = set(names)
         for ch in featuremap.children(fm, f):  # its forms are its surface; the masses on it are their own
             if elements.get(ch) and fm["features"][ch].get("kind") == "form" and _mass_of(fm, ch) == f:
                 names |= resolve(ex, elements[ch], kits)[0]
@@ -219,7 +289,8 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         lo = np.maximum(np.min([p.lo for p in mine], 0) - pad, lo_all - 0.012)
         hi = np.minimum(np.max([p.hi for p in mine], 0) + pad, hi_all + 0.012)
         # fine enough for the smallest piece (a wart, a crease), within a grid of at most 150 cells a side
-        small = float(np.min([np.min(p.hi - p.lo) for p in mine]))
+        sized = [p for p in mine if p.name in own_names] or mine  # (the forms on a mass don't set the mass's grid)
+        small = float(np.min([np.min(p.hi - p.lo) for p in sized]))
         voxel = float(np.clip(min((hi - lo).max() / 72, small / 3), max((hi - lo).max() / 150, 0.0008), whole.voxel))
         shape = tuple(int(n) for n in np.ceil((hi - lo) / voxel) + 1)
         at = (lo, voxel, shape)
@@ -241,7 +312,9 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
                 near = np.minimum(da, dr)
                 with np.errstate(invalid="ignore"):
                     moved = (np.isfinite(da) != np.isfinite(dr)) | (np.abs(da - dr) > max(0.6 * voxel, 0.0008))
-                seen = near <= deep[v][box[1]:box[3], box[0]:box[2]] + max(0.6 * whole.voxel, 0.004)
+                sub = (slice(box[1], box[3]), slice(box[0], box[2]))
+                mine_part = np.isin(front[v][sub], [part_ids.index(q) for q in own if q in part_ids])
+                seen = (mine_part | (front[v][sub] < 0)) & (near <= deep[v][sub] + max(1.2 * whole.voxel, 0.006))
                 out[(f, v)][box[1]:box[3], box[0]:box[2]] = ndimage.binary_opening(moved & seen & np.isfinite(near))
     return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes, "moved_views": moved_views}
 
@@ -256,40 +329,71 @@ def _line_row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float,
             "why": "" if ok else f"the model's form runs along {along:.0%} of the line (within {tol['line_mm']:.0f} mm)"}
 
 
-def align_side(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
-    """A side view's centre line is a guess (the middle of the drawn feet): where the model's origin is along its
-    length is the modeller's choice, not something a picture shows. Slide each side view's camera so the model's
-    outline sits on the picture's, and say by how much. Front and back views have their mirror line and stay."""
+def _iou(a: np.ndarray, b: np.ndarray) -> float:
+    return float((a & b).sum() / max((a | b).sum(), 1))
+
+
+def align_flat(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
+    """Lay each flat view on the model before measuring, and say what had to move. A picture can't say how tall the
+    model was built, where its ground is, or where its origin lies along its length, so those are fitted: one scale
+    for the whole sheet (from its first flat view), each view's ground row, and a side view's centre line (a front
+    or back view keeps its mirror line). What moved is a finding about the model, reported, not hidden: features
+    are then placed relative to the whole figure, as an eye compares them."""
     import json as _json
-    notes = []
-    for v, cam in cams.items():
-        rec = fm["views"].get(v, {})
-        if rec.get("kind") not in ("side", "side_r"):
-            continue
+    from . import refread
+    flat = [v for v in cams if fm["views"].get(v, {}).get("kind") in refread.ORTHO]
+    notes, scale = [], None
+    for v in flat:
+        cam, rec = cams[v], fm["views"][v]
         fig = np.asarray(Image.open(rec["image"]).convert("RGBA"))[..., 3] > 127
         W, H = cam["size"]
-        ys, xs = np.mgrid[0:H:2, 0:W:2]
-        mod = np.isfinite(first_hit(whole, cam, np.stack([xs.ravel() + 1.0, ys.ravel() + 1.0], 1)).reshape(ys.shape))
-        ref = fig[::2, ::2][:mod.shape[0], :mod.shape[1]]
-        best, at = -1.0, 0
-        for sh in range(-mod.shape[1] // 4, mod.shape[1] // 4 + 1):
-            m2 = np.roll(mod, sh, 1)
-            if sh > 0:
-                m2[:, :sh] = False
-            elif sh < 0:
-                m2[:, sh:] = False
-            i = (m2 & ref).sum() / max((m2 | ref).sum(), 1)
-            if i > best:
-                best, at = i, sh
-        px = 2 * at
-        if abs(px) >= 3:
-            _, _, R, _ = matched.axes(cam["az"], cam["el"], cam["roll"])
-            k = cam["m_per_px"]
-            cam["aim"] = [float(c) for c in np.asarray(cam["aim"], float) - px * k * R]
-            rec["centre_px"] = float(rec["centre_px"] + px)
+
+        def outline(c):
+            ys, xs = np.mgrid[0:H:2, 0:W:2]
+            return np.isfinite(first_hit(whole, c, np.stack([xs.ravel() + 1.0, ys.ravel() + 1.0], 1)).reshape(ys.shape))
+        ref = fig[::2, ::2]
+        mod = outline(cam)[:ref.shape[0], :ref.shape[1]]
+        if not mod.any():
+            continue
+        my, ry = np.where(mod.any(1))[0], np.where(ref.any(1))[0]
+        if scale is None:  # the sheet's scale: the model's drawn height against the picture's
+            scale = (my[-1] - my[0] + 1) / (ry[-1] - ry[0] + 1)
+        k0 = cam["m_per_px"]
+        k = k0 * scale if abs(scale - 1) > 0.01 else k0
+        side = rec["kind"] in ("side", "side_r")
+        trial = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"], rec["ground_px"])
+        mod = outline(trial)[:ref.shape[0], :ref.shape[1]]
+        best, at = -1.0, (0, 0)
+        for dy in range(-12, 13):
+            for dx in (range(-mod.shape[1] // 4, mod.shape[1] // 4 + 1) if side else (0,)):
+                m2 = np.roll(np.roll(mod, dy, 0), dx, 1)
+                i = _iou(m2, ref)
+                if i > best:
+                    best, at = i, (dx, dy)
+        dx, dy = 2 * at[0], 2 * at[1]
+        if k != k0 or abs(dx) >= 3 or abs(dy) >= 3:
+            new = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"] + dx, rec["ground_px"] + dy)
+            cam.update({q: new[q] for q in ("f_px", "aim", "m_per_px")})
+            rec.update(m_per_px=k, centre_px=float(rec["centre_px"] + dx), ground_px=int(rec["ground_px"] + dy))
             matched.cam_path(name, v).write_text(_json.dumps(cam))
-            notes.append(f"{v}: the view's centre line moved {abs(px) * k * 1000:.0f} mm to sit on the model (its outline "
-                         f"now overlaps the picture's {best:.0%}); a side view's centre line is only a guess until a model exists")
+            why = []
+            if k != k0:
+                why.append(f"the model is {1 / scale:.2f} x the height the sheet was read at")
+            if abs(dy) >= 3:
+                why.append(f"its lowest point is {abs(dy) * k * 1000:.0f} mm {'below' if dy < 0 else 'above'} the ground line")
+            if abs(dx) >= 3:
+                why.append(f"its centre line is {abs(dx) * k * 1000:.0f} mm from where the drawn feet put it")
+            notes.append(f"{v}: {'; '.join(why)}. The view now sits on the model (outlines overlap {best:.0%})")
+            for c in fm["features"].values():  # a mark's place in metres follows its view
+                if v in c["marks"]:
+                    g = c["marks"][v]
+                    x0, y0, x1, y1 = g["box"]
+                    sign = -1.0 if rec["kind"] in ("back", "side_r") else 1.0
+                    axis = "x" if rec["kind"] in ("front", "back") else "y"
+                    g["world"] = {axis: round(sign * (g["centre_px"][0] - rec["centre_px"]) * k, 4),
+                                  "z": round((rec["ground_px"] - g["centre_px"][1]) * k, 4),
+                                  "z_lo": round((rec["ground_px"] - y1) * k, 4), "z_hi": round((rec["ground_px"] - y0) * k, 4),
+                                  "w": round((x1 - x0) * k, 4), "h": round((y1 - y0) * k, 4)}
     if notes:
         featuremap.save(name, fm)
     return notes
@@ -323,9 +427,39 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
+VERSION = 4  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+
+
+def _key(name: str, views, resolution: int, tol: dict) -> str:
+    import hashlib
+    import json as _json
+    h = hashlib.sha1(repr((VERSION, sorted(views or []), resolution, sorted(tol.items()))).encode())
+    h.update(_json.dumps(store.load(name), sort_keys=True, default=float).encode())
+    h.update(featuremap.path(name).read_bytes())
+    for q in sorted((store._dir(name) / "cameras").glob("*.json")):
+        h.update(q.read_bytes())
+    return h.hexdigest()
+
+
 def report(name: str, elements: dict | None = None, views: list[str] | None = None, resolution: int = 144,
            tol: dict | None = None) -> dict:
-    """The table (see the module docstring). `elements` {feature: [element patterns]} is remembered in the map."""
+    """The table (see the module docstring). `elements` {feature: [element patterns]} is remembered in the map.
+    The last report is kept beside the map and returned as it is while the model, the map, the cameras and the
+    settings are unchanged."""
+    import gzip
+    import pickle
+    rep = _report(name, elements, views, resolution, tol, peek=True)
+    if rep is not None:
+        return rep
+    rep = _report(name, elements, views, resolution, tol)
+    rep["key"] = _key(name, views, resolution, {**TOL, **(tol or {})})
+    with gzip.open(featuremap.path(name).with_name("report.pkl.gz"), "wb", compresslevel=3) as fh:
+        pickle.dump(rep, fh, protocol=4)
+    return rep
+
+
+def _report(name: str, elements, views, resolution: int, tol, peek: bool = False):
+    """peek=True: the kept report if it still holds for these arguments (after `elements` are written), else None."""
     fm = featuremap.load(name)
     if not fm["features"]:
         raise ValueError(f"{name} has no feature map: read_reference, then mark_features")
@@ -334,6 +468,20 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
             raise ValueError(f"no feature {f!r} (have {sorted(fm['features'])})")
         fm["features"][f]["elements"] = list(pats or [])
     tol = {**TOL, **(tol or {})}
+    if peek:
+        import gzip
+        import pickle
+        kept = featuremap.path(name).with_name("report.pkl.gz")
+        same = {f: c.get("elements") or [] for f, c in featuremap.load(name)["features"].items()} == \
+               {f: c.get("elements") or [] for f, c in fm["features"].items()}
+        if not kept.exists() or not same:
+            return None
+        try:
+            with gzip.open(kept, "rb") as fh:
+                rep = pickle.load(fh)
+        except Exception:  # noqa: BLE001  (a kept report that can't be read is redone)
+            return None
+        return rep if rep.get("key") == _key(name, views, resolution, tol) else None
     cams, skipped = {}, []
     for v in views or list(fm["views"]):
         if matched.cam_path(name, v).exists():
@@ -348,7 +496,7 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
     if bad:  # every wrong name at once, before anything slow
         raise ValueError("no model element matches, for " + "; ".join(f"{f}: {', '.join(b)}" for f, b in bad.items())
                          + ". Names are the model's own (get_model): blobs, bones, strokes, kits, or part:<part>")
-    if elements:  # remembered only once every name is good
+    if elements and not peek:  # remembered only once every name is good
         featuremap.save(name, fm)
     fp = footprints(spec, fm, {f: p for f, p in made.items() if p != [IN_MASS]}, list(cams), cams, resolution, ex, name)
     outline = {}

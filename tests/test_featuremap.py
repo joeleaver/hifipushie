@@ -18,13 +18,15 @@ COLS = {"body": (120, 125, 150), "head": (200, 170, 120), "snout": (235, 160, 15
 ORDER = ("body", "head", "snout", "ear.L", "ear.R", "eye.L", "eye.R")
 
 
-def _spec(eye=(0.06, -0.125, 0.67), snout=0.06) -> dict:
+def _spec(eye=(0.06, -0.125, 0.67), snout=0.06, move=(0.0, 0.0, 0.0)) -> dict:
+    def at(x, y, z):
+        return [x + move[0], y + move[1], z + move[2]]
     return {"symmetry": True, "blend": 0.02, "joints": {}, "bones": {}, "blobs": {
-        "body": {"at": [0, 0, 0.25], "size": [0.16, 0.13, 0.25]},
-        "head": {"at": [0, -0.02, 0.62], "size": [0.14, 0.13, 0.13]},
-        "snout": {"at": [0, -0.15, 0.58], "size": [snout, 0.06, snout * 5 / 6]},
-        "eye.L": {"at": list(eye), "size": [0.03, 0.02, 0.03], "blend": 0.003},
-        "ear.L": {"at": [0.12, 0.0, 0.76], "size": [0.05, 0.02, 0.06], "blend": 0.01}}}
+        "body": {"at": at(0, 0, 0.25), "size": [0.16, 0.13, 0.25]},
+        "head": {"at": at(0, -0.02, 0.62), "size": [0.14, 0.13, 0.13]},
+        "snout": {"at": at(0, -0.15, 0.58), "size": [snout, 0.06, snout * 5 / 6]},
+        "eye.L": {"at": at(*eye), "size": [0.03, 0.02, 0.03], "blend": 0.003},
+        "ear.L": {"at": at(0.12, 0.0, 0.76), "size": [0.05, 0.02, 0.06], "blend": 0.01}}}
 
 
 def _truth(name: str, kind: str):
@@ -184,7 +186,14 @@ def test_the_true_model_is_right_and_planted_faults_are_found(fig):
     # buried: the eyes sunk inside the head
     store.save("fig", _spec(eye=(0.06, -0.06, 0.67)), "eye buried")
     assert _status(featuresee.report("fig", resolution=128))[("eye.L", "front")]["status"] == "HIDDEN"
+    # built 4 cm back and 2 cm into the ground: nothing a picture can know, so the views follow the model and say so
+    store.save("fig", _spec(move=(0.0, 0.04, -0.02)), "moved")
+    rep = featuresee.report("fig", resolution=128)
+    assert {r["status"] for r in rep["rows"]} == {"right"}, [r for r in rep["rows"] if r["status"] != "right"]
+    said = " ".join(rep["moved_views"])
+    assert "below the ground line" in said and "centre line" in said, rep["moved_views"]
     store.save("fig", _spec(), "back")
+    assert featuresee.report("fig", resolution=128)["moved_views"]  # (and back again)
     # a line mark has no size: right where the model has form along it, off where it has none
     box = featuremap.load("fig")["features"]["snout"]["marks"]["front"]["box"]
     y = (box[1] + box[3]) // 2
