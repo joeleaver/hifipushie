@@ -418,16 +418,28 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),
                                              "anisotropyRotation": 1.5708},
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
-    if spec.get("cloth"):  # simulated garments (cloth.py): their settled meshes, the flat pattern as the uv
+    chain_w, chain_looks, left_out = {}, {}, []
+    if spec.get("cloth"):  # garments. A chain garment (one with a garment record) ships as export_garment wrote it at
+        # step 10 (garment_asset, C434: the old route re-simulated its draft and shipped that); any other garment is
+        # the old simulation's (cloth.py): its settled mesh, the flat pattern as the uv
         from . import cloth as clothmod
-        cparts = clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048), log=log.append)
+        from . import garment_asset
+        chain = garment_asset.records(name, spec)
+        gparts, chain_w, chain_looks, left_out = garment_asset.parts(name, chain, out_dir, log.append)
+        for g_, why_ in left_out:
+            log.append(f"NOT IN THIS EXPORT: garment {g_}: {why_}")
+        old_ = {g_: v_ for g_, v_ in spec["cloth"].items() if g_ not in chain}
+        cparts = clothmod.export_part(name, {**spec, "cloth": old_}, out_dir, texture=min(texture, 2048),
+                                      log=log.append) if old_ else []
         n_c = sum(len(cp["corner_vert"]) // 3 for _, cp, _ in cparts)
-        cover_by = [cp for _, cp, _ in cparts]  # (the sim's own mesh: what covers the skin, before any decimation)
+        # (what covers the skin: the sim's own mesh before any decimation, and the chain garments as they ship)
+        cover_by = [cp for _, cp, _ in cparts + gparts]
         if cloth_triangles and n_c > cloth_triangles:  # the sim's 1 cm mesh (two-sided) is far over a game budget:
             # decimated like a LOD (patches with their borders held: seams, hems, the pattern's uv)
             from . import lods as lodmod
             from . import lods_part, lods_under
             cparts = decimate_cloth(cparts, cloth_triangles, log)
+        cparts = cparts + gparts  # (a chain garment's grid was already chosen for its role's budget: never decimated here)
         for pn_c, cpart, cfiles in cparts:
             cpart["atlas"] = len(atlas_files)
             parts[pn_c] = cpart
@@ -514,6 +526,9 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     glb = out_dir / f"{aname}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
+    for pn, lk_ in chain_looks.items():  # (a chain garment's alpha-cut base map: frayed or lace edges)
+        if pn in parts:
+            looks.setdefault(pn, {}).update(lk_)
     if (spec.get("hair") or {}).get("locks") and locals().get("hair_cards"):
         looks.setdefault(pn_h, {}).update(alpha_cutoff=hair_cards["alpha_cutoff"],
                                           double_sided=not hair_cards.get("back_faces"),  # (c6: own back faces)
@@ -548,6 +563,10 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         skin_at = {pn: np.array(p["verts"], np.float64) for pn, p in parts.items() if pn not in pf_of}
         rigged = {"bones": bones, "weights": rig_skin.skin_parts(
             rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3)) for pn in skin_at}, smooth=3)}
+        if chain_w:  # a chain garment keeps the weights its own export made and checked in the bend poses
+            from . import garment_asset
+            rigged["weights"].update(garment_asset.bone_weights({pn: w_ for pn, w_ in chain_w.items() if pn in parts},
+                                                                bones))
         hf = rig_head.head_field(rspec, bones)
         ntw = sum(1 for b in bones if b.get("twist"))
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
@@ -903,7 +922,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                             "materials": "one per atlas, in the order of 'atlases'",
                             "prefabs": "one mesh per prefab (a primitive per part, in the prefab's frame), a node "
                                        "per instance with extras.prefab"},
-            "seconds": round(time.time() - t, 1), "log": log}
+            "seconds": round(time.time() - t, 1), "log": log,
+            "garments_left_out": [{"garment": g_, "why": why_} for g_, why_ in left_out]}
     try:  # the engine-agnostic shading notes beside the GLB (shading.py): what each material is meant to do
         from . import shading
         from .hair_groom import look_of as _hlook
