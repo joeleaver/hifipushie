@@ -71,11 +71,41 @@ def mask(name: str, feature: str, view: str) -> np.ndarray:
     return np.asarray(Image.open(mask_path(name, feature, view))) > 127
 
 
+WANT = {"patches": "a list of patch numbers, [12, 13]", "box": "four numbers, [x0, y0, x1, y1]",
+        "ellipse": "four numbers, [cx, cy, rx, ry]", "polygon": "three or more points, [[x, y], [x, y], [x, y]]",
+        "line": "two or more points, [[x, y], [x, y]]"}
+
+
+def _checked(m, view: str) -> dict:
+    """A mark as written, or a refusal that says how it is written."""
+    def num(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    def pts(v, least):
+        return isinstance(v, (list, tuple)) and len(v) >= least and all(
+            isinstance(q, (list, tuple)) and len(q) == 2 and all(num(c) for c in q) for q in v)
+    if not isinstance(m, dict):
+        raise ValueError(f"the mark in {view!r} is written {{shape: numbers}}, e.g. {{\"patches\": [12, 13]}} "
+                         f"(got {m!r}; leave a view out to keep the mark it has)")
+    unknown = set(m) - set(SHAPES) - {"minus", "mirror", "width"}
+    if unknown or not any(k in m for k in SHAPES):
+        raise ValueError(f"a mark in {view!r} needs one of {SHAPES} (+ minus, mirror, width); got {sorted(m)}")
+    ok = {"patches": lambda v: isinstance(v, (list, tuple)) and len(v) > 0 and all(num(i) for i in v),
+          "box": lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v),
+          "ellipse": lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v),
+          "polygon": lambda v: pts(v, 3), "line": lambda v: pts(v, 2)}
+    for k, test in ok.items():
+        if k in m and not test(m[k]):
+            raise ValueError(f"{k!r} in {view!r} is {WANT[k]}, in the view's pixels (got {m[k]!r})")
+    if m.get("minus") is not None:
+        _checked(m["minus"], view)
+    return m
+
+
 def _shape_mask(name: str, view: str, size, m: dict) -> np.ndarray:
     W, H = size
     out = np.zeros((H, W), bool)
-    if not any(k in m for k in SHAPES):
-        raise ValueError(f"a mark needs one of {SHAPES} (got {sorted(m)})")
+    _checked(m, view)
     if "patches" in m:
         lab = refread.patches(name, view)
         ids = [int(i) for i in m["patches"]]
@@ -130,6 +160,9 @@ def mark(name: str, features: dict, remove: list[str] | None = None, notes: str 
     for fname, spec in (features or {}).items():
         if "__" in fname or "/" in fname:
             raise ValueError(f"feature name {fname!r}: no '__' or '/'")
+        if not isinstance(spec, dict) or not isinstance(spec.get("marks") or {}, dict):
+            raise ValueError(f"feature {fname!r} is written {{\"kind\": ..., \"marks\": {{view: {{shape: numbers}}}}}} "
+                             f"(got {spec!r})")
         cur = fm["features"].setdefault(fname, {"marks": {}})
         for k in FIELDS:
             if k in spec:
@@ -144,12 +177,15 @@ def mark(name: str, features: dict, remove: list[str] | None = None, notes: str 
             if view not in fm["views"]:
                 raise ValueError(f"feature {fname!r}: no view {view!r} (have {sorted(fm['views'])})")
             rec = fm["views"][view]
-            mk = mark_mask(name, view, rec, m)
+            try:
+                mk = mark_mask(name, view, rec, m)
+            except ValueError as e:
+                raise ValueError(f"feature {fname!r}: {e}") from None
             if not mk.any():
                 raise ValueError(f"feature {fname!r} in {view!r}: the mark covers none of the figure (marks are in the "
                                  f"view's own pixels, {rec['size'][0]} x {rec['size'][1]}; see the rulers)")
             todo = [(fname, cur, mk)]
-            if m.get("mirror"):
+            if m.get("mirror") is True:
                 tw = twin(fname)
                 if not tw or rec["kind"] not in ("front", "back"):
                     raise ValueError(f"feature {fname!r}: mirror needs a .L / .R name and a front or back view")

@@ -18,8 +18,10 @@ Per feature and view (rows where the map has a mark and the view has a camera):
   right     centre within `off` (mm, or a share of the mark's smaller side), both sizes within `size`, overlap
             (IoU of footprint and mark) at least `iou`
   OFF       otherwise, with the worst number first
-Elements are named as the model has them (get_model): exact names, shell-style patterns ("fr*", "bib?.L"), or
-"part:<part>" for every element of a part.
+Elements are named as the model has them (get_model): a blob's, bone's, stroke's or kit's own name (a stroke's or
+kit's generated pieces come with it; ".R" is the mirrored twin of ".L"), a shell-style pattern ("fr*", "bib?.L"),
+or "part:<part>" for every element of a part. They are taken out of the SPEC, so a cut that is folded into the
+shape it cuts counts too. Every name is checked before anything is measured.
 """
 from __future__ import annotations
 
@@ -89,24 +91,47 @@ def relief(depth: np.ndarray, m_per_px: float) -> np.ndarray:
     return out.astype(np.uint8)
 
 
-def resolve(prims, patterns) -> set[str]:
-    """Element patterns -> the names of the model's primitives they pick."""
-    names = sorted({p.name for p in prims})
-    parts = {p.part for p in prims}
+def expanded(spec: dict) -> dict:
+    """The spec with kits and strokes turned into their pieces and every ".L" mirrored, symmetry off: each element
+    is there under its own name, and taking one out takes out only that one."""
+    import copy
+    from .spec import expand_mirror
+    ex = copy.deepcopy(expand_mirror(spec))
+    ex["symmetry"] = False
+    return ex
+
+
+def _canon(n: str) -> str:
+    """A generated piece's name as its maker's: "fold_r1.L" -> "fold.L", "warts_s7" -> "warts"."""
+    import re
+    side = n[-2:] if n[-2:] in (".L", ".R") else ""
+    return re.sub(r"(_[rs]\d+)+$", "", n[:len(n) - len(side)]) + side
+
+
+def resolve(ex: dict, patterns, kits=()) -> tuple[set[str], list[str]]:
+    """Element patterns -> (names of the expanded spec's blobs and bones they pick, the patterns that pick none)."""
+    names = [*ex.get("blobs", {}), *ex.get("bones", {})]
+    part = {n: (ex["blobs"].get(n) or ex["bones"].get(n) or {}).get("part", "body") for n in names}
     out, bad = set(), []
     for pat in patterns:
         if pat.startswith("part:"):
-            got = {p.name for p in prims if p.part == pat[5:]} if pat[5:] in parts else set()
+            got = {n for n in names if part[n] == pat[5:]}
         else:
-            got = set(fnmatch.filter(names, pat))
+            got = {n for n in names if fnmatch.fnmatchcase(n, pat) or fnmatch.fnmatchcase(_canon(n), pat)}
+            if not got and pat in kits:  # a kit's pieces carry its name in front
+                got = {n for n in names if n.startswith(pat + "_")}
         if not got:
             import difflib
-            near = difflib.get_close_matches(pat, names + [f"part:{p}" for p in parts], 4, 0.4)
-            bad.append(f"{pat!r}" + (f" (near: {near})" if near else ""))
+            pool = sorted({_canon(n) for n in names} | {f"part:{p}" for p in set(part.values())} | set(kits))
+            near = difflib.get_close_matches(pat, pool, 4, 0.4)
+            bad.append(f"{pat!r}" + (f" (near: {', '.join(near)})" if near else ""))
         out |= got
-    if bad:
-        raise ValueError("no model element matches " + ", ".join(bad) + "; get_model lists the names")
-    return out
+    return out, bad
+
+
+def without(ex: dict, names: set[str]) -> dict:
+    return {**ex, "blobs": {k: v for k, v in ex["blobs"].items() if k not in names},
+            "bones": {k: v for k, v in ex["bones"].items() if k not in names}}
 
 
 def _mass_of(fm: dict, feature: str) -> str | None:
@@ -130,28 +155,49 @@ def seen_mark(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
     return mk
 
 
-def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dict, resolution: int = 144) -> dict:
-    """{(feature, view): bool mask at the view's size} for every made feature marked in a view with a camera."""
-    prims = compile_prims(spec)
+def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dict, resolution: int = 144,
+               ex: dict | None = None) -> dict:
+    """{(feature, view): bool mask at the view's size} for every made feature marked in a view with a camera;
+    "notes" {feature: why it could not be measured}."""
+    from .spec import SpecError
+    ex = ex or expanded(spec)
+    kits = tuple(spec.get("kits") or ())
+    prims = compile_prims(ex)
+    prints = {sdf.fingerprint(p) for p in prims}
     whole = sdf.evaluate(prims, resolution)
-    deep = {v: depth_image(whole, cams[v]) for v in views}
+    deep = {}
+    for v in views:  # the whole model's first surface: at every other pixel, enough to say what stands in front
+        W, H = cams[v]["size"]
+        ys, xs = np.mgrid[0:H:2, 0:W:2]
+        d = first_hit(whole, cams[v], np.stack([xs.ravel() + 1.0, ys.ravel() + 1.0], 1)).reshape(ys.shape)
+        deep[v] = np.repeat(np.repeat(d, 2, 0), 2, 1)[:H, :W]
     lo_all = np.min([p.lo for p in prims], 0)
     hi_all = np.max([p.hi for p in prims], 0)
-    out = {}
+    out, notes = {}, {}
     for f, pats in elements.items():
         marked = [v for v in views if v in fm["features"][f]["marks"]]
         if not marked or not pats:
             continue
-        names = resolve(prims, pats)
+        names, _ = resolve(ex, pats, kits)
         for ch in featuremap.children(fm, f):  # its forms are its surface; the masses on it are their own
             if elements.get(ch) and fm["features"][ch].get("kind") == "form" and _mass_of(fm, ch) == f:
-                names |= resolve(prims, elements[ch])
-        mine = [p for p in prims if p.name in names]
-        rest = [p for p in prims if p.name not in names]
-        pad = 0.012
-        lo = np.maximum(np.min([p.lo for p in mine], 0) - pad, lo_all - pad)
-        hi = np.minimum(np.max([p.hi for p in mine], 0) + pad, hi_all + pad)
-        voxel = float(np.clip((hi - lo).max() / 72, 0.001, whole.voxel))
+                names |= resolve(ex, elements[ch], kits)[0]
+        for v in marked:
+            out[(f, v)] = np.zeros((cams[v]["size"][1], cams[v]["size"][0]), bool)
+        try:
+            rest = compile_prims(without(ex, names))
+        except SpecError as e:
+            notes[f] = f"can't be taken out of the model on its own ({e})"
+            continue
+        rprints = {sdf.fingerprint(p) for p in rest}
+        mine = [p for p in prims if sdf.fingerprint(p) not in rprints] + [p for p in rest if sdf.fingerprint(p) not in prints]
+        if not mine:
+            notes[f] = "its elements shape nothing"
+            continue
+        pad = 0.012 + float(np.max([np.max(p.reach) for p in mine]))
+        lo = np.maximum(np.min([p.lo for p in mine], 0) - pad, lo_all - 0.012)
+        hi = np.minimum(np.max([p.hi for p in mine], 0) + pad, hi_all + 0.012)
+        voxel = float(np.clip((hi - lo).max() / 64, 0.001, whole.voxel))
         shape = tuple(int(n) for n in np.ceil((hi - lo) / voxel) + 1)
         at = (lo, voxel, shape)
         g_all = sdf.evaluate(prims, at=at)
@@ -164,16 +210,14 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
             x0, y0 = np.floor(xy.min(0)).astype(int) - 2
             x1, y1 = np.ceil(xy.max(0)).astype(int) + 2
             box = (max(x0, 0), max(y0, 0), min(x1, W), min(y1, H))
-            mk = np.zeros((H, W), bool)
             if box[2] > box[0] and box[3] > box[1]:
                 da, dr = depth_image(g_all, cam, box), depth_image(g_rest, cam, box)
                 near = np.minimum(da, dr)
                 with np.errstate(invalid="ignore"):
                     moved = (np.isfinite(da) != np.isfinite(dr)) | (np.abs(da - dr) > max(0.6 * voxel, 0.0008))
                 seen = near <= deep[v][box[1]:box[3], box[0]:box[2]] + 2.5 * whole.voxel
-                mk[box[1]:box[3], box[0]:box[2]] = ndimage.binary_opening(moved & seen & np.isfinite(near))
-            out[(f, v)] = mk
-    return {"masks": out, "depth": deep, "voxel": whole.voxel}
+                out[(f, v)][box[1]:box[3], box[0]:box[2]] = ndimage.binary_opening(moved & seen & np.isfinite(near))
+    return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes}
 
 
 def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict) -> dict:
@@ -212,8 +256,6 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
         if f not in fm["features"]:
             raise ValueError(f"no feature {f!r} (have {sorted(fm['features'])})")
         fm["features"][f]["elements"] = list(pats or [])
-    if elements:
-        featuremap.save(name, fm)
     tol = {**TOL, **(tol or {})}
     cams, skipped = {}, []
     for v in views or list(fm["views"]):
@@ -223,7 +265,15 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
             skipped.append(v)
     spec = store.load(name)
     made = {f: (c.get("elements") or []) if c["kind"] != "paint" else [] for f, c in fm["features"].items()}
-    fp = footprints(spec, fm, made, list(cams), cams, resolution)
+    ex = expanded(spec)
+    bad = {f: resolve(ex, pats, tuple(spec.get("kits") or ()))[1] for f, pats in made.items() if pats}
+    bad = {f: b for f, b in bad.items() if b}
+    if bad:  # every wrong name at once, before anything slow
+        raise ValueError("no model element matches, for " + "; ".join(f"{f}: {', '.join(b)}" for f, b in bad.items())
+                         + ". Names are the model's own (get_model): blobs, bones, strokes, kits, or part:<part>")
+    if elements:  # remembered only once every name is good
+        featuremap.save(name, fm)
+    fp = footprints(spec, fm, made, list(cams), cams, resolution, ex)
     rows = []
     for f, c in fm["features"].items():
         for v in cams:
@@ -237,7 +287,10 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
             ref = seen_mark(name, fm, f, v)
             if not ref.any():  # nothing of it shows past the masses on it: nothing to measure in this view
                 continue
-            rows.append(_row(f, v, ref, fp["masks"][(f, v)], k, tol))
+            row = _row(f, v, ref, fp["masks"][(f, v)], k, tol)
+            if f in fp["notes"]:
+                row.update(status="HIDDEN", why=fp["notes"][f])
+            rows.append(row)
     worst = {}
     rank = {"NOT MADE": 3, "OFF": 2, "HIDDEN": 1, "right": 0}
     for r in rows:
