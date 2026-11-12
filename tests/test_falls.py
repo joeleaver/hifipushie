@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain
+from hifipushie import terrain_model
 
 SPECS = {
     "inland": {"world": {"kind": "farmland", "base": 40}, "extent": [[0, 0], [256, 320]], "cell": 1.0,
@@ -30,7 +30,7 @@ SPECS = {
 def _load(spec):
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    return terrain.load(d / "spec.json")
+    return terrain_model.load(d / "spec.json")
 
 
 def _section(T, f, u):

@@ -15,7 +15,7 @@ from .terrain_volumes import _sea
 # ---------------------------------------------------------------- materials
 def rock_colours(T):
     """sRGB per terrain cell: the colour the heightfield views paint on rock there (terrain_rock.colour when it
-    exists, else the same rule as terrain.ground_colours: the kind's rock, sandstone for arid kinds, and every
+    exists, else the same rule as terrain_views.ground_colours: the kind's rock, sandstone for arid kinds, and every
     rock-type cover layer, e.g. black lava or a cliff's grey, over it where its mask is)."""
     from . import terrain_design as design
     from . import terrain_rock
@@ -45,7 +45,7 @@ class Materials:
 
     def __init__(self, T, field):
         from . import terrain_design as design
-        from .terrain import ground_colours
+        from .terrain_views import ground_colours
         self.T, self.field = T, field
         self.sea = _sea(T)
         order = []

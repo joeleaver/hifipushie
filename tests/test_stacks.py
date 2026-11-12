@@ -139,7 +139,7 @@ def _coast_field():
     import json
     import tempfile
     from pathlib import Path
-    from hifipushie import terrain
+    from hifipushie import terrain_model
     from hifipushie import terrain_tile_jobs
     spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 1.0,
             "tilt": {"down": "south", "grade": 0.25},
@@ -148,7 +148,7 @@ def _coast_field():
             "export": {"tiles": {"tile": 32}}}
     d = Path(tempfile.mkdtemp())
     (d / "spec.json").write_text(json.dumps(spec))
-    T = terrain.load(d / "spec.json")
+    T = terrain_model.load(d / "spec.json")
     field, vols, _, _ = terrain_tile_jobs.build_field(T)
     return T, field
 

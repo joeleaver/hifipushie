@@ -3,12 +3,13 @@
 import numpy as np
 
 from hifipushie import hair_clumps as hk
+from hifipushie import hair_clumps_cut
 from test_hair_clumps import C, S, _groom
 
 
 def _cut(**opts):
     D, locks = _groom()
-    return hk.cut(D, locks, C, {**S, **opts}, None, 0, triangles=4000)
+    return hair_clumps_cut.cut(D, locks, C, {**S, **opts}, None, 0, triangles=4000)
 
 
 def test_flow_top_is_off_by_default():
@@ -63,18 +64,18 @@ def _sideburn_groom(n=80, length=0.010, seed=0):
 
 def test_hairline_row_gives_short_temple_hairs_cards():
     D, locks = _sideburn_groom()
-    base = hk.cut(D, locks, C, dict(S), None, 0, triangles=4000)
-    rows = hk.cut(D, locks, C, {**S, "hairline_row": {"cards": 6}}, None, 0, triangles=4000)
+    base = hair_clumps_cut.cut(D, locks, C, dict(S), None, 0, triangles=4000)
+    rows = hair_clumps_cut.cut(D, locks, C, {**S, "hairline_row": {"cards": 6}}, None, 0, triangles=4000)
     hr = [c for c in rows if c.get("hrow")]
     assert len(hr) >= 2
     assert len([c for c in base if c.get("cls") == "head"]) < len(hr)  # (MIN_STATIONS 4 drops most of these 10 mm hairs)
-    az, el, _ = hk._azel(np.array([np.asarray(c["P"], float)[0] for c in hr]), C)
+    az, el, _ = hair_clumps_cut._azel(np.array([np.asarray(c["P"], float)[0] for c in hr]), C)
     assert np.all((np.abs(az) > 45) & (el < 10))
 
 
 def test_rows_skip_tiers_under_their_min_triangles():
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, {**S, "flow_top": {"cards": 2, "min_triangles": 5000}}, None, 0, triangles=4000)
+    cards = hair_clumps_cut.cut(D, locks, C, {**S, "flow_top": {"cards": 2, "min_triangles": 5000}}, None, 0, triangles=4000)
     assert not any(c.get("flow") for c in cards)
 
 
@@ -91,7 +92,7 @@ def test_every_tier_fits_its_drawn_budget_back_faces_counted():
     for tier in hair.CARD_TIERS:
         budget, dmax = hair_job.tier_triangles(tier), hair_job.tier_drawn_max(tier)
         S_ = {**hc.STRANDS, **S, **{k: v for k, v in hair_job.tier_settings(tier).items() if k not in ("triangles", "cap_step", "cap")}}
-        cards = hk.cut(D, locks, C, S_, None, 0, triangles=budget)
+        cards = hair_clumps_cut.cut(D, locks, C, S_, None, 0, triangles=budget)
         assert cards, tier
         for bf in (True, False):
             cap, other = budget // 10, 40
@@ -112,7 +113,7 @@ def test_fit_floor_keeps_a_class_share():
     """(round 40) hair_cards.FIT_FLOOR / S["fit_floor"]: under a tight budget a class's floor share is kept first."""
     from hifipushie import hair_cards as hc
     D, locks = _groom()
-    cards = hk.cut(D, locks, C, S, None, 0, triangles=4000)
+    cards = hair_clumps_cut.cut(D, locks, C, S, None, 0, triangles=4000)
     for i, c in enumerate(cards):
         c["cls"] = "tail" if i % 4 == 0 else "head"
         c["prio"] = (2.0 if c["cls"] == "tail" else 1.0) + 0.001 * i  # the tail's cards would all go first

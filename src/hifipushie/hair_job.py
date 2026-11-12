@@ -214,7 +214,7 @@ for _t in hair.CARD_TIERS:
 def tier_settings(tier: str, short: bool = False, even: bool = False) -> dict:
     """A card tier's settings: CARD_TIERS, a short cut's SHORT_TIERS over them; an EVEN groom (strands.even) is cut by
     visual clumps at every tier: it has no per-lock guide strands, so clump_cards found none (c2: Garrett's main 57
-    cards, npc / far 0, the lifted cap alone stood as a pompadour). hair_clumps.cut scales its cards with the triangles."""
+    cards, npc / far 0, the lifted cap alone stood as a pompadour). hair_clumps_cut.cut scales its cards with the triangles."""
     t = {**hair.CARD_TIERS[tier], **(hair.SHORT_TIERS[tier] if short else {})}
     if even and hair.EVEN_CLUMPS:
         t["cut"] = "clumps"

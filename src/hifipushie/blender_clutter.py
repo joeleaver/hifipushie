@@ -1,4 +1,4 @@
-"""Blender side of clutter looks: GLBs standing on rough grass under a sun and a sky (clutter.look).
+"""Blender side of clutter looks: GLBs standing on rough grass under a sun and a sky (clutter_kit.look).
 blender -b --factory-startup -P blender_clutter.py -- job.json
 job = {"items": [{"glb", "at": [x, y, z], "yaw": deg, "scale": s, "squash": q}], "views": [{"eye", "look", "fov", "out", "res": [w, h]}],
        "ground": [r, g, b] linear, "sun": [az, el], "clay": false, "engine": "eevee"}"""

@@ -28,6 +28,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     GnmFace (1,788 lines) keeps its name, its methods in five mixins.
   5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10 modules; blockin_models._refs read late. Its check
     for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py guards all modules.
+  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424) -> 8, 8, 6 modules, none over
+    500 lines; class Terrain (1,726 lines) in terrain_model with five mixins; terrain.MODULES in the terrain cache's hash.
 - CONSTANTS STAY (C422, landed 2026-11-11): export scripts outside the repo set module.NAME (assembly/exp.py
   HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants; for hair and faceshapes
   those values were then ignored. Now a family's base module holds every constant: tests/test_constants_address.py.
@@ -47,14 +49,12 @@ The clothes guides (cloth_guide, cloth_design, cloth_construction, cloth_sim, cl
 cloth_background) are what was left after the old paragraphs went: they need one rewrite to steps 0-10.
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
-dead.py, why.py, frontier.py, hyp.py, apply.py, check.py (unreachable code, function by function; conservative);
-proof.py (builds and flat checks against the parent tree); surface.py (the tool surface as one JSON). Splits: outline.py,
-unit_deps.py, edges.py, rebound.py (before); split_module.py, split_class.py + plan_<module>.py; then rehome.py
-(constants back to the base), repoint.py, regap.py, retail.py, shadow_check.py; proofs same_units.py, rehomed_all.py.
+Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. Proofs: proof.py (builds, flat checks), surface.py
+(the tool surface), same_units.py, same_members.py, rehomed_all.py. Splits: outline.py, unit_deps.py, rebound.py (before);
+split_module.py, split_class.py, rehome.py + plan_<module>.py; repoint.py, regap.py, retail.py, shadow_check.py (after).
 
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 
-NEXT: terrain, clutter and hair_clumps are split on branch split-terrain-clutter (NOT landed: redo them with constants
-staying). Then asset (3.7k, after the loop-retopology branch), blender_scene; cloth.py, pattern_form, garment_pull and
-cloth_made wait for the chain-build cut. Then the two giant functions, then the re-review.
+NEXT: asset (3.7k, after the loop-retopology branch), blender_scene (Blender runs it by path: look first); cloth.py,
+pattern_form, garment_pull and cloth_made wait for the chain-build cut. Then the two giant functions, then the re-review.

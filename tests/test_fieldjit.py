@@ -151,8 +151,9 @@ def test_blocks():
 
 
 def _fields(name):
-    from hifipushie import terrain, terrain_bake, terrain_cliffs
-    T = terrain.load(TERRAINS[name])
+    from hifipushie import terrain_bake, terrain_cliffs
+    from hifipushie import terrain_model
+    T = terrain_model.load(TERRAINS[name])
     cfg = {**tm.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {})}
     base, vols, notes, caves = terrain_tile_jobs.build_field(T, cfg)
     G = terrain_tile_mesh.Grid(T, cfg)
