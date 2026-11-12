@@ -27,7 +27,7 @@ core and wall was 12 x CPU. That is why limits discount CPU wait. The sweep reac
   (test_rented_sims: a stale test, fixed on full-green.)
 
 **test_colour_read_and_fit_recover_zones:** no verdict on quiet timing. Not a deadlock: main, 79cbce57^ and 79cbce57 all
-ran past 500 s in the slot, main's stack at 240 s was in numpy under paint.cells inside the first Albedo calls, moving.
+ran past 500 s in the slot, main's stack at 240 s was in numpy under paint_patterns.cells inside the first Albedo calls, moving.
 So 79cbce57 did not start it. Each Albedo call rebuilds paint layers (over 110 CPU s for no finished call on integrate);
 the fit makes many. Slow tier, timeout 1800.
 

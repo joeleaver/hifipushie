@@ -61,7 +61,7 @@ def face_keep_paint(parts: dict, topo: dict, log: list) -> None:
 def lip_floor_mask(spec: dict, X: np.ndarray, n: np.ndarray) -> np.ndarray:
     """0..1 per surface point (Blender coords, normals): the skin's lower-lip zone, where bake() floors the roughness at
     LIP_FLOOR_ROUGHNESS. Zeros without a skin or its lip landmarks."""
-    from . import paint
+    from . import paint_apply
     from .surface import Points
     sk = spec.get("skin") or {}
     if not sk or not len(X):
@@ -71,7 +71,7 @@ def lip_floor_mask(spec: dict, X: np.ndarray, n: np.ndarray) -> np.ndarray:
         pts.footprint = 0.0005
         from . import skin
         ly = skin.expand_zones(spec, {"mask": [asset.LIP_FLOOR_ZONE]}, "lip floor")
-        return paint.layer_mask(spec, "lip_floor", ly, paint._View(pts, np.arange(len(X))))
+        return paint_apply.layer_mask(spec, "lip_floor", ly, paint_apply._View(pts, np.arange(len(X))))
     except (KeyError, ValueError):  # (no lip landmarks on this model: no floor)
         return np.zeros(len(X))
 

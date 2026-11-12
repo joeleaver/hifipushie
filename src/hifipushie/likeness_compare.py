@@ -132,7 +132,7 @@ def _contour_rows(it, photos, models, kinds, traces) -> list:
 def _jaw_pair(ph, md, tr, sd):
     """The jaw measures on the photo's trace and on the model's contour found along it (picture pixels)."""
     from . import likeness_shape as ls
-    from . import humanfit
+    from . import humanfit_views
     ex, ey = ph["side"].frame()
     mmpx = md["mmpx"]
     Q = np.asarray(tr["lines"][f"jaw.{sd}"], float)
@@ -156,7 +156,7 @@ def _jaw_pair(ph, md, tr, sd):
     seg = np.linalg.norm(np.diff(O, axis=0), axis=1)
     u = np.r_[0, np.cumsum(seg)] / seg.sum()
     J3 = np.c_[[np.interp(np.linspace(0, 1, 40), u, O[:, c]) for c in range(3)]].T
-    Qm = humanfit.project(md["cam"], J3)
+    Qm = humanfit_views.project(md["cam"], J3)
     i3 = ls._split_corner(Qm)
     B = J3[i3 + (2 * (len(J3) - i3)) // 3] if i3 is not None else J3[26]
     neck_m = None
@@ -171,14 +171,14 @@ def _jaw_pair(ph, md, tr, sd):
         if kk.any():
             npts.append(V3[kk][np.argmax(np.abs(V3[kk][:, 0] - mx))])
     if len(npts) == 2 and neck_p and len(neck_p) >= 2:
-        neck_m = humanfit.project(md["cam"], np.array(npts))
+        neck_m = humanfit_views.project(md["cam"], np.array(npts))
     lobe_m = None
     ears = md["mesh"].get("ears")
     if ears is not None and len(ears):
         V = md["mesh"]["V"][ears]
         s = V[V[:, 0] < 0] if sd == "R" else V[V[:, 0] > 0]
         if len(s):
-            lobe_m = humanfit.project(md["cam"], s[np.argmin(s[:, 2])][None])[0]
+            lobe_m = humanfit_views.project(md["cam"], s[np.argmin(s[:, 2])][None])[0]
     mex, mey = md["side"].frame() if md["side"].P is not None else (ex, ey)
     mv = ls.jaw_measures(Qm, mex, mey, mmpx, lobe_m, mouth_m, neck_m)
     mv["_line"] = Qm

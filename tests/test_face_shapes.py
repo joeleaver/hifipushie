@@ -716,6 +716,7 @@ def test_exported_squint_matches_fit():
         return
     import copy
     from hifipushie import humanfit, rig_audit
+    from hifipushie import likeness_render
     from hifipushie import base_identity
     g = rig_audit.read_glb(glb)["meshes"]
     W = {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0}

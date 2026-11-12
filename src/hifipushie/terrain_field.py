@@ -47,13 +47,13 @@ class Field:
         if gcfg is None:  # (no ground character: sand traps dug into the grid, as 2-cell blurs)
             for m, depth, *_ in bunkers or ():
                 self.H = dig_bunker(T, self.H, m, depth)
-        self.styles = []  # terrain styles that shape the rock (terrain_style.rock_styles): weight grids + numbers
+        self.styles = []  # terrain styles that shape the rock (terrain_style_zones.rock_styles): weight grids + numbers
         H_unstyled = self.H
         if rock is not None and T.spec.get("styles"):
-            from . import terrain_style
-            self.styles = terrain_style.rock_styles(T)
+            from . import terrain_style_zones
+            self.styles = terrain_style_zones.rock_styles(T)
             if self.styles:  # (a style's softened ground: blobby lips and forms; the heightmap tiles read it too)
-                self.H = terrain_style.soften_height(self.H, self.c, self.styles)
+                self.H = terrain_style_zones.soften_height(self.H, self.c, self.styles)
         if rock is not None:
             # where the rock character goes: steep ground (45-62 deg), as a smooth mask on the grid (~2 cells). From
             # each point's own column slope it switched on within 0.2 m at a cliff's lip (the B-spline's slope turns
@@ -421,7 +421,7 @@ class Field:
         """The rock relief where terrain styles shape the rock: realistic's where it weighs, each style's own (its
         `relief` multipliers on the realistic numbers, `pillow` grooves) where it does, mixed by their weights (smooth
         on the grid: continuous across zones and tiles). Also each point's share of the bake-only micro relief."""
-        from . import terrain_style
+        from . import terrain_style_zones
         ws, wr = self.style_w(p[:, 0], p[:, 1])
         R = np.zeros(len(p))
         mic = wr.copy()
@@ -439,12 +439,12 @@ class Field:
                 continue
             Rk = s["rock"]
             rs = np.zeros(len(i))
-            rv = terrain_style.rock_variant(self.rock, Rk.get("relief"))
+            rv = terrain_style_zones.rock_variant(self.rock, Rk.get("relief"))
             if rv.get("facets", 0) > 0 or rv.get("bedding", 0) > 0 or rv.get("blocks"):
                 rs += rel(i, rv)
             pl = Rk.get("pillow")
             if pl:
-                rs += terrain_style.pillow_carve(p[i], pl.get("size", 3.0), pl.get("depth", 0.8),
+                rs += terrain_style_zones.pillow_carve(p[i], pl.get("size", 3.0), pl.get("depth", 0.8),
                                                  pl.get("round", 0.4), int(self.rock.get("seed", 0)) + 101,
                                                  pl.get("stretch", 1.0))
             if Rk.get("build") is not None:

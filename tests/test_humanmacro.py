@@ -70,17 +70,18 @@ def test_map_fit_recovers_a_known_head():
     places, 1.5 mm of noise, front + three-quarter): the MAP fit from a fresh head ends nearer the truth, stays a
     plausible head and keeps the mesh sound; a read of the truth's strongest macros helps further."""
     from hifipushie import humanfit as hf, humanfit_map as fm, onemesh
+    from hifipushie import humanfit_integrity, humanfit_solve, humanfit_views
     fresh = {"body": {"source": "human", "age": 34, "sex": 1.0}, "head": {}}
     rng = np.random.default_rng(8)
     ct = rng.normal(0, 1.0, hm.K)
-    truth = hf._with_identity(fresh, ct)
+    truth = humanfit_solve._with_identity(fresh, ct)
     st = hf.state(truth)
     views = []
     for yaw in (0.0, 40.0):
         ev = fm._evidence(st, [{"mp478": np.zeros((478, 2)), "size": [900, 900], "yaw": yaw}])[0]
         cam = {"r": [0.05, 0.0, 0.02], "t": [0.0, 0.0, 1.1], "f": 1700.0, "size": [900, 900], "centre": st["L"][:68].mean(0).tolist(), "yaw": yaw + 3}
         P = np.zeros((478, 2))
-        P[ev["mp_idx"]] = hf.project(cam, ev["X"]) + rng.normal(0, 1.5 / (1.1 / 1700 * 1000), (len(ev["X"]), 2))
+        P[ev["mp_idx"]] = humanfit_views.project(cam, ev["X"]) + rng.normal(0, 1.5 / (1.1 / 1700 * 1000), (len(ev["X"]), 2))
         views.append({"mp478": P, "size": [900, 900], "yaw": yaw})
 
     def err(b):
@@ -94,7 +95,7 @@ def test_map_fit_recovers_a_known_head():
         R, sc = U @ Dm @ Vt, (S * np.diag(Dm)).sum() / (A ** 2).sum()
         return float(np.linalg.norm(sc * A @ R.T - B, axis=1).mean() * 1000)
     b1, rep = fm.fit(fresh, views)
-    assert not rep.get("refused") and rep["integrity"]["ok"], hf.verdict(rep["integrity"])
+    assert not rep.get("refused") and rep["integrity"]["ok"], humanfit_integrity.verdict(rep["integrity"])
     assert rep["plausibility"]["rms_sigma"] < 1.0
     e0, e1 = err(fresh), err(b1)
     assert e1 < 0.75 * e0, (e0, e1)

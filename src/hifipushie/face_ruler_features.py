@@ -131,7 +131,7 @@ def _shade_obs(head, view):
     the picture's coordinates per view). Samples: visible (the clay pass's depth), turned at least 25 deg off
     grazing, on the picture's skin (view["trust"]) and not in the darkest shading (cast shadows)."""
     from scipy import ndimage as ndi
-    from . import humanfit
+    from . import humanfit_views
     sm = _shade_model(head)
     cam = view["cam"]
     kind = view["kind"]
@@ -143,7 +143,7 @@ def _shade_obs(head, view):
         view["_Ylog"] = ndi.gaussian_filter(Y, 1.5 / mmpx)       # 1.5 mm: pores, freckles, noise
     Y = view["_Ylog"]
     H, W = Y.shape
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     X = np.asarray(head["V"], float)[sm["idx"]]
     Xc, px = _cam_points(cam, X)
     px = (px - org) * sc
@@ -241,13 +241,14 @@ def _normal_obs(head, view, differential=None):
     its RELIEF gain (1: estimators flatten or exaggerate the turn away from the camera). differential = the
     estimator's normals on a picture of the MODEL itself through the same camera ({"n", "box"}, facenormals.estimate):
     then the observation is estimate(picture) - estimate(model's picture), the estimator's own bias taken out."""
-    from . import facenormals as fnm, humanfit
+    from . import facenormals as fnm
+    from . import humanfit_views
     sm = _normal_model(head)
     cam, kind = view["cam"], view["kind"]
     sc, org = float(view.get("scale", 1.0)), np.asarray(view.get("origin", (0.0, 0.0)), float)
     img = view["img"]
     Wd, Hd = img.size
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     X = np.asarray(head["V"], float)[sm["idx"]]
     Xc, pc = _cam_points(cam, X)
     px = (pc - org) * sc

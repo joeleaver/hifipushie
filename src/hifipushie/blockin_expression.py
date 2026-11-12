@@ -53,6 +53,7 @@ def fit_expression(base: dict, view: dict, cam: dict, comps: dict | None = None,
     Jacobian by finite differences at the start (chord iterations: the response is near linear). ~(n + 4) head builds.
     Returns {"expression", "chi2": [before, after], "points", "norm"}."""
     from . import humanfit, humanfit_map as hm
+    from . import humanfit_views
     names = _expr_names(comps)
     sd = {**blockin.EXPR_SD, **(sd or {})}
     prec = np.array([1.0 / float(sd[n.rsplit("_", 1)[0]]) ** 2 for n in names])
@@ -63,7 +64,7 @@ def fit_expression(base: dict, view: dict, cam: dict, comps: dict | None = None,
         st = humanfit.state(view_base(base, rj1, 0))
         ev = hm._evidence(st, hm._resolve(st, [view]))[0]
         mm = cam["t"][2] / cam["f"] * 1000
-        return ((humanfit.project(cam, ev["X"]) - ev["uv"]) * (mm / ev["sig"])[:, None]).ravel()
+        return ((humanfit_views.project(cam, ev["X"]) - ev["uv"]) * (mm / ev["sig"])[:, None]).ravel()
 
     e = np.zeros(len(names))
     r = r_start = resid(e)

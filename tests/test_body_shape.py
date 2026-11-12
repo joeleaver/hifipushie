@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import humanfit, humans, makehuman  # noqa: E402
+from hifipushie import humanfit_solve
 
 
 def _mh_ok():
@@ -49,7 +50,7 @@ def test_neck_girth_solvable():
         return
     sp = humans.spec(age=45, sex=1.0, seed=3, skin=False, source="human")
     m0 = humanfit.state(sp["base"])["measures"]["neck_circ"]
-    nb, rep = humanfit.solve(sp["base"], {"neck_circ": "+3"}, free=("body",))
+    nb, rep = humanfit_solve.solve(sp["base"], {"neck_circ": "+3"}, free=("body",))
     m1 = humanfit.state(nb)["measures"]["neck_circ"]
     assert abs(m1 - (m0 + 3)) < 1.0, (m0, m1, nb["body"])
     assert nb["body"].get("neck_circ", 0.5) > 0.5
@@ -63,7 +64,7 @@ def test_hips_fit_without_weight():
     sp = humans.spec(age=30, sex=0.0, seed=3, skin=False, source="human")
     st = humanfit.state(sp["base"])
     hb = st["measures"]["hip_breadth"]
-    nb, rep = humanfit.solve(sp["base"], {"hip_breadth": "-2"}, free=("body",))
+    nb, rep = humanfit_solve.solve(sp["base"], {"hip_breadth": "-2"}, free=("body",))
     m1 = humanfit.state(nb)["measures"]
     assert abs(m1["hip_breadth"] - (hb - 2.0)) < 0.6, (hb, m1["hip_breadth"], nb["body"])
     assert nb["body"].get("hips", 0.5) < 0.5

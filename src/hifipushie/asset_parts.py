@@ -215,6 +215,7 @@ def decal_focus(spec: dict, pn: str, base: float, box=None) -> list:
     (texels/m), at most DECAL_GAIN, never below 1. pn is the model part; box (lo, hi): only decals reaching it (a
     prefab's part is exported from its bake instance: a decal on another instance isn't on its texels)."""
     from . import images, paint
+    from . import images_frame, images_project
     out = []
     exp = None
     for name, ly in paint.layers(spec).items():
@@ -224,16 +225,16 @@ def decal_focus(spec: dict, pn: str, base: float, box=None) -> list:
         for img in images.layer_images(ly):
             if exp is None:
                 exp = paint._expanded(spec)
-            fr = images.frame(spec, img, exp, what=f"paint {name!r} image", parts=lp)
+            fr = images_frame.frame(spec, img, exp, what=f"paint {name!r} image", parts=lp)
             if fr["wrap"] == "uv":  # no placement of its own (the whole head): the part's own density stands
                 continue
             want = min(asset.DECAL_MAX, fr["px"][0] / fr["w"], fr["px"][1] / fr["h"])
             k = float(np.clip(want / max(base, 1e-9), 1.0, asset.DECAL_GAIN))
             if k <= 1.0:
                 continue
-            places = [fr] + ([images.mirrored(fr)] if fr["mirror"] or name.endswith(".L") else [])
+            places = [fr] + ([images_project.mirrored(fr)] if fr["mirror"] or name.endswith(".L") else [])
             for f in places:
-                pts = images.footprint(f)
+                pts = images_project.footprint(f)
                 if box is not None:
                     pts = pts[((pts >= box[0]) & (pts <= box[1])).all(1)]
                 if not len(pts):

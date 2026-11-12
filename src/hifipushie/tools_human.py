@@ -76,9 +76,10 @@ def _human_figure(name: str, spec_after: dict | None) -> PILImage.Image | None:
 def _human_apply(name: str, sp: dict, new_base: dict, rep: dict, note: str, force: bool, save: bool, st0, focus=None,
                  figure: bool = True) -> list:
     from . import humanfit
+    from . import humanfit_sheet
     ok = rep["integrity"]["ok"]
     fig = _human_figure(name, {**sp, "base": new_base}) if figure else None
-    text = humanfit.report_text(rep)
+    text = humanfit_sheet.report_text(rep)
     saved = ""
     if save and (ok or force):
         v = store.save(name, {**sp, "base": new_base}, note)
@@ -87,7 +88,7 @@ def _human_apply(name: str, sp: dict, new_base: dict, rep: dict, note: str, forc
         saved = "NOT SAVED: the mesh would be broken (the lines above). Ask for less, release fewer measures, or force=True."
     else:
         saved = "not saved (save=False): a dry run."
-    im = humanfit.head_sheet(st0, humanfit.state(new_base), focus=focus)
+    im = humanfit_sheet.head_sheet(st0, humanfit.state(new_base), focus=focus)
     if fig is not None:
         both = PILImage.new("RGB", (max(im.width, fig.width), im.height + fig.height), (30, 32, 36))
         both.paste(im, (0, 0))
@@ -104,9 +105,10 @@ def measure_human(name: str, since: int | None = None, picture: bool = True):
     since = an earlier version: what changed (UNINTENDED flags). Measure before each change. Details:
     guide(topic="measure_human")."""
     from . import humanfit
+    from . import humanfit_integrity, humanfit_sheet
     sp, b = _human_base(name)
     st = humanfit.state(b)
-    text = humanfit.verdict(humanfit.integrity(b, st)) + "\n" + humanfit.table(st["measures"])
+    text = humanfit_integrity.verdict(humanfit_integrity.integrity(b, st)) + "\n" + humanfit_integrity.table(st["measures"])
     from . import onemesh
     text += "\n" + onemesh.attach_report(b)["text"]  # (headbody) head size, heads tall, the neck at the seam ring
     st0 = None
@@ -114,13 +116,13 @@ def measure_human(name: str, since: int | None = None, picture: bool = True):
         old = json.loads((store.HOME / name / "history" / f"{int(since):04d}.json").read_text())
         old = old.get("spec", old)
         st0 = humanfit.state(old["base"])
-        text += f"\nsince v{since}:\n" + humanfit.effects_text(humanfit.side_effects(st0, st, set()), top=30)
+        text += f"\nsince v{since}:\n" + humanfit_integrity.effects_text(humanfit_integrity.side_effects(st0, st, set()), top=30)
     from . import head_route
     if not head_route.is_block_in(name):
         text += "\nlandmarks for nudge_human: " + ", ".join(humanfit.LANDMARKS) + ", eye.L, eye.R"
     if not picture:
         return text
-    return [_png(humanfit.head_sheet(st0, st) if st0 is not None else humanfit.head_sheet(st)), text]
+    return [_png(humanfit_sheet.head_sheet(st0, st) if st0 is not None else humanfit_sheet.head_sheet(st)), text]
 
 
 @mcp.tool(structured_output=False)
@@ -130,11 +132,12 @@ def fit_human(name: str, set: dict | str, free: list[str] | None = None, release
     "+2" | "x0.95", "a/b": ratio}. free (["identity"] | "body"), release, force, figure, save, note. Replies
     INTEGRITY, UNINTENDED, before | after; a broken result isn't saved. Details: guide(topic="fit_human")."""
     from . import head_route, humanfit
+    from . import humanfit_solve
     head_route.refuse_off_route(name, "fit_human")
     sp, b = _human_base(name)
     want = _spec_arg(set) if isinstance(set, str) else dict(set)
     st0 = humanfit.state(b)
-    nb, rep = humanfit.solve(b, want, free=tuple(free or ("identity",)), force=force, release=tuple(release or ()))
+    nb, rep = humanfit_solve.solve(b, want, free=tuple(free or ("identity",)), force=force, release=tuple(release or ()))
     pts = sorted({i for k in want for p in k.split("/") if p.strip() in humanfit.FACE for i in humanfit._points(p.strip())})
     focus = st0["L"][pts].mean(0) if pts else None
     return _human_apply(name, sp, nb, rep, note or f"fit_human {json.dumps(want)}", force, save, st0, focus, figure)
@@ -147,12 +150,13 @@ def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: l
     do becomes a local correction (radius) and is reported. Same reply as fit_human. Details:
     guide(topic="nudge_human")."""
     from . import head_route, humanfit
+    from . import humanfit_solve, humanfit_views
     head_route.refuse_off_route(name, "nudge_human")
     sp, b = _human_base(name)
     st0 = humanfit.state(b)
-    nb, rep = humanfit.nudge(b, landmark, move=move, to=to, radius=radius, force=force)
+    nb, rep = humanfit_solve.nudge(b, landmark, move=move, to=to, radius=radius, force=force)
     return _human_apply(name, sp, nb, rep, note or f"nudge_human {landmark}", force, save, st0,
-                        st0["L"][humanfit.point_index(landmark)], figure)
+                        st0["L"][humanfit_views.point_index(landmark)], figure)
 
 
 @mcp.tool(structured_output=False)
@@ -164,6 +168,7 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     read (a character read in macro sigmas), measure, fit, free, force, figure, save. Details:
     guide(topic="human_reference")."""
     from . import head_route, humanfit
+    from . import humanfit_views
     if fit:
         head_route.refuse_off_route(name, "human_reference(fit=True)")
     sp, b = _human_base(name)
@@ -174,7 +179,7 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
         rd = json.loads(read) if isinstance(read, str) else read
         nb, rep = humanfit_map.fit(b, vs, read=rd, force=force, free=tuple(free or ("identity",)) if fit else (), measure=measure)
     else:
-        nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
+        nb, rep = humanfit_views.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
     rp = store.HOME / name / "human_refs.json"
     kept = {"blockin": json.loads(rp.read_text())["blockin"]} if head_route.is_block_in(name) else {}  # (the chain's record)
     rp.write_text(json.dumps({"views": vs, "cameras": rep["cameras"], **kept}, indent=1))

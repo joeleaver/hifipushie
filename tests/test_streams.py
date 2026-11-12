@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain_mesh as tm, terrain_stream as ts, terrain_style, terrain_swatch
+from hifipushie import terrain_style_fields
 from hifipushie import terrain_model
 from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs
 
@@ -277,9 +278,9 @@ def test_swatches_and_styles():
         st = terrain_style.sheet(name)
         for layer in ts.LAYERS:
             assert layer in terrain_style.STYLE_LAYERS
-            t = terrain_style.texture(st, layer, terrain_style.layer_colour(st, layer, refs), px=256)
+            t = terrain_style_fields.texture(st, layer, terrain_style.layer_colour(st, layer, refs), px=256)
             assert t["projection"] == "top" and np.isfinite(t["albedo"]).all()
-        t = terrain_style.texture(st, "gravel", terrain_style.layer_colour(st, "gravel", refs), px=256)
+        t = terrain_style_fields.texture(st, "gravel", terrain_style.layer_colour(st, "gravel", refs), px=256)
         assert t["albedo"].std() > 0.01, name  # (stones: not a flat field)
     assert terrain_style.CONTRACT >= 5 and 5 in terrain_style.CONTRACT_LOG
 

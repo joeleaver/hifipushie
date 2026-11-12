@@ -45,8 +45,8 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
         # the whole head took in the hair over the skull and the fit lit the face to white
         from scipy.spatial import ConvexHull
         from PIL import ImageDraw
-        from . import humanfit
-        Q = (humanfit.project(cam, np.asarray(mesh["L"], float)[:68]) - [box[0], box[1]]) * k
+        from . import humanfit_views
+        Q = (humanfit_views.project(cam, np.asarray(mesh["L"], float)[:68]) - [box[0], box[1]]) * k
         try:
             hv = Q[ConvexHull(Q).vertices]
             hm = Image.new("L", (Ww, Hh), 0)
@@ -100,7 +100,8 @@ def photo_lighting(name: str, template: dict, vi: int | None = None) -> dict:
     phone photo's face in shadow and the dressed head read narrower and harder than the photo and the clay. Returns a
     new dict (+ "fitted": {dir, elevation_deg, key, ambient})."""
     from PIL import Image
-    from . import humanfit, store
+    from . import store
+    from . import humanfit_views
     rj = blockin_models._refs(name)
     vi = _front(rj) if vi is None else vi
     v, cam = rj["views"][vi], rj["cameras"][vi]
@@ -108,7 +109,7 @@ def photo_lighting(name: str, template: dict, vi: int | None = None) -> dict:
     mesh = presented_mesh(view_base(store.load(name)["base"], rj, vi), rj=rj)
     mesh["_photo_P"] = detect_view(img, v)
     _, lt, _ = lit_render(mesh, cam, img)
-    R = humanfit._cam_rot(cam)
+    R = humanfit_views._cam_rot(cam)
     # the first pass's c0 + w.n fit (camera-frame normals): w = the directional part, c0 = the ambient (the SH
     # coefficients, fitted with AO multiplied in, gave no stable direction: Tess's key came out from below)
     c0, w = float(lt[0]), np.asarray(lt[1], float)
@@ -229,7 +230,8 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
     before| x4) | squint before | squint after: a half-sd step is hard to see side by side with the photo alone.
     Returns {"out", "views": [{"view", "shift_px"}]}."""
     from PIL import Image, ImageDraw, ImageFilter
-    from . import humanfit, likeness, store
+    from . import likeness, store
+    from . import humanfit_views
     from . import likeness_render
     rj = blockin_models._refs(name)
     base = store.load(name)["base"]
@@ -256,7 +258,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
         front = abs(float(v.get("yaw", 0))) < 70
         Pd = detect_view(img, v) if front else None
         mesh["_photo_P"] = Pd
-        Lm = humanfit.project(cam, st["L"])
+        Lm = humanfit_views.project(cam, st["L"])
         a_ph, a_md = _eye_anchor(v, Pd, Lm)
         sh = np.zeros(2) if a_ph is None else a_ph - a_md
         pbox = (box[0] + sh[0], box[1] + sh[1], box[2] + sh[0], box[3] + sh[1])

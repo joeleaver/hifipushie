@@ -12,7 +12,7 @@ from . import hair
 from .hair import HairError, _ss, _unit, dirs
 from .hair_groom import hairline, inside, look_of, part_side_of
 from .hair_head import Scalp
-from .hair_job import _hcap_vm, baby_locks, card_allowance, card_cap, tier_drawn_max, tier_settings, tier_triangles
+from .hair_job import _hcap_vm, baby_locks, card_allowance, card_cap, tier_drawn_max, tier_settings
 from .hair_lockmesh import _hrow_dropped, shell_gaps
 from .hair_spec import hair_of
 
@@ -44,7 +44,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         tier = tier_settings(budget, short, even)
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         ex_ = h.get("export") or {}
-        budget = tier_triangles(budget, ex_.get("role", "hero"), ex_.get("tier_triangles"))
+        budget = hair.tier_triangles(budget, ex_.get("role", "hero"), ex_.get("tier_triangles"))
         drawn_max_ = tier_drawn_max(tier_name, ex_.get("tier_drawn_max"))
     if short:
         S = {**S, "atlas": max(int(S["atlas"]), hair.SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,

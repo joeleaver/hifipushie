@@ -12,6 +12,7 @@ from PIL import Image as PILImage
 from . import compare as cmp
 from . import measure as meas
 from . import paint as paintmod
+from . import paint_check
 from . import plan as planmod
 from . import render, store, surface
 from .spec import empty_spec, summarize
@@ -68,7 +69,7 @@ def kit_reference() -> str:
 
 def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
     """The reply to a save: version, notes, warnings (things that saved but likely aren't what was meant), summary."""
-    warn = "".join(f"WARNING: {w}\n" for w in paintmod.side_warnings(spec))
+    warn = "".join(f"WARNING: {w}\n" for w in paint_check.side_warnings(spec))
     b = spec.get("base") or {}
     hd = b.get("head") if isinstance(b.get("head"), dict) else None
     if hd and (hd.get("shape") or hd.get("simplify") or b.get("style")):

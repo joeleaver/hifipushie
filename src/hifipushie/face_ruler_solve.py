@@ -65,7 +65,7 @@ def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0, d
     (the head turned about the vertical through the camera's centre point) and of PITCH (nodded about the picture's
     horizontal), and DISTANCE (dist: log units x 100, ~ % further away, the lens lengthened to match: the picture's
     scale at the head's centre stays, its PERSPECTIVE changes; solvecams)."""
-    from . import humanfit
+    from . import humanfit_views
     c = dict(cam)
     if lens:      # A KNOWN LENS (readmix): the focal length is the picture's own (EXIF / lens_mm) and stays; the picture's SCALE
         #           is then the camera's DISTANCE (d = f x size / pixels) and the free distance / lens trade does not exist
@@ -80,7 +80,7 @@ def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0, d
         c["yaw"] = float(c.get("yaw", 0.0)) + float(yaw)
     if pitch:
         from scipy.spatial.transform import Rotation
-        c["r"] = (Rotation.from_rotvec([float(np.radians(pitch)), 0.0, 0.0]) * Rotation.from_matrix(humanfit._rotvec(np.asarray(c["r"], float)))).as_rotvec().tolist()
+        c["r"] = (Rotation.from_rotvec([float(np.radians(pitch)), 0.0, 0.0]) * Rotation.from_matrix(humanfit_views._rotvec(np.asarray(c["r"], float)))).as_rotvec().tolist()
     return c
 
 

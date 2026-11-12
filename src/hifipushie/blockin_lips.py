@@ -290,15 +290,15 @@ def lip_reads(ht, ev=None, to_world=None, cam=None) -> dict:
     xx = np.linspace(0.0015, 0.010, 30)
     out["bow"] = (0.5 * (max(f(q) for q in xx) + max(f(-q) for q in xx)) - f(0.0)) * 1000
     if ev is not None:
-        from . import humanfit
+        from . import humanfit_views
         for nm, rows in (("upper", up), ("lower", lo)):
-            px = humanfit.project(cam, to_world(V[rows]))
+            px = humanfit_views.project(cam, to_world(V[rows]))
             d, q, ins = _poly_dist(px, ev[nm])
             s = np.sign(((px - q) * (q - ev["mouth"])).sum(1))
             out["miss_" + nm] = float(np.sqrt(np.mean(d[ins] ** 2))) * ev["mmpx"]
             out["off_" + nm] = float(np.mean((s * d)[ins])) * ev["mmpx"]   # + = the model's border outside the picture's
         cu = _rows(ht, contact_rows()[0])
-        px = humanfit.project(cam, to_world(V[cu[cu >= 0]]))
+        px = humanfit_views.project(cam, to_world(V[cu[cu >= 0]]))
         d, q, ins = _poly_dist(px, ev["seam"])
         out["miss_seam"] = float(np.sqrt(np.mean(d[ins] ** 2))) * ev["mmpx"] if ins.any() else float("nan")
     try:
@@ -315,7 +315,8 @@ def lip_reads(ht, ev=None, to_world=None, cam=None) -> dict:
 def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: int = 6, log=print) -> dict:
     """identity + lower-face expression for the picture's borders (ev, photo_evidence) through camera cam, the neutral
     closed, the rest held. view_ex: the picture's own fitted expression (added for the border term only)."""
-    from . import blockin as bi, humanfit
+    from . import blockin as bi
+    from . import humanfit_views
     names = _names()
     b0 = copy.deepcopy(base)
     b0["head"].pop("lip_seal", None)
@@ -353,7 +354,7 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
         V = np.asarray(hv["verts"], float)
         r = []
         for nm, rows in (("upper", up), ("lower", lo)):
-            px = humanfit.project(cam, to_world(V[rows]))
+            px = humanfit_views.project(cam, to_world(V[rows]))
             d, q, ins = _poly_dist(px, ev[nm])
             # signed: + = the model's border outside the picture's (away from the mouth's centre); none past the
             # traced part's ends
@@ -361,7 +362,7 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
             r += list(ins * s * d * ev["mmpx"] / SIG_BORDER)
         # the seam: the contact ring's upper half (the picture's expression on) through the camera
         cu = _rows(hv, contact_rows()[0])
-        px = humanfit.project(cam, to_world(V[cu[cu >= 0]]))
+        px = humanfit_views.project(cam, to_world(V[cu[cu >= 0]]))
         px = px[np.argsort(px[:, 0])][::2]
         d, q, ins = _poly_dist(px, ev["seam"])
         r += list(ins * np.sign(q[:, 1] - px[:, 1]) * d * ev["mmpx"] / SIG_SEAM)

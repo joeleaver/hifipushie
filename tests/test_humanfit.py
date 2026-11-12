@@ -6,6 +6,7 @@ import copy
 import numpy as np
 
 from hifipushie import assets, humanfit as hf
+from hifipushie import humanfit_integrity, humanfit_sheet, humanfit_solve, humanfit_views
 
 
 def have():
@@ -33,9 +34,9 @@ def test_measures_and_integrity():
     assert 150 < m["stature"] < 195 and 7 < m["heads"] < 8.6
     assert 52 < m["interocular"] < 70 and 120 < m["face_width"] < 165 and 20 < m["eye_width"] < 34
     assert abs(hf.value(m, "eye_width/face_width") - m["eye_width"] / m["face_width"]) < 1e-12
-    it = hf.integrity(base(), st)
+    it = humanfit_integrity.integrity(base(), st)
     assert it["ok"], it
-    assert "INTEGRITY: ok" in hf.verdict(it)
+    assert "INTEGRITY: ok" in humanfit_integrity.verdict(it)
     try:
         hf.state({"body": {"source": "makehuman"}, "head": {"source": "gnm"}})
         raise AssertionError("a grafted human was measured as one mesh")
@@ -45,7 +46,7 @@ def test_measures_and_integrity():
 
 def test_a_measure_is_met_and_the_rest_holds():
     b = base()
-    nb, rep = hf.solve(b, {"nose_width": "+3"})
+    nb, rep = humanfit_solve.solve(b, {"nose_width": "+3"})
     r = rep["asked"]["nose_width"]
     assert r["met"] and abs(r["got"] - r["was"] - 3) < 0.8
     assert rep["integrity"]["ok"]
@@ -60,26 +61,26 @@ def test_adversarial_requests_come_back_honest():
     for want in ({"eye_width": "x3"}, {"chin_height": "+50"},
                  {"eye_width": "x1.6", "nose_width": "x0.5", "mouth_width": "x1.5", "jaw_width": "x0.7", "chin_width": "x1.6",
                   "face_height": "x0.8", "interocular": "x1.3", "philtrum": "x2", "lip_height": "x0.5", "brow_height": "x1.8"}):
-        nb, rep = hf.solve(b, want)
+        nb, rep = humanfit_solve.solve(b, want)
         assert rep["integrity"]["ok"], (want, rep["integrity"])
         assert not all(r["met"] for r in rep["asked"].values()), want  # none of these is a plausible identity
         assert rep["plausibility"]["max_sigma"] <= max(hf.CLIP, np.abs(hf.identity(b)).max()) + 1e-6
         if len(want) == 1:
             assert rep["held_back"] < 1.0 and _moved_unasked(rep, set(want)) <= hf.COLLATERAL + 1.0
     # forced, the same request is allowed to go further (and says what it did to the rest)
-    _, forced = hf.solve(b, {"eye_width": "x3"}, force=True)
+    _, forced = humanfit_solve.solve(b, {"eye_width": "x3"}, force=True)
     assert forced["asked"]["eye_width"]["got"] > rep_first(b)
     assert forced["side_effects"]["unintended"]
 
 
 def rep_first(b):
-    return hf.solve(b, {"eye_width": "x3"})[1]["asked"]["eye_width"]["got"]
+    return humanfit_solve.solve(b, {"eye_width": "x3"})[1]["asked"]["eye_width"]["got"]
 
 
 def test_nudge_moves_one_landmark():
     b = base()
     L0 = hf.state(b)["L"]
-    nb, rep = hf.nudge(b, "nose_tip", move=[0.0, -0.003, 0.002])
+    nb, rep = humanfit_solve.nudge(b, "nose_tip", move=[0.0, -0.003, 0.002])
     assert np.abs(np.array(rep["got_mm"]) - [0, -3, 2]).max() < 0.4
     L1 = hf.state(nb)["L"]
     far = np.linalg.norm(L0[:68] - L0[30], axis=1) > 0.05
@@ -87,16 +88,16 @@ def test_nudge_moves_one_landmark():
     assert rep["integrity"]["ok"]
     # past what the sliders can do: the rest is a correction layer, said so, and it survives a later change
     # (3 cm squeezes the face's edges past the limit: refused, the input handed back, unless forced)
-    nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03])
+    nb2, rep2 = humanfit_solve.nudge(b, "chin", move=[0.0, 0.0, -0.03])
     # (its refusal used to rest on sub-millimetre lid edges read as "x3.3": slivers no longer count (hf.SLIVER, the
     # reference-modelling study), so within the plausible range it may pass; forced past it, it is still BROKEN)
     # and the correction layer has a size guard of its own (hf.NUDGE_CORR x radius): 3 cm is refused, unforced
     assert nb2 is b and "refused" in rep2, rep2.get("by_correction_mm")
-    assert not hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)[1]["integrity"]["ok"]
-    nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
+    assert not humanfit_solve.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)[1]["integrity"]["ok"]
+    nb2, rep2 = humanfit_solve.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
     assert rep2["by_correction_mm"] > 1.0 and abs(rep2["got_mm"][2] + 30) < 1.5
     assert nb2["head"]["shape"]["push_more"]
-    nb3, _ = hf.solve(nb2, {"nose_width": "+1"})
+    nb3, _ = humanfit_solve.solve(nb2, {"nose_width": "+1"})
     assert nb3["head"]["shape"]["push_more"] == nb2["head"]["shape"]["push_more"]
 
 
@@ -116,10 +117,10 @@ def test_fit_back_a_known_face_from_images():
     views = []
     for yaw, r in ((0, [0.03, 0.0, 0.0]), (40, [0.0, 0.05, 0.0])):
         cam = {"r": r, "t": [0.01, -0.02, 0.9], "f": 2400.0, "size": [1024, 1024], "centre": ctr, "yaw": yaw}
-        uv = hf.project(cam, Lt)
+        uv = humanfit_views.project(cam, Lt)
         views.append({"size": [1024, 1024], "yaw": yaw, "points": {f"lm{i}": uv[i].tolist() for i in range(68)}
                       | {"eye.L": uv[68].tolist(), "eye.R": uv[69].tolist()}})
-    nb, rep = hf.fit_views(b, views)
+    nb, rep = humanfit_views.fit_views(b, views)
     assert all(v["rms_px"] < 1.0 for v in rep["views"]), rep["views"]
     L1 = hf.state(nb)["L"]
     assert _rigid(L1, Lt) < 1.5 < _rigid(L0, Lt), (_rigid(L0, Lt), _rigid(L1, Lt))
@@ -128,7 +129,7 @@ def test_fit_back_a_known_face_from_images():
     crown = P0[:, 2] > L0[19, 2] + 0.05
     assert np.linalg.norm(P1 - P0, axis=1)[crown].max() < 0.007
     # one frontal view alone: fits in the image, and says nothing about depth
-    nb1, rep1 = hf.fit_views(b, views[:1])
+    nb1, rep1 = humanfit_views.fit_views(b, views[:1])
     assert rep1["views"][0]["rms_px"] < 1.5
 
 
@@ -141,7 +142,7 @@ def test_neck_girth_ignores_the_face():
     """neck_circ is taken at one level on the body's own neck: a face fit (identity) can't move it (anthro's minimum
     up to the chin read the jaw: -9 cm "unintended" in every face fit)."""
     b = base()
-    nb, _ = hf.solve(b, {"jaw_width": "+6", "chin_height": "+4"})
+    nb, _ = humanfit_solve.solve(b, {"jaw_width": "+6", "chin_height": "+4"})
     m0, m1 = hf.state(b)["measures"], hf.state(nb)["measures"]
     assert 25 < m0["neck_circ"] < 50
     assert abs(m1["neck_circ"] - m0["neck_circ"]) < 1e-6
@@ -152,17 +153,17 @@ def test_hooded_lids_fitted_from_a_picture():
     were, no folds); fit_hood finds a known amount back from the upper lids' points in one picture."""
     b = base()
     st0 = hf.state(b)
-    tb = hf._with_hood(b, 0.003)
+    tb = humanfit_views._with_hood(b, 0.003)
     st1 = hf.state(tb)
     d = (st1["L"] - st0["L"]) * 1000
     assert (d[[37, 38, 43, 44], 2] < -0.8).all() and np.abs(d[[40, 41, 46, 47]]).max() < 0.05
     assert st1["measures"]["eye_height"] < st0["measures"]["eye_height"] - 0.8
-    it = hf.integrity(tb, st1, st0)
+    it = humanfit_integrity.integrity(tb, st1, st0)
     assert it["ok"] and it["numbers"]["folded_faces"] == 0, it
     cam = _front_cam(st1["L"])
-    uv = hf.project(cam, st1["L"])
+    uv = humanfit_views.project(cam, st1["L"])
     views = [{"size": [1024, 1024], "yaw": 0, "points": {f"lm{i}": uv[i].tolist() for i in range(68)}}]
-    nb, rep = hf.fit_hood(b, views, [cam])
+    nb, rep = humanfit_views.fit_hood(b, views, [cam])
     assert abs(rep["amount"] - 3.0) < 0.4, rep
     assert rep["rms_px_after"] < rep["rms_px_before"]
 
@@ -172,19 +173,19 @@ def test_outline_fit_is_symmetric_and_holds_features():
     the outline warp brings the silhouette to it, the face stays symmetric, the features (brows, eyes, nose, lips)
     stay put and nothing breaks."""
     b, target = base(seed=3), base(seed=3)
-    target = hf.solve(target, {"jaw_width": "+10"})[0]
+    target = humanfit_solve.solve(target, {"jaw_width": "+10"})[0]
     stt, st0 = hf.state(target), hf.state(b)
     cam = _front_cam(st0["L"])
     P = np.asarray(stt["tpl"]["P"], float)
     head = P[:, 2] > stt["L"][8, 2] - 0.005
-    uv = hf.project(cam, P[head])
-    ye, yc = hf.project(cam, stt["L"][[36]])[0][1], hf.project(cam, stt["L"][[8]])[0][1]
+    uv = humanfit_views.project(cam, P[head])
+    ye, yc = humanfit_views.project(cam, stt["L"][[36]])[0][1], humanfit_views.project(cam, stt["L"][[8]])[0][1]
     out = []
     for y in np.linspace(ye + 0.15 * (yc - ye), ye + 0.8 * (yc - ye), 9):
         row = uv[np.abs(uv[:, 1] - y) < 1.5]
         out += [[float(row[:, 0].min()), float(y)], [float(row[:, 0].max()), float(y)]]
     views = [{"size": [1024, 1024], "yaw": 0, "points": {}, "outline": out}]
-    nb, rep = hf.fit_outline(b, views, [cam], rounds=3)
+    nb, rep = humanfit_views.fit_outline(b, views, [cam], rounds=3)
     miss = [r["miss_mm"][0] for r in rep["rounds"]]
     assert miss[-1] < 0.6 * miss[0], miss
     assert rep["integrity"]["ok"], rep["integrity"]
@@ -205,7 +206,7 @@ def test_hollow_cheeks_read_on_the_section():
     st1 = hf.state(b1)
     h1 = hf.cheek_hollow(st1)
     assert min(h1.values()) > max(h0.values()) + 1.0 and abs(h1["left"] - h1["right"]) < 0.8, (h0, h1)
-    it = hf.integrity(b1, st1, st0)
+    it = humanfit_integrity.integrity(b1, st1, st0)
     assert it["ok"] and it["numbers"]["folded_faces"] == 0, it
 
 
@@ -226,7 +227,7 @@ def test_jaw_angle_is_a_symmetric_bony_corner():
     assert 0.003 < min(side.values()) and abs(side["left"] - side["right"]) < 0.0008, side
     L0, L1 = st0["L"], st1["L"]
     assert np.linalg.norm(L1[17:48] - L0[17:48], axis=1).max() < 0.0005
-    it = hf.integrity(b1, st1, st0)
+    it = humanfit_integrity.integrity(b1, st1, st0)
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
 
 
@@ -244,7 +245,7 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
     assert min(down) > 0.004 and abs(down[0] - down[1]) < 0.002, down
     assert np.linalg.norm(L1[17:68] - L0[17:68], axis=1).max() < 0.001
     assert np.linalg.norm(L1[8] - L0[8]) < 0.002
-    it = hf.integrity(b1, st1, st0)
+    it = humanfit_integrity.integrity(b1, st1, st0)
     assert it["ok"], it["broken"]
     for key, val, moved in (("ears", {"out": 25, "size": 1.1, "blend": 0.02}, "ears"), ("nose_tip", 8, "nose")):
         b2 = copy.deepcopy(b)
@@ -252,12 +253,12 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
         st2 = hf.state(b2)
         P0, P2 = np.asarray(st0["tpl"]["P"]), np.asarray(st2["tpl"]["P"])
         d = np.linalg.norm(P2 - P0, axis=1)
-        reg = hf._regions(st0["tpl"])
+        reg = humanfit_integrity._regions(st0["tpl"])
         assert d[reg[moved]].max() > 0.002, (key, d.max())
         other = ~reg[moved] & reg["head"]
         assert d[other].max() < (0.012 if key == "ears" else 0.004), (key, d[other].max())
         assert np.linalg.norm(st2["L"][36:48] - L0[36:48], axis=1).max() < 0.0005
-        assert hf.integrity(b2, st2, st0)["ok"], key
+        assert humanfit_integrity.integrity(b2, st2, st0)["ok"], key
     # the chin: wider between the mental corners, a level bottom, a mid-line cleft; the tip rounded; all symmetric
     b4 = copy.deepcopy(b)
     b4["head"].setdefault("shape", {}).update({"chin": {"width": 0.006, "square": 0.7, "cleft": 0.002},
@@ -271,7 +272,7 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
     mid = (np.abs(P0[:, 0]) < 0.002) & (np.linalg.norm(P0 - L0[8], axis=1) < 0.02)
     assert (P4[mid, 1] - P0[mid, 1]).max() > 0.001                      # the groove goes in (the head faces -y)
     assert np.linalg.norm(L4[36:48] - L0[36:48], axis=1).max() < 0.0005
-    assert hf.integrity(b4, st4, st0)["ok"]
+    assert humanfit_integrity.integrity(b4, st4, st0)["ok"]
     b3 = copy.deepcopy(b)
     b3["head"].setdefault("shape", {})["nose_tip"] = -8
     assert hf.state(b3)["L"][30][2] < L0[30][2] < hf.state(b2)["L"][30][2]
@@ -290,14 +291,14 @@ def test_lean_thins_under_the_jaw_and_keeps_the_border():
     d = np.linalg.norm(P1 - P0, axis=1)
     L0, L1 = st0["L"], st1["L"]
     jaw_z = float(np.mean(L0[[4, 5, 11, 12], 2]))
-    head = hf._regions(st0["tpl"])["head"]
+    head = humanfit_integrity._regions(st0["tpl"])["head"]
     under = head & (P0[:, 2] < jaw_z - 0.012) & (np.abs(P0[:, 0] - L0[8][0]) > 0.02)
     assert d[under].max() > 0.003, d[under].max()
     assert np.linalg.norm(L1[2:15] - L0[2:15], axis=1).max() < 0.0015       # the border keeps its place
     assert np.linalg.norm(L1[17:48] - L0[17:48], axis=1).max() < 0.0003     # brows, nose, eyes
     side = [d[head & (np.sign(P0[:, 0] - L0[8][0]) == sg)].max() for sg in (-1, 1)]
     assert abs(side[0] - side[1]) < 0.0008, side
-    it = hf.integrity(b1, st1, st0)
+    it = humanfit_integrity.integrity(b1, st1, st0)
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
     b2 = copy.deepcopy(b)
     b2["head"].setdefault("shape", {})["chin"] = {"cleft": 0.004, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.02}
@@ -315,18 +316,18 @@ def test_a_broken_solve_is_refused():
     broken result's integrity is reported), and returns the broken one only with force=True."""
     b = base()
     m0 = hf.state(b)["measures"]["mouth_width"]
-    nb, rep = hf.solve(b, {"mouth_width": m0 * 1.35})
+    nb, rep = humanfit_solve.solve(b, {"mouth_width": m0 * 1.35})
     if rep["integrity"]["ok"]:  # (if this face can take it, nothing to refuse: the guard is tested below directly)
-        nb2, rep2 = hf._guarded(b, {"x": 1}, {"integrity": {"ok": False, "broken": ["test"], "warnings": []}}, False)
+        nb2, rep2 = humanfit_integrity._guarded(b, {"x": 1}, {"integrity": {"ok": False, "broken": ["test"], "warnings": []}}, False)
         assert nb2 is b and "refused" in rep2
         return
-    assert nb is b and "refused" in rep and "BROKEN" in hf.report_text(rep)
-    nbf, repf = hf.solve(b, {"mouth_width": m0 * 1.35}, force=True)
+    assert nb is b and "refused" in rep and "BROKEN" in humanfit_sheet.report_text(rep)
+    nbf, repf = humanfit_solve.solve(b, {"mouth_width": m0 * 1.35}, force=True)
     assert nbf is not b and "refused" not in repf
 
 
 def st0_asym(b):
-    return hf.integrity(b)["numbers"]["asymmetry_mm"]
+    return humanfit_integrity.integrity(b)["numbers"]["asymmetry_mm"]
 
 
 if __name__ == "__main__":

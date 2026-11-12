@@ -6,6 +6,7 @@ import sys
 import numpy as np
 
 from hifipushie import assets, headage, humanfit as hf
+from hifipushie import humanfit_integrity
 
 
 def _have():
@@ -72,7 +73,7 @@ def test_nasolabial_fold():
     assert abs(s[0] - s[1]) < 0.0006, s
     assert np.linalg.norm(L1[17:31] - L0[17:31], axis=1).max() < 0.0003 and np.linalg.norm(L1[36:48] - L0[36:48], axis=1).max() < 0.0003
     assert np.linalg.norm(L1[0:17] - L0[0:17], axis=1).max() < 0.0006
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
     _, _, _, _, _, dh = moved({"nasolabial": {"depth": 0.003, "length": 0.5}})
     lo = P0[:, 2] < L0[48][2] - 0.004
@@ -95,7 +96,7 @@ def test_prejowl_and_jowl():
     assert np.linalg.norm(L1[8] - L0[8]) < 0.0008
     s = _sides(P0, d, mx)
     assert abs(s[0] - s[1]) < 0.0008, s
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"], it
 
 
@@ -115,7 +116,7 @@ def test_lid_fold_is_lateral_and_leaves_the_margin():
         assert (-d[outer][:, 2]).max() > 1.5 * max((-d[inner][:, 2]).max(), 1e-6)
         assert np.linalg.norm(L1[list(up)] - L0[list(up)], axis=1).max() < 0.34 * drop.max()
         assert np.linalg.norm(L1[list(low)] - L0[list(low)], axis=1).max() < 0.0002
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"], it
 
 
@@ -131,7 +132,7 @@ def test_cheek_flat():
         assert d[near][:, 2].min() < -0.0002
     for ids in (range(27, 36), range(36, 48), range(48, 68), range(0, 17)):
         assert np.linalg.norm(L1[list(ids)] - L0[list(ids)], axis=1).max() < 0.0007, list(ids)[:2]
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"], it
 
 
@@ -146,7 +147,7 @@ def test_lips_thin():
     assert np.linalg.norm(L1[27:36] - L0[27:36], axis=1).max() < 0.0006
     far = np.linalg.norm(P0 - 0.5 * (L0[62] + L0[66]), axis=1) > 0.05
     assert np.linalg.norm(d[far], axis=1).max() < 1e-4
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"], it
 
 
@@ -168,7 +169,7 @@ def test_eye_bag_under_the_lower_lid():
         assert np.linalg.norm(L1[list(low)] - L0[list(low)], axis=1).max() < 0.4 * fwd.max()
         assert np.linalg.norm(L1[list(up)] - L0[list(up)], axis=1).max() < 1e-4
     assert abs(out[0] - out[1]) < 0.25 * max(out)
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"], it
 
 
@@ -187,7 +188,7 @@ def test_hood_lateral_hangs_over_the_outer_corner():
         outer = zone & (np.abs(P0[:, 0] - L0[c_out][0]) < 0.005)
         assert (-d2[outer][:, 2]).max() > 2.0 * (-d2[inner][:, 2]).max()
         assert (-d2[outer][:, 2]).max() > 0.8 * (-dh[outer][:, 2]).max()
-    it = hf.integrity(b2, st2, st0)
+    it = humanfit_integrity.integrity(b2, st2, st0)
     assert it["ok"], it
 
 
@@ -215,7 +216,7 @@ def test_hood_crease_is_a_soft_fold_edge():
     q = Q[near]
     n = lambda P: np.cross(P[q[:, 2]] - P[q[:, 0]], P[q[:, 3]] - P[q[:, 1]])  # noqa: E731
     assert int(((n(P2) * n(Ph)).sum(1) < 0).sum()) == 0
-    it = hf.integrity(b2, st2, st0)
+    it = humanfit_integrity.integrity(b2, st2, st0)
     assert it["ok"], it
 
 
@@ -230,7 +231,7 @@ def test_lip_bow_and_tubercle():
     assert L0[62][2] - L1[62][2] > 0.0003, L0[62][2] - L1[62][2]
     for i in (57, 66, 33):
         assert np.linalg.norm(L1[i] - L0[i]) < 0.00025, (i, np.linalg.norm(L1[i] - L0[i]))
-    it = hf.integrity(b, st1, st0)
+    it = humanfit_integrity.integrity(b, st1, st0)
     assert it["ok"], it
 
 
@@ -250,7 +251,7 @@ def test_lip_roll_projects_the_vermilion():
     lo = np.linalg.norm(P0 - 0.5 * (L0[57] + L0[66]), axis=1) < 0.002
     assert (-d2[lo][:, 1]).max() > 0.0011
     for bb, s in ((b, st1), (b2, st2)):
-        it = hf.integrity(bb, s, st0)
+        it = humanfit_integrity.integrity(bb, s, st0)
         assert it["ok"], it
 
 

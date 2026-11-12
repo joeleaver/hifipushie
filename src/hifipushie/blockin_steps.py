@@ -199,6 +199,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         # (distance trades with size: a head_scale of 1.06 came back as the same pixels). Each camera follows the face's
         # landmark centre instead (centre shifted with it: the same point at the same pixel, the size change visible)
         from . import humanfit
+        from . import humanfit_views
         d = humanfit.state(sp["base"])["L"][:68].mean(0) - humanfit.state(store.load(src)["base"])["L"][:68].mean(0)
         for i, cam in enumerate(rj["cameras"]):
             if not cameras or i not in [int(j) for j in cameras]:
@@ -213,10 +214,11 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
                          "eyes, so an eye moved forward ships as the face moved back; the pictures' profile line stays on the face)")
     if cameras:
         from . import humanfit
+        from . import humanfit_views
         new = fit_cameras(sp["base"], rj["views"], rj)
         for i in cameras:
             a, b = rj["cameras"][int(i)], new[int(i)]
-            Rd = humanfit._cam_rot(a).T @ humanfit._cam_rot(b)
+            Rd = humanfit_views._cam_rot(a).T @ humanfit_views._cam_rot(b)
             ang = float(np.degrees(np.arccos(np.clip((np.trace(Rd) - 1) / 2, -1, 1))))
             cam_moves.append(f"view {i}: turned {ang:.1f} deg, distance x{b['t'][2] / a['t'][2]:.3f}, focal x{b['f'] / a['f']:.3f}")
             rj["cameras"][int(i)] = b

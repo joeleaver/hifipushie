@@ -446,6 +446,7 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
     the eyeball, per COLS, upper / lower), "ring" (the margin ring in the eye frame), "platform" (the lid skin under
     the fold that a front view shows), "crease_depth". brows=False skips the brow decal's read."""
     from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     base = spec["base"]
     st = humanfit.state(base)
@@ -455,7 +456,7 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
     fwd = np.asarray(ht.get("forward", [0, -1, 0]), float)
     r = float(ht["eye_r"])
     eyes = sorted([np.asarray(c, float) for c in ht["eyes"]], key=lambda c: c[0])      # subject's right (-x) first
-    poles = humanfit.project(cam, np.array([c + 0.985 * r * fwd for c in eyes]))
+    poles = humanfit_views.project(cam, np.array([c + 0.985 * r * fwd for c in eyes]))
     fr2 = frames(poles[0], poles[1])
     pad = 26.0 / mm
     lo_, hi_ = poles.min(0) - pad, poles.max(0) + pad
@@ -472,7 +473,7 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
         fr = {"c": (fr2[s]["c"] - np.array(box[:2])) * k, "ex": fr2[s]["ex"], "ey": fr2[s]["ey"]}
         M = patch((part == 1).astype(float)[..., None], fr, k / mm)[..., 0] > 0.5
         ring, tri = _ring(ht, eyes[s])
-        d = (humanfit.project(cam, Vh[ring]) - fr2[s]["c"]) * mm
+        d = (humanfit_views.project(cam, Vh[ring]) - fr2[s]["c"]) * mm
         ruv = np.c_[d @ fr2[s]["ex"], -(d @ fr2[s]["ey"])]
         anyc = M.any(0)
         ucols = U[anyc]
@@ -490,7 +491,7 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
              "tilt": float(np.degrees(np.arctan2(outer[1] - inner[1], outer[0] - inner[0]))),
              "caruncle": float(ucols[0] - inner[0]), "up": [at(top, x) for x in COLS], "lo": [at(bot, x) for x in COLS],
              "iris": 2 * r_iris, "c": fr2[s]["c"].tolist(), "ring": ruv.tolist()}
-        li = (humanfit.project(cam, np.asarray(st["L"][39 if s == 0 else 42], float)[None])[0] - fr2[s]["c"]) * mm
+        li = (humanfit_views.project(cam, np.asarray(st["L"][39 if s == 0 else 42], float)[None])[0] - fr2[s]["c"]) * mm
         m["inner_lm"] = [float(li @ fr2[s]["ex"]), -float(li @ fr2[s]["ey"])]   # GNM's own inner-corner landmark: the
         # canthal pocket's tip (the caruncle's corner), ~1.9 mm medial of the ring's end
         m["open"] = [a - b for a, b in zip(m["up"], m["lo"])]

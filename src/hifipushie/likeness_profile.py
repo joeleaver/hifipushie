@@ -330,7 +330,7 @@ def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None, points: dict | Non
     """Everything for one picture: the photo's contours (the outer one snapped to its edge), the model's, both sets of
     key points and measures. md = likeness_sides.model_sides entry (cam, passes, k, mesh, mmpx, side.lm = the model's
     landmarks projected); P_photo = the detector's points on the photo (heights of its own mouth / brow / chin)."""
-    from . import humanfit
+    from . import humanfit_views
     P = lines.get("profile")
     if not P or len(P) < 5:
         return None
@@ -352,7 +352,7 @@ def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None, points: dict | Non
            "photo": {"line": Qp, "v": vp, "c": cp, "kp": keypoints(vp, cp, lp_)},
            "model": {"line": Qm, "v": vm, "c": cm, "kp": keypoints(vm, cm, lv)}}
     ids = nose_ids(mesh["V"], mesh["L"])
-    Qv = humanfit.project(cam, mesh["V"][ids])
+    Qv = humanfit_views.project(cam, mesh["V"][ids])
     vn, cn, who = vertex_envelope(Qv, ids, fr, mmpx)
     out["model"]["nose"] = {"v": vn, "c": cn, "ids": who, "line": o + np.outer(cn / mmpx, ex) + np.outer(vn / mmpx, ey)}
     nmk = nose_keypoints(vn, cn, base_v=lv["sn"], nasion_v=max(lv["nasion"], vn.min()))
@@ -399,10 +399,10 @@ def shift(rd: dict, v0=None, v1=None) -> np.ndarray:
 
 
 def targets(rd: dict, mesh: dict, cam: dict, vi: int, part: str, v_range=None, gain: float = 1.0, cap_mm: float = 5.0) -> list:
-    """humanfit.fit_region targets from the contour's misses: the model vertices that make its contour ("outer": the
+    """humanfit_views.fit_region targets from the contour's misses: the model vertices that make its contour ("outer": the
     silhouette's vertices found near the outline; "nose": the nose envelope's own), each asked to move toward the
     facing side by the photo's contour minus the model's at its height (the camera's offset, `shift`, taken out)."""
-    from . import humanfit
+    from . import humanfit_views
     o, ex, ey = rd["frame"]
     mmpx = rd["mmpx"]
     dc, dv = shift(rd)
@@ -416,7 +416,7 @@ def targets(rd: dict, mesh: dict, cam: dict, vi: int, part: str, v_range=None, g
     else:
         vq, cq = rd["photo"]["v"] + dv, rd["photo"]["c"] + dc
         V = mesh["V"]
-        Qv = humanfit.project(cam, V)
+        Qv = humanfit_views.project(cam, V)
         x, v = (Qv - o) @ ex * mmpx, (Qv - o) @ ey * mmpx
         vm, cm = rd["model"]["v"], rd["model"]["c"]
         vs, cs, ids = [], [], []
@@ -438,7 +438,7 @@ def targets(rd: dict, mesh: dict, cam: dict, vi: int, part: str, v_range=None, g
         seen.add(int(i))
         raw = float(np.interp(g, vq, cq) - c)
         d = float(np.clip(gain * raw, -cap_mm, cap_mm))
-        u0 = humanfit.project(cam, mesh["V"][i][None])[0]
+        u0 = humanfit_views.project(cam, mesh["V"][i][None])[0]
         out.append({"view": vi, "tpl": [int(i)] * 3, "bary": [1.0, 0.0, 0.0], "uv": list(map(float, u0 + ex * d / mmpx)),
                     "miss_mm": d, "raw_mm": raw, "v": float(g)})
     return out

@@ -402,6 +402,18 @@ CARD_TIERS = {
 # hair.export.tier_triangles {tier: n} or hair.export.role (hero / main_npc / secondary_npc / crowd) overrides
 CARD_TIER_LOD = {"hero": 0, "main": 1, "npc": 2, "far": 3}
 
+
+def tier_triangles(tier: str, role: str = "hero", own: dict | None = None) -> int:
+    from . import budgets
+    if own and tier in own:
+        return int(own[tier])
+    return budgets.triangles(role, "hair_cards", CARD_TIER_LOD[tier])
+
+
+for _t in CARD_TIERS:  # (here, where CARD_TIERS is: importing hair alone gives every tier its triangles, as before the split)
+    CARD_TIERS[_t]["triangles"] = tier_triangles(_t)
+
+
 # (c13, coordinator 2026-10-19) a tier's DRAWN triangles (back faces included) stay within its role's RANGE maximum in
 # budgets.json (hair_cards range[1]): the tiers are the roles' hair (hero 50k, main_npc 20k, secondary_npc 8k, crowd 1.5k)
 CARD_CUT_SHARE = 0.8  # the clumps cut aims at this share of the tier's budget (card faces; the budget fit trims the rest:

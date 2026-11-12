@@ -582,8 +582,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         layer_tex = terrain_bake.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
     style_sec = None
     if T.spec.get("styles"):  # (per-style tileable layer textures + zone maps for the engine's shader: terrain_style)
-        from . import terrain_style
-        style_sec = terrain_style.write(out, T, {nm: mats.layer_ref(nm) for nm in mats.layers},
+        from . import terrain_style_files
+        style_sec = terrain_style_files.write(out, T, {nm: mats.layer_ref(nm) for nm in mats.layers},
                                         tiles=[(i, j, tuple(float(x) for x in np.concatenate(G.bounds(i, j))))
                                                for j in range(G.nj) for i in range(G.ni)], layers=mats.layers)
     detail = terrain_mesh._CTX.get("detail_entry")

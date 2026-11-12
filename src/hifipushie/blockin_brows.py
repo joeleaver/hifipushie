@@ -155,7 +155,7 @@ def model_band(J: dict, V: np.ndarray, cam: dict, o: dict, thickness: float, xs_
     """The decal's band on the head (vertices V) through the camera, per side (right, left) at picture columns
     xs_by_side (px along ex): {"low", "mid", "top"} px along ey (NaN where the brow does not reach), and "inner" /
     "outer" (the band's ends along ex)."""
-    from . import humanfit
+    from . import humanfit_views
     fall, taper = float(o.get("fall", 1.0)), float(o.get("taper", 0.82))
     out = []
     for s, sd in enumerate((-1, 1)):
@@ -163,7 +163,7 @@ def model_band(J: dict, V: np.ndarray, cam: dict, o: dict, thickness: float, xs_
         near = np.flatnonzero((np.linalg.norm(V - c, axis=1) < 0.06) & (V[:, 1] < c[1] + 0.02))
         Q = V[near]
         uv = np.c_[(Q - c) @ right, (Q - c) @ up]
-        P2 = humanfit.project(cam, Q)
+        P2 = humanfit_views.project(cam, Q)
         t = np.linspace(0.03, 0.99, n)
         u = ((0.04 + 0.92 * t) - 0.5) * w
         sp_ = (0.5 - _spine(t, fall)) * h + GROW * float(o.get("length", 0.006)) * (1 - np.clip((t - 0.55) / 0.4, 0, 1))

@@ -144,8 +144,8 @@ def masks(img, cam, head, origin=(0.0, 0.0), scale: float = 1.0, model: str | No
     """A picture of the model's head through cam (img = the camera's picture, or its crop at origin / scale): (the
     figure's mask, where it is BARE SKIN (face, ears, neck; not hair, cloth, glasses), {group: probability map}), all in
     img's pixels. Same meaning as face_ruler_outline.photo_masks, for any background."""
-    from . import humanfit
-    P = (humanfit.project(cam, np.asarray(head["L"], float)[:68]) - np.asarray(origin, float)) * float(scale)
+    from . import humanfit_views
+    P = (humanfit_views.project(cam, np.asarray(head["L"], float)[:68]) - np.asarray(origin, float)) * float(scale)
     box = head_box(P, img.size)
     g = groups(parse(img, box, model))
     full = {k: to_picture(v, box, img.size) for k, v in g.items()}

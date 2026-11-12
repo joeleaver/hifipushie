@@ -710,7 +710,7 @@ def _paint_inputs(spec: dict, ctx: dict, objs: list, insts: list, cache: Path, l
     prog_id = hashlib.sha1(json.dumps([prog["fallbacks"], prog["packing"], ours, INPUTS_VERSION, RT, CALIBRATION,
                                        LAYOUT],
                                       sort_keys=True, default=str).encode()).hexdigest()[:12]
-    from .paint import hand_painted, painted_values
+    from .paint_masks import hand_painted, painted_values
     hand = hand_painted(spec)  # layers painted by hand: each object on their parts carries an attribute to paint
     last = cache / "inputs_state.json"
     st = json.loads(last.read_text()) if last.exists() else {}
@@ -994,11 +994,12 @@ def _pull_params(spec: dict, params: dict, log: list) -> dict:
 
 
 def decal_gizmos(spec: dict, log: list) -> list:
-    """Every image decal's gizmo for the scene (images.gizmo): {"name", "path" (json path to the image entry),
+    """Every image decal's gizmo for the scene (images_gizmo.gizmo): {"name", "path" (json path to the image entry),
     "matrix", "verts", "edges"}."""
     from . import images
+    from . import images_frame, images_gizmo
     from .spec import expand_mirror
-    ents = images.decal_entries(spec)
+    ents = images_gizmo.decal_entries(spec)
     if not ents:
         return []
     s = expand_mirror(spec)
@@ -1010,19 +1011,19 @@ def decal_gizmos(spec: dict, log: list) -> list:
     for g in groups.values():
         path, img, ly, parts = g[0]
         try:
-            fr = images.frame(spec, img, s, parts=parts)
+            fr = images_frame.frame(spec, img, s, parts=parts)
         except Exception as e:  # noqa: BLE001 (a decal that can't be placed has no gizmo; save validates them)
             log.append(f"decal {ly}: no gizmo ({e})")
             continue
         out.append({"name": "decal:" + "+".join(".".join(str(k) for k in p[1:-1]) for p, *_ in g),
-                    "path": json.dumps([p for p, *_ in g]), **images.gizmo(fr)})
+                    "path": json.dumps([p for p, *_ in g]), **images_gizmo.gizmo(fr)})
     return out
 
 
 def _pull_decals(spec: dict, decals: dict, log: list) -> dict:
     """Decal gizmos a person moved, turned or scaled in the scene, written into their image entries
-    (images.from_gizmo)."""
-    from . import images
+    (images_gizmo.from_gizmo)."""
+    from . import images_frame, images_gizmo
     changes = {}
     for key, m in decals.items():
         paths = json.loads(key)
@@ -1037,9 +1038,9 @@ def _pull_decals(spec: dict, decals: dict, log: list) -> dict:
                 log.append(f"decal {label}: moved in the scene, but the spec has no such image any more")
         for path, label, img, parts in found:
             try:
-                new, notes = images.from_gizmo(spec, img, parts, m["was"], m["now"])
+                new, notes = images_gizmo.from_gizmo(spec, img, parts, m["was"], m["now"])
                 if new is not None:
-                    images.frame(spec, new, parts=parts, what=f"decal {label}")  # still a placement that works?
+                    images_frame.frame(spec, new, parts=parts, what=f"decal {label}")  # still a placement that works?
             except SpecError as e:
                 log.append(f"decal {label}: its gizmo's new placement doesn't work, left as it was ({e}); move it "
                            f"back in the scene, or the next sync puts it back")
@@ -1059,6 +1060,7 @@ def _pull_painted(spec: dict, painted: dict, log: list) -> dict:
     """Masks a person painted in the scene (the objects' "hp_paint:<layer>" colour attributes, each file every
     object's points for one layer), stored as point clouds and put into their layers."""
     from . import paint
+    from . import paint_masks
     changes = {}
     for ly, f in painted.items():
         if ly not in (spec.get("paint") or {}):
@@ -1066,10 +1068,10 @@ def _pull_painted(spec: dict, painted: dict, log: list) -> dict:
                        f"(with \"painted\": \"new\") and paint again")
             continue
         with np.load(f) as z:
-            pid = paint.save_painted(z["pos"], z["nrm"], z["val"], z["spacing"])
-        if paint.hand_painted(spec).get(ly, (None,))[0] == pid:  # pulled already (the scene not synced since)
+            pid = paint_masks.save_painted(z["pos"], z["nrm"], z["val"], z["spacing"])
+        if paint_masks.hand_painted(spec).get(ly, (None,))[0] == pid:  # pulled already (the scene not synced since)
             continue
-        paint.set_painted(spec, ly, pid)
+        paint_masks.set_painted(spec, ly, pid)
         changes[f"{ly}.painted"] = pid
         with np.load(paint.painted_path(pid)) as z:
             n, on = len(z["val"]), int((z["val"] > 0.5).sum())

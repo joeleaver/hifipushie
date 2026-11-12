@@ -12,6 +12,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from hifipushie import terrain_style as ts  # noqa: E402
+from hifipushie import terrain_style_fields, terrain_style_files, terrain_style_zones
 from hifipushie import terrain_mesh as tm  # noqa: E402
 from hifipushie import terrain_tile_jobs
 
@@ -56,10 +57,10 @@ def test_textures_tile_and_keep_their_colour():
             # (contract 2: soft layers are laid from the top only; rock is triplanar)
             assert ts.layer_sheet(st, lay).get("projection", "top") == ("triplanar" if lay == "rock" else "top"), (nm, lay)
             col = ts.layer_colour(st, lay, REFS)
-            S = ts.texture(st, lay, col, 256)
+            S = terrain_style_fields.texture(st, lay, col, 256)
             mean = S["albedo_linear"].reshape(-1, 3).mean(0)
             assert np.allclose(mean, ts._srgb_lin(col), atol=0.01), (nm, lay, mean)
-            seam = ts.tileable(S["albedo"])
+            seam = terrain_style_files.tileable(S["albedo"])
             assert seam < 1.5, (nm, lay, seam)  # (the manifest's 'shows' limit)
             assert np.isfinite(S["normal"]).all() and (S["normal"][..., 2] > 0).all()
 
@@ -78,7 +79,7 @@ def test_partition_and_weights():
              styles={"blobby": "downs", "anime": "paint", "cartoon": "hill"})
     T.spec["styles"] = {"blobby": "downs", "anime": "paint"}
     styles = ts.resolve(T.spec)
-    F = ts.style_fields(T, styles)
+    F = terrain_style_zones.style_fields(T, styles)
     assert F["order"] == ["blobby", "anime", "realistic"]
     W = sum(F["w"].values())
     assert np.allclose(W, 1.0)
@@ -91,7 +92,7 @@ def test_partition_and_weights():
     assert F["sd"]["blobby"][row, 0] > 0 > F["sd"]["blobby"][row, -1]
     # an island zone: realistic around it, a later style wins where zones overlap
     T.spec["styles"] = {"anime": "paint", "blobby": "hill"}
-    F = ts.style_fields(T, ts.resolve(T.spec))
+    F = terrain_style_zones.style_fields(T, ts.resolve(T.spec))
     j, i = np.argmin(np.abs(T.ys - 200)), np.argmin(np.abs(T.xs - 200))
     assert F["w"]["blobby"][j, i] > 0.99  # (inside the hill, which is also in the east zone)
     assert F["w"]["realistic"][j, 0] > 0.99
@@ -106,7 +107,7 @@ def test_write_files_manifest_and_cache():
         layers = ["grass", "rock", "sand"]
         refs = {k: REFS[k] for k in layers}
         tiles = [(i, j, (i * 128.0, j * 128.0, (i + 1) * 128.0, (j + 1) * 128.0)) for j in range(2) for i in range(2)]
-        sec = ts.write(d / "a", T, refs, tiles=tiles, layers=layers, px=128)
+        sec = terrain_style_files.write(d / "a", T, refs, tiles=tiles, layers=layers, px=128)
         assert sec["order"] == ["blobby", "realistic"]
         names = [s["name"] for s in sec["styles"]]
         assert names == ["blobby", "realistic"]
@@ -136,7 +137,7 @@ def test_write_files_manifest_and_cache():
                 if L.get("small"):
                     assert np.asarray(Image.open(d / "a" / L["small"]["albedo"])).shape[-1] == 4
         # a second write from the cache gives the same bytes
-        sec2 = ts.write(d / "b", T, refs, tiles=tiles, layers=layers, px=128)
+        sec2 = terrain_style_files.write(d / "b", T, refs, tiles=tiles, layers=layers, px=128)
         for p in (d / "a").rglob("*.png"):
             q = d / "b" / p.relative_to(d / "a")
             assert p.read_bytes() == q.read_bytes(), p
@@ -216,11 +217,11 @@ def test_rock_shape_by_zone():
 def test_pillow_is_smooth_and_bounded():
     rng = np.random.default_rng(1)
     p = rng.random((20000, 3)) * 20
-    c = ts.pillow_carve(p, 3.0, 0.8, 0.4, 5)
+    c = terrain_style_zones.pillow_carve(p, 3.0, 0.8, 0.4, 5)
     assert c.min() >= 0 and c.max() <= 0.8 + 1e-9 and c.mean() > 0.02
-    assert np.array_equal(c, ts.pillow_carve(p, 3.0, 0.8, 0.4, 5))
+    assert np.array_equal(c, terrain_style_zones.pillow_carve(p, 3.0, 0.8, 0.4, 5))
     q = p + np.array([0.01, 0, 0])
-    assert np.abs(ts.pillow_carve(q, 3.0, 0.8, 0.4, 5) - c).max() < 0.05
+    assert np.abs(terrain_style_zones.pillow_carve(q, 3.0, 0.8, 0.4, 5) - c).max() < 0.05
 
 
 def test_bands_wander_and_tile():
@@ -228,18 +229,18 @@ def test_bands_wander_and_tile():
     texture still tiles; without the wander keys the op is what it was (straight bands)."""
     n, L = 256, 24.0
     plain = {"op": "bands", "thickness": [0.25, 1.8], "edge": 0.015, "wave": 0.0}
-    t0, _ = ts.op_bands(n, L, plain, 7)
+    t0, _ = terrain_style_fields.op_bands(n, L, plain, 7)
     assert np.allclose(t0[:, 0], t0[:, n // 2])  # (no wander: every column alike)
     o = {**plain, "pinch": 0.35, "pinch_len": 14, "breaks": 0.2, "break_len": 12, "vary": 0.5, "vary_len": 10}
-    t1, _ = ts.op_bands(n, L, o, 7)
+    t1, _ = terrain_style_fields.op_bands(n, L, o, 7)
     cols = [t1[:, j] for j in range(0, n, n // 8)]
     diff = max(np.abs(a - b).mean() for a in cols for b in cols)
     assert diff > 0.05, diff
     st = ts.sheet("anime")
-    S = ts.texture(st, "rock", ts.layer_colour(st, "rock", REFS), 256)
-    assert ts.tileable(S["albedo"]) < 1.5
+    S = terrain_style_fields.texture(st, "rock", ts.layer_colour(st, "rock", REFS), 256)
+    assert terrain_style_files.tileable(S["albedo"]) < 1.5
     # the plain texture (on small / thin rock) has no strata: its rows vary as little as its columns
-    P = ts.texture(st, "rock", ts.layer_colour(st, "rock", REFS), 256, plain=True)
+    P = terrain_style_fields.texture(st, "rock", ts.layer_colour(st, "rock", REFS), 256, plain=True)
     row_var = lambda a: np.abs(np.diff(a.mean(1), axis=0)).mean()
     assert row_var(P["albedo_linear"]) < 0.5 * row_var(S["albedo_linear"])
 
@@ -248,21 +249,21 @@ def test_cartoon_grass_is_flat_with_marks():
     """Cartoon soft layers: a flat field in a few tones (most of the texture within a couple of colours) with marks;
     no baked macro variation; crisp layer edges."""
     st = ts.sheet("cartoon")
-    assert st["macro"] == 0.0 and ts.layer_edge(st)
-    S = ts.texture(st, "grass", ts.layer_colour(st, "grass", REFS), 512)
+    assert st["macro"] == 0.0 and terrain_style_zones.layer_edge(st)
+    S = terrain_style_fields.texture(st, "grass", ts.layer_colour(st, "grass", REFS), 512)
     q = np.round(S["albedo"] * 32).reshape(-1, 3)
     _, counts = np.unique(q, axis=0, return_counts=True)
     top2 = np.sort(counts)[::-1][:3].sum() / len(q)
     assert top2 > 0.8, top2  # (three colours hold most of the field: few values, no fbm mush)
-    assert ts.tileable(S["albedo"]) < 1.5
+    assert terrain_style_files.tileable(S["albedo"]) < 1.5
     # a crisp layer edge: weights that cross over 1 m become a step a few cm wide
     x = np.linspace(-1, 1, 201)
     w = np.clip(x / 2 + 0.5, 0, 1)
     W = np.stack([1 - w, w])
-    E = ts.edge_weights(W, np.zeros_like(W), ts.layer_edge(st))
+    E = terrain_style_zones.edge_weights(W, np.zeros_like(W), terrain_style_zones.layer_edge(st))
     width = ((E[1] > 0.05) & (E[1] < 0.95)).sum() * (x[1] - x[0])
     assert width < 0.1, width
-    assert ts.edge_weights(W, np.zeros_like(W), None) is W
+    assert terrain_style_zones.edge_weights(W, np.zeros_like(W), None) is W
 
 
 def test_rock_scale_finds_thin_rock():
@@ -274,7 +275,7 @@ def test_rock_scale_finds_thin_rock():
     T.H = H
     T.water = np.where(H < 0, 0.0, np.nan)
     T._slope = lambda: np.degrees(np.arctan(np.hypot(*np.gradient(H, T.cell))))
-    F, Th = ts.rock_scale(T)
+    F, Th = terrain_style_zones.rock_scale(T)
     j = 80
     assert F[j, 110] > 10 and F[j, 58] > 10
     assert Th[j, 110] < 5 < 15 < Th[j, 58], (Th[j, 110], Th[j, 58])

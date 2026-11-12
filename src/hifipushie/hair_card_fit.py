@@ -185,7 +185,7 @@ def human_ref_frames(name: str, names, stage: str | None = None) -> list:
     squared (a portrait 1152 x 1536 picture sits in the middle 3/4 of the frame's width)."""
     if not names:
         return []
-    from . import humanfit
+    from . import humanfit_views
     refs = human_refs(name, stage)
     out = []
     for n in names:
@@ -193,7 +193,7 @@ def human_ref_frames(name: str, names, stage: str | None = None) -> list:
         if i >= len(refs.get("cameras") or []):
             raise HairError(f"view {n}: {name} has {len(refs.get('cameras') or [])} fitted reference cameras")
         cam = refs["cameras"][i]
-        R = humanfit._cam_rot(cam)
+        R = humanfit_views._cam_rot(cam)
         eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
         fwd = R.T @ np.array([0.0, 0.0, 1.0])
         w, h = cam["size"]

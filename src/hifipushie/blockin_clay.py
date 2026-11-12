@@ -68,7 +68,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
     the front AND are visible from the front: they follow the surface, foreshorten and are occluded like paint. Cached
     on the mesh dict. None when the front picture's detector misses (draw_brows' landmark line is the fallback)."""
     from PIL import Image, ImageDraw, ImageFilter
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     if "_brows" in mesh:
         return mesh["_brows"]
@@ -104,7 +104,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
             rgb = np.median(px_[lum_ <= np.percentile(lum_, 25)], 0)
         if hb is not None:
             m = hb.resize(size, Image.BILINEAR)
-        L2 = humanfit.project(cam, mesh["state"]["L"])
+        L2 = humanfit_views.project(cam, mesh["state"]["L"])
         c = 0.5 * (L2.min(0) + L2.max(0))
         side = 1.5 * float(np.max(L2.max(0) - L2.min(0)))
         box = (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
@@ -189,7 +189,8 @@ def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
     """Paint the seated brows on a render (its passes ps, through cam / box / k): each skin pixel back-projected to
     the surface, seen from the front camera; inside the front band and visible there (depth within 2.5 mm) = brow."""
     from PIL import Image
-    from . import humanfit, likeness_shape as ls
+    from . import likeness_shape as ls
+    from . import humanfit_views
     a = np.asarray(im.convert("RGB"), float).copy()
     rr, cc = np.nonzero(ps["part"] == 0)
     if not len(rr):
@@ -197,7 +198,7 @@ def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
     uv = np.c_[cc / k + box[0], rr / k + box[1]]
     X = ls.unproject(cam, uv, ps["zb"][rr, cc])
     from scipy.ndimage import map_coordinates
-    q = humanfit.project(B["cam"], X)
+    q = humanfit_views.project(B["cam"], X)
     qm = (q - B["mo"]) * B["ss"]
     al = map_coordinates(B["mask"], [qm[:, 1], qm[:, 0]], order=1, mode="constant", cval=0.0)
     W, H = B["cam"]["size"]
@@ -205,7 +206,7 @@ def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
     zi = np.round((q - [B["box"][0], B["box"][1]]) * B["k"]).astype(int)
     zh, zw = B["zb"].shape
     inz = ok & (zi[:, 0] >= 0) & (zi[:, 0] < zw) & (zi[:, 1] >= 0) & (zi[:, 1] < zh)
-    Rf = humanfit._cam_rot(B["cam"])
+    Rf = humanfit_views._cam_rot(B["cam"])
     depth = ((X - np.asarray(B["cam"]["centre"], float)) @ Rf.T + np.asarray(B["cam"]["t"], float))[:, 2]
     vis = np.zeros(len(rr), bool)
     vis[inz] = (B["part"][zi[inz, 1], zi[inz, 0]] == 0) & (depth[inz] < B["zb"][zi[inz, 1], zi[inz, 0]] + 0.0025)
@@ -223,9 +224,9 @@ def brows_on(im, ps, mesh, rj, cam, box, k):
 def draw_brows(im, mesh, cam, box, k, mm: float = 2.0):
     """Brows as a line through the model's brow landmarks (views the detector can't read)."""
     from PIL import ImageDraw
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
-    L = humanfit.project(cam, mesh["L"])
+    L = humanfit_views.project(cam, mesh["L"])
     d = ImageDraw.Draw(im)
     wpx = max(1, int(round(mm / likeness_render._mm_per_px(cam, mesh["L"]) * k)))
     for a, b in ((17, 22), (22, 27)):

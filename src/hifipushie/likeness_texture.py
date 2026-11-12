@@ -90,7 +90,7 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
     None: as de-lit)."""
     from scipy import ndimage
     from scipy.spatial import cKDTree
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     from . import likeness_shape as ls
     L = np.asarray(mesh["L"], float)
@@ -98,7 +98,7 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
     io = float(np.linalg.norm(L[36:42].mean(0) - L[42:48].mean(0)))
     half = 2.1 * io
     w, h = src_cam["size"]
-    Rs = humanfit._cam_rot(src_cam)
+    Rs = humanfit_views._cam_rot(src_cam)
     zc = float(((centre - np.asarray(src_cam["centre"], float)) @ Rs.T + np.asarray(src_cam["t"], float))[2])
     density = src_cam["f"] / zc                              # the picture's own pixels per metre at the head
     px_per_m = float(px_per_m or np.clip(2.0 * density, 800, 4000))
@@ -112,7 +112,7 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
     z = zb[ii, jj]
     u, v = (jj + 0.5) / k, (ii + 0.5) / k
     Xc = np.c_[(u - n / 2) / cam["f"] * z, (v - n / 2) / cam["f"] * z, z]
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     X = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
     # seen by the picture's camera? (its own depth buffer, as project_reference)
     spx = int(min(max(w, h), 1600))
@@ -236,8 +236,8 @@ def near_camera(cam: dict, dist: float = 8.0) -> dict:
 
 def frame_of(cam: dict, name: str = "ref") -> dict:
     """A humanfit-style camera (its whole picture) as a render frame (perspective)."""
-    from . import humanfit
-    R = humanfit._cam_rot(cam)
+    from . import humanfit_views
+    R = humanfit_views._cam_rot(cam)
     eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
     fwd, up = R.T @ np.array([0.0, 0.0, 1.0]), R.T @ np.array([0.0, -1.0, 0.0])
     w, h = cam["size"]

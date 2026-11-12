@@ -791,7 +791,7 @@ def delta(sliders: dict | None, V: np.ndarray | None = None) -> np.ndarray | Non
 
 # ---- reading the eye from a render, and the least-change fit --------------------------------------------------------
 def eye_camera(st: dict, yaw: float = 0.0) -> dict:
-    """A fixed front camera at the subject's left eye (humanfit.project's dict), 0.5 m away, f 4000 px."""
+    """A fixed front camera at the subject's left eye (humanfit_views.project's dict), 0.5 m away, f 4000 px."""
     L = np.asarray(st["L"], float)
     return {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 4000.0, "size": [2000, 2000],
             "centre": (0.5 * (L[42] + L[45])).tolist(), "yaw": float(yaw)}
@@ -813,7 +813,7 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     rim's projected vertices."""
     from scipy.ndimage import map_coordinates
 
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     cam = cam or eye_camera(st)
     P = np.asarray(st["tpl"]["P"], float)
@@ -821,11 +821,11 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     eye = 0.5 * (L[42] + L[45])
     rim = _rows_of(st, template()["rim"])
     rim = rim[np.linalg.norm(P[rim] - eye, axis=1) < 0.025]
-    uv = humanfit.project(cam, P[rim])
+    uv = humanfit_views.project(cam, P[rim])
     d = uv[int(np.argmax(uv[:, 0]))] - uv[int(np.argmin(uv[:, 0]))]
     mm_px = 0.001 * cam["f"] / float(cam["t"][2])  # px per mm at the eye's depth
     mid = 0.5 * (L[43] + L[44])
-    c = humanfit.project(cam, mid[None])[0]
+    c = humanfit_views.project(cam, mid[None])[0]
     near = np.abs(uv[:, 0] - c[0]) < 1.5 * mm_px
     top, bot = float(uv[near, 1].min()), float(uv[near, 1].max())
     out = {"canthal_tilt": float(np.degrees(np.arctan2(-d[1], abs(d[0])))), "open": (bot - top) / mm_px}
@@ -884,20 +884,20 @@ def nose_widths(img, P, mmpx: float) -> dict:
 def read_mouth(st: dict, cam: dict | None = None, px: int = 500) -> dict:
     """The lips read from a clay render's depth pass through a front camera at the mouth: {"upper_proj", "lower_proj":
     mm the upper / lower vermilion's middle stands in front of the subnasale (lm 33), sampled over 1.5 mm}."""
-    from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     L = np.asarray(st["L"], float)
     c3 = 0.5 * (L[51] + L[57])
     cam = cam or {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0, "size": [2000, 2000],
                   "centre": c3.tolist(), "yaw": 0.0}
     mm_px = 0.001 * cam["f"] / float(cam["t"][2])
-    c = humanfit.project(cam, c3[None])[0]
+    c = humanfit_views.project(cam, c3[None])[0]
     box = (c[0] - 30 * mm_px, c[1] - 30 * mm_px, c[0] + 30 * mm_px, c[1] + 20 * mm_px)
     _, k, ps = likeness_render.render(likeness_render.model_mesh_from_state(st), cam, box, px=px, brows=False, passes=True)
     zb = ps["zb"]
 
     def z_at(p):
-        q = (humanfit.project(cam, np.asarray(p)[None])[0] - box[:2]) * k
+        q = (humanfit_views.project(cam, np.asarray(p)[None])[0] - box[:2]) * k
         r = max(1, int(round(0.75 * mm_px * k)))
         y, x = int(round(q[1])), int(round(q[0]))
         w = zb[max(y - r, 0):y + r + 1, max(x - r, 0):x + r + 1]

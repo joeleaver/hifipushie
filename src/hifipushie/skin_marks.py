@@ -72,8 +72,9 @@ def head_box(J: dict) -> tuple[np.ndarray, np.ndarray]:
 
 def head_mesh(spec: dict, part: str, J: dict, voxel: float = 0.0015):
     """The skin part's surface in the head's box: (V, N, F), area-weighted vertex normals; cached by the field."""
-    from . import images, sdf, store
-    prims = images.prims_on(spec, [part])
+    from . import sdf, store
+    from . import images_frame
+    prims = images_frame.prims_on(spec, [part])
     lo, hi = head_box(J)
     key = hashlib.sha1(json.dumps([sorted(sdf.fingerprint(p) for p in prims), np.round(lo, 5).tolist(),
                                    np.round(hi, 5).tolist(), voxel, VERSION]).encode()).hexdigest()[:16]
@@ -113,10 +114,11 @@ def head_curvature(spec: dict, part: str, J: dict, h: float = 0.01):
     """Per head-mesh vertex: the surface's mean curvature over ~h (the field's Laplacian / 2 by central differences
     h apart), in units of 1 / interocular (a ball one interocular round = 1): > 0 convex (the cheek's front, the
     nasolabial bulge, the chin), < 0 hollow (under the cheekbone, beside the nose). Cached with the mesh."""
-    from . import images, sdf, store
+    from . import sdf, store
+    from . import images_frame
     from .skin import interocular
     V, N, F = head_mesh(spec, part, J)
-    prims = images.prims_on(spec, [part])
+    prims = images_frame.prims_on(spec, [part])
     key = hashlib.sha1(json.dumps([sorted(sdf.fingerprint(p) for p in prims), len(V), np.asarray(V[:20]).round(5).tolist(), h,
                                    VERSION]).encode()).hexdigest()[:16]
     f = store.HOME / "_images" / f"mk_curv_{key}.npy"
@@ -170,7 +172,7 @@ def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000, keep_all:
 
 def sphere(J: dict, lat: tuple, lon: float, px_m: float) -> dict:
     """The wrap: centre inside the head at the mouth's height, latitude range `lat` (deg), `lon` deg round, pixels
-    ~px_m at the surface. Returns {"img": the image dict's placement keys, "fr": images.wrap_coords' frame, W, H}."""
+    ~px_m at the surface. Returns {"img": the image dict's placement keys, "fr": images_project.wrap_coords' frame, W, H}."""
     from .skin import interocular
     io = interocular(J)
     # (deep in the head, behind the mouth: a centre in the mouth itself mapped the tongue and teeth over the face)
@@ -193,7 +195,7 @@ def sphere(J: dict, lat: tuple, lon: float, px_m: float) -> dict:
 
 def pix(sp: dict, P: np.ndarray) -> np.ndarray:
     """Pixel coordinates (x right, y down; pixel centres at integers) of points."""
-    from .images import wrap_coords
+    from .images_project import wrap_coords
     u, v, _, _ = wrap_coords(sp["fr"], P)
     return np.stack([u * sp["W"] - 0.5, (1 - v) * sp["H"] - 0.5], 1)
 
@@ -357,7 +359,7 @@ def beard_density(J: dict, o: dict, curv=None):
     the neck, the cheek's rounded front and the nasolabial bulge are thinner (convex), the moustache, chin and jaw
     full, the lower lip's corners sparse beside a denser soul patch."""
     from .skin import interocular
-    from .paint import noise
+    from .paint_patterns import noise
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     trim = float(o["trim"])
@@ -620,7 +622,7 @@ def freckle_density(J: dict, o: dict):
     """Where freckles gather: what faces the sun (above and in front) on the nose, the malar cheeks, the forehead,
     less on the upper lip and chin; clusters from a low noise."""
     from .skin import interocular
-    from .paint import noise
+    from .paint_patterns import noise
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     sun = _unit(np.array([0.0, -0.55, 0.83]))
@@ -836,7 +838,7 @@ def base_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dict]:
     radii), seed."""
     from . import store
     from .noise import fbm
-    from .paint import cells
+    from .paint_patterns import cells
     from scipy.spatial import cKDTree
     sp = sphere(J, (-62.0, 72.0), 220.0, BASE_PX)
     V, N, F = head_mesh(spec, part, J)

@@ -71,7 +71,7 @@ def _photos(refs: dict) -> list:
 
 
 def stage_wants(cmp: dict, stage: str, skip=()) -> tuple:
-    """(want, pins, gaps) for humanfit.solve from a comparison: each of the stage's items with a `solve` measure and a
+    """(want, pins, gaps) for humanfit_solve.solve from a comparison: each of the stage's items with a `solve` measure and a
     miss beyond its tolerance in the FRONT view asks that measure to move by the miss (front views are near
     orthographic: a 2D miss in mm is the 3D measure's, x across and z up); items sharing a measure add up. Earlier
     stages' measures are pinned where they are. gaps = the stage's items that miss with no solver measure."""
@@ -118,14 +118,14 @@ def lever_value(base: dict, path: str, default: float) -> float:
 def with_lever(base: dict, path: str, x: float, force: bool = False) -> tuple:
     """(base, refused?) with the lever set to x (a nudge: the landmark moved x m along its axis from `base`)."""
     import copy as _copy
-    from . import humanfit
+    from . import humanfit_solve
     if path.startswith("nudge:"):
         _, lm, ax = path.split(":")
         mv = [0.0, 0.0, 0.0]
         mv["xyz".index(ax)] = float(x)
         if abs(x) < 1e-6:
             return base, False
-        nb, rep = humanfit.nudge(base, lm, move=mv, force=force)
+        nb, rep = humanfit_solve.nudge(base, lm, move=mv, force=force)
         return nb, bool(rep.get("refused"))
     out = _copy.deepcopy(base)
     d = out.setdefault("head", {})

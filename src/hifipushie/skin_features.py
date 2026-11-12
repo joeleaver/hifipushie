@@ -141,7 +141,7 @@ def hair_default(tone: dict, age: float) -> list:
 
 def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     """Adds the feature layers to `out`. Broad, soft layers are "_pre" (composited per vertex into the skin's base,
-    paint.precomposite); what needs detail finer than the mesh (hairs, dots, lines, ink) stays a layer of the node
+    paint_apply.precomposite); what needs detail finer than the mesh (hairs, dots, lines, ink) stays a layer of the node
     program, built from tiling swatches, images and spots only: a renderer's shader has room for a few dozen such
     layers, and none for a hundred procedural ones. Returns the masks of skin without pores (scar tissue)."""
     part, t, seed, age = p["part"], p["tone"], p["seed"], p["age"]
@@ -424,11 +424,11 @@ def _gnm_mouth(spec, out, part) -> None:
     """GNM's OWN MOUTH, dressed (minimal, 2026-10-12; Joe: "we'll figure out the dressing as we go along"): the mouth
     bag dark wet red on the skin's part, the gums on the teeth's part. Both masks are point clouds made from GNM's own
     vertices (its `mouth_sock` and `gums` groups, as the head places them), read like a hand-painted mask
-    (paint.painted_values): the gum line is GNM's scalloped one, not a height. Teeth and tongue keep their parts'
+    (paint_masks.painted_values): the gum line is GNM's scalloped one, not a height. Teeth and tongue keep their parts'
     flat colours (base_gnm_parts.MOUTH_PARTS): no enamel translucency, no tongue texture, no wet film yet."""
     from . import base_gnm_parts, base_identity, base_imls, base_measures
     from . import base
-    from . import paint as _paint
+    from . import paint_masks
     from . import spec as _specmod
     b = spec.get("base") or {}
     if base_gnm_parts.mouth_mode(b) != "gnm":
@@ -447,7 +447,7 @@ def _gnm_mouth(spec, out, part) -> None:
     # (the cloud's own spacing, and only points clearly inside the sock: at a 3 mm spacing the mask reached ~6 mm and
     # printed the bag's near-black red onto the outer skin at the mouth corners: two black "curls" on every GNM head)
     sp_ = float(np.median(cKDTree(sk["verts"]).query(sk["verts"], k=2)[0][:, 1]))
-    pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
+    pid = paint_masks.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
     # (the inner rolls are NOT a scene layer: with the lips closed the scene's surface has no rolls (the fill behind the
     # seam), so a painted cloud there found the outer lips instead (v8: lipstick red). The export paints them on the
     # low poly's own triangles by GNM index: asset_bake.bake's "inner_paint", values from inner_lip_values)
@@ -461,7 +461,7 @@ def _gnm_mouth(spec, out, part) -> None:
             gum = base_imls._catmull_clark(gum, F)[0]  # (the group's weight subdivided like the positions)
             V, F = V2, F2
         N, h = base_imls._normals_and_h(V, F)
-        pid = _paint.save_painted(V, N, np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1), 0.0012)
+        pid = paint_masks.save_painted(V, N, np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1), 0.0012)
         out["skin:gums" + ("" if tpart == "teeth" else "_lower")] = {
             "part": tpart, "color": list(base.GUM_COLOR), "roughness": 0.4, "specular": 0.5, "mask": [{"painted": pid}]}
     if TEETH_BACK:
@@ -473,7 +473,7 @@ def _gnm_mouth(spec, out, part) -> None:
             N, _h = base_imls._normals_and_h(V, F)
             dep = float((V @ out_).max()) - V @ out_
             u = np.clip((dep - TEETH_BACK[0]) / (TEETH_BACK[1] - TEETH_BACK[0]), 0, 1)
-            pid = _paint.save_painted(V, N, TEETH_BACK[2] * u * u * (3 - 2 * u), 0.0012)
+            pid = paint_masks.save_painted(V, N, TEETH_BACK[2] * u * u * (3 - 2 * u), 0.0012)
             out["skin:teeth_back" + ("" if tpart == "teeth" else "_lower")] = {
                 "part": tpart, "color": list(TEETH_BACK[3]), "roughness": 0.4, "specular": 0.5, "mask": [{"painted": pid}]}
     if TONGUE_BACK and "tongue" in mp and len(mp["tongue"]["verts"]):
@@ -486,7 +486,7 @@ def _gnm_mouth(spec, out, part) -> None:
         out_ = np.asarray(mp["frame"][1], float)
         dep = float((V @ out_).max()) - V @ out_
         u = np.clip((dep - TONGUE_BACK[0]) / (TONGUE_BACK[1] - TONGUE_BACK[0]), 0, 1)
-        pid = _paint.save_painted(V, N, u * u * (3 - 2 * u), 0.0012)
+        pid = paint_masks.save_painted(V, N, u * u * (3 - 2 * u), 0.0012)
         out["skin:tongue_back"] = {"part": "tongue", "color": list(MOUTH_DEEP_COLOR), "roughness": 0.45,
                                    "specular": 0.5, "mask": [{"painted": pid}]}
 
@@ -1134,7 +1134,7 @@ def _points(v, what):
 
 
 def _scars(spec, p, J, layer, T, ctx) -> None:
-    from . import paint
+    from . import paint_patterns
     base_r, seed = ctx["base_r"], p["seed"]
     for i, sc in enumerate(p["scars"]):
         what = f"skin scars[{i}]"
@@ -1173,7 +1173,7 @@ def _scars(spec, p, J, layer, T, ctx) -> None:
             layer(n, m_extra, color=col, opacity=0.85 * amt, roughness=max(base_r - 0.14, 0.2),
                   height=round((0.00035 - 0.0005 * old) * amt, 7), mask=area)
             if kind == "surgical":  # stitch marks: paired dots either side, ~6 mm apart
-                C = paint.resolve_spot(spec, {"at": pts, "radius": 0.001})["c"]
+                C = paint_patterns.resolve_spot(spec, {"at": pts, "radius": 0.001})["c"]
                 nrm = np.asarray(sc.get("normal", [0, -1, 0]), float)
                 seg = np.linalg.norm(np.diff(C, axis=0), axis=1)
                 s = np.concatenate([[0], np.cumsum(seg)])

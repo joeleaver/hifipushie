@@ -31,7 +31,8 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
     offset elsewhere doesn't hide its shape. before = another model: a second row photo | before | after | change |
     raking before | raking after. Views where the feature isn't seen (the ear in front) are left out."""
     from PIL import Image, ImageDraw, ImageFilter
-    from . import humanfit, store
+    from . import store
+    from . import humanfit_views
     from . import likeness_render
     if feature not in blockin.FEATURES:
         raise ValueError(f"focus: one of {', '.join(blockin.FEATURES)}")
@@ -57,8 +58,8 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         mesh, mesh_b = meshes[vi], (meshes_b[vi] if meshes_b else None)
         st = mesh["state"]
         img = Image.open(v["image"]).convert("RGB")
-        L2 = humanfit.project(cam, st["L"])
-        Pe = humanfit.project(cam, mesh["V"][mesh["ears"]]) if feature == "ears" and mesh.get("ears") is not None else None
+        L2 = humanfit_views.project(cam, st["L"])
+        Pe = humanfit_views.project(cam, mesh["V"][mesh["ears"]]) if feature == "ears" and mesh.get("ears") is not None else None
         if Pe is not None:   # (the ear nearer the camera: its vertices on the picture's near side)
             ex = mesh["V"][mesh["ears"]][:, 0]
             near = ex > 0 if float(v.get("yaw", 0)) < 0 else ex < 0
@@ -74,7 +75,7 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         clicked = []   # (a turned / profile view: the view's own clicked points that belong to the feature)
         for nm, uv in (v.get("points") or {}).items():
             try:
-                ix = humanfit.point_index(nm)
+                ix = humanfit_views.point_index(nm)
             except Exception:  # noqa: BLE001
                 continue
             if ix in F["lm"] or (feature == "nose" and ix in (27, 30, 33)) or (feature == "mouth" and 48 <= ix < 68):

@@ -67,6 +67,14 @@ def test_no_module_reads_a_name_it_never_binds():
     assert not bad, f"read as globals but never bound in their module: {bad}"
 
 
+def test_no_test_file_reads_a_name_it_never_binds():
+    """The tests too: most slow tests never run in the fast suite, so a name a move left behind in one is only found
+    when someone runs it (test_exported_squint_matches_fit read likeness_render inside a nested function whose
+    import the rewrite had not added; it is skipped without its environment, so nothing ever said)."""
+    bad = {p.name: names for p in sorted(Path(__file__).parent.glob("*.py")) if (names := unbound(p.read_text(), p.name))}
+    assert not bad, f"read as globals but never bound in their test file: {bad}"
+
+
 def test_no_function_deletes_a_name_it_never_binds():
     """`del name` of a local the function does not bind is an UnboundLocalError when the line runs (onemesh._carried
     imported retopo and ended with `del retopo`; a caller rewrite dropped the import and kept the del)."""

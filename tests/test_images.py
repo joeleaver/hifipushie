@@ -15,7 +15,9 @@ os.environ["HIFIPUSHIE_HOME"] = _TMP  # before hifipushie.store reads it
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from hifipushie import images, paint, paintnodes, sdf, store  # noqa: E402
+from hifipushie import images, paintnodes, sdf, store  # noqa: E402
+from hifipushie import images_frame, images_gizmo, images_project
+from hifipushie import paint_apply
 from hifipushie.spec import SpecError  # noqa: E402
 
 store.HOME = Path(_TMP)
@@ -73,18 +75,18 @@ def test_text_page():
 def test_projection():
     p = _png("lr.png", LR)
     spec = _board({"file": str(p), "at": "board", "size": [0.2, None]})
-    fr = images.frame(spec, spec["paint"]["pic"]["image"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"])
     assert np.allclose(fr["c"], [0, -0.01, 0]) and np.allclose(fr["dir"], [0, -1, 0])  # on the board's front face
     assert np.isclose(fr["h"], 0.1)  # from the image's aspect (4 x 2)
     assert np.allclose(fr["right"], [1, 0, 0]) and np.allclose(fr["up"], [0, 0, 1])  # reads left to right from the front
     pos = np.array([[-0.05, -0.01, 0.0], [0.05, -0.01, 0.0], [0.05, 0.01, 0.0], [0.3, -0.01, 0.0]])
     nrm = np.array([[0, -1, 0], [0, -1, 0], [0, 1, 0], [0, -1, 0.0]])
-    m, col = images.evaluate(fr, pos, nrm)
+    m, col = images_project.evaluate(fr, pos, nrm)
     assert np.allclose(m, [1, 1, 0, 0])  # the back face and outside the rectangle don't take it
     assert col[0, 0] > 0.9 and col[0, 2] < 0.1 and col[1, 2] > 0.9  # red on the left, blue on the right
     # mirrored: the mirror placement still reads red-left, blue-right as seen from its own front
-    mf = images.mirrored({**fr, "c": [0.5, -0.01, 0], "mirror": True})
-    m2, col2 = images.evaluate(mf, np.array([[-0.55, -0.01, 0.0], [-0.45, -0.01, 0.0]]), nrm[:2])
+    mf = images_project.mirrored({**fr, "c": [0.5, -0.01, 0], "mirror": True})
+    m2, col2 = images_project.evaluate(mf, np.array([[-0.55, -0.01, 0.0], [-0.45, -0.01, 0.0]]), nrm[:2])
     assert np.allclose(m2, 1) and col2[0, 0] > 0.9 and col2[1, 2] > 0.9
 
 
@@ -93,21 +95,21 @@ def test_mirror_image():
     from the nose outward on both sides); without, it reads the same way round (text). And the brow the skin lays."""
     p = _png("lr3.png", LR)
     spec = _board({"file": str(p), "at": "board", "size": [0.2, None]})
-    fr = {**images.frame(spec, spec["paint"]["pic"]["image"]), "c": [0.5, -0.01, 0], "mirror": True}
+    fr = {**images_frame.frame(spec, spec["paint"]["pic"]["image"]), "c": [0.5, -0.01, 0], "mirror": True}
     pos = np.array([[0.45, -0.01, 0.0], [0.55, -0.01, 0.0], [-0.45, -0.01, 0.0], [-0.55, -0.01, 0.0]])
     nrm = np.tile([0, -1.0, 0], (4, 1))
-    _, plain = images.evaluate(fr, pos, nrm)
-    _, anat = images.evaluate({**fr, "mirror_image": True}, pos, nrm)
+    _, plain = images_project.evaluate(fr, pos, nrm)
+    _, anat = images_project.evaluate({**fr, "mirror_image": True}, pos, nrm)
     assert plain[0, 0] > 0.9 and plain[1, 2] > 0.9  # red toward the centre line (inner), blue outer, on the +x side
     assert plain[3, 0] > 0.9 and plain[2, 2] > 0.9  # unmirrored: red is the OUTER end on the other side
     assert anat[2, 0] > 0.9 and anat[3, 2] > 0.9  # mirrored picture: red inner on both sides
     assert np.allclose(anat[:2], plain[:2])
     P = np.random.default_rng(0).uniform([0.4, -0.01, -0.05], [0.6, -0.01, 0.05], (200, 3))
-    ma, ca = images.evaluate({**fr, "mirror_image": True}, P, np.tile([0, -1.0, 0], (200, 1)))
-    mb, cb = images.evaluate({**fr, "mirror_image": True}, P * [-1, 1, 1], np.tile([0, -1.0, 0], (200, 1)))
+    ma, ca = images_project.evaluate({**fr, "mirror_image": True}, P, np.tile([0, -1.0, 0], (200, 1)))
+    mb, cb = images_project.evaluate({**fr, "mirror_image": True}, P * [-1, 1, 1], np.tile([0, -1.0, 0], (200, 1)))
     assert np.allclose(ma, mb) and np.allclose(ca, cb)  # the field on one side is the mirror of the other's
     with pytest_raises(SpecError):
-        images.frame(spec, {"file": str(p), "at": "board", "mirror_picture": True})
+        images_frame.frame(spec, {"file": str(p), "at": "board", "mirror_picture": True})
 
 
 def pytest_raises(exc):
@@ -136,8 +138,8 @@ def test_mask_and_channels():
             self.part = np.zeros(len(pos), int)
             self.part_names = ["board"]
     pos = np.array([[-0.05, -0.01, 0.0], [0.05, -0.01, 0.0]])
-    view = paint._View(_Pts(pos, np.array([[0, -1.0, 0]] * 2)), np.arange(2))
-    m = paint.layer_mask(spec, "stencil", spec["paint"]["stencil"], view)
+    view = paint_apply._View(_Pts(pos, np.array([[0, -1.0, 0]] * 2)), np.arange(2))
+    m = paint_apply.layer_mask(spec, "stencil", spec["paint"]["stencil"], view)
     assert m[0] > 0.9 and m[1] < 0.1  # the red channel as a stencil: on over the red half only
 
 
@@ -200,31 +202,31 @@ def _ring(fr, a, t, r):
 def test_cylinder_wrap():
     p = _png("lr4.png", LR)
     spec = _can(file=str(p), wrap="cylinder", at="can", size=[0.17, 0.08])
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
     assert np.isclose(fr["r0"], 0.033, atol=1e-6) and np.allclose(fr["k"], [0, 0, 1])
     assert np.allclose(fr["dir"], [0, -1, 0]) and np.allclose(fr["right"], [1, 0, 0])  # reads left to right from the front
     a = np.radians([-140.0, -60, 0, 60, 140])
     pos, n = _ring(fr, a, [0, 0.02, -0.02, 0.03, 0], 0.033)
-    u, v, w = images.project(fr, pos, n)
+    u, v, w = images_project.project(fr, pos, n)
     assert np.allclose(u, 0.033 * a / 0.17 + 0.5) and np.allclose(v, [0.5, 0.75, 0.25, 0.875, 0.5])  # arc length
     assert np.allclose(w, 1)
-    assert np.allclose(images.project(fr, pos * [0.9, 0.9, 1], -n)[2], 0)  # an inside wall (facing in) stays clean
-    m, col = images.evaluate(fr, pos[[1, 3]], n[[1, 3]])
+    assert np.allclose(images_project.project(fr, pos * [0.9, 0.9, 1], -n)[2], 0)  # an inside wall (facing in) stays clean
+    m, col = images_project.evaluate(fr, pos[[1, 3]], n[[1, 3]])
     assert col[0, 0] > 0.9 and col[1, 2] > 0.9  # red on the left of the front, blue on the right
     # 360 degrees: the two ends meet at the seam (behind), continuously
-    f2 = images.frame(spec, {**spec["paint"]["pic"]["image"], "size": [None, 0.08], "span": 360, "seam": 180},
+    f2 = images_frame.frame(spec, {**spec["paint"]["pic"]["image"], "size": [None, 0.08], "span": 360, "seam": 180},
                       parts=["can"])
     pos, n = _ring(f2, np.radians([179.9, -179.9]), [0, 0], 0.033)
-    u, _, _ = images.project(f2, pos, n)
+    u, _, _ = images_project.project(f2, pos, n)
     assert u[0] > 0.999 and u[1] < 0.001
     # the seam is where the wrap is cut: the centre stays at dir, a picture reaching past the seam is clipped there
-    f3 = images.frame(spec, {**spec["paint"]["pic"]["image"], "size": [None, 0.08], "span": 360, "seam": 90},
+    f3 = images_frame.frame(spec, {**spec["paint"]["pic"]["image"], "size": [None, 0.08], "span": 360, "seam": 90},
                       parts=["can"])
     pos, n = _ring(f3, np.radians([0.0, 89.9, 90.1]), [0, 0, 0], 0.033)
-    u, _, _ = images.project(f3, pos, n)
+    u, _, _ = images_project.project(f3, pos, n)
     assert np.isclose(u[0], 0.5) and np.isclose(u[1], 0.75, atol=1e-3) and u[2] < 0
     # mirrored: the mirrored can's label still reads left to right from its own front
-    mf = images.mirrored({**fr, "o": [0.2, 0, 0.06], "c": [0.2, -0.033, 0.06]})
+    mf = images_project.mirrored({**fr, "o": [0.2, 0, 0.06], "c": [0.2, -0.033, 0.06]})
     assert np.allclose(mf["right"], [1, 0, 0]) and np.allclose(mf["o"], [-0.2, 0, 0.06])
 
 
@@ -233,17 +235,17 @@ def test_taper_arc_length():
     radius, v = height along the axis)."""
     p = _png("lr5.png", LR)
     spec = _can(file=str(p), wrap="cylinder", axis="taper", at=[0.3, 0, 0.05], size=[0.05, 0.02], unroll="arc")
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
     assert np.allclose(fr["k"], [0, 0, 1]) and np.allclose(fr["o"], [0.3, 0, 0.05])
     for t in (-0.008, 0.0, 0.008):  # the surface's radius at each height, measured
-        r = images._hit(images.prims_on(spec, ["can"]), np.array([0.3, 0, 0.05 + t]), np.array([0, -1.0, 0]), "t")
+        r = images_frame._hit(images_frame.prims_on(spec, ["can"]), np.array([0.3, 0, 0.05 + t]), np.array([0, -1.0, 0]), "t")
         pos, n = _ring(fr, np.array([0.5]), [t], r)
-        u, v, w = images.project(fr, pos, n)
+        u, v, w = images_project.project(fr, pos, n)
         assert np.isclose((u[0] - 0.5) * 0.05, 0.5 * r, rtol=1e-6) and w[0] > 0.9  # metres round the surface
     # with span the picture is angular instead: the same angle everywhere
-    f2 = images.frame(spec, {**spec["paint"]["pic"]["image"], "size": [None, 0.02], "span": 90}, parts=["can"])
+    f2 = images_frame.frame(spec, {**spec["paint"]["pic"]["image"], "size": [None, 0.02], "span": 90}, parts=["can"])
     pos, n = _ring(f2, np.radians([45.0, 45.0]), [-0.008, 0.008], 0.02)
-    assert np.allclose(images.project(f2, pos, n)[0], 1.0)
+    assert np.allclose(images_project.project(f2, pos, n)[0], 1.0)
 
 
 def test_taper_cone():
@@ -252,19 +254,19 @@ def test_taper_cone():
     the slant distance, and the frame's cone matches the bone's (radius 0.03 -> 0.015 over 0.1 m)."""
     p = _png("lr10.png", LR)
     spec = _can(file=str(p), wrap="cylinder", axis="taper", at=[0.3, 0, 0.05], size=[0.05, 0.02])
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
     assert fr["unroll"] == "cone" and np.isclose(fr["m"], -0.15, atol=0.01) and fr["sg"] == 1.0
-    prims = images.prims_on(spec, ["can"])
-    rs = {t: images._hit(prims, np.array([0.3, 0, 0.05 + t]), np.array([0, -1.0, 0]), "t") for t in (-0.008, 0.008)}
+    prims = images_frame.prims_on(spec, ["can"])
+    rs = {t: images_frame._hit(prims, np.array([0.3, 0, 0.05 + t]), np.array([0, -1.0, 0]), "t") for t in (-0.008, 0.008)}
     for a in np.radians([-60.0, 0, 45]):
         pts = [_ring(fr, np.array([a]), [t], rs[t]) for t in (-0.008, 0.008)]
-        (u0, v0, w0), (u1, v1, w1) = (images.project(fr, q, n) for q, n in pts)
+        (u0, v0, w0), (u1, v1, w1) = (images_project.project(fr, q, n) for q, n in pts)
         assert np.isclose(u0[0], u1[0]) and np.isclose(u0[0], fr["r0"] * a / 0.05 + 0.5)  # along a generator
         slant = np.linalg.norm(pts[1][0][0] - pts[0][0][0])
         assert np.isclose((v1[0] - v0[0]) * 0.02, slant, rtol=0.02) and w0[0] > 0.9 and w1[0] > 0.9
     pos, n = _ring(fr, np.radians([-80.0, 10, 80]), [0.004] * 3, 0.0294)
-    assert np.ptp(images.project(fr, pos, n)[1]) < 1e-9  # a row runs round the cone at one height
-    fp = images.footprint(fr, 8)  # the footprint lies on the surface
+    assert np.ptp(images_project.project(fr, pos, n)[1]) < 1e-9  # a row runs round the cone at one height
+    fp = images_project.footprint(fr, 8)  # the footprint lies on the surface
     assert np.abs(sdf.field_at(prims, fp, clip=False)).max() < 1e-3
 
 
@@ -274,12 +276,12 @@ def test_sphere_wrap():
     spec["parts"]["ball"] = {}
     spec["blobs"]["ball"] = {"shape": "ellipsoid", "at": [0, 0.5, 0], "size": [0.1, 0.1, 0.1], "part": "ball"}
     spec["paint"]["pic"]["part"] = "ball"
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
     assert np.isclose(fr["r0"], 0.1, atol=1e-6)
     lat, lon = np.radians([0.0, 30, -45, 60]), np.radians([0.0, 90, -120, 170])
     d = (np.cos(lat)[:, None] * (np.cos(lon)[:, None] * np.array(fr["dir"]) + np.sin(lon)[:, None] * np.array(fr["right"]))
          + np.sin(lat)[:, None] * np.array(fr["k"]))
-    u, v, w = images.project(fr, np.array([0, 0.5, 0]) + 0.1 * d, d)
+    u, v, w = images_project.project(fr, np.array([0, 0.5, 0]) + 0.1 * d, d)
     assert np.allclose(u, lon / (2 * np.pi) + 0.5) and np.allclose(v, lat / np.pi + 0.5) and np.allclose(w, 1)
 
 
@@ -291,9 +293,9 @@ def test_surface_map_on_sphere():
     spec["parts"]["ball"] = {}
     spec["blobs"]["ball"] = {"shape": "ellipsoid", "at": [0, 0.5, 0], "size": [0.1, 0.1, 0.1], "part": "ball"}
     spec["paint"]["pic"]["part"] = "ball"
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
     assert np.allclose(fr["c"], [0, 0.4, 0], atol=1e-5) and np.allclose(fr["dir"], [0, -1, 0], atol=1e-4)
-    m = images.surface_map(fr)
+    m = images_project.surface_map(fr)
     c0, R = np.array([0, 0.5, 0]), 0.1
     err = []
     for beta in np.linspace(0, 2 * np.pi, 16, endpoint=False):
@@ -309,7 +311,7 @@ def test_surface_map_on_sphere():
     rng = np.random.default_rng(1)
     d = rng.normal(size=(20000, 3))
     d /= np.linalg.norm(d, axis=1, keepdims=True)
-    u, v, w = images.project(fr, c0 + R * d, d)
+    u, v, w = images_project.project(fr, c0 + R * d, d)
     inside = (u > 0.02) & (u < 0.98) & (v > 0.02) & (v < 0.98)
     assert inside.any() and (w[inside] > 0.99).all() and (w[d[:, 1] > 0] == 0).all()
 
@@ -338,7 +340,7 @@ def test_logmap_heat_vs_dem():
             "paint": {"pic": {"part": "ball", "color": "image",
                               "image": {"file": str(p), "wrap": "surface", "at": [0.013, 0.3, 0.021],
                                         "size": [0.16, 0.16], "up": [0.3, 0, 1]}}}}
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["ball"])
     prims = images._PRIMS[fr["geo"]]
     c0, R = np.array([0, 0.5, 0]), 0.1
     assert decalmap.method() == "heat"
@@ -371,49 +373,49 @@ def _rz(deg):
 
 
 def test_decal_gizmo_round_trip():
-    """A decal's gizmo moved, turned or scaled comes back into the spec (images.from_gizmo): near its blob as an
+    """A decal's gizmo moved, turned or scaled comes back into the spec (images_gizmo.from_gizmo): near its blob as an
     offset, far off as a world point; a spin as rotate, a tilt as dir/up; a scale as size; a wrap's height, turn
     round its axis and scale as offset, dir, span. Absolute: pulled twice, the spec is the same."""
     p = _png("lr11.png", LR)
     spec = _board({"file": str(p), "at": "board", "size": [0.1, None]})
     img = spec["paint"]["pic"]["image"]
-    fr = images.frame(spec, img, parts="board")
-    g = images.gizmo(fr)
+    fr = images_frame.frame(spec, img, parts="board")
+    g = images_gizmo.gizmo(fr)
     assert np.allclose(np.asarray(g["matrix"])[:3, 3], fr["c"])
-    assert images.from_gizmo(spec, img, "board", *_moved(g)) == (None, [])  # nothing moved
+    assert images_gizmo.from_gizmo(spec, img, "board", *_moved(g)) == (None, [])  # nothing moved
     # slid along the board's face by 2 cm: an offset from the blob (it keeps riding the board)
-    new, notes = images.from_gizmo(spec, img, "board", *_moved(g, T=[0.02, 0, 0.01]))
+    new, notes = images_gizmo.from_gizmo(spec, img, "board", *_moved(g, T=[0.02, 0, 0.01]))
     assert new["at"] == "board" and np.allclose(new["offset"], [0.02, 0, 0.01]) and not notes
-    f2 = images.frame(spec, new, parts="board")
+    f2 = images_frame.frame(spec, new, parts="board")
     assert np.allclose(f2["c"], np.asarray(fr["c"]) + [0.02, 0, 0.01])
-    again, _ = images.from_gizmo({**spec, "paint": {"pic": {**spec["paint"]["pic"], "image": new}}}, new, "board",
+    again, _ = images_gizmo.from_gizmo({**spec, "paint": {"pic": {**spec["paint"]["pic"], "image": new}}}, new, "board",
                                  *_moved(g, T=[0.02, 0, 0.01]))
     assert again is None or again == new  # absolute: a second pull of the same gizmo changes nothing
     # moved 30 cm away: a world point, dir/up written out
-    new, notes = images.from_gizmo(spec, img, "board", *_moved(g, T=[0.3, 0, 0]))
+    new, notes = images_gizmo.from_gizmo(spec, img, "board", *_moved(g, T=[0.3, 0, 0]))
     assert np.allclose(new["at"], np.asarray(fr["c"]) + [0.3, 0, 0], atol=1e-4) and "offset" not in new and notes
     assert np.allclose(new["dir"], fr["dir"]) and np.allclose(new["up"], fr["up"])
-    assert np.allclose(images.frame(spec, new, parts="board")["c"], np.asarray(fr["c"]) + [0.3, 0, 0], atol=1e-4)
+    assert np.allclose(images_frame.frame(spec, new, parts="board")["c"], np.asarray(fr["c"]) + [0.3, 0, 0], atol=1e-4)
     # spun 30 degrees about its normal: rotate
     Rspin = np.array(fr["dir"])  # rotation about dir (here -Y)
     K = np.array([[0, -Rspin[2], Rspin[1]], [Rspin[2], 0, -Rspin[0]], [-Rspin[1], Rspin[0], 0]])
     a = np.radians(30)
     Rd = np.eye(3) + np.sin(a) * K + (1 - np.cos(a)) * K @ K
-    new, _ = images.from_gizmo(spec, img, "board", *_moved(g, R=Rd))
+    new, _ = images_gizmo.from_gizmo(spec, img, "board", *_moved(g, R=Rd))
     assert np.isclose(new["rotate"], 30, atol=0.05) and new.get("offset") is None, new
-    f3 = images.frame(spec, new, parts="board")
+    f3 = images_frame.frame(spec, new, parts="board")
     assert np.allclose(f3["up"], Rd @ np.array(fr["up"]), atol=1e-4)
     # scaled 1.5 x uniformly: the width given, the height still from the image's aspect
-    new, _ = images.from_gizmo(spec, img, "board", *_moved(g, S=[1.5, 1.5, 1.5]))
+    new, _ = images_gizmo.from_gizmo(spec, img, "board", *_moved(g, S=[1.5, 1.5, 1.5]))
     assert new["size"] == [0.15, None]
     # a cylinder wrap: raised 1 cm along the can's axis, turned 40 degrees round it, scaled 1.2 x
     spec = _can(file=str(p), wrap="cylinder", at="can", span=120, size=[None, 0.04])
     img = spec["paint"]["pic"]["image"]
-    fr = images.frame(spec, img, parts=["can"])
-    g = images.gizmo(fr)
-    new, _ = images.from_gizmo(spec, img, ["can"], *_moved(g, T=[0, 0, 0.01], R=_rz(40), S=[1.2] * 3))
+    fr = images_frame.frame(spec, img, parts=["can"])
+    g = images_gizmo.gizmo(fr)
+    new, _ = images_gizmo.from_gizmo(spec, img, ["can"], *_moved(g, T=[0, 0, 0.01], R=_rz(40), S=[1.2] * 3))
     assert np.allclose(new["offset"], [0, 0, 0.01]) and np.isclose(new["span"], 144) and new["size"] == [None, 0.048]
-    f4 = images.frame(spec, new, parts=["can"])
+    f4 = images_frame.frame(spec, new, parts=["can"])
     assert np.isclose(f4["o"][2], fr["o"][2] + 0.01, atol=1e-6)
     assert np.allclose(f4["dir"], _rz(40) @ np.array(fr["dir"]), atol=1e-4) and np.allclose(f4["k"], fr["k"])
 
@@ -482,7 +484,7 @@ def test_wrap_mask_and_nodes():
     spec["paint"]["stencil"] = {"part": "can", "color": "#000000",
                                 "mask": [{"image": {"file": str(p), "wrap": "cylinder", "at": "can",
                                                     "size": [0.17, 0.08], "channel": "r"}}]}
-    fr = images.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"], parts=["can"])
     pos, n = _ring(fr, np.radians([-30.0, 30]), [0, 0], 0.033)
 
     class _Pts:
@@ -490,8 +492,8 @@ def test_wrap_mask_and_nodes():
             self.pos, self.normal = pos, nrm
             self.part = np.zeros(len(pos), int)
             self.part_names = ["can"]
-    view = paint._View(_Pts(pos, n), np.arange(2))
-    m = paint.layer_mask(spec, "stencil", spec["paint"]["stencil"], view)
+    view = paint_apply._View(_Pts(pos, n), np.arange(2))
+    m = paint_apply.layer_mask(spec, "stencil", spec["paint"]["stencil"], view)
     assert m[0] > 0.9 and m[1] < 0.1  # a wrapped stencil: on over the label's red half only
     prog = paintnodes.compile(spec)
     e = prog["layers"][0]["entries"][0]
@@ -511,12 +513,12 @@ def test_style_on_images():
     p = _png("lr9.png", LR)
     spec = _board({"file": str(p), "at": "board", "size": [0.2, None], "style": True})
     spec["style"] = {"paint": {"saturation": 0.5, "value": 0.8}}
-    fr = images.frame(spec, spec["paint"]["pic"]["image"])
+    fr = images_frame.frame(spec, spec["paint"]["pic"]["image"])
     assert Path(fr["path"]).name.startswith("s_")
     px = images.pixels(Path(fr["path"]))
     r = px[0, 0, :3]  # red, half saturated and 0.8 bright: (0.8, 0.4, 0.4)
     assert np.allclose(r, [0.8, 0.4, 0.4], atol=0.01), r
-    off = images.frame(spec, {**spec["paint"]["pic"]["image"], "style": False})
+    off = images_frame.frame(spec, {**spec["paint"]["pic"]["image"], "style": False})
     assert Path(off["path"]) == images.id_path(images.ingest(p))
 if __name__ == "__main__":
     for k, f in list(globals().items()):

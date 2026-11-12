@@ -69,16 +69,17 @@ def load(name: str) -> dict:
 
 def validate(spec: dict) -> None:
     """Every check a spec must pass before it is saved (raises SpecError / ValueError)."""
-    from . import cloth, paint, realism, strokes
+    from . import cloth, realism, strokes
+    from . import paint_check, paint_masks
     from . import hair_spec
     realism.validate(spec)
     hair_spec.validate(spec)
     cloth.validate(spec)
     strokes.check(spec)  # cheap static checks first: seating errors would only show up at build time
     prims = specmod.compile_prims(spec)  # validate before writing
-    paint.validate(spec)
-    paint.check_refs(spec, prims)  # names paint points at: here, not minutes into a sync
-    paint.check_paths(spec)  # paint paths seat (cached: the sync reuses the seating)
+    paint_check.validate(spec)
+    paint_check.check_refs(spec, prims)  # names paint points at: here, not minutes into a sync
+    paint_masks.check_paths(spec)  # paint paths seat (cached: the sync reuses the seating)
     for pn, d in (spec.get("parts") or {}).items():
         part_colour(pn, spec["parts"], 0)
 

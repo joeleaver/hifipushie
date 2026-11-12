@@ -310,6 +310,7 @@ def cameras_fit(base: dict, rj: dict) -> dict:
     views), "off": the centres' distance / the picture points' spread, "n": views read, "stale": bool}. A measured
     answer (no flag in the file can go stale itself)."""
     from . import humanfit
+    from . import humanfit_views
     L = np.asarray(humanfit.state(base)["L"], float)
     sc, of = [], []
     for v, cam in zip(rj["views"], rj["cameras"]):
@@ -317,7 +318,7 @@ def cameras_fit(base: dict, rj: dict) -> dict:
         if len(ids) < 6 or not cam:
             continue
         P = np.array([v["points"][f"lm{i}"] for i in ids], float)
-        Q = humanfit.project(cam, L[ids])
+        Q = humanfit_views.project(cam, L[ids])
         sp_, sq = float(np.sqrt(((P - P.mean(0)) ** 2).sum(1).mean())), float(np.sqrt(((Q - Q.mean(0)) ** 2).sum(1).mean()))
         sc.append(sq / sp_)
         of.append(float(np.linalg.norm(Q.mean(0) - P.mean(0))) / sp_)
@@ -407,10 +408,11 @@ def fit_cameras(base: dict, views: list, rj: dict | None = None) -> list:
 def _boxes(base: dict, rj: dict) -> list:
     """Each view's crop (picture pixels), from the START head: the same frame every round."""
     from . import humanfit
+    from . import humanfit_views
     L = humanfit.state(base)["L"]
     out = []
     for cam in rj["cameras"]:
-        P = humanfit.project(cam, L)
+        P = humanfit_views.project(cam, L)
         cc = 0.5 * (P.min(0) + P.max(0))
         side = 1.45 * float(np.max(P.max(0) - P.min(0)))
         out.append([cc[0] - side / 2, cc[1] - side * 0.56, cc[0] + side / 2, cc[1] + side * 0.44])

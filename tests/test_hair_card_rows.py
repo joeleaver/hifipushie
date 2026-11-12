@@ -91,7 +91,7 @@ def test_every_tier_fits_its_drawn_budget_back_faces_counted():
     assert {t: hair_job.tier_drawn_max(t) for t in hair.CARD_TIERS} == {"hero": 50000, "main": 20000, "npc": 8000, "far": 1500}
     D, locks = _groom()
     for tier in hair.CARD_TIERS:
-        budget, dmax = hair_job.tier_triangles(tier), hair_job.tier_drawn_max(tier)
+        budget, dmax = hair.tier_triangles(tier), hair_job.tier_drawn_max(tier)
         S_ = {**hc.STRANDS, **S, **{k: v for k, v in hair_job.tier_settings(tier).items() if k not in ("triangles", "cap_step", "cap")}}
         cards = hair_clumps_cut.cut(D, locks, C, S_, None, 0, triangles=budget)
         assert cards, tier

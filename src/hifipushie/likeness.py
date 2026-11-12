@@ -60,7 +60,7 @@ _MP_TO_LM[MP_EYES[1]] = 68
 
 
 def checklist() -> list:
-    """The items; `control` says what the staged fit uses: "solve <measure>" (humanfit.solve, wired), the stage's own
+    """The items; `control` says what the staged fit uses: "solve <measure>" (humanfit_solve.solve, wired), the stage's own
     control (fit_outline, fit_hood), or GAP + what a person would use by hand."""
     out = json.loads(CHECKLIST.read_text())["items"]
     for it in out:

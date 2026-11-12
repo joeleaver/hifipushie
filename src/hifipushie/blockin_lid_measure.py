@@ -37,10 +37,11 @@ def lid_model(base: dict, cam: dict) -> dict:
     """The model's lid margins read the same way on its front render: the visible eyeball (render part 1) in the column
     through the iris centre (the eyeball's forward pole), in the drawn iris cap's projected radius."""
     from . import humanfit
+    from . import humanfit_views
     from . import likeness_render
     st = humanfit.state(base)
     mesh = likeness_render.model_mesh_from_state(st)
-    P = humanfit.project(cam, st["L"])
+    P = humanfit_views.project(cam, st["L"])
     c = 0.5 * (P.min(0) + P.max(0))
     s = 1.4 * float(np.max(P.max(0) - P.min(0)))
     box = (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2)
@@ -50,12 +51,12 @@ def lid_model(base: dict, cam: dict) -> dict:
     out = {}
     for ce in st["head"]["eyes"]:
         ce = np.asarray(ce, float)
-        pole = humanfit.project(cam, (ce + r * fwd)[None])[0]
+        pole = humanfit_views.project(cam, (ce + r * fwd)[None])[0]
         u = np.cross(fwd, [0, 0, 1.0])
         u /= np.linalg.norm(u)
         ring = [ce + r * (0.86 * fwd + 0.51 * (np.cos(t) * u + np.sin(t) * np.array([0, 0, 1.0])))
                 for t in np.linspace(0, 2 * np.pi, 16, endpoint=False)]
-        R_ = float(np.mean(np.linalg.norm(humanfit.project(cam, np.array(ring)) - pole, axis=1))) * k
+        R_ = float(np.mean(np.linalg.norm(humanfit_views.project(cam, np.array(ring)) - pole, axis=1))) * k
         x, y = (pole[0] - box[0]) * k, (pole[1] - box[1]) * k
         xi = int(round(x))
         if not (0 <= xi < ps["part"].shape[1]):

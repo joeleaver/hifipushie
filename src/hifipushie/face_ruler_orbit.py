@@ -99,8 +99,8 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
     or None when the eye faces away. part: the model's own part picture through this camera (likeness_render.render's pass:
     >= 1 = eyeball): an arc the MODEL hides behind the nose bridge or a lid (under 60 % of it on the eyeball) is not
     read, and no read at all without the arc nearer the camera (a 45 deg view hides most of the far eye)."""
-    from . import humanfit
-    Rc = humanfit._cam_rot(cam)
+    from . import humanfit_views
+    Rc = humanfit_views._cam_rot(cam)
     X, r, fwd, up, lat = lb["X"], lb["r"], lb["fwd"], lb["up"], lb["lat"]
     eye_c = np.asarray(cam["centre"], float) - Rc.T @ np.asarray(cam["t"], float)
     to = eye_c - X
@@ -189,8 +189,8 @@ def _limbus_obs(head, view, iris_mm=None):
     if lum is None:
         lum = view["_lum"] = _lum(view["img"])
     lbs = limbus_model(head, iris_mm or view.get("iris_mm"))
-    from . import humanfit
-    Rc = humanfit._cam_rot(cam)
+    from . import humanfit_views
+    Rc = humanfit_views._cam_rot(cam)
     eye_c = np.asarray(cam["centre"], float) - Rc.T @ np.asarray(cam["t"], float)
     dist = [float(np.linalg.norm(lb["X"] - eye_c)) for lb in lbs]
     out = []
