@@ -7,35 +7,36 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - Pass 1 (landed, d8f3e9b9; tag archive/before-legacy-pass1): nine unreferenced modules, 13 spikes.
 - Clothes, cut 1 (landed, 551ff8d8; tag archive/before-legacy-cloth; ledger C409):
   - the nine gated tools (fit_garment, style_garment, release_garment, arrange_garment, dress, look_cloth, check_garment,
-    check_garment_reference, game_garment), HIFIPUSHIE_LEGACY_CLOTH and the guide's paragraph filter;
-  - every function and constant nothing live reached after that: 284, with modules cloth_over and hang_reads whole;
-  - their tests: 3 files whole, parts of 14. Source 214.2k -> 207.5k lines; 1,860 tests collect.
+    check_garment_reference, game_garment), HIFIPUSHIE_LEGACY_CLOTH, the guide's paragraph filter, and the 284 functions
+    and constants nothing live reached after that, with their tests. Source 214.2k -> 207.5k lines.
 - The guide's word-match filter had hidden text in every topic (gates, tools): back. Clothes guides keep what agents saw.
 - Clothes, cut 2 (landed, 5ba6e0e3; tag archive/before-legacy-cloth-2; ledger C411):
   - tools design_garment, look_pattern, alter_pattern, garment_reference, garment_from_reference,
     garment_reference_brief and the guide topic cloth_reference: no blind step trial called them (17 logs);
   - pattern_check takes (name, garment) and re-reads an own draft's flat gate; chain_garment the tool builds a garment
     only from its own draft. load_garment still loads design-sheet garments (cf_shirt, wf_simon) for regression runs;
-  - every live message that named a deleted tool now says: change it in your draft (draft_pattern);
-  - 281 functions and constants, fold_checks whole; their tests. Source 207.5k -> 202.4k lines; 1,792 tests collect.
+  - every live message that named a deleted tool now says: change it in your draft (draft_pattern); 281 functions and
+    constants and their tests. Source 207.5k -> 202.4k lines.
 - Proof for each cut (parent tree vs branch, fresh homes): cf_shirt and wf_simon builds bit-identical in X; flat_check
   on the s4-19 jacket and s4-14 hussar identical.
-- The split (tags archive/before-split-*; all landed):
+- The split (tags archive/before-split-*): constants never move (C422); every other unit moves unchanged.
   1 server.py (3,913 lines; C413) -> mcp_app, tool_common, tools_find, one tools_<domain>.py each; tool surface identical.
-  2 terrain_mesh.py (5,680; C414) -> 15 modules (terrain_mesh.MODULES), pure moves; the tile state hashes them all.
-  3 hair.py (5,694; C415) -> 15 modules (hair.MODULES); 28 functions import a later module themselves; rebound names late.
-  4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10, 10, 9; base.MODULES in the skin caches' hashes; class
-    GnmFace (1,788 lines) keeps its name, its methods in five mixins.
-  5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10; found a live bug (blockin.ruler): test_undefined_names.py.
-  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424) -> 8, 8, 6 modules; class Terrain (1,726 lines) in terrain_model
-    with five mixins; terrain.MODULES in the terrain cache's hash.
-  7 skin_project.py, vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7 modules.
-- CONSTANTS STAY (C422, landed 2026-11-11): export scripts outside the repo set module.NAME (assembly/exp.py
-  HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants; for hair and faceshapes
-  those values were then ignored. Now a family's base module holds every constant: tests/test_constants_address.py.
-- Still over 500 lines because one function is: terrain_tiles 928 (_export_tiles 799), vegetation_grow 750 (grow 733),
-  hair_cards_job 600 (cards_job 570): refactoring, not moving. Also terrain_volumes, faceshapes_face, hair_look, hair_groom.
-- Not done: module docstrings in drape, zozo_hang, garment_pull, cloth_check still describe removed parts (fix at split).
+  2 terrain_mesh.py (5,680; C414) -> 15 modules; the tile state hashes them all. 3 hair.py (5,694; C415) -> 15.
+  4 face_ruler.py, base.py, faceshapes.py (9.1k; C417) -> 10, 10, 9; class GnmFace keeps its name, methods in five mixins.
+  5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10. 6 terrain.py, clutter.py, hair_clumps.py (6.7k;
+    C424) -> 8, 8, 6; class Terrain in terrain_model. 7 skin_project.py, vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7.
+  8 (branch split-tier3; C427) rig, retopo, hair_cards, hair_flow, veg_style, asset, lods, paint, terrain_style,
+    humanfit, hair_read, images (19.5k) -> 71 modules. asset.export stays (the export scripts call it).
+- CONSTANTS STAY (C422): export scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET,
+  assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). A family's base module holds every constant and is the only
+  one that runs code at import: tests/test_constants_address.py.
+- MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
+  says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script.
+- Rule tests from the splits: test_undefined_names.py (source AND tests), test_constants_address.py, test_moved.py.
+- Still over 500 lines because one function is: asset_export 956 (_export 888), terrain_tiles 928 (_export_tiles 799),
+  vegetation_grow 750 (grow 733), hair_cards_job 600 (cards_job 570): refactoring, not moving.
+- NOT split, and why: terrain_stream (imports in the middle of the module: by hand); blender_* (Blender runs them by
+  path); fieldjit (numba kernels cached beside the file); artist (a CLI); the clothes files (the chain-build cut first).
 
 ## What still reaches the old clothes code (measured after cut 2; each cut assumes the ones above it)
 | cut | frees | what it needs first |
@@ -49,12 +50,12 @@ The clothes guides (cloth_guide, cloth_design, cloth_construction, cloth_sim, cl
 cloth_background) are what was left after the old paragraphs went: they need one rewrite to steps 0-10.
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
-Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. Proofs: proof.py (builds, flat checks), surface.py
-(the tool surface), same_units.py, same_members.py, rehomed_all.py. Splits: outline.py, unit_deps.py, rebound.py (before);
-split_module.py, split_class.py, rehome.py + plan_<module>.py; repoint.py, regap.py, retail.py, shadow_check.py (after).
+Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. A split: sections.py, rebound.py, external_uses.py
+(before); pipeline.sh <root> <tag> <module> runs split_module / split_class / rehome / add_modules / regap / retail /
+repoint and the proof. Proofs: same_units, same_members, same_comments, same_order, rehomed_all, shadow_check, surface.
 
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
 
-NEXT: the 1,500-2,000 line files (rig, retopo, veg_style, hair_cards, hair_flow); asset (after loop-retopology) and
-blender_scene (Blender runs it by path); the clothes files wait for the chain-build cut. Then giant functions, re-review.
+NEXT: the 1,000-1,300 line files with a plan each (skin_features, veg_export, scene, skin, veg_tools, onemesh,
+hair_strands, assemble, terrain_cliffs), terrain_stream by hand; then the giant functions; then the re-review.

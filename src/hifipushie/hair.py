@@ -518,4 +518,4 @@ OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from th
 # The modules this one was split into (C415). Their constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair", "hair_head", "hair_groom", "hair_seat", "hair_grow", "hair_spec", "hair_lockmesh", "hair_job",
            "hair_cards_job", "hair_card_fit", "hair_look", "hair_export", "hair_drawn", "hair_reference", "hair_trace")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

@@ -281,7 +281,7 @@ def _code_hash() -> str:
     from pathlib import Path
     here = Path(__file__).parent
     h = hashlib.sha1()
-    for f in ("paint.py", *(f"{m}.py" for m in MODULES), "materials.py", "noise.py", "surface.py"):  # (paint.py was split, C426)
+    for f in ("paint.py", *(f"{m}.py" for m in MODULES), "materials.py", "noise.py", "surface.py"):  # (paint.py was split, C427)
         h.update((here / f).read_bytes())
     return h.hexdigest()[:8]
 
@@ -343,5 +343,5 @@ GRAIN_OFFSET = np.array([97.3, 61.7, 83.1])  # x an element's grain_seed: each e
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("paint_check", "paint_patterns", "paint_masks", "paint_apply")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)
 _CODE = _code_hash()  # (below MODULES: the painting code is every module of the family)

@@ -49,7 +49,7 @@ from .tools_terrain import (  # noqa: F401
     check_terrain, export_terrain, look_terrain, set_terrain, terrain_history,
 )
 
-# A helper that moved out of server.py says where it is now (C426): the tools above are still server.<tool>.
+# A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
 __getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
                                       "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
                                       "tools_terrain", "tools_plants", "tools_clutter"))

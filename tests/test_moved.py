@@ -1,4 +1,4 @@
-"""A name that moved when its module was split says where it is now, and bin/repoint rewrites a script (C426).
+"""A name that moved when its module was split says where it is now, and bin/repoint rewrites a script (C427).
 
 Working scripts outside the repo call the package by module name (hair.export_hair, blockin.step). The splits moved
 those functions; the scripts then failed with a bare AttributeError and nothing said where the function was."""

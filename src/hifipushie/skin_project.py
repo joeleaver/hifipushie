@@ -178,4 +178,4 @@ MARK_MAX = 16               # at most this many, the darkest first
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("skin_project_atlas", "skin_project_sample", "skin_project_light", "skin_project_eyes",
            "skin_project_detail", "skin_project_make", "skin_project_lookup", "skin_project_model")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

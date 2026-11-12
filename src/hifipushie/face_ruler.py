@@ -456,4 +456,4 @@ DISAGREE = 2.0        # a read group left at more than this many of its own sigm
 # The modules this one was split into (C417). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("face_ruler_outline", "face_ruler_jaw", "face_ruler_solve", "face_ruler_orbit", "face_ruler_blockin",
            "face_ruler_features", "face_ruler_nose", "face_ruler_camera", "face_ruler_compare")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

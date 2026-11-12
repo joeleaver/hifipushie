@@ -227,4 +227,4 @@ MAP_SEAM = [
 # code of all of them (codehash.digest(*MODULES)): before the split that was this one module's import closure.
 MODULES = ("terrain_mesh", "terrain_volumes", "terrain_relief", "terrain_field", "terrain_materials", "terrain_gltf", "terrain_tile_mesh", "terrain_tile_border",
            "terrain_tile_jobs", "terrain_tiles", "terrain_tile_job", "terrain_tile_finish", "terrain_seam_check", "terrain_map_seams", "terrain_tile_views")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

@@ -212,4 +212,4 @@ CLUMP = {"blades": [5, 9], "width": 0.2, "thick": 0.6, "curl": 0.35, "heads": 3,
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("veg_style_wood", "veg_style_crown", "veg_style_dress", "veg_style_small")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

@@ -218,4 +218,4 @@ SHADOW_PROXY = {"voxel": 0.004, "close": 4, "inset": 0.004, "smooth": 1.2, "step
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair_cards_atlas", "hair_cards_mesh", "hair_cards_clumps", "hair_cards_mass", "hair_cards_budget")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

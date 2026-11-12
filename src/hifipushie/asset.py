@@ -244,4 +244,4 @@ FOLD_FORM_MAX_MM = 1.0  # (coordinator, Garrett s8) skin.folds up to this much r
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("asset_budget", "asset_parts", "asset_split", "asset_hidden", "asset_raster", "asset_bake",
            "asset_quality", "asset_scene", "asset_glb", "asset_gates", "asset_export")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

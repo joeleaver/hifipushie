@@ -210,4 +210,4 @@ RECIPE = (
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("terrain_style_fields", "terrain_style_zones", "terrain_style_files", "terrain_style_looks")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

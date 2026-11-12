@@ -581,7 +581,7 @@ def _cache_path(spec: dict, seasons) -> Path:
     import os
     from . import veg_style as _vs
     code = b"".join((Path(__file__).with_name(f).read_bytes() for f in
-                     ("veg_style.py", *(f"{m}.py" for m in _vs.MODULES),  # (veg_style.py was split: C426)
+                     ("veg_style.py", *(f"{m}.py" for m in _vs.MODULES),  # (veg_style.py was split: C427)
                       "veg_small.py", "veg_leaf.py", "blender_vegetation.py", "veg_look.py")))
     # (this module's own code is in BAKE_VERSION, not its bytes: the maps are composed from the cached renders, so an
     # edit to composing, cards or files never re-renders)

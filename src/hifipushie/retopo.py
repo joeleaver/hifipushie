@@ -371,4 +371,4 @@ SOCK_FALLOFF_NARROW = 0.0  # (with SOCK_FALLOFF) share of the tuck's narrowing k
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("retopo_warp", "retopo_patches", "retopo_fit", "retopo_wrap")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

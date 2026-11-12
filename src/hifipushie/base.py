@@ -200,4 +200,4 @@ _LIPC: dict = {}
 # Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("base_imls", "base_identity", "base_head_shape", "base_gnm_parts", "base_gnm_head", "base_measures",
            "base_tubes", "base_surface", "base_implied")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

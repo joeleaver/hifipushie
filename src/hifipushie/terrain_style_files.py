@@ -104,7 +104,7 @@ def write_layers(out: Path, st: dict, refs: dict, layers, px: int = terrain_styl
 
 def _code():
     if terrain_style._CODE is None:
-        src = Path(__file__).parent  # (terrain_style.py was split, C426: its code is every module of the family)
+        src = Path(__file__).parent  # (terrain_style.py was split, C427: its code is every module of the family)
         terrain_style._CODE = hashlib.sha1(b"".join((src / f"{m}.py").read_bytes()
                                                     for m in ("terrain_style", *terrain_style.MODULES))).hexdigest()
     return terrain_style._CODE

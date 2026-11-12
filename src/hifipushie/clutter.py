@@ -322,4 +322,4 @@ TERRAIN_KINDS = {
 # The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("clutter_forms", "clutter_solid", "clutter_mesh", "clutter_bake", "clutter_build", "clutter_export",
            "clutter_kit")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

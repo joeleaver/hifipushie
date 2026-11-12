@@ -1,4 +1,4 @@
-"""Where a name went when its module was split (C426).
+"""Where a name went when its module was split (C427).
 
 Scripts outside the repo (every round's working scripts, the export scripts) call the package by module name:
 hair.export_hair, blockin.step, likeness.render. A split moves functions and classes to the family's other modules

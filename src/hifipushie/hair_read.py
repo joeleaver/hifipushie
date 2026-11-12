@@ -151,4 +151,4 @@ GREY_CHROMA = 1.0  # light mode chroma / dark mode chroma under this: the light 
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair_read_capture", "hair_read_measures", "hair_read_read", "hair_read_compare", "hair_read_start")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

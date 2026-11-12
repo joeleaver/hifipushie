@@ -489,4 +489,4 @@ def family(name: str) -> str:
 # The modules this one was split into (C417). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("faceshapes_face", "faceshapes_apply", "faceshapes_gnm", "faceshapes_gnm_solve", "faceshapes_gnm_moves",
            "faceshapes_gnm_mouth", "faceshapes_gnm_lids", "faceshapes_gnm_lips")
-__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)
