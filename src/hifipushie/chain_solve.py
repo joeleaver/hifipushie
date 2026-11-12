@@ -220,7 +220,8 @@ class _Near:
     can't be nearer than d - m (distance is 1-Lipschitz), so it is asked again only when d - m < gap + REACH. Every
     caller only acts on points nearer than the gap, so the answer is exact where it is used; elsewhere sd is that bound
     and the normal zero. (The full query costs ~40 us a point: 400 PD passes over ~24k points would be minutes.)"""
-    REACH = 0.01
+    REACH = 0.001  # (only which points are asked again: any it skips is provably outside the gap; N1c: 1 cm -> 1 mm, same
+    # result to the bit at 6k points, fewer queries)
 
     def __init__(self, ct, gap):
         self.ct, self.gap = ct, float(gap)
