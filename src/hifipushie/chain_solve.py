@@ -26,7 +26,11 @@ THE METHOD, and why. Rounds of
    (sum w S^T S + prox I) X = sum w S^T P + prox X_prev, one matrix for x, y and z, CONSTANT, factored once. After each
    global step points inside the body are put back out at the gap. Why: it does the big moves (a seed 30 % stretched, a
    tube closing round a limb, a 170 degree fold) robustly, each pass is one back-substitution, and it never diverges
-   (each pass lowers the energy), so the jacket's ~24k points cost seconds, not hours.
+   (each pass lowers the energy), so the jacket's ~24k points cost seconds, not hours. Then PD_STIFFEN: the same passes
+   with the link and edge weights x10, x100 (one refactor each): the big moves are made, so stiffer springs now only
+   take the strain out (N1b: the LM pass at 1.5k points started at E 6e3, links 14 % off; after these stages E ~1,
+   links 0.1 %; the soft optimum barely moves). Contact rows in PD's matrix were tried: an isotropic row holds a node
+   where it first touched (a sleeve could not slide round its arm), E at LM's start went UP 10-25x.
 2. FAST PROJECTION (Goldenthal et al. 2007, as chain_net.project, over every point): the hard constraints, linearised,
    solved in one sparse system per pass (J J^T lambda = C), moving the points as little as possible until each holds to
    PROJ_TOL. Why: PD's springs only approach a length; the projection makes it exact. It is the last word of the solve.
@@ -57,6 +61,8 @@ PROX = 1e-3  # PD's proximal weight per node (rows / REF): keeps the matrix defi
 TOL_PCT = 2.0  # a link past this % off its cut is reported (over_tol)
 PROJ_TOL = 1e-4  # the projection's own target: links and exact edges within this fraction
 STEP = 0.02  # m: a projection pass's largest move
+PD_STIFFEN = (10.0, 100.0)  # the warm start's later stages: link and edge weights x these, refactored once each
+PD_STAGE_ITERS = 100  # PD passes per later stage
 PUSH_EVERY = 4  # PD passes between pushes out of the body (a body query is the PD pass's dearest part)
 # the Levenberg-Marquardt pass's weights (chain_solve_gn): it linearises directions, so the hard terms may be stiff
 W_GN = {"link": 1e4, "edge": 1e3, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF}
@@ -104,6 +110,7 @@ class _PD:
         li, lj, L, _ = t["links"]
         ei, ej, eL, ex = t["edges"]
         self.t = t
+        self.stiff = 1.0
         B = []  # (S, W, kind)
         B.append((_diff_rows(li, lj, nn), W_LINK / np.maximum(L, 1e-9) ** 2, "link"))
         B.append((_diff_rows(ei, ej, nn), W_EDGE / np.maximum(eL, 1e-9) ** 2, "edge"))
@@ -123,8 +130,9 @@ class _PD:
             B.append((_diff_rows(ta, tb, nn), np.full(len(ta), W_TIE / REF ** 2), "tie"))
         self.B = B
 
-    def finish(self, net):
-        """Fold weights need the flat distances (set here), then the constant matrix is factored."""
+    def finish(self, net, stiffen: float = 1.0):
+        """Fold weights need the flat distances (set here), then the constant matrix is factored. stiffen scales the
+        link and edge weights (the later stages of the warm start)."""
         B = []
         k = 0
         for S, W, kind in self.B:
@@ -135,8 +143,11 @@ class _PD:
                           np.linalg.norm(net.uv[q[:, 3]] - net.uv[q[:, 0]], axis=1)]
                 W = W_FOLD * f["weight"] / h ** 2
                 k += 1
+            elif kind in ("link", "edge"):
+                W = W * (stiffen / self.stiff)
             B.append((S, W, kind))
         self.B = B
+        self.stiff = stiffen
         nn = self.t["nn"]
         A = sp.identity(nn, format="csr") * (PROX / REF ** 2)
         for S, W, _ in B:
@@ -317,7 +328,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     pd = _PD(t)
     pd.finish(net)
     Xn = _push_out(t["Xn"], near, gap)
-    passes, lm = [], []
+    passes, lm, nfac = [], [], []
     tm = {"setup": time.time() - t0}
     t1 = time.time()
     for npd in range(pd_iters):
@@ -326,19 +337,28 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
             Xn = _push_out(Xn, near, gap)
         if np.abs(Xn - Xp).max() < 1e-7:
             break
+    for sf in PD_STIFFEN:  # (the big moves are made: stiffer springs now only take the strain out)
+        pd.finish(net, sf)
+        for k_ in range(PD_STAGE_ITERS):
+            Xp, Xn = Xn, pd.step(Xn)
+            if k_ % PUSH_EVERY == 0 or k_ == PD_STAGE_ITERS - 1:
+                Xn = _push_out(Xn, near, gap)
+            if np.abs(Xn - Xp).max() < 1e-7:
+                break
     tm["pd"] = time.time() - t1
     tm["lm"] = tm["project"] = 0.0
     for rnd in range(polish_rounds):
         t1 = time.time()
-        Xn, k, E = gn.polish(Xn, t, W_GN, near, gap, iters=lm_iters, log=log)
+        Xn, k, E, nf = gn.polish(Xn, t, W_GN, near, gap, iters=lm_iters, log=log)
         t2 = time.time()
         Xn, np_ = _project(Xn, t, near, gap, log=log)
         tm["lm"] += t2 - t1
         tm["project"] += time.time() - t2
         lm.append(k)
+        nfac.append(nf)
         passes.append(np_)
         if log:
-            log(f"round {rnd}: lm passes {k} (E {E:.4g}), projection passes {np_}")
+            log(f"round {rnd}: lm passes {k} ({nf} factors, E {E:.4g}), projection passes {np_}")
     t["Xn"] = Xn
     X = Xn[t["nid"]]
     rep = terms.report(net, X, t, None if ct is None else (ct, gap), TOL_PCT)
@@ -346,6 +366,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     rep["points"] = int(net.n)
     rep["projection_passes"] = passes
     rep["lm_passes"] = lm
+    rep["lm_factors"] = nfac
     rep["pd_passes"] = npd + 1
     rep["timing"] = {k: round(v, 2) for k, v in tm.items()}
     return X, rep

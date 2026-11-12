@@ -135,36 +135,53 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
     return r, J
 
 
+def _factor(A):
+    """Unpivoted sparse LU of an SPD matrix (splu without SymmetricMode: 2.7 s a factor at 1.5k points; with it, ms)."""
+    return splu(A.tocsc(), permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0, options={"SymmetricMode": True})
+
+
+REFACTOR = 3  # factors a pass may try (mu x 16 each) before the pass is called converged
+BACKTRACK = 6  # halvings of a rejected step along its own direction before a refactor at a higher damping
+
+
 def polish(Xn, t, w, ct, gap, iters: int = 30, mu: float = 1e-4, log=None):
-    """Levenberg-Marquardt over every node; returns (Xn, passes, final energy). (Pushing points out of the body after
-    each step instead of a contact residual was tried: the pushes undo the lengths, E 0.3 -> 7e4 on a tube.)"""
+    """Levenberg-Marquardt over every node; returns (Xn, passes, final energy, factors). A factor is the dear part (~4 s
+    at 24k points), so a rejected step is first halved along its own direction (a residual each, no factor) and the
+    damping raised to match for the next pass; only a step no halving makes better is refactored at mu x 16.
+    (Pushing points out of the body after each step instead of a contact residual was tried: the pushes undo the
+    lengths, E 0.3 -> 7e4 on a tube. CG preconditioned by an earlier pass's factor: it did not converge in 40
+    iterations on 26 of 29 passes, the matrix moves too much between passes.)"""
     r, J = residuals(Xn, t, w, ct, gap)
     E = float(r @ r)
-    k = 0
+    k = nf = 0
     for k in range(iters):
         H = (J.T @ J).tocsc()
         g = J.T @ r
         dg = H.diagonal()
         ok = False
-        for _ in range(20):
-            A = (H + sp.diags(mu * (dg + 1e-9))).tocsc()
-            dx = -splu(A, permc_spec="MMD_AT_PLUS_A", diag_pivot_thresh=0.0,
-                       options={"SymmetricMode": True}).solve(g)  # (SPD: no pivoting; 2.7 s -> ms a factor)
-            Xt = Xn + dx.reshape(-1, 3)
-            rt, _ = residuals(Xt, t, w, ct, gap, jac=False)
-            Et = float(rt @ rt)
-            if Et < E:
-                ok = True
+        for _ in range(REFACTOR):
+            dx = -_factor(H + sp.diags(mu * (dg + 1e-9))).solve(g).reshape(-1, 3)
+            nf += 1
+            s = 1.0
+            for _ in range(BACKTRACK + 1):
+                Xt = Xn + s * dx
+                rt, _ = residuals(Xt, t, w, ct, gap, jac=False)
+                Et = float(rt @ rt)
+                if Et < E:
+                    ok = True
+                    break
+                s *= 0.5
+            if ok:
                 break
-            mu *= 4.0
+            mu *= 16.0
         if log:
-            log(f"  lm {k}: E {E:.4g} -> {Et:.4g} mu {mu:.2g}")
+            log(f"  lm {k}: E {E:.4g} -> {Et:.4g} mu {mu:.2g} step {s:.3g}")
         if not ok:
             break
         drop = (E - Et) / max(E, 1e-30)
-        Xn, mu = Xt, max(mu / 3.0, 1e-9)
+        Xn, mu = Xt, (max(mu / 3.0, 1e-9) if s == 1.0 else mu / s)
         r, J = residuals(Xn, t, w, ct, gap)
         E = float(r @ r)
         if drop < 1e-4:
             break
-    return Xn, k + 1, E
+    return Xn, k + 1, E, nf

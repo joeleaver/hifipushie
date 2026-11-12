@@ -1,6 +1,6 @@
 """A garment-sized network for chain_solve's speed (N1b): a torso of two sewn panels and two sleeves of two sewn panels
 each, round a body of three cylinders (torso and two arms), seeded loose (each panel flat a little off the body). Scale
-sets the point count: scale 1 is ~24k points, 0.5 ~6k, 0.25 ~1.5k.
+sets the point count: scale 1 is ~24k points, 0.25 ~6k, 0.0625 ~1.5k.
 
     uv run python tests/chain_solve_bench.py [scale] [--profile]
 """
@@ -79,5 +79,5 @@ if __name__ == "__main__":
     sc = float(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else 1.0
     net, X, rep, wall = run(sc, "--profile" in sys.argv, log=print if "--log" in sys.argv else None)
     print(f"points {net.n} wall {wall:.1f} s")
-    for k in ("links", "edges", "contact", "hard_ok", "lm_passes", "projection_passes", "pd_passes", "timing"):
+    for k in ("links", "edges", "contact", "hard_ok", "lm_passes", "lm_factors", "projection_passes", "pd_passes", "timing"):
         print(k, rep.get(k))
