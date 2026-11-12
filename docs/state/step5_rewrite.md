@@ -54,7 +54,6 @@ layers as constraints) -> N3 (the build on the jacket, old stages deleted) -> N4
 - WHY still slow: LM needs ~13 factors at 6k (it crawls: a penalty LM on stiff links), each ~4 s at 24k unloaded.
   Ways out: a constrained step (SQP on the links / projection inside each pass) so LM needs ~3 factors; or a fast
   Cholesky (scikit-sparse needs libsuitesparse-dev headers: Joe's call); measure on an idle machine.
-
 Run: `uv run pytest -q tests/test_chain_solve.py`; bench `uv run python tests/chain_solve_bench.py [scale] [--log]`.
 
 NEXT: N1b run 3 on an idle machine: time 24k with the kept changes, then LM as SQP (soft step in the links' tangent +
