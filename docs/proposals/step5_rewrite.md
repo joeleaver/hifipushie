@@ -1,4 +1,4 @@
-# Step 5, rewritten: lay the pattern where it was measured, solve every length (proposal, 2026-11-11)
+# Step 5, rewritten: lay out the chains where they were measured (proposal 2026-11-11; cut to chains only 2026-11-12)
 
 ## Why
 Joe (2026-11-11): "Dunno why we're getting anything 2569% over its chain length though, that means we're trying to do
@@ -21,31 +21,40 @@ A survey of the step-5 code (every stage `GarmentBuild.run` reaches) found:
 Of ~8,000 lines, about 2,400 do the job (the link network and its projection, ties, folds, plies and layers, tapes);
 ~2,100 are role and shirt stages, ~1,400 alternative starts, ~450 the drape branch.
 
-## What step 5 is (the spec)
-Input: the approved flat pattern (pieces, seams, stiff pieces, folds, closures), step 2's plan (which pairs are tied,
-how far each fold turns, what it lies on), step 3's tapes and step 4's tapes per piece and per edge, the body.
-Output: every point of every piece in 3D such that:
-1. **every link is at its cut length** (the hard constraint; nothing is ever held against it);
-2. every seam is closed and every planned tie made;
-3. every fold is turned as planned and lies on what the plan says;
-4. nothing is inside the body;
-5. each piece lies where the body was measured for it (its tapes are where it is pulled towards, never pins);
-6. stiff pieces keep their flat shape (high bending stiffness), soft pieces may bend freely.
+## What step 5 is (the spec; cut to CHAINS ONLY with Joe, 2026-11-12)
+Joe (2026-11-12): "I feel like we're doing too much in this one step. I thought all this step was supposed to do was lay
+out the chains." N1-N2 had widened step 5 into a whole-cloth solve (24k surface points, interiors mapped onto the body,
+contact over every point, plies as surfaces); that is step 6's job and was the cause of both the speed problem and N2's
+torn start. Step 5 lays out the CHAINS; step 6 fills the surfaces between them (chain_net's Laplace fill).
 
-When those can't all hold, the build says which and where, and which step it goes back to: a length that can't reach
-(step 4: the pattern), a tape the piece can't lie on (step 3 or 4), a tie that can't close (step 4). Never a held
+Input: the approved flat pattern (pieces, seams, stiff pieces, folds, closures), step 2's plan (ties, fold turns, what each
+fold lies on), step 3's tapes and step 4's tapes per piece and per edge, the body.
+The network: CHAINS ONLY. Every piece's boundary edge and every fold / roll line is a chain of links at their cut;
+sewn edges share one chain; a few LINES across each piece (rulings between its chains: exact on stiff pieces, at most
+their flat length on soft) keep the chains apart. No interior points. A jacket is a few hundred to ~2k points.
+Output: every chain point in 3D such that:
+1. every link is at its cut length (hard; nothing is ever held against it);
+2. every seam is closed (one shared chain) and every planned tie made;
+3. every fold line turned as planned, lying on what the plan says;
+4. no chain point inside the body (or inside the garment it lies on);
+5. each chain lies where the body was measured for it (its tapes pull, never pin);
+6. stiff pieces keep their flat shape (their lines exact, high bending), soft pieces bend freely.
+A follower (facing, undercollar, lining) is chains too: its edges sewn to the host's share the host's chain; its free
+edges stay on the host's inner side.
+
+When those can't all hold, the build names which and where, and which step it goes back to: a seam whose two sides can't
+meet (step 4: the pattern), a tape a chain can't lie on (step 3 or 4), a tie that can't close (step 4). Never a held
 length.
 
 ## The build (one algorithm, no roles, no wear states)
-1. **Seed from tapes.** Each edge step 4 names on a tape is laid along it by arc length; each piece's interior is
-   mapped onto the body surface between its taped edges and lines (its tapes' girth loops and length paths). A piece
-   with no tape is refused (P2's rule).
-2. **Merge.** Sewn points become one node; tied pairs become one constraint each.
-3. **Solve once, everything free.** One projection over all links (hard, at their cut), seams, ties, body contact
-   (inequality), bending (stiff pieces high), fold turns (each fold line's dihedral towards its planned angle), with
-   the tapes as soft pulls. No held set. Plies and floating layers follow their host as constraints in the same solve,
-   not as copied positions.
-4. **Report** the residual per link, tie and fold, named by piece, edge and step.
+1. **Lay the chains on their tapes.** Each edge step 4 names on a tape is walked along it by arc length (lengths exact by
+   construction). The piece's other chains are walked from where they are sewn to a laid chain, by their own links, bent
+   only; the start is isometric (memory: start isometric), so a seam that can't meet is named, not stretched closed.
+2. **Merge.** Sewn edges are one chain; tied pairs one constraint each.
+3. **Solve once, everything free** (chain_solve on the chain network): links hard, ties, contact, bending along chains,
+   fold turns, lines across, tapes as soft pulls, followers inside their host. No held set.
+4. **Report** the residual per link, seam, tie and fold, by piece, edge and step.
+5. (Step 6, not here) surfaces filled between the solved chains.
 
 ## What stays, what goes
 - Stays (reworked where needed): chain_net's Network and projection (without the held mask), closure_ties,
@@ -67,8 +76,9 @@ length.
 ## Runs (one deliverable each)
 | # | Run | Size |
 |---|---|---|
-| N1 | The solver: one projection with no held set (links hard, contact, bending, ties, folds, tape pulls); unit tests on synthetic strips, tubes, a stiff collar on a soft neckline | M |
-| N2 | Seed from tapes (edges on tapes, interiors mapped between) and plies / layers as constraints; the jacket's start | M |
-| N3 | The new build end to end on the jacket (scratch copy with tapes), gates on its stages; then the old stages deleted (`chain_band`, `chain_fall`, ..., `place()` from the step-5 path) | L |
-| N4 | Shirt and hussar: steps 3 and 4 redone with tapes (P3), built by the same code, read against their old results | M |
+| N1 | The solver (done: no held set, CHOLMOD) | done |
+| N2 | Plies as a term; a whole-surface seed (done; the seed FAILED: the step was too big, see the spec) | done |
+| N2b | The chain network (boundary + fold chains + lines across, no interior); chains laid on their tapes and walked from their seams; one solve; the jacket's chains rendered alone beside the reference | M |
+| N3 | Step 6 fills surfaces between the solved chains; the new build wired into GarmentBuild; the old stages and the whole-surface seed deleted | L |
+| N4 | Shirt and hussar: steps 3 and 4 redone with tapes, built by the same code | M |
 | T | Blind step-5 trials, the jacket first | trials |
