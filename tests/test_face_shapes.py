@@ -19,6 +19,7 @@ import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
 from hifipushie import asset, faceshapes, sdf, store  # noqa: E402
+from hifipushie import asset_glb, asset_split
 from hifipushie import faceshapes_apply, faceshapes_face, faceshapes_gnm
 from hifipushie import faceshapes
 from hifipushie import faceshapes
@@ -40,8 +41,8 @@ def _parts() -> dict:
         return _PARTS
     spec = _spec()
     fine = faceshapes_face.Face(spec).voxels()
-    ctx = asset.split(spec, 96, True, [], min_share=1, voxels=fine)
-    path = asset.mesh_parts(ctx, Path(_TMP) / "high.npz")
+    ctx = asset_split.split(spec, 96, True, [], min_share=1, voxels=fine)
+    path = asset_split.mesh_parts(ctx, Path(_TMP) / "high.npz")
     with np.load(path) as z:
         V, F, P, names = z["verts"], z["faces"], z["part"], [str(n) for n in z["part_names"]]
     for i, pn in enumerate(names):
@@ -333,7 +334,7 @@ def test_glb_round_trip():
     png = Path(_TMP) / "flat.png"
     Image.new("RGBA", (4, 4), (128, 128, 255, 255)).save(png)
     glb = Path(_TMP) / "goblin.glb"
-    asset.write_glb(glb, "goblin", parts, [("0", {"basecolor": png, "orm": png, "normal": png, "specular": png})])
+    asset_glb.write_glb(glb, "goblin", parts, [("0", {"basecolor": png, "orm": png, "normal": png, "specular": png})])
     got = faceshapes_apply.read_glb(glb)
     assert set(got) == set(parts)
     for pn, p in parts.items():
@@ -343,7 +344,7 @@ def test_glb_round_trip():
             continue
         assert g["names"] == list(p["shapes"]) and g["weights"] == [0.0] * len(g["names"])
         assert len(g["targets"]) == len(g["names"])
-        pos, nrm, tan, uv, idx, src = asset._gltf_vertices(p)
+        pos, nrm, tan, uv, idx, src = asset_glb._gltf_vertices(p)
         assert g["count"] == len(pos)
         for name, t in zip(g["names"], g["targets"]):
             assert t["POSITION"].shape == (len(pos), 3) and t["NORMAL"].shape == (len(pos), 3)

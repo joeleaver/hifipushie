@@ -499,7 +499,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         # (hair-budget rule, coordinator 2026-10-19, reversing c10's drawn-triangle fit) the budget (the role DEFAULT)
         # counts CARD FACES, one side; DRAWN triangles (BACK_FACES exports every triangle but the cap's twice) stay
         # within the tier's drawn max when the tier names one (c13 card_allowance) and are checked against the role's
-        # range MAX at export (asset.hair_budget). BUDGET_UNIT names the unit; "drawn" restores c10's fit.
+        # range MAX at export (asset_budget.hair_budget). BUDGET_UNIT names the unit; "drawn" restores c10's fit.
         if hair.BUDGET_UNIT == "drawn":
             dmax_ = None
         else:

@@ -14,7 +14,8 @@ os.environ["HIFIPUSHIE_HOME"] = tempfile.mkdtemp(prefix="hp_hides_")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np  # noqa: E402
 
-from hifipushie import asset, hides, sdf, store  # noqa: E402
+from hifipushie import hides, sdf, store  # noqa: E402
+from hifipushie import asset_hidden, asset_split
 from hifipushie.spec import compile_prims  # noqa: E402
 
 TOP = 0.09  # the shoe's collar height
@@ -113,10 +114,10 @@ def test_scene_objects():
 
 def _export_high(spec, tmp):
     log = []
-    ctx = asset.split(spec, 160, False, log)
-    high = asset.mesh_parts(ctx, Path(tmp) / "high.npz")
+    ctx = asset_split.split(spec, 160, False, log)
+    high = asset_split.mesh_parts(ctx, Path(tmp) / "high.npz")
     full = dict(np.load(high))
-    asset.prune_hidden(ctx, high, log)
+    asset_hidden.prune_hidden(ctx, high, log)
     return ctx, full, dict(np.load(high)), log
 
 
@@ -142,12 +143,12 @@ def test_export():
     p = {"verts": full["verts"][sel], "corner_vert": loc.ravel(), "uv": np.zeros((loc.size, 2)),
          "normal": np.zeros((loc.size, 3)), "tangent": np.zeros((loc.size, 4)), "sign": np.ones(loc.size)}
     log = []
-    n = asset.hide_export_part(ctx1, "body", p, log)
+    n = asset_hidden.hide_export_part(ctx1, "body", p, log)
     assert n > 0 and len(p["corner_vert"]) == 3 * (len(fbf) - n) and len(p["uv"]) == len(p["corner_vert"]), log
     T = p["verts"][p["corner_vert"].reshape(-1, 3)].astype(np.float64)
     c = sdf.field_at(ctx1["streams"]["shoes"], T.reshape(-1, 3)).reshape(-1, 3)
     assert not (np.all(c < -0.004, 1) & np.all(T[..., 2] < TOP - 0.02, 1)).any()
-    assert asset.hide_export_part(ctx0, "body", dict(p), []) == 0
+    assert asset_hidden.hide_export_part(ctx0, "body", dict(p), []) == 0
 
 
 if __name__ == "__main__":

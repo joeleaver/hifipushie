@@ -62,7 +62,7 @@ def _tangents(V, T, UV):
 
 def export_part(name: str, out_dir: Path, spec: dict | None = None, texture: int = 1024, segments: int | None = None,
                 sides: int | None = None, log: list | None = None) -> tuple[dict, dict] | None:
-    """The hair as an export part: (part dict as asset.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
+    """The hair as an export part: (part dict as asset_parts.lowpoly makes them: verts, corner_vert, uv, normal, tangent,
     sign; atlas set by the caller) and its maps {basecolor, orm, normal, specular: png}. Low poly = the curve locks at
     `segments` x `sides` + the underlayer decimated; maps = Cycles bakes from the full-resolution locks (Blender)."""
     from PIL import Image
@@ -118,7 +118,6 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
     themselves for engines and renderers that draw them (`<name>_groom.abc` in centimetres for Unreal's groom
     importer / Unity's hair package, `<name>_groom.usdc` with the groom_* attributes as primvars). Returns the
     report (also `<name>_hair.json`)."""
-    from . import asset
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     spec = store.load(name) if spec is None else spec
@@ -155,7 +154,7 @@ def export_constants(h: dict):
 
 
 def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> dict:
-    from . import asset
+    from . import asset_glb
     from . import hair_cards_mass
     import shutil
     out_dir = Path(out_dir)
@@ -209,7 +208,7 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
                    "anisotropyTexture": {"index": list(files).index("flow")}}
             hc_["flow_texture"] = list(files).index("flow")
         hc_["textures"] = textures
-        asset.write_glb(glb, f"{name}_hair", {"hair": part}, [("hair", files)], external=textures == "shared",
+        asset_glb.write_glb(glb, f"{name}_hair", {"hair": part}, [("hair", files)], external=textures == "shared",
                         looks={"hair": {"alpha_cutoff": hc_["alpha_cutoff"], "double_sided": not hc_.get("back_faces"),
                                          "extras": {"hifipushie_hair": hc_}}},
                         extra_ext={0: {"KHR_materials_specular": {  # (a card is a sheet standing for many round

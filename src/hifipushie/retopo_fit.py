@@ -158,7 +158,7 @@ def graft_head(V, L, S, spec: dict, prims, log: list, unsub: int = 1, gap: float
     the bridge relaxed. Returns (V, L, S)."""
     import copy
     import tempfile
-    from . import asset
+    from . import asset_budget
     from . import base_measures
     s = expand_mirror(spec)
     b = copy.deepcopy(spec["base"])
@@ -179,7 +179,7 @@ def graft_head(V, L, S, spec: dict, prims, log: list, unsub: int = 1, gap: float
         tmp = Path(tmp)
         np.savez(tmp / "body.npz", verts=Vb, loops=Lb, sizes=Sb)
         np.savez(tmp / "head.npz", verts=Vh, loops=Lh, sizes=Sh)
-        asset._blender({"mode": "graft_topology", "body": str(tmp / "body.npz"), "head": str(tmp / "head.npz"),
+        asset_budget._blender({"mode": "graft_topology", "body": str(tmp / "body.npz"), "head": str(tmp / "head.npz"),
                         "plane_c": list(map(float, c)), "plane_n": list(map(float, n)), "gap": 0.08, "unsub": unsub,
                         "cuts": 2, "out": str(tmp / "out.npz")})
         z = np.load(tmp / "out.npz")

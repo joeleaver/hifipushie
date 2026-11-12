@@ -447,10 +447,10 @@ def test_decal_pull_through_blender():
 
 
 def test_chart_border_steps():
-    """asset.seam_steps on a square cut into two charts along x = 0 (packed apart, at different sub-texel phases):
+    """asset_quality.seam_steps on a square cut into two charts along x = 0 (packed apart, at different sub-texel phases):
     a map that is the surface's own function on both sides (texels past each chart's edge extrapolated, as
     `rasterize(ring=)` gives them) reads ~1 (measured 1.0); one chart a texel off reads over twice that (2.3)."""
-    from hifipushie import asset
+    from hifipushie import asset_quality, asset_raster
     S = 64
     # 3D: two triangles sharing the edge (0, 0)-(0, 1) in the z = 0 plane, 4 cm across
     V = np.array([[0, 0, 0], [0, 0.04, 0], [-0.04, 0.02, 0], [0.04, 0.02, 0]], float)
@@ -461,7 +461,7 @@ def test_chart_border_steps():
     part = {"verts": V, "corner_vert": cv, "uv": np.concatenate([uvA, uvB]), "atlas": 0}
 
     def bake(ring, shift_b=0.0):
-        (ys, xs), tri, bary, _, _, _ = asset.rasterize({"p": part}, S, ring=ring)
+        (ys, xs), tri, bary, _, _, _ = asset_raster.rasterize({"p": part}, S, ring=ring)
         P = np.einsum("nk,nkc->nc", bary, V[cv.reshape(-1, 3)][tri])
         y = P[:, 1] + 0.7 * P[:, 0] + np.where(tri == 1, shift_b, 0.0)  # an edge crossing the seam at a slant
         val = 1 / (1 + np.exp(-(y - 0.0213) / 0.0015))  # an edge across the seam, about a texel wide
@@ -469,9 +469,9 @@ def test_chart_border_steps():
         img[ys, xs] = val[:, None]
         filled = np.zeros((S, S), bool)
         filled[ys, xs] = True
-        return asset._dilate(img, filled)
-    good = asset.seam_steps(part, bake(2))["excess"]
-    off = asset.seam_steps(part, bake(2, shift_b=0.04 / 20))["excess"]  # chart B a texel off
+        return asset_raster._dilate(img, filled)
+    good = asset_quality.seam_steps(part, bake(2))["excess"]
+    off = asset_quality.seam_steps(part, bake(2, shift_b=0.04 / 20))["excess"]  # chart B a texel off
     assert 0.7 < good < 1.3, good
     assert off > 2.0 * good, (good, off)
 

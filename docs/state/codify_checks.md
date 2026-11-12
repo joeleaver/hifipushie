@@ -3,17 +3,17 @@
 ## Current (branch worktree-agent-abd5ef7c5d758a6b3; tests: tests/test_codified.py, 16 pass + 1 skip)
 | rule | where enforced | test |
 |---|---|---|
-| 1/2 approved head, folds <= 1 mm | asset.approved_head / fold_form_gate (landed) | test_export_gates_on_the_approved_head_and_fold_form (runs, passes) |
+| 1/2 approved head, folds <= 1 mm | asset_gates.approved_head / fold_form_gate (landed) | test_export_gates_on_the_approved_head_and_fold_form (runs, passes) |
 | 3 expressions = parameter mixes | faceshapes.refuse_sculpt (env HP_SHAPE_SCULPT, face_fits.sculpt, _sculpted, teeth rest); opt-out HIFIPUSHIE_ALLOW_SHAPE_SCULPT=1 (WARNING); EXPRESSION_PRESETS["smile_tess"], expression() | test_sculpted_expression_deltas_are_refused, test_expression_presets_are_arkit_mixes |
-| 4 hair budget | asset.hair_budget + budget_check (card faces vs default, drawn vs range max = FAIL -> _export raises; vertices); hair.BUDGET_UNIT "card_faces" (cards fitted to card faces) | test_hair_budget_* |
-| 5 view transform (AgX vs PBR Neutral) | asset.same_view / game_light_view (scene.look, asset.preview), face_light_check views= required -> MixedViewTransform | test_mixed_view_transforms_are_refused |
-| 6 half-sided hair | asset.write_glb raises on a single-sided card material whose extras say no back faces | test_single_sided_cards_without_back_faces_are_refused |
+| 4 hair budget | asset_budget.hair_budget + budget_check (card faces vs default, drawn vs range max = FAIL -> _export raises; vertices); hair.BUDGET_UNIT "card_faces" (cards fitted to card faces) | test_hair_budget_* |
+| 5 view transform (AgX vs PBR Neutral) | asset_gates.same_view / game_light_view (scene.look, asset_export.preview), face_light_check views= required -> MixedViewTransform | test_mixed_view_transforms_are_refused |
+| 6 half-sided hair | asset_glb.write_glb raises on a single-sided card material whose extras say no back faces | test_single_sided_cards_without_back_faces_are_refused |
 | 7 proxy pose == batch pose | scratch only (/mnt/data/hifipushie/assembly/r48 test_proxy_batch.py); no repo proxy tool | SKIPPED |
 | 8 reviews | reviewgate.refuse_inputs (caption band, sheet size, numbers / claims) -> bin/review(-ab) exit 5; exit 4 kept; reviewgate.majors raises ReviewNotRun | test_review_*; spikes/hair_garrett/count_review.py skips + exit 4 on a review that didn't run |
-| 9 heavy memory | resources.heavy raises without gb= or kind=; asset.export_gb >= EXPORT_HUMAN_GB 24 for base/skin/hair specs | test_undeclared_heavy_job_is_refused, test_human_export_declares_24_gb |
+| 9 heavy memory | resources.heavy raises without gb= or kind=; asset_budget.export_gb >= EXPORT_HUMAN_GB 24 for base/skin/hair specs | test_undeclared_heavy_job_is_refused, test_human_export_declares_24_gb |
 | 10 git safety | bin/hooks/guard.py via bin/install-hooks (INSTALLED in the shared hooks dir) | test_git_guard_*, test_no_private_prefix_in_tracked_files |
 | 11 doc sizes | CLAUDE.md < 8 KB, docs/state/*.md <= 60 lines | test_claude_md_under_8_kb, test_state_pages_at_most_60_lines |
-| 12 validated measures | validated.known_answer + GATE_MEASURES (hair_checks x4, asset.hair_budget, budget_check) | test_gate_measures_are_validated |
+| 12 validated measures | validated.known_answer + GATE_MEASURES (hair_checks x4, asset_budget.hair_budget, budget_check) | test_gate_measures_are_validated |
 | 13 incremental == cold, BUILD_VERSION | store.build; golden tests/data/build_golden.json per BUILD_VERSION | test_incremental_build_equals_cold_build, test_build_version_bumped_* |
 
 ## Hooks (shared .git/hooks: pre-commit, pre-push -> hifipushie_guard.py, a snapshot; re-run bin/install-hooks after edits)
@@ -34,7 +34,7 @@
 ## NEXT
 1. Rule 5: DONE at integration (see the table). Renders don't record their view in the PNG yet.
 2. Rule 7: a repo proxy tool doesn't exist; when one lands, record the pose table hash in its output and compare to the batch's.
-3. Gate measures not yet self-tested: likeness_* rows, face_ruler / eye_ruler, (cloth_check.seams and asset.face_light_check: DONE),
+3. Gate measures not yet self-tested: likeness_* rows, face_ruler / eye_ruler, (cloth_check.seams and asset_gates.face_light_check: DONE),
    skin_read crop stats, spikes' tiles.py. Add each to validated.GATE_MEASURES with a known-answer test.
 
 ## History (grep only): docs/notes/audit.md "## codify checks 2026-10-19"

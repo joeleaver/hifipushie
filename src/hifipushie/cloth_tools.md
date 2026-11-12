@@ -232,7 +232,7 @@ step 2's output as `appearance` (garment_plan validates it) or this call's argum
 seams+hems|hems|seams|none}, variation: {amount, scale_mm}, print: {kind, repeat_mm, line_mm}}, details: {<detail>:
 {material: metal|braid|plastic|horn|wood|cloth|leather, colour}}}`. Maps at the role's clothing texture set (budgets.json
 textures.sets): <job>/appearance/<garment>_{base,mr,normal}.png + _appearance.json. The look: the textured garment + body
-in EEVEE (asset.preview), four views, a chest close-up and the texture sheet, each beside the reference (C288: shape and
+in EEVEE (asset_export.preview), four views, a chest close-up and the texture sheet, each beside the reference (C288: shape and
 colour judged by eye, numbers in the text). Writes step 9a; export_garment then puts the maps on its GLB (without 9a it
 exports flat colours and the record refuses step 10).
 
@@ -250,7 +250,7 @@ triangles <= budget; UV stretch (3D / pattern area per triangle) p95 no more tha
 below it (chords across folds); no open pattern edges; the weight check (LeftArm raised 45 deg: each vertex's distance to
 the body changes <= 12 mm p95 where the body moved). Refused unless step 9 is approved (internally an approved 7a exports the
 build; step 10 is then not written: the text says so). Writes <job>/export/<garment>.glb (+ _export.json, the look GLBs)
-and step 10; the look is SHAPE: the GLB with the body in EEVEE (asset.preview), rest beside the reference, and posed.
+and step 10; the look is SHAPE: the GLB with the body in EEVEE (asset_export.preview), rest beside the reference, and posed.
 Not done: LODs, the normal bake of the folds (garment_game.bake), layering culls (a shirt under a jacket).
 
 ### `pattern_check`

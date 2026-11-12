@@ -562,8 +562,9 @@ def test_export_bakes_skin_detail_into_the_parts_maps():
     import tempfile
     from hifipushie import asset, shading, store
     assert asset.BAKE_SKIN_DETAIL is True
-    src = inspect.getsource(asset)
-    assert 'ctx["bake_detail"] = BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)
+    from hifipushie import asset_export
+    src = inspect.getsource(asset_export)  # (_export: asset.py was split; a constant is read as asset.NAME)
+    assert 'ctx["bake_detail"] = asset.BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)
     with tempfile.TemporaryDirectory() as d:
         home, store.HOME = store.HOME, __import__("pathlib").Path(d)
         try:

@@ -5,7 +5,7 @@ run(name, garment, appearance, wear, role, look) -> (look paths, text). Reads th
 overrides it: validated the same way), the build / hung garment export_garment would export (step 9 approved, or an
 approved 7a internally). Writes <job>/appearance/<garment>_{base,mr,normal}.png (the role's texture size: budgets.json),
 <garment>_appearance.json (the numbers) and step 9a of the record; export_garment then puts these maps on its GLB.
-The look: the garment textured, rendered in EEVEE (asset.preview: the game's view) with the body, beside the
+The look: the garment textured, rendered in EEVEE (asset_export.preview: the game's view) with the body, beside the
 reference, plus a close-up and the texture sheet; every number in the text.
 """
 from __future__ import annotations
@@ -123,7 +123,8 @@ def text(name, garment, what, n, looks, msg) -> list[str]:
 def render_look(name, garment, rec, drape, r, rb, maps, tex, det, d, out) -> list:
     """The garment textured + the body (EEVEE), beside the reference: four views, a chest close-up, the sheet."""
     from PIL import Image
-    from . import asset, garment_glb as glbw, resources
+    from . import garment_glb as glbw, resources
+    from . import asset_export
     from .garment_details_tool import _ref, beside
     from .garment_export_tool import SKIN
     lay = ga.layout(drape)
@@ -148,8 +149,8 @@ def render_look(name, garment, rec, drape, r, rb, maps, tex, det, d, out) -> lis
     chest = [float(c[0]), float(V[:, 1].min()), float(top - 0.22 * (top - V[:, 2].min()))]
     cam = [{"eye": [chest[0] - 0.05, chest[1] - 0.45, chest[2] + 0.02], "target": chest, "fov": 40}]
     with resources.heavy(f"garment_appearance look {name}:{garment}", gb=4, gpu=True):
-        im = asset.preview(glb, ["front", "side", "back", "three_quarter"], size=768)
-        cu = asset.preview(glb, [], size=1024, cameras=cam)
+        im = asset_export.preview(glb, ["front", "side", "back", "three_quarter"], size=768)
+        cu = asset_export.preview(glb, [], size=1024, cameras=cam)
     p1, p2 = out / f"{garment}_appearance_views.png", out / f"{garment}_appearance_close.png"
     im.save(p1); cu.save(p2)
     sheet = Image.fromarray(tex["base"][..., :3]).resize((1024, 1024))

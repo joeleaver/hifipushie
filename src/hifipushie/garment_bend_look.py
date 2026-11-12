@@ -1,6 +1,6 @@
 """The bend look of step 10 (garment_bend's poses): per pose, LARGE close-ups of the shoulder + armpit (and the elbow
 for a bent elbow), the posed garment (+ the body under it) beside the posed BARE body, from the same cameras.
-Looks are for shape; the numbers are in the text (C288). Rendered as the game draws it (asset.preview, EEVEE), one
+Looks are for shape; the numbers are in the text (C288). Rendered as the game draws it (asset_export.preview, EEVEE), one
 Blender run per GLB under the heavy / GPU lock.
 """
 from __future__ import annotations
@@ -45,7 +45,8 @@ BARE_OFFSET = np.array([1.5, 0.0, 0.0])  # m: the bare body stands this far besi
 
 def render(meshes_posed: list[dict], body_posed: dict, cams: list[dict], out: Path, tag: str) -> Path:
     """Two rows: the garment on the body, the bare body (the same cameras, shifted with it); one GLB, one run."""
-    from . import asset, resources
+    from . import resources
+    from . import asset_export
     from . import garment_glb as glbw
     out.mkdir(parents=True, exist_ok=True)
     bare = dict(body_posed, name="bare", V=body_posed["V"] + BARE_OFFSET)
@@ -55,7 +56,7 @@ def render(meshes_posed: list[dict], body_posed: dict, cams: list[dict], out: Pa
     cams2 = cams + [dict(c, name=c["name"] + " (bare)", eye=(np.asarray(c["eye"]) + BARE_OFFSET).tolist(),
                          target=(np.asarray(c["target"]) + BARE_OFFSET).tolist()) for c in cams]
     with resources.heavy(f"export_garment bend look {tag}", gb=4, gpu=True):
-        im = asset.preview(glb, [], size=SIZE, cameras=cams2)
+        im = asset_export.preview(glb, [], size=SIZE, cameras=cams2)
     p = out / f"bend_{tag}.png"
     im.save(p)
     return p

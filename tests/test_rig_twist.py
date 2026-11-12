@@ -198,6 +198,7 @@ def test_rigid_near_and_export_frames():
     """What a face shape moves becomes Head 1.0 with a falloff round it; a twist joint's GLB frame has +Y along its
     segment and binds back to identity."""
     from hifipushie import asset
+    from hifipushie import asset_glb
     m = _model()
     _, on, J, W = _skin(rigid_head=False)
     names = [b["name"] for b in on]
@@ -232,9 +233,9 @@ def test_rigid_near_and_export_frames():
     for b in on:
         if b.get("twist"):
             a = asset._Z_TO_Y @ b["twist"]["axis"]
-            R = asset._quat_matrix(asset._arc_quat(np.array([0.0, 1.0, 0.0]), a))
+            R = asset_glb._quat_matrix(asset_glb._arc_quat(np.array([0.0, 1.0, 0.0]), a))
             assert np.allclose(R @ [0, 1, 0], a, atol=1e-9) and np.allclose(R @ R.T, np.eye(3), atol=1e-9)
-    assert np.allclose(asset._quat_matrix(asset._arc_quat(np.array([0.0, 1, 0]), np.array([0.0, -1, 0]))) @ [0, 1, 0],
+    assert np.allclose(asset_glb._quat_matrix(asset_glb._arc_quat(np.array([0.0, 1, 0]), np.array([0.0, -1, 0]))) @ [0, 1, 0],
                        [0, -1, 0], atol=1e-9)
 
 

@@ -14,7 +14,7 @@ remesh_panel: seams resampled once and shared by both sides, barycentric through
     weights of the garment vertex nearest it (a button rides the cloth).
 Numbers (the text): triangles vs budget, UV stretch (3D edge / pattern edge per triangle: the drape vs its cut), the
 weight check (one arm raised 45 deg: how far each garment vertex's distance to the body changes where the body moved).
-The look (shape only): the GLB rendered in EEVEE (asset.preview), rest and posed, beside the reference.
+The look (shape only): the GLB rendered in EEVEE (asset_export.preview), rest and posed, beside the reference.
 
 Refused by name: step 9 not approved (internally an approved 7a is enough for the build: the record's step 10 then
 says why it can't be written), no build, over budget at the coarsest grid (H_MAX: say what to change).

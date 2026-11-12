@@ -5,14 +5,14 @@
   Totals: 105 rows: ENFORCED 25, DOC 73, CHECK-PLANNED 3, TASTE 4 (before: ENFORCED 9, ENFORCED-BRANCH 4,
   CHECK-PLANNED 8, DOC 80, TASTE 4). No ENFORCED-BRANCH rows left.
 - docs/notes/character_recipe.md (stage-order recipe), docs/notes/traps.md (symptom -> cause), CLAUDE.md pointer.
-- Checks (tests/test_codified.py, 20 pass, none skip): approved head + fold form (asset.approved_head,
+- Checks (tests/test_codified.py, 20 pass, none skip): approved head + fold form (asset_gates.approved_head,
   fold_form_gate, FOLD_FORM_MAX_MM), sculpt refusal + EXPRESSION_PRESETS, hair budget in card faces
-  (hair.BUDGET_UNIT, card_allowance, asset.hair_budget), single-sided cards need back faces, review input gate
+  (hair.BUDGET_UNIT, card_allowance, asset_budget.hair_budget), single-sided cards need back faces, review input gate
   (reviewgate), heavy-job declaration, git guard hooks, doc sizes, incremental == cold, gate-measure self-tests.
-- Rule 5 (new): asset.same_view / game_light_view / MixedViewTransform; scene.look and asset.preview refuse the game
+- Rule 5 (new): asset_gates.same_view / game_light_view / MixedViewTransform; scene.look and asset_export.preview refuse the game
   rig (GAME_LIGHT lights) under any view but its own; face_light_check(..., views=(stage, shipped)) is REQUIRED and
   raises on a mix. Test: test_mixed_view_transforms_are_refused.
-- Rule 12 (new): known-answer self-tests for asset.face_light_check and cloth_check.seams (validated.GATE_MEASURES).
+- Rule 12 (new): known-answer self-tests for asset_gates.face_light_check and cloth_check.seams (validated.GATE_MEASURES).
 - Hooks: shared .git/hooks == bin/hooks/guard.py (checked; no reinstall needed).
 
 ## Open items (by impact on the next character)

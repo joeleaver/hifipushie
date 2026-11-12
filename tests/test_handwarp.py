@@ -167,7 +167,7 @@ def test_export_topology_is_the_bases_own():
     folded or turned faces by finger joints in the shipped GLB). Skipped without the asset packs."""
     import copy
     import json
-    from hifipushie import asset
+    from hifipushie import asset_quality
     from hifipushie.spec import compile_prims
     try:
         spec = json.loads((ROOT / "examples" / "disc_golfer_mh.json").read_text())
@@ -182,8 +182,8 @@ def test_export_topology_is_the_bases_own():
     assert r is not None and (r["sizes"] == 4).mean() > 0.99, log
     T = np.asarray(retopo.tris(r["loops"], r["sizes"]))
     prims = [p for p in compile_prims(spec) if p.part == "body"]
-    q = asset.mesh_quality(np.asarray(r["verts"], float), T, prims)
-    where = asset.defect_regions(q["spots"], spec)
+    q = asset_quality.mesh_quality(np.asarray(r["verts"], float), T, prims)
+    where = asset_quality.defect_regions(q["spots"], spec)
     hands = [(j, n) for j, n in where if j.startswith(("finger", "thumb", "wrist", "hand"))]
     assert not hands, hands
     assert q["err_mm_p99"] < 2.5 and q["non_manifold_edges"] == 0, q

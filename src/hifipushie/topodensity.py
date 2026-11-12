@@ -1,4 +1,4 @@
-"""Joint-aware density for a wrapped body (asset.topology_parts): the same triangle count, spent where it bends.
+"""Joint-aware density for a wrapped body (asset_split.topology_parts): the same triangle count, spent where it bends.
 
 Why (2026-10-14, rig_r4..r6): with arc weights and pose correctives the knee and elbow bend round, but the review
 still read their fronts as "faceted, a mitred pipe": the template's quads are ~1.5 cm, six edges round a bent knee's
@@ -141,7 +141,7 @@ def rebalance(bones: list[dict], V: np.ndarray, L: np.ndarray, S: np.ndarray, gn
         sh &= gnm2 < 0
     shaft_f = np.array([sh[p].all() for p in out])
     if extra > 0 and shaft_f.any():
-        from . import lods
+        from . import lods_pieces
         keep = [p for p, s in zip(out, shaft_f) if not s]
         T = np.array([t for p, s in zip(out, shaft_f) if s
                       for t in ([p] if len(p) == 3 else [[p[0], p[1], p[2]], [p[0], p[2], p[3]]])])
@@ -149,7 +149,7 @@ def rebalance(bones: list[dict], V: np.ndarray, L: np.ndarray, S: np.ndarray, gn
         loc = np.full(len(V2), -1)
         loc[used] = np.arange(len(used))
         target = max(len(T) - extra, len(T) // 3)
-        Vd, Fd = lods._decimate(V2[used], loc[T], target)
+        Vd, Fd = lods_pieces._decimate(V2[used], loc[T], target)
         # border vertices come back at their own positions: match them, the rest are new
         from scipy.spatial import cKDTree
         dist, near = cKDTree(V2[used]).query(Vd)

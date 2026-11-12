@@ -84,7 +84,7 @@ def _map(path: str, key: str) -> dict:
 
 def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | None = None,
           eyes_part: str | None = None) -> dict:
-    """The shading json from the export's report (asset._export's info)."""
+    """The shading json from the export's report (asset_export._export's info)."""
     skin = info.get("skin") or {}
     skin_part = skin.get("part", "body")
     mats = []

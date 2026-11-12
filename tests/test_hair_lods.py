@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import lods
+from hifipushie import lods_part
 from hifipushie import hair_export
 
 
@@ -64,7 +65,7 @@ def test_ribbon_lod():
     c = T.ravel()
     p = {"verts": V, "corner_vert": c, "uv": np.zeros((len(c), 2), np.float32), "normal": np.zeros((len(c), 3)),
          "tangent": np.zeros((len(c), 3)), "sign": np.ones(len(c))}
-    q, r = lods.ribbon_lod(p, 0.25)
+    q, r = lods_part.ribbon_lod(p, 0.25)
     assert r["ribbons"] == 10 and r["triangles"] == 10 * 2 * seg, r
     assert len(q["uv"]) == len(q["corner_vert"]) and len(q["verts"]) == len(V)
     Tq = q["corner_vert"].reshape(-1, 3)
@@ -72,7 +73,7 @@ def test_ribbon_lod():
     assert abs(w - 0.0002 * lods.RIBBON_WIDEN) < 1e-6, w  # widened (capped) for coverage
     xs = np.unique(np.round(q["verts"][np.unique(Tq)][:, 0], 3))
     assert xs.min() == 0.0 and xs.max() == round((n - 1) * 0.01, 3)  # spread along the lid, not the first ten
-    q1, r1 = lods.ribbon_lod(p, 1.0)
+    q1, r1 = lods_part.ribbon_lod(p, 1.0)
     assert r1["triangles"] == len(T)
 
 def _ribbons(n, seg=4):
@@ -91,19 +92,20 @@ def _ribbons(n, seg=4):
 
 def test_lash_budget_fit():
     """Round 29: Tess's eyes_mouth_lashes was 5,699 of the hero's 5,000. The lashes fit what the eyes / teeth / tongue
-    leave (asset.lash_cap + lods.ribbon_fit), whole lashes, widened; under the cap nothing changes; the lower lid's
+    leave (asset_budget.lash_cap + lods_part.ribbon_fit), whole lashes, widened; under the cap nothing changes; the lower lid's
     lashes are 2 segments (lashes.triangles counts per lid)."""
-    from hifipushie import asset, lashes
+    from hifipushie import lashes
+    from hifipushie import asset_budget
     rb = {"parts": {"eyes_mouth_lashes": {"default": 5000}}}
     rep = {"eyes": {"triangles": 795}, "teeth_lower": {"triangles": 24}, "body": {"triangles": 30000}}
-    cap = asset.lash_cap(rb, rep)
+    cap = asset_budget.lash_cap(rb, rep)
     assert cap == 5000 - 819, cap
-    assert asset.lash_cap({"parts": {}}, rep) is None
+    assert asset_budget.lash_cap({"parts": {}}, rep) is None
     p = _ribbons(300)  # 2400 triangles
-    q, r = lods.ribbon_fit(p, 2000)
+    q, r = lods_part.ribbon_fit(p, 2000)
     assert r["triangles"] <= 2000 and r["triangles"] >= 2000 - 8, r  # as many whole lashes as fit
     assert r["widen"] > 1.0 and len(q["verts"]) == len(p["verts"])
-    q2, r2 = lods.ribbon_fit(p, 5000)
+    q2, r2 = lods_part.ribbon_fit(p, 5000)
     assert q2 is p and r2["triangles"] == 2400
     cfg = lashes.wanted({"base": {"body": {"source": "human", "sex": 0.0}, "head": {"x": 1}, "lashes": {}}})
     n = lashes.triangles({"base": {"body": {"source": "human", "sex": 0.0}, "head": {"x": 1}, "lashes": {}}})

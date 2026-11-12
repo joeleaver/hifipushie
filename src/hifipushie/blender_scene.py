@@ -1598,7 +1598,7 @@ def bake_maps(job):
         WHAT = WHAT + ("color_blink",)   # colour pass WITH them: their own multiplier map (the engine fades it by 1 - eyeBlink)
     if job.get("check_only"):  # (2026-10-18) compile each part's material in every bake pass (an 8 x 8 frame, 1 sample)
         # and stop: Cycles prints "out of SVM stack space" for one too deep, which scene._blender turns into an error naming
-        # it, in seconds instead of after a whole bake. asset.scene_maps then bakes with OSL (job "osl").
+        # it, in seconds instead of after a whole bake. asset_scene.scene_maps then bakes with OSL (job "osl").
         scene.render.resolution_x = scene.render.resolution_y = 8
         scene.cycles.samples = 1
         if scene.camera is None:
@@ -1620,7 +1620,7 @@ def bake_maps(job):
     # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
     # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
     # them (a box filter). No margin: the texels past each island's edge are filled across its seam by
-    # asset._across_seams (Blender's own "Adjacent Faces" margin left a dark rim round the islands: marks like
+    # asset_raster._across_seams (Blender's own "Adjacent Faces" margin left a dark rim round the islands: marks like
     # dents along a ball's chart borders).
     ss = {ai: max(1, min(int(job.get("supersample", 1)), int(job.get("max_px", 8192)) // size))
           for ai, size in job["atlases"].items()}
@@ -1652,7 +1652,7 @@ def bake_maps(job):
         return out
     lows ={pt["key"]: _low("low_" + pt["key"], pt["low"]) for pt in job["parts"]}
     cages = {}
-    for pt in job["parts"]:  # (r51) a per-vertex cage (asset.cage_verts), same topology as the low poly
+    for pt in job["parts"]:  # (r51) a per-vertex cage (asset_scene.cage_verts), same topology as the low poly
         z_ = np.load(pt["low"])
         if "cage" in z_.files:
             lo_ = lows[pt["key"]]

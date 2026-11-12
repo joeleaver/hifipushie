@@ -176,7 +176,7 @@ EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
 # GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
 # piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
 # min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips; the export now takes
-# GNM's own quads for the rows (asset.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
+# GNM's own quads for the rows (asset_hidden.own_mouth_meshes, 2828 triangles a row) and the floor keeps them whole.
 TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
 MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},
                "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 4000},

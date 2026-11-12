@@ -277,6 +277,7 @@ def test_min_triangles_lets_chains_go_below_the_floor():
     import ast
     from pathlib import Path
     from hifipushie import asset
+    from hifipushie import asset_budget, asset_parts
     # blender_asset imports bpy: take its pure budgets() alone
     src = (Path(asset.__file__).with_name("blender_asset.py")).read_text()
     fn = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "budgets")
@@ -286,13 +287,13 @@ def test_min_triangles_lets_chains_go_below_the_floor():
     # the disc basket: 30 chain copies, a tray, a pole; 8000 drawn triangles; chains weighted down to 0.4
     counts, faces = {"chain": 900, "tray": 2000, "pole": 800}, {"chain": 20000, "tray": 60000, "pole": 20000}
     weights, copies = {"chain": 0.4, "tray": 4, "pole": 4}, {"chain": 30}
-    old = budgets(counts, faces, weights, 8000, {p: asset.min_part(8000) for p in faces}, copies)
+    old = budgets(counts, faces, weights, 8000, {p: asset_budget.min_part(8000) for p in faces}, copies)
     assert old["chain"] * 30 >= 9000  # the incident: chains pinned at 300 a copy, whatever the weight
-    floor = {"chain": asset._min_triangles({"chain": {"min_triangles": 40}}, "chain"), "tray": 300, "pole": 300}
+    floor = {"chain": asset_parts._min_triangles({"chain": {"min_triangles": 40}}, "chain"), "tray": 300, "pole": 300}
     new = budgets(counts, faces, weights, 8000, floor, copies)
     assert new["chain"] * 30 < 4000 and new["tray"] > old["tray"], (old, new)
-    assert asset._min_triangles({}, "chain") is None
-    assert "min_triangles" in _raises(asset._min_triangles, {"chain": {"min_triangles": -1}}, "chain")
+    assert asset_parts._min_triangles({}, "chain") is None
+    assert "min_triangles" in _raises(asset_parts._min_triangles, {"chain": {"min_triangles": -1}}, "chain")
 
 
 # Card "Mesh exports report their own quality" (export_asset's part)
@@ -300,37 +301,38 @@ def test_mesh_quality():
     import numpy as np
     from skimage import measure as skm
     from hifipushie import asset, sdf
+    from hifipushie import asset_quality
     from hifipushie.spec import compile_prims
     prims = compile_prims({"joints": {}, "bones": {}, "blobs": {"ball": {"at": [0, 0, 0], "size": [0.1, 0.1, 0.1]}}})
     g = sdf.evaluate(prims, 40)
     v, f, _, _ = skm.marching_cubes(g.field, 0.0)
     v = g.origin + v * g.voxel
-    q = asset.mesh_quality(v, f, prims)
+    q = asset_quality.mesh_quality(v, f, prims)
     assert q["non_manifold_edges"] == 0 and q["open_edges"] == 0 and q["folds"] == 0, q
     assert q["err_mm_p99"] < g.voxel * 1000, q
     folded = np.concatenate([f, f[:1, ::-1]])  # one face doubled back on itself: a fin
-    q2 = asset.mesh_quality(v, folded)
+    q2 = asset_quality.mesh_quality(v, folded)
     assert q2["non_manifold_edges"] == 3, q2
-    fold = asset.mesh_quality(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.3, 0]], float), np.array([[0, 1, 2], [1, 0, 3]]))
+    fold = asset_quality.mesh_quality(np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.5, 0.3, 0]], float), np.array([[0, 1, 2], [1, 0, 3]]))
     assert fold["folds"] == 1 and fold["open_edges"] == 4, fold  # the second face lies back over the first
-    assert asset.mesh_quality(v, f[1:])["open_edges"] == 3
+    assert asset_quality.mesh_quality(v, f[1:])["open_edges"] == 3
     # A torn / tangled patch can't ship silently (the golfer's hands, torn at the webs at rest, went out with "217
     # folded edges" in a log line nobody could place): faces turned against the field are counted, and clusters of
     # them and of folded edges are named by the model's nearest joint.
-    if asset.mesh_quality(v, f, prims)["turned"] > len(f) // 2:
+    if asset_quality.mesh_quality(v, f, prims)["turned"] > len(f) // 2:
         f = f[:, ::-1].copy()  # (skimage's winding against ours)
-    q = asset.mesh_quality(v, f, prims)
+    q = asset_quality.mesh_quality(v, f, prims)
     assert q["turned"] == 0 and len(q["spots"]) == 0, q["turned"]
     spec = {"joints": {"palm": {"pos": [0.1, 0, 0], "r": 0.01}, "heel": {"pos": [-0.1, 0, 0], "r": 0.01}}}
     torn = f.copy()
     patch = np.flatnonzero(np.linalg.norm(v[f].mean(1) - [0.1, 0, 0], axis=1) < 0.03)
     assert len(patch) >= asset.DEFECT_CLUSTER
     torn[patch] = torn[patch][:, ::-1]
-    q = asset.mesh_quality(v, torn, prims)
+    q = asset_quality.mesh_quality(v, torn, prims)
     assert q["turned"] == len(patch) and q["folds"] > 0, (q["turned"], len(patch), q["folds"])
-    where = asset.defect_regions(q["spots"], spec)
+    where = asset_quality.defect_regions(q["spots"], spec)
     assert where and where[0][0] == "palm" and all(j != "heel" for j, _ in where), where
-    assert asset.defect_regions(q["spots"][:asset.DEFECT_CLUSTER - 1], spec) == []
+    assert asset_quality.defect_regions(q["spots"][:asset.DEFECT_CLUSTER - 1], spec) == []
 
 
 
@@ -338,20 +340,21 @@ def test_mesh_quality():
 # the slit (~50 / ~37 folded edges on Garrett / Tess, all on rings ring+1 / ring+2); mesh_quality must leave them out
 def test_lid_fold_slit_designed():
     import numpy as np
-    from hifipushie import asset, gnm_fold
+    from hifipushie import gnm_fold
+    from hifipushie import asset_quality
     from hifipushie.base_identity import _gnm_data
     n = len(_gnm_data()["groups"]["skin_exterior"])
     cfg = {"amount": 1.0}
     ids = set(gnm_fold.slit_ids(cfg))
-    m = asset._slit_mask(cfg, n)
+    m = asset_quality._slit_mask(cfg, n)
     assert len(ids) > 20 and set(np.flatnonzero(m).tolist()) == ids, (len(ids), int(m.sum()))
     t = gnm_fold.topo()
     ka = 5
     ch, ang = gnm_fold.chains_wrap(15.5, 12, gnm_fold.WRAP_MAX)
     roll = ch[ang <= 90.0][:, [ka + 1, ka + 2]].reshape(-1)
     assert m[roll].all() and m[t["mir"][roll]].all()   # the folding rings, both sides
-    assert not asset._slit_mask(None, n).any()
-    assert asset._designed_interior(None, np.zeros((3, 3)), lid_fold=cfg) is None
+    assert not asset_quality._slit_mask(None, n).any()
+    assert asset_quality._designed_interior(None, np.zeros((3, 3)), lid_fold=cfg) is None
 
 
 # Hand-shaping hair in Blender (2026-09-30): edits, deletions and Shift+D copies come back, and a regrow keeps them
@@ -609,19 +612,19 @@ def test_older_makehuman_pack_still_opens_a_male_body():
 
 
 def test_hidden_faces_are_cut_inside_the_rim():
-    """Faces buried in another part are dropped only a rim's width in from what shows (asset._deep_hidden): cut right
+    """Faces buried in another part are dropped only a rim's width in from what shows (asset_hidden._deep_hidden): cut right
     at the line where a shirt goes under, its hem was a ragged edge a triangle deep."""
     import numpy as np
-    from hifipushie import asset
+    from hifipushie import asset_hidden
     x = np.linspace(0, 0.1, 101)
     V = np.stack([x, 0 * x, 0 * x], 1)
     hidden = x > 0.05
-    deep = asset._deep_hidden(V, hidden, np.zeros(len(V), int), rim=0.012)
+    deep = asset_hidden._deep_hidden(V, hidden, np.zeros(len(V), int), rim=0.012)
     assert not deep[x < 0.0615].any() and deep[x > 0.0625].all(), x[deep].min()
     # per part: another part's visible vertices next to it keep nothing
     part = (np.arange(len(V)) % 2).astype(int)
     hid2 = hidden | (part == 1)
-    deep2 = asset._deep_hidden(V, hid2, part, rim=0.012)
+    deep2 = asset_hidden._deep_hidden(V, hid2, part, rim=0.012)
     assert deep2[part == 1].all() and not deep2[(part == 0) & (x < 0.061)].any()
 
 

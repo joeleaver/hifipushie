@@ -95,12 +95,12 @@ def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: 
         # the export as an engine draws it (its maps, its normal map, its own skinning in Blender's importer) over
         # the clay: a 15k face reads lumpy in clay (7.5 mm facets) and smooth with its normal map
         from PIL import Image as _Im
-        from . import asset
+        from . import asset_export
         driven = rig_twist.drive_twist(bones, turns) if (turns and drive_twist) else turns
         one = dict(shapes or {})
         one["turns"] = {k: [*(float(x) for x in v[0]), float(v[1])] for k, v in driven.items()}
         try:
-            top = asset.preview(Path(glb).expanduser(), views or ["front", "side"], size=size, focus=at, zoom=zoom,
+            top = asset_export.preview(Path(glb).expanduser(), views or ["front", "side"], size=size, focus=at, zoom=zoom,
                                 poses=[one], lighting=(spec.get("style") or {}).get("look"))[0]
             both = _Im.new("RGB", (max(top.width, img.width), top.height + img.height), (28, 29, 33))
             both.paste(top, (0, 0))
@@ -202,6 +202,7 @@ def export_asset(name: str, out_dir: str, triangles: int | None = None, texture:
     face_shapes (ARKit), cloth_triangles, preview (the GLB rendered as a game draws it), hide, asset_name. Minutes;
     progress in progress.log. Details: guide(topic="export_asset")."""
     from . import asset
+    from . import asset_export
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
                         instancing, rig, fbx, face_shapes or None, asset_name=asset_name, lods=lods or None,
                         cloth_triangles=cloth_triangles, role=role, correctives=correctives)
@@ -216,7 +217,7 @@ def export_asset(name: str, out_dir: str, triangles: int | None = None, texture:
         text += f"\nwaited {w[0]:.0f} s for heavy-job memory ({w[1] or 'queue'})"
     if not preview:
         return text
-    im = asset.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide,
+    im = asset_export.preview(Path(info["glb"]), render.DEFAULT_VIEWS, hide=hide,
                        lighting=(store.load(name).get("style") or {}).get("look"))
     return [_out(im, save), text]
 

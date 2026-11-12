@@ -60,7 +60,7 @@ Text: {"string": "...", ("\\n" breaks a line, a blank line between paragraphs), 
 decal's size (give "size": [w, null] to fit the page height to the text). Rendered once, cached by content.
 
 Look shows decals per pixel (shader nodes read the image), the export bakes them through Cycles at the atlas'
-texel density, raised automatically over each decal (asset.decal_focus) to keep about the image's resolution.
+texel density, raised automatically over each decal (asset_parts.decal_focus) to keep about the image's resolution.
 """
 
 from __future__ import annotations

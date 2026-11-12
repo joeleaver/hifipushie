@@ -310,7 +310,7 @@ def inner_lip_values(head) -> np.ndarray | None:
     loop (where the sock joins) to the contact ring (base.LIP_RING) 1, the next ring INNER_LIP_FADE, else 0. With the
     lips closed the scene's surface has no rolls, so the bake filled them from the skin beside them and every shape
     that parts the lips (jawOpen, smiles) showed a ragged brown fringe round the opening (review expr_r1). The export
-    paints these values onto the low poly's own triangles (asset.bake, "inner_paint")."""
+    paints these values onto the low poly's own triangles (asset_bake.bake, "inner_paint")."""
     import collections
     from . import base as _base
     from . import base_gnm_parts, base_identity
@@ -450,7 +450,7 @@ def _gnm_mouth(spec, out, part) -> None:
     pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
     # (the inner rolls are NOT a scene layer: with the lips closed the scene's surface has no rolls (the fill behind the
     # seam), so a painted cloud there found the outer lips instead (v8: lipstick red). The export paints them on the
-    # low poly's own triangles by GNM index: asset.bake's "inner_paint", values from inner_lip_values)
+    # low poly's own triangles by GNM index: asset_bake.bake's "inner_paint", values from inner_lip_values)
     out["skin:mouth_bag"] = {"part": part, "color": list(base.BAG_COLOR), "roughness": 0.4, "specular": 0.5,
                              "mask": [{"painted": pid}]}
     for k, tpart in (("teeth_upper", base.TEETH_PARTS[0]), ("teeth_lower", base.TEETH_PARTS[1])):

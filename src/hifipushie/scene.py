@@ -22,7 +22,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import asset, assemble, render, sdf, store
+from . import assemble, render, sdf, store
+from . import asset_gates, asset_split
 from .spec import SpecError, euler_matrix
 
 SCRIPT = Path(__file__).with_name("blender_scene.py")
@@ -406,7 +407,7 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     """The scene's objects (meshed or from the cache) and instances, from the current spec."""
     log = [] if log is None else log
     spec = store.load(name)
-    ctx = asset.split(spec, resolution, True, log, min_share=1)  # every instance its own movable object
+    ctx = asset_split.split(spec, resolution, True, log, min_share=1)  # every instance its own movable object
     vx = float(np.round(ctx["voxel"], 3))  # a round voxel: resolution edits that don't change it keep the cache
     cache = store._dir(name) / "scene_cache"
     cache.mkdir(exist_ok=True)
@@ -1189,8 +1190,8 @@ def look(name: str, views: list[str] | None = None, cameras: list[dict] | None =
         # 16 EEVEE samples look the same as the default 64 (mean 0.3/255 apart on cabin5) in half the time; glass
         # refracting the room behind it wants more
         glass = any((d or {}).get("transmission") or (d or {}).get("alpha", 1) < 1 for d in (spec.get("parts") or {}).values())
-        from . import asset as _asset  # (rule 5) the game light rig renders under the game's view transform only
-        _asset.game_light_view(lighting if lighting is not None else (spec.get("style") or {}).get("look"), f"look {name}")
+        from . import asset_gates
+        asset_gates.game_light_view(lighting if lighting is not None else (spec.get("style") or {}).get("look"), f"look {name}")
         job = {"mode": "render", "blend": str(bp), "views": frames, "size": size, "hide": hide, "flat": flat,
                "hide_hair": hide_hair, **({"shape_pose": str(shape_pose)} if shape_pose else {}),
                "samples": 32 if glass else 16,
@@ -1252,7 +1253,7 @@ def slit_voxel(name: str, resolution: int = 256) -> float | None:
         face = faceshapes_apply.face_of(spec)
     except Exception:
         return None
-    ctx = asset.split(spec, resolution, True, [], min_share=1)
+    ctx = asset_split.split(spec, resolution, True, [], min_share=1)
     ps = ctx["streams"].get(face.slit_part)
     if not ps:
         return None

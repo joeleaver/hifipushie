@@ -56,5 +56,5 @@ solid clothing, eyeball backs) are removed first.
 - Detail thinner than about a voxel at the export resolution (22 mm shingles at 256 across a 6 m cabin) makes
   a broken high mesh: inverted faces and normals the bake can't use. Those texels keep the low-poly surface
   (the log says how many per part). Build at a higher resolution or make the detail thicker.
-- Judge the preview and close-ups (`asset.preview` focus/zoom; `hide=["roof", "walls"]` to see inside) for
+- Judge the preview and close-ups (`asset_export.preview` focus/zoom; `hide=["roof", "walls"]` to see inside) for
   seams and the normal map's read.

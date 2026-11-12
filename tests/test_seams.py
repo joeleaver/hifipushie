@@ -169,7 +169,7 @@ def test_export_ships_made_parts_not_the_pieces_they_replace(tmp_path=None):
     # GLB carries the made part as a slab and no triangle of b
     import tempfile
     from pathlib import Path
-    from hifipushie import asset
+    from hifipushie import asset_glb
     g, M, V, ia, ib = _two()
     body = _Body(np.c_[np.random.default_rng(0).uniform(-0.2, 0.6, (400, 2)), np.full(400, -0.05)])
     Fb = M["F"][ib[M["F"]].all(1)]
@@ -189,7 +189,7 @@ def test_export_ships_made_parts_not_the_pieces_they_replace(tmp_path=None):
     pn, part, files = parts[0]
     part["atlas"] = 0
     glb = out / "x.glb"
-    asset.write_glb(glb, "x", {pn: part}, [(pn, files)])
+    asset_glb.write_glb(glb, "x", {pn: part}, [(pn, files)])
     P, T = _glb_triangles(glb)
     used = P[np.unique(T)]
     made_v = np.abs(used[:, 2] - 0.03) < 1e-4

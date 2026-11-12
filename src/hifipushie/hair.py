@@ -475,7 +475,7 @@ CARD_RECIPE = (
 
 BACK_FACES = 1  # (c6) export each card's back face as its own triangles (outward normals) + a single-sided material
 BUDGET_UNIT = "card_faces"  # (hair-budget rule 2026-10-19) a tier's budget counts card faces (one side);
-# drawn triangles (back faces included) must fit the role's range max (checked at export: asset.hair_budget)
+# drawn triangles (back faces included) must fit the role's range max (checked at export: asset_budget.hair_budget)
 CARD_RECIPE_FACES = CARD_RECIPE.replace(
     "Draw two-sided with one normal for both faces (the mesh's normals are already bent toward the hair "
     "volume: do not flip them on back faces).",
