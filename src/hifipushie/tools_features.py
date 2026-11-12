@@ -42,6 +42,11 @@ def read_reference(name: str, image: str | None = None, views: list[str] | None 
         if view not in fm["views"]:
             raise ValueError(f"no view {view!r} (have {sorted(fm['views'])})")
         rec = fm["views"][view]
+        if "notches" not in rec:  # a view read before notches were found
+            import numpy as np
+            from PIL import Image as PI
+            rec["notches"] = refread.notches(np.asarray(PI.open(rec["image"]).convert("RGBA"))[..., 3] > 127)
+            featuremap.save(name, fm)
         if detail != rec.get("detail", "medium"):
             import numpy as np
             from PIL import Image as PI

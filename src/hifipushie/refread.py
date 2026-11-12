@@ -20,6 +20,8 @@ pixels, so the sculptor can point at it (featuremap.py) and a model can be measu
   with no line between them, numbered top to bottom. A patch is bounded by form lines as well as by paint, so a
   plain-coloured subject still has patches. A patch is not a feature: it is something to point at. `detail`
   coarse / medium / fine.
+- NOTCHES: where the outline turns sharply inward (an armpit, a crotch, a neck's corner, the tip of a gap): the
+  places a part is divided from its neighbour, labelled n1 .. on the picture. A cut (featuremap "piece") names two.
 - FORM LINES: where the picture's brightness steps (Sobel on a smoothed grey). A line is an edge of a form OR
   an edge of paint; which is the sculptor's call.
 """
@@ -151,6 +153,7 @@ def read(name: str, image: str, views: list[str], height: float | None = None, m
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(json.dumps(cam))
             rec.update(m_per_px=k, centre_px=float(c0), ground_px=bottom, top_m=round((bottom - top) * k, 4))
+        rec["notches"] = notches(mv)
         lab = segment(cv, mv, detail)
         np.save(d / f"{v}_patches.npy", lab.astype(np.uint16))
         Image.fromarray((np.clip(form_lines(cv, mv), 0, 1) * 255).astype(np.uint8)).save(d / f"{v}_lines.png")
@@ -297,6 +300,48 @@ def form_lines(rgb: np.ndarray, mask: np.ndarray, sigma: float = 1.2, full: floa
     return np.clip(e / full, 0, 1)
 
 
+def notches(mask: np.ndarray, span: float = 7.0, deep: float = 2.2, most: int = 48) -> list[list[float]]:
+    """The points where the figure's outline turns INWARD sharply (an armpit, a crotch, where a neck meets a
+    shoulder, the tip of a gap between two parts): the places parts are divided at. On every contour, holes
+    included: a point counts when the chord between its neighbours `span` px either side runs outside the figure
+    and the point stands at least `deep` px off that chord. Strongest first within a few px of each other;
+    returned top to bottom as [x, y] in the view's pixels."""
+    from skimage import measure
+    found = []
+    H, W = mask.shape
+    for c in measure.find_contours(np.pad(mask.astype(float), 1), 0.5):
+        c = c - 1.0
+        seg = np.hypot(*np.diff(c, axis=0).T)
+        length = float(seg.sum())
+        if length < 6 * span:
+            continue
+        t = np.concatenate([[0.0], np.cumsum(seg)])
+        n = int(length / 1.5)
+        u = np.linspace(0, length, n, endpoint=False)
+        pts = np.stack([np.interp(u, t, c[:, 0]), np.interp(u, t, c[:, 1])], 1)  # (row, col), evenly spaced, closed
+        k = max(2, int(round(span / 1.5)))
+        a, b = np.roll(pts, k, 0), np.roll(pts, -k, 0)
+        mid = (a + b) / 2
+        mi = np.clip(np.round(mid).astype(int), 0, [H - 1, W - 1])
+        outside = ~mask[mi[:, 0], mi[:, 1]]
+        chord = b - a
+        off = np.abs(chord[:, 0] * (pts[:, 1] - a[:, 1]) - chord[:, 1] * (pts[:, 0] - a[:, 0])) / np.maximum(np.hypot(*chord.T), 1e-9)
+        score = np.where(outside, off, 0.0)
+        for i in np.argsort(-score):
+            if score[i] < deep:
+                break
+            found.append((float(score[i]), float(pts[i, 1]), float(pts[i, 0])))
+    found.sort(reverse=True)
+    keep = []
+    for sc, x, y in found:
+        if all(np.hypot(x - kx, y - ky) > 2.2 * span for _, kx, ky in keep):
+            keep.append((sc, x, y))
+        if len(keep) >= most:
+            break
+    keep.sort(key=lambda q: (round(q[2] / 12), q[1]))
+    return [[round(x, 1), round(y, 1)] for _, x, y in keep]
+
+
 def colour_word(rgb) -> str:
     """A plain word for a colour (for the patch table: something to check a number against)."""
     import colorsys
@@ -417,10 +462,17 @@ def draw(name: str, view: str, rec: dict, focus=None, width: int = 760) -> Image
         d.text(((cx + 0.5) * s, (cy + 0.5) * s), t, fill=(255, 255, 255), font=_font(fpx), anchor="mm",
                stroke_width=2, stroke_fill=(0, 0, 0))
     step = nice_step(x1 - x0)
-    tiles = [_ruler(p, (x0, y0, x1, y1), s, step) for p in (panel(pic, Image.LANCZOS), mid, panel(np.dstack([ln] * 3), Image.LANCZOS))]
+    left = panel(pic, Image.LANCZOS)
+    dl = ImageDraw.Draw(left)
+    for i, (nx, ny) in enumerate(rec.get("notches") or [], 1):  # the outline's notches: the ends a cut can name
+        if x0 <= nx < x1 and y0 <= ny < y1:
+            px, py = (nx - x0) * s, (ny - y0) * s
+            dl.ellipse([px - 4, py - 4, px + 4, py + 4], fill=(0, 200, 255), outline=(0, 0, 0))
+            dl.text((px + 6, py - 2), f"n{i}", fill=(0, 60, 160), font=_font(13), anchor="lm", stroke_width=2, stroke_fill=(255, 255, 255))
+    tiles = [_ruler(p, (x0, y0, x1, y1), s, step) for p in (left, mid, panel(np.dstack([ln] * 3), Image.LANCZOS))]
     out = Image.new("RGB", (sum(t.width for t in tiles) + 8 * 2, tiles[0].height + 26), (255, 255, 255))
     dd, x = ImageDraw.Draw(out), 0
-    for t, cap in zip(tiles, (f"{view}: the picture", "its patches (numbers to point at)", "its form lines (form or paint: your call)")):
+    for t, cap in zip(tiles, (f"{view}: the picture, and its outline's notches (n1 ..)", "its patches (numbers to point at)", "its form lines (form or paint: your call)")):
         dd.text((x + 36, 4), cap, fill=(0, 0, 0), font=_font(14))
         out.paste(t, (x, 26))
         x += t.width + 8

@@ -11,9 +11,10 @@ believe where two disagree), `inferred` (what no view shows), `says` (anything e
 elements that make it, once it is made: featuresee.py measures those).
 
 Marks, per view, in that view's own pixels (the rulers on read_reference's pictures), always clipped to the figure:
-  {"piece": [x, y], "cuts": [[[x, y], [x, y]], ...]}: the part of the figure joined to that point once the cut
-  lines are drawn across it (an arm: a point on it and one cut at the shoulder). Its edge is the picture's own
-  outline, to the pixel: the mark for anything that shows on the silhouette.
+  {"piece": "p12" | [x, y], "cuts": [["n3", "n7"], ...]}: the part of the figure joined to that point (a patch's
+  middle, or a pixel) once the cut lines are drawn across it; a cut's ends are notch labels (refread.notches,
+  drawn on the picture) or pixels, and it overshoots both by 8 px. An arm: a patch on it and one cut from the
+  armpit's notch to the shoulder's. Its edge is the picture's own outline to the pixel.
   {"patches": [ids]} | {"box": [x0, y0, x1, y1]} | {"ellipse": [cx, cy, rx, ry]} | {"polygon": [[x, y], ...]} |
   {"line": [[x, y], ...], "width": px}; several keys add up; "minus": {...} takes away; "mirror": true on a front /
   back view also marks the ".L" / ".R" twin by reflection (only when the picture really is symmetric there).
@@ -79,8 +80,8 @@ WANT = {"patches": "a list of patch numbers, [12, 13]", "box": "four numbers, [x
         "ellipse": "four numbers, [cx, cy, rx, ry], or a list of such ellipses",
         "polygon": "three or more points, [[x, y], [x, y], [x, y]], or a list of such polygons",
         "line": "two or more points, [[x, y], [x, y]], or a list of such lines",
-        "piece": "a point on the thing, [x, y], with \"cuts\": [[[x, y], [x, y]], ...] (lines across the figure "
-                 "where it meets its neighbours)"}
+        "piece": "a point on the thing ([x, y], or a patch on it: \"p12\"), with \"cuts\": [[\"n3\", \"n7\"], ...] "
+                 "(lines across the figure where it meets its neighbours, each end a notch's label or [x, y])"}
 
 
 def _each(k: str, v) -> list:
@@ -105,11 +106,13 @@ def _checked(m, view: str) -> dict:
     if unknown or not any(k in m for k in SHAPES):
         raise ValueError(f"a mark in {view!r} needs one of {SHAPES} (+ cuts, minus, mirror, width); got {sorted(m)}")
     if "piece" in m:
-        if not (isinstance(m["piece"], (list, tuple)) and len(m["piece"]) == 2 and all(num(c) for c in m["piece"])):
+        one = lambda q: isinstance(q, str) or (isinstance(q, (list, tuple)) and len(q) == 2 and all(num(c) for c in q))  # noqa: E731
+        if not one(m["piece"]):
             raise ValueError(f"'piece' in {view!r} is {WANT['piece']} (got {m['piece']!r})")
-        if not all(pts(c, 2) for c in m.get("cuts") or []) or not isinstance(m.get("cuts") or [], (list, tuple)):
-            raise ValueError(f"'cuts' in {view!r} is a list of lines, each two or more points: [[[x, y], [x, y]], ...] "
-                             f"(got {m.get('cuts')!r})")
+        cuts = m.get("cuts") or []
+        if not isinstance(cuts, (list, tuple)) or not all(isinstance(c, (list, tuple)) and len(c) >= 2 and all(one(q) for q in c) for c in cuts):
+            raise ValueError(f"'cuts' in {view!r} is a list of lines, each two or more points, a point being [x, y] or a "
+                             f"notch's label: [[\"n3\", \"n7\"], [[x, y], [x, y]]] (got {m.get('cuts')!r})")
     elif "cuts" in m:
         raise ValueError(f"'cuts' in {view!r} goes with \"piece\": [x, y] (the point on the thing the cuts part off)")
     four = lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v)  # noqa: E731
@@ -124,16 +127,84 @@ def _checked(m, view: str) -> dict:
     return m
 
 
-def _piece(fig: np.ndarray, m: dict, view: str) -> np.ndarray:
-    """The part of the figure joined to m["piece"] once m["cuts"] are drawn across it."""
+def _point(p, rec: dict, name: str, view: str):
+    """[x, y], or a notch's label "n7" (read_reference draws them), or a patch's "p12" (its widest spot)."""
+    if isinstance(p, str):
+        if p[:1] == "n" and p[1:].isdigit():
+            ns = rec.get("notches") or []
+            if not 1 <= int(p[1:]) <= len(ns):
+                raise ValueError(f"{view!r} has no notch {p} (n1 .. n{len(ns)}: read_reference draws them)")
+            return [float(v) for v in ns[int(p[1:]) - 1]]
+        if p[:1] == "p" and p[1:].isdigit():
+            from scipy import ndimage
+            lab = refread.patches(name, view)
+            mk = lab == int(p[1:])
+            if not mk.any():
+                raise ValueError(f"{view!r} has no patch {p} (p1 .. p{int(lab.max())})")
+            dist = ndimage.distance_transform_edt(mk)
+            cy, cx = np.unravel_index(dist.argmax(), dist.shape)
+            return [float(cx), float(cy)]
+        raise ValueError(f"a point is [x, y], a notch \"n7\" or a patch \"p12\" (got {p!r})")
+    return [float(p[0]), float(p[1])]
+
+
+WAYS = {"up": (0.0, -1.0), "down": (0.0, 1.0), "left": (-1.0, 0.0), "right": (1.0, 0.0), "across": None}
+
+
+def _across(fig: np.ndarray, a: np.ndarray, way: str, view: str) -> np.ndarray:
+    """Where a cut that starts at `a` (on or just outside the outline) leaves the figure again: straight `up` /
+    `down` / `left` / `right`, or `across`: by the shortest way through the figure (how a limb is cut off at a
+    notch)."""
+    H, W = fig.shape
+
+    def run(d):
+        p, inside, n = a.astype(float).copy(), False, 0
+        for _ in range(int(1.5 * max(H, W))):
+            p = p + d
+            x, y = int(round(p[0])), int(round(p[1]))
+            on = 0 <= x < W and 0 <= y < H and bool(fig[y, x])
+            if on:
+                inside, n = True, n + 1
+            elif inside:
+                return p, n
+            elif _ > 6:  # never entered the figure: the cut points away from it
+                return None, 0
+        return None, 0
+    if WAYS[way] is not None:
+        end, n = run(np.array(WAYS[way]))
+        if end is None:
+            raise ValueError(f"a cut going {way} from {[round(float(v)) for v in a]} in {view!r} doesn't cross the figure")
+        return end
+    best = None
+    for deg in range(0, 360, 6):
+        d = np.array([np.cos(np.radians(deg)), np.sin(np.radians(deg))])
+        end, n = run(d)
+        if end is not None and n >= 5 and (best is None or n < best[1]):
+            best = (end, n)
+    if best is None:
+        raise ValueError(f"no cut across the figure starts at {[round(float(v)) for v in a]} in {view!r}")
+    return best[0]
+
+
+def _piece(fig: np.ndarray, m: dict, view: str, rec: dict, name: str) -> np.ndarray:
+    """The part of the figure joined to m["piece"] once m["cuts"] are drawn across it (each cut overshoots its two
+    ends by 8 px, so a cut between two notches on the outline reaches outside it)."""
     from scipy import ndimage
     H, W = fig.shape
     wall = Image.new("L", (W, H), 0)
     d = ImageDraw.Draw(wall)
     for c in m.get("cuts") or []:
-        d.line([tuple(float(v) for v in p) for p in c], fill=255, width=3)
+        if len(c) == 2 and isinstance(c[1], str) and c[1] in WAYS:
+            a = np.array(_point(c[0], rec, name, view))
+            q = [a, _across(fig, a, c[1], view)]
+        else:
+            q = [np.array(_point(p, rec, name, view)) for p in c]
+        for i, j in ((0, 1), (-1, -2)):
+            v = q[i] - q[j]
+            q[i] = q[i] + 8.0 * v / max(float(np.hypot(*v)), 1e-9)
+        d.line([tuple(float(v) for v in p) for p in q], fill=255, width=3)
     wall = np.asarray(wall) > 127
-    x, y = (int(round(float(v))) for v in m["piece"])
+    x, y = (int(round(float(v))) for v in _point(m["piece"], rec, name, view))
     if not (0 <= x < W and 0 <= y < H and fig[y, x]):
         raise ValueError(f"the piece's point {m['piece']} in {view!r} is not on the figure (view px, {W} x {H}: read "
                          f"it off the rulers; it must sit ON the thing)")
@@ -148,12 +219,12 @@ def _piece(fig: np.ndarray, m: dict, view: str) -> np.ndarray:
     return ndimage.binary_dilation(got, iterations=2) & fig & (got | wall)  # its share of the cut lines too
 
 
-def _shape_mask(name: str, view: str, size, m: dict, fig: np.ndarray | None = None) -> np.ndarray:
+def _shape_mask(name: str, view: str, size, m: dict, fig: np.ndarray | None = None, rec: dict | None = None) -> np.ndarray:
     W, H = size
     out = np.zeros((H, W), bool)
     _checked(m, view)
     if "piece" in m:
-        out |= _piece(fig, m, view)
+        out |= _piece(fig, m, view, rec or {}, name)
     if "patches" in m:
         lab = refread.patches(name, view)
         ids = [int(i) for i in m["patches"]]
@@ -177,9 +248,9 @@ def _shape_mask(name: str, view: str, size, m: dict, fig: np.ndarray | None = No
 
 def mark_mask(name: str, view: str, rec: dict, m: dict) -> np.ndarray:
     fig = np.asarray(Image.open(rec["image"]).convert("RGBA"))[..., 3] > 127
-    out = _shape_mask(name, view, rec["size"], m, fig)
+    out = _shape_mask(name, view, rec["size"], m, fig, rec)
     if m.get("minus"):
-        out &= ~_shape_mask(name, view, rec["size"], m["minus"], fig)
+        out &= ~_shape_mask(name, view, rec["size"], m["minus"], fig, rec)
     return out & fig
 
 

@@ -11,7 +11,8 @@ so the sculpt is built from them and measured against each one. Make it BEFORE a
    left: you see its LEFT side) and `"side_r"` (it faces the picture's right: its right side). Any other name is
    a picture in perspective; read it too, in a call of its own (its camera comes later, from fit_concept_camera,
    once there is a model). `height` is feet to top, in metres, of the first flat view.
-   It returns, per view: the picture | its PATCHES, numbered | its FORM LINES, with pixel rulers. Check each
+   It returns, per view: the picture with its outline's NOTCHES labelled | its PATCHES, numbered | its FORM
+   LINES, with pixel rulers. Check each
    cut-out is the whole figure: a part the colour of the background can be lost (pass `mask=`). Patches are
    bounded by form lines as well as by colour, so a plain-coloured subject has them too; if they are too many or
    too few to point at, read the view again at another `detail`.
@@ -56,11 +57,15 @@ For each feature say what the pictures show and a measurement can't know:
 
 Marks are in each view's own pixels: read them off the rulers. Every mark is clipped to the figure.
 
-- `{"piece": [x, y], "cuts": [[[x, y], [x, y]], ...]}`: THE mark for a mass. A point on the thing, and a line
-  drawn across the figure wherever the thing meets a neighbour: the mark is the part of the figure joined to the
-  point once the cuts are made. An arm is a point on it and one cut across the shoulder; a head is a point and
-  one cut across the neck. Each cut must run from outside the outline to outside it again (overshoot both
-  ends). The mark's edge is then the picture's own outline to the pixel, which is what a shape is built from.
+- `{"piece": "p12", "cuts": [["n3", "n7"], ...]}`: THE mark for a mass. Name a patch that lies on the thing (or
+  a pixel `[x, y]`), and cut the figure wherever the thing meets a neighbour: the mark is the part of the figure
+  joined to that patch once the cuts are made. A cut runs between two NOTCHES: the picture labels every place
+  the outline pinches in (`n1`, `n2` ...: armpits, a crotch, the corners of a neck, the tips of gaps), and those
+  are where parts divide. An arm is a patch on it and one cut from the armpit's notch. Where the other
+  end has no notch (a smooth shoulder), say which way the cut goes instead: `["n17", "up"]` (or `"down"`,
+  `"left"`, `"right"`) runs straight that way until it leaves the figure, and `["n17", "across"]` takes the
+  shortest way through, which is how a limb is cut off at its root. A pixel `[x, y]` off the rulers works too. The mark's edge is then the picture's own outline to the pixel, which is
+  what a shape is built from. If the tool says the cuts don't part it, a cut misses the outline: look again.
 - `{"patches": [12, 13]}`: the numbered patches. The quick way for a form or paint the patches follow.
 - `{"box": [x0, y0, x1, y1]}`, `{"ellipse": [cx, cy, rx, ry]}`, `{"polygon": [[x, y], ...]}`: for what lies
   inside the outline and no cut can part off (a mass seen against another mass). A hand-drawn edge wobbles, and
