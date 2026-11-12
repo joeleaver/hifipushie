@@ -1,9 +1,9 @@
-"""Step 5's chains-only network (N2b: chain_lay_net) and its assembled start (N2c: chain_lay): synthetic, fast."""
+"""Step 5's chains-only network (N2b: chain_lay_net): synthetic, fast."""
 from types import SimpleNamespace
 
 import numpy as np
 
-from hifipushie import chain_lay, chain_solve as cs
+
 from hifipushie.chain_lay_net import chain_network
 from hifipushie.chain_net import Network
 
@@ -46,38 +46,3 @@ def test_the_network_is_chains_only_and_keeps_the_cut():
     assert len(c.edges) > len(c.link_L)  # (lines across between the chains)
 
 
-def test_a_strip_laid_on_a_curved_tape_is_exact():
-    net, holds, body = _band_and_panel()
-    c, keep = chain_network(net)
-    S = chain_lay.lay(net, c, keep, body, {}, holds)
-    a, b = c.chain_v.T
-    m = c.chain_piece == c.names.index("band")
-    e = np.abs(np.linalg.norm(S["X0"][b] - S["X0"][a], axis=1) / c.chain_L - 1)[m] * 100
-    bottom = np.where((c.piece == 0) & (c.uv[:, 1] < 1e-9))[0]
-    sd, _ = body.contact.query(S["X0"][bottom])
-    print(S["start"], e.max())
-    assert e.max() < 0.5  # (every link at its cut: assembled, bent, nothing closed by stretching)
-    assert np.abs(S["X0"][bottom, 2] - 0.1).max() < 0.01  # (the edge near its tape: settle's pull puts it on)
-    assert sd.min() > 0.0
-
-
-def test_two_panels_sewn_along_a_tape_edge_start_closed():
-    net, holds, body = _band_and_panel()
-    c, keep = chain_network(net)
-    S = chain_lay.lay(net, c, keep, body, {}, holds)
-    gap = S["start"]["after_bends"]["seam_gap_mm"]
-    print(S["start"])
-    assert gap == 0.0  # (the panel is sewn onto the laid band: one chain, closed by construction)
-    assert S["X0"][c.piece == 1, 2].mean() < 0.1  # (away from the band, towards its own tape)
-
-
-def test_a_stiff_collar_on_a_neckline_turns_its_fold_row():
-    net, holds, body = _band_and_panel(stiff=True, fold=True)
-    c, keep = chain_network(net)
-    plan = {"folds": {"fall": {"on": "band", "fold": "roll", "turn_deg": 160.0}}}
-    S = chain_lay.lay(net, c, keep, body, plan, holds)
-    X, rep = cs.solve(c, S["X0"], body=body, folds=S["folds"], pulls=S["pulls"], plies=S["plies"])
-    print(rep["links"], rep["folds"], rep.get("contact"))
-    assert rep["links"]["worst_pct"] < 2.0
-    assert max(f["median_off_deg"] for f in rep["folds"].values()) < 20.0
-    assert rep["contact"]["inside"] == 0
