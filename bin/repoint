@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Point a script at the modules that hold the names it uses now (after a module was split).
+    bin/repoint <script.py> ...            what would change: file:line: old -> new
+    bin/repoint <script.py> ... --write    rewrite the scripts
+A working script outside the repo says hair.export_hair or blockin.step; after hair.py / blockin.py were split those
+are hair_export.export_hair and blockin_steps.step, and the script fails with an AttributeError that names this tool.
+The code is src/hifipushie/moved.py (standard library only: no environment needed)."""
+import importlib.util
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("moved", Path(__file__).resolve().parent.parent / "src" / "hifipushie" / "moved.py")
+moved = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(moved)
+sys.exit(moved.main())

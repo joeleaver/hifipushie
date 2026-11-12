@@ -22,6 +22,7 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 
 from .terrain import smoothstep
+from . import moved
 
 NAMED_REGIONS = ("everywhere", "centre", "north", "south", "east", "west")
 
@@ -223,3 +224,4 @@ REAL = {"over_30": 0.35, "over_45": 0.12, "over_60": 0.03, "face": (25, 40)}
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("terrain_design_walls", "terrain_design_sites", "terrain_design_routes", "terrain_design_cover",
            "terrain_design_sight", "terrain_design_report")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

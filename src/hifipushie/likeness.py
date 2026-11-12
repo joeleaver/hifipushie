@@ -34,6 +34,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+from . import moved
 
 CHECKLIST = Path(__file__).with_name("likeness.json")
 VENV = os.environ.get("HIFIPUSHIE_MEDIAPIPE", "/mnt/data/hifipushie/facerefs_venv")
@@ -239,3 +240,4 @@ PROFILE_SIGMA = 1.6     # a round that takes the region's components past this i
 # The modules this one was split into (C419). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("likeness_detect", "likeness_render", "likeness_measure", "likeness_sides", "likeness_compare",
            "likeness_notes", "likeness_panels", "likeness_stages", "likeness_fit")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

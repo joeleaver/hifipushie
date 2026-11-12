@@ -41,6 +41,7 @@ distance, landmarks, anchors, dense) and face_ruler_compare (reference_views, co
 from __future__ import annotations
 
 import numpy as np
+from . import moved
 
 STEP_MM = 1.5            # outline sample spacing
 SIG = {"outline": 0.3, "iris": 0.12, "lips": 0.25, "brows": 0.2}     # mm: each observation's noise (validated)
@@ -455,3 +456,4 @@ DISAGREE = 2.0        # a read group left at more than this many of its own sigm
 # The modules this one was split into (C417). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("face_ruler_outline", "face_ruler_jaw", "face_ruler_solve", "face_ruler_orbit", "face_ruler_blockin",
            "face_ruler_features", "face_ruler_nose", "face_ruler_camera", "face_ruler_compare")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

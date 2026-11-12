@@ -43,6 +43,7 @@ import json
 import numpy as np
 
 from . import retopo
+from . import moved
 
 VERSION = 107  # bump when the base field changes: builds and live grids are keyed on it (107: GNM's own eyeball and mouth)
 K = 32
@@ -199,3 +200,4 @@ _LIPC: dict = {}
 # Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("base_imls", "base_identity", "base_head_shape", "base_gnm_parts", "base_gnm_head", "base_measures",
            "base_tubes", "base_surface", "base_implied")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

@@ -27,6 +27,7 @@ hair_clumps_bake: `bake`, `bake_tiles`.
 from __future__ import annotations
 
 import numpy as np
+from . import moved
 
 STEP = 0.004  # m between stations along a clump (absolute distance from the root)
 # per class of hair: its layers as (share of the cards' triangles, max card half width m, share of the clump's strands
@@ -486,3 +487,4 @@ TILE_REP_TRY = 24
 
 # The modules this one was split into (C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair_clumps_fit", "hair_clumps_part", "hair_clumps_cut", "hair_clumps_layout", "hair_clumps_bake")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

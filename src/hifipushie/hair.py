@@ -37,6 +37,7 @@ module.name at call time, as every name was when this was one file."""
 from __future__ import annotations
 
 import numpy as np
+from . import moved
 
 def under(g: dict, H, az, el, d_in):
     """The underlayer's height (m): the mass sunk by about one lock thickness (the big locks' on top, the fill's
@@ -505,3 +506,4 @@ OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from th
 # The modules this one was split into (C415). Their constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair", "hair_head", "hair_groom", "hair_seat", "hair_grow", "hair_spec", "hair_lockmesh", "hair_job",
            "hair_cards_job", "hair_card_fit", "hair_look", "hair_export", "hair_drawn", "hair_reference", "hair_trace")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

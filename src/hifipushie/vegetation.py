@@ -32,6 +32,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from . import moved
 
 VERSION = 2
 PRESETS = Path(__file__).with_name("vegetation_presets")
@@ -236,3 +237,4 @@ FORM_KEYS = ("height", "width_over_height", "crown_ratio", "widest_at", "dbh_cm"
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("vegetation_kernels", "vegetation_tree", "vegetation_grow", "vegetation_measures", "vegetation_fit")
+__getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
