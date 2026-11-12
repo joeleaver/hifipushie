@@ -397,6 +397,19 @@ def skin_through(p: dict, covers: list, P0: np.ndarray, under0: np.ndarray, reac
     return ~(was[T].all(1) & out[T].any(1))
 
 
+def covered_at_lod0(p: dict, covers: list, mask: tuple) -> tuple:
+    """(P0, under0) for skin_through: `p`'s LOD0 outward points and whether each lay UNDER `covers` (the chain garments
+    at LOD0) within asset.UNDER_CLOTH_REACH, the reach of LOD0's own cull of covered skin. lods_under's mask
+    (`mask`: asset_export's under_masks entry) looks 2 cm, and a sleeve stands 2-4 cm off the arm: read by it, the
+    skin under a loose sleeve was never covered and stayed, through the LOD's cloth. Points a clip frame uncovers
+    (mask[4] and not mask[5]) stay kept at every LOD, as they are for the other culls."""
+    from . import asset, lods_under
+    P0, under0 = lods_under.under_at_lod0(p, covers, reach=asset.UNDER_CLOTH_REACH)
+    if len(mask) > 5 and len(mask[4]) == len(under0):
+        under0 = under0 & ~(np.asarray(mask[4], bool) & ~np.asarray(mask[5], bool))
+    return P0, under0
+
+
 def bone_weights(weights: dict, bones: list) -> dict:
     """The garments' weights in the export rig's bone order. A garment bone the rig does not have (the rig changed
     since step 10) is refused: its weights would move the cloth with the wrong bone."""
