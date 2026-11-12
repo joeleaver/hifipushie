@@ -324,8 +324,7 @@ def test_the_tool_writes_one_file_per_lod_and_records_each(tmp_path, monkeypatch
     details = {"buttons": {"V": Vb, "F": Fb, "colour": "#202020"}}
     g0, _ = ge.fit_budget(drape, M, 12000, len(Fb), body=bV, joints={})
     (tmp_path / "shirt_LOD7.glb").write_bytes(b"stale")
-    bT = np.array([[i, i + 1, i + 2] for i in range(0, len(bV) - 2, 3)])  # (a thread of a body: nothing to lift off)
-    entries, lines = get.lods("shirt", {"steps": {"9a": {}}}, "main_npc", {}, rb, drape, M, bV, bT, details,
+    entries, lines = get.lods("shirt", {"steps": {"9a": {}}}, "main_npc", {}, rb, drape, M, bV, details,
                               [0.5, 0.5, 0.5], g0, tmp_path)
     assert [e["lod"] for e in entries] == [1, 2, 3] and not (tmp_path / "shirt_LOD7.glb").exists()
     assert len(lines) == 4 and "never a decimation" in lines[0]
@@ -381,34 +380,3 @@ def test_a_seam_whose_one_side_is_several_stretches_is_shared_on_both_sides(flip
     open_len = np.linalg.norm(P[u[c == 1][:, 0]] - P[u[c == 1][:, 1]], axis=1).sum()
     assert open_len == pytest.approx(1.2, abs=1e-6) and g["missing_boundary_edges"] == 0  # the 0.4 x 0.2 outline, no slit
     assert g["rim_faces"] == 2 * int((c == 1).sum())  # rims on the outline only
-
-
-def test_a_lods_cloth_is_lifted_clear_of_the_body_its_flat_faces_cut():
-    """Cloth wrapped 5 mm off a round body, on a grid so coarse its faces are chords THROUGH the body: every face is
-    lifted until its points are outside; a fine grid, and cloth far off the body, are left alone."""
-    n, R = 48, 0.1
-    th, z = np.linspace(0, 2 * np.pi, n, endpoint=False), np.linspace(-0.3, 0.3, 13)
-    bV = np.array([[R * np.cos(a), R * np.sin(a), zz] for zz in z for a in th])
-    q = np.arange(len(bV)).reshape(len(z), n)
-    a, b, c, d = q[:-1], np.roll(q[:-1], -1, 1), np.roll(q[1:], -1, 1), q[1:]
-    bT = np.concatenate([np.stack([a, b, c], -1).reshape(-1, 3), np.stack([a, c, d], -1).reshape(-1, 3)])  # outward
-
-    def sleeve(k, scale=1.0):  # k faces round, the corners on the cloth's own circle (5 mm off the body)
-        t2, z2 = np.linspace(0, 2 * np.pi, k, endpoint=False), np.linspace(-0.2, 0.2, 5)
-        V = np.array([[scale * (R + 0.005) * np.cos(x), scale * (R + 0.005) * np.sin(x), zz] for zz in z2 for x in t2])
-        g = np.arange(len(V)).reshape(len(z2), k)
-        a, b, c, d = g[:-1], np.roll(g[:-1], -1, 1), np.roll(g[1:], -1, 1), g[1:]
-        T = np.concatenate([np.stack([a, b, c], -1).reshape(-1, 3), np.stack([a, c, d], -1).reshape(-1, 3)])
-        return {"V": V, "T": T, "weld": np.arange(len(V)), "N": None}
-    m = sleeve(5)  # five faces round: each chord's middle is 15 mm UNDER the skin
-    r0 = np.hypot(m["V"][:, 0], m["V"][:, 1]).copy()
-    info = ge.clear_body(m, bV, bT)
-    mid = np.einsum("sk,tkc->tsc", ge._S, m["V"][m["T"]]).reshape(-1, 3)
-    assert info["under"] == 0 and np.hypot(mid[:, 0], mid[:, 1]).min() >= R  # every face point outside the body now
-    assert info["lifted"] == len(m["V"]) and 0.01 < info["most_m"] <= ge.LOD_CLEAR_MAX
-    assert np.all(np.hypot(m["V"][:, 0], m["V"][:, 1]) > r0) and np.allclose(np.linalg.norm(m["N"], axis=1), 1.0)
-    fine = sleeve(48)  # as fine as the body: nothing cuts, nothing moves
-    V0 = fine["V"].copy()
-    assert ge.clear_body(fine, bV, bT)["lifted"] == 0 and np.array_equal(fine["V"], V0)
-    far = sleeve(5, 3.0)  # cloth 20 cm off the body (a collar's fall): out of reach, not touched
-    assert ge.clear_body(far, bV, bT) == {"lifted": 0, "most_m": 0.0, "under": 0, "points": 0}

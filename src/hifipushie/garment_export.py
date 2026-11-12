@@ -21,8 +21,7 @@ LOD, budgets.lod_ratios, what the character's export gives a part below the neck
 grid go with sqrt(share)), never a decimation of LOD0: the character's generic decimator kinked the shirt at LOD2 and
 tore its fronts at LOD3. Seams stay shared, the UVs stay the pattern, the weights are read off the body again on each
 LOD's own mesh. Details (lod_details): a piece under DETAIL_MIN_PX on screen at the LOD's switch size is left out, the
-others are decimated to the LOD's share and moved with the cloth under them. A LOD's cloth is lifted clear of the
-body where its flat faces would cut under the skin (clear_body): a coarse sleeve otherwise shows the arm through it.
+others are decimated to the LOD's share and moved with the cloth under them.
 
 Refused by name: step 9 not approved (internally an approved 7a is enough for the build: the record's step 10 then
 says why it can't be written), no build, over budget at the coarsest grid (H_MAX: say what to change).
@@ -48,9 +47,6 @@ H_MAX_LOD = 0.14  # m: the coarsest grid a LOD takes (a sleeve keeps about three
 SCREEN_PX = 1920  # px: the larger dimension of the target's screen (budgets.json "target": 1080p)
 DETAIL_MIN_PX = 2.0  # a detail piece (a button) smaller than this at a LOD's switch size is left out of that LOD
 DETAIL_MIN_TRIS = 12  # a kept detail piece is never decimated below this (a closed solid, not a sliver)
-LOD_CLEAR = 0.004  # m: a LOD's cloth is lifted to stay this far outside the body where its flat faces cut under the skin
-LOD_CLEAR_MAX = 0.05  # m: ... no vertex further than this (a sleeve of three faces round an arm stays a sleeve)
-LOD_CLEAR_REACH = 0.08  # m: ... and only faces this close to the body (a collar's fall is not on the body)
 # UV stretch row: INFORMATIONAL (T11b). T11 set its limits after seeing the numbers and widened them once to pass; no
 # named tolerance exists (budgets.json gives texel densities per role, not a stretch tolerance), so it gates nothing.
 
@@ -174,62 +170,11 @@ def close_corners(p: dict) -> int:
     return n
 
 
-_S = np.array([[1, 1, 1], [3, 3, 0], [0, 3, 3], [3, 0, 3], [4, 1, 1], [1, 4, 1], [1, 1, 4]]) / np.array(
-    [[3.0], [6.0], [6.0], [6.0], [6.0], [6.0], [6.0]])  # points on a face: the middle, the edges' middles, three inside
-
-
-def body_gap(P: np.ndarray, bV: np.ndarray, bT: np.ndarray, bN: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(signed distance outside the body, the body's outward normal there, distance to the body) for points P."""
-    c, b = on_surface(P, bV, bT)
-    q = (b[:, :, None] * bV[c]).sum(1)
-    n = (b[:, :, None] * bN[c]).sum(1)
-    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-    return ((P - q) * n).sum(1), n, np.linalg.norm(P - q, axis=1)
-
-
-def clear_body(m: dict, bV, bT, rounds: int = 6) -> dict:
-    """The outer mesh m (V, T, weld, N) lifted off the body, in place -> {"lifted" vertices, "most_m", "under"
-    points still under the skin, of "points"}. A coarse grid's flat faces cut under the skin between their corners
-    (three faces round an arm): in the character the skin then shows THROUGH the LOD's cloth (the first LOD proof:
-    both armpits and forearms at LOD3). Each face is tested at seven points; a face with a point less than
-    LOD_CLEAR outside the body has its corners moved out along the body's normal by what is missing (seam copies
-    together), a few rounds, never more than LOD_CLEAR_MAX. LOD0 is not touched: its look is the garment's."""
-    bV, bT = np.asarray(bV, float), np.asarray(bT, np.int64)
-    bN = gg.normals(bV, bT)
-    V, T, weld = m["V"], np.asarray(m["T"], np.int64), np.asarray(m["weld"])
-    moved = np.zeros(weld.max() + 1)
-    under = n_pts = 0
-    for it in range(rounds + 1):
-        S = np.einsum("sk,tkc->tsc", _S, V[T]).reshape(-1, 3)
-        gap, _, dist = body_gap(S, bV, bT, bN)
-        near = dist < LOD_CLEAR_REACH
-        need = np.where(near, np.clip(LOD_CLEAR - gap, 0.0, None), 0.0).reshape(len(T), len(_S)).max(1)
-        under, n_pts = int((near & (gap < 0)).sum()), int(near.sum())
-        if it == rounds or need.max() < 5e-4:
-            break
-        lift = np.zeros(weld.max() + 1)
-        np.maximum.at(lift, weld[T].ravel(), np.repeat(need, 3))
-        lift = np.minimum(lift, LOD_CLEAR_MAX - moved)
-        if lift.max() < 1e-5:
-            break
-        _, n, _ = body_gap(V, bV, bT, bN)
-        acc = np.zeros((weld.max() + 1, 3))
-        np.add.at(acc, weld, n)  # (seam copies move together, along one direction)
-        acc /= np.maximum(np.linalg.norm(acc, axis=1, keepdims=True), 1e-12)
-        V += (lift[:, None] * acc)[weld]
-        moved += lift
-    m["N"] = gg.normals(V, T, weld)
-    return {"lifted": int((moved > 1e-5).sum()), "most_m": round(float(moved.max()), 4), "under": under, "points": n_pts}
-
-
-def game_mesh(drape: dict, M: dict, h: float, body=None, joints: dict | None = None, rows: int | None = None,
-              clear: tuple | None = None) -> dict:
+def game_mesh(drape: dict, M: dict, h: float, body=None, joints: dict | None = None, rows: int | None = None) -> dict:
     """The game mesh at ~h: outer + inner + rims (garment_game.shell), uv = the packed pattern atlas, and the outer
-    mesh's pattern uv (metres) for the stretch. joints: see regrid (None: the old hex route). rows: piece_h's.
-    clear: (body vertices, triangles) to lift the cloth off (clear_body: a LOD); its numbers under "clear"."""
+    mesh's pattern uv (metres) for the stretch. joints: see regrid (None: the old hex route). rows: piece_h's."""
     from . import garment_loops as gl
     pieces, m = regrid(drape, h, body, fold_lines(M), piece_h(M, h, rows), joints)
-    cleared = clear_body(m, *clear) if clear is not None else None
     m["quad_share"] = round(gl.quad_share(pieces), 3) if joints is not None else 0.0
     offs = np.cumsum([0] + [len(p["V"]) for p in pieces])[:-1]  # (merged stacks the pieces in order)
     m["quads"] = np.vstack([np.asarray(p.get("quads", np.zeros((0, 4), int))).reshape(-1, 4) + o
@@ -241,14 +186,13 @@ def game_mesh(drape: dict, M: dict, h: float, body=None, joints: dict | None = N
     uvs, side = [ga.atlas_uv(lay, p["name"], p["uv"]) for p in pieces], lay["side"]
     m["uv_pattern"], m["uv"] = m["uv"], np.vstack(uvs)
     sh = gg.shell(m, m["T"])
-    sh.update({"outer": m, "h": h, "side": side, "pieces": [p["name"] for p in pieces], "clear": cleared,
+    sh.update({"outer": m, "h": h, "side": side, "pieces": [p["name"] for p in pieces],
                "missing_boundary_edges": int(sum(p["missing_boundary_edges"] for p in pieces))})
     return sh
 
 
 def fit_budget(drape: dict, M: dict, budget: int, extra: int = 0, body=None, h0: float = 0.02,
-               joints: dict | None = None, rows: int | None = None, h_max: float = H_MAX,
-               clear: tuple | None = None) -> tuple[dict, list]:
+               joints: dict | None = None, rows: int | None = None, h_max: float = H_MAX) -> tuple[dict, list]:
     """The finest grid whose triangles (+ extra: the details) fit the budget, within [H_MIN, h_max]: h scaled by
     sqrt(count / target) a few times. Returns (game mesh, tries [(h, triangles)]). Over budget at h_max: the h_max mesh
     (LOD0's caller refuses; a LOD says it is over its share). Among the tries that fit, one with every pattern edge
@@ -256,7 +200,7 @@ def fit_budget(drape: dict, M: dict, budget: int, extra: int = 0, body=None, h0:
     target, h, tries, best = BUDGET_FILL * budget - extra, min(h0, h_max), [], None
     rank = lambda m: (-m["missing_boundary_edges"], len(m["T"]))  # noqa: E731
     for _ in range(6):
-        g = game_mesh(drape, M, h, body, joints, rows, clear)
+        g = game_mesh(drape, M, h, body, joints, rows)
         n = len(g["T"])
         tries.append((round(h, 4), n))
         if n + extra <= budget and (best is None or rank(g) > rank(best)):
