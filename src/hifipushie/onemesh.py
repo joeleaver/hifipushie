@@ -829,6 +829,7 @@ def _carried(ht: dict, mv, dz: float = 0.0) -> dict:
     from scipy.spatial import cKDTree
 
     from . import base_imls
+    from . import retopo
     sh = np.array([0.0, 0.0, dz])
     W = mv(ht["verts"]) - sh
     A0, A1 = ht["verts"] - ht["verts"].mean(0), W - W.mean(0)

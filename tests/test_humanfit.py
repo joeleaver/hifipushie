@@ -1,6 +1,8 @@
 """Measuring and fitting the one human mesh with guard rails (humanfit.py): uv run python tests/test_humanfit.py
 (needs the gnm and makehuman packs). The adversarial cases must come back with honest residuals, never a broken mesh
 that "meets the number"."""
+import copy
+
 import numpy as np
 
 from hifipushie import assets, humanfit as hf
@@ -198,7 +200,7 @@ def test_hollow_cheeks_read_on_the_section():
     st0 = hf.state(b)
     h0 = hf.cheek_hollow(st0)
     assert max(h0.values()) < 1.0, h0
-    b1 = hf.copy.deepcopy(b)
+    b1 = copy.deepcopy(b)
     b1["head"].setdefault("shape", {})["hollow"] = 0.005
     st1 = hf.state(b1)
     h1 = hf.cheek_hollow(st1)
@@ -212,7 +214,7 @@ def test_jaw_angle_is_a_symmetric_bony_corner():
     under-jaw: both sides alike, nothing folded, the face's landmarks above the jaw line held."""
     b = base()
     st0 = hf.state(b)
-    b1 = hf.copy.deepcopy(b)
+    b1 = copy.deepcopy(b)
     b1["head"].setdefault("shape", {})["jaw_angle"] = 0.004
     st1 = hf.state(b1)
     P0, P1 = np.asarray(st0["tpl"]["P"]), np.asarray(st1["tpl"]["P"])
@@ -234,7 +236,7 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
     and nose_tip move only their own part."""
     b = base()
     st0 = hf.state(b)
-    b1 = hf.copy.deepcopy(b)
+    b1 = copy.deepcopy(b)
     b1["head"].setdefault("shape", {})["jawline"] = {"below_lobe": 0.055, "tuck": 0.004, "smooth": 5}
     st1 = hf.state(b1)
     L0, L1 = st0["L"], st1["L"]
@@ -245,7 +247,7 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
     it = hf.integrity(b1, st1, st0)
     assert it["ok"], it["broken"]
     for key, val, moved in (("ears", {"out": 25, "size": 1.1, "blend": 0.02}, "ears"), ("nose_tip", 8, "nose")):
-        b2 = hf.copy.deepcopy(b)
+        b2 = copy.deepcopy(b)
         b2["head"].setdefault("shape", {})[key] = val
         st2 = hf.state(b2)
         P0, P2 = np.asarray(st0["tpl"]["P"]), np.asarray(st2["tpl"]["P"])
@@ -257,7 +259,7 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
         assert np.linalg.norm(st2["L"][36:48] - L0[36:48], axis=1).max() < 0.0005
         assert hf.integrity(b2, st2, st0)["ok"], key
     # the chin: wider between the mental corners, a level bottom, a mid-line cleft; the tip rounded; all symmetric
-    b4 = hf.copy.deepcopy(b)
+    b4 = copy.deepcopy(b)
     b4["head"].setdefault("shape", {}).update({"chin": {"width": 0.006, "square": 0.7, "cleft": 0.002},
                                                 "nose_tip": {"up": 10, "round": 1.0}})
     st4 = hf.state(b4)
@@ -270,7 +272,7 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
     assert (P4[mid, 1] - P0[mid, 1]).max() > 0.001                      # the groove goes in (the head faces -y)
     assert np.linalg.norm(L4[36:48] - L0[36:48], axis=1).max() < 0.0005
     assert hf.integrity(b4, st4, st0)["ok"]
-    b3 = hf.copy.deepcopy(b)
+    b3 = copy.deepcopy(b)
     b3["head"].setdefault("shape", {})["nose_tip"] = -8
     assert hf.state(b3)["L"][30][2] < L0[30][2] < hf.state(b2)["L"][30][2]
 
@@ -281,7 +283,7 @@ def test_lean_thins_under_the_jaw_and_keeps_the_border():
     pads either side of the chin's groove."""
     b = base()
     st0 = hf.state(b)
-    b1 = hf.copy.deepcopy(b)
+    b1 = copy.deepcopy(b)
     b1["head"].setdefault("shape", {})["lean"] = {"under_jaw": 0.006, "jowl": 0.002}
     st1 = hf.state(b1)
     P0, P1 = np.asarray(st0["tpl"]["P"]), np.asarray(st1["tpl"]["P"])
@@ -297,7 +299,7 @@ def test_lean_thins_under_the_jaw_and_keeps_the_border():
     assert abs(side[0] - side[1]) < 0.0008, side
     it = hf.integrity(b1, st1, st0)
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
-    b2 = hf.copy.deepcopy(b)
+    b2 = copy.deepcopy(b)
     b2["head"].setdefault("shape", {})["chin"] = {"cleft": 0.004, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.02}
     P2 = np.asarray(hf.state(b2)["tpl"]["P"])
     dy = (P2 - P0)[:, 1]                                                     # (the head faces -y: back = +)

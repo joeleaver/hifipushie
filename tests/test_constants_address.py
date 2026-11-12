@@ -45,9 +45,13 @@ def strays(base: str, mods: list) -> list:
     base_consts = {n for node in ast.parse((SRC / f"{base}.py").read_text()).body for n in (const_names(node) or [])}
     bad = []
     for m in mods:
-        for node in ast.parse((SRC / f"{m}.py").read_text()).body:
+        body = ast.parse((SRC / f"{m}.py").read_text()).body
+        own = {n.name for n in body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        for node in body:
             names = const_names(node)
-            if names:
+            if names and not ({x.id for x in ast.walk(node) if isinstance(x, ast.Name) and isinstance(x.ctx, ast.Load)} & own):
+                # (a table of the module's own functions, OPS = {"dots": op_dots, ...}, is code, not a knob: it needs
+                # the functions when the module is imported, so it lives with them and is read as <module>.OPS)
                 bad.append(f"{m}.py:{node.lineno} defines {', '.join(names)}: it belongs in {base}.py")
             if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module in fam:
                 copied = [a.name for a in node.names if a.name in base_consts or CONST.match(a.name)]
