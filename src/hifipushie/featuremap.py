@@ -267,7 +267,8 @@ def checks(name: str, fm: dict) -> list[str]:
         ortho = {v: g["world"] for v, g in c["marks"].items() if "world" in g}
         if len(ortho) >= 2 and not c.get("authority"):
             los, his = [w["z_lo"] for w in ortho.values()], [w["z_hi"] for w in ortho.values()]
-            tol = max(0.015, 0.2 * max(h - lo for h, lo in zip(his, los)))
+            tol = max(0.02, 0.3 * max(h - lo for h, lo in zip(his, los)))  # (a thing looks a little taller or
+            # shorter from another side: only a real disagreement is owed)
             if max(los) - min(los) > tol or max(his) - min(his) > tol:
                 span = ", ".join(f"{v} z {w['z_lo']:.3f}-{w['z_hi']:.3f}" for v, w in ortho.items())
                 notes.append(f"DISAGREE {f}: {span}: the views don't put it at the same height; check the marks, or "

@@ -4,12 +4,15 @@ is the feature MADE, is it where the picture has it, is it the picture's size, d
 Why: an outline score passes a box-headed block-in (Baynard's Scraps: 88 % overlap, no muzzle, sockets, brows or
 mouth). The outline is one row of this table; the features inside it are all the others.
 
-A feature's FOOTPRINT in a view is what is SEEN OF THE THING ITSELF: the pixels its elements change, i.e. where
-the first surface a pixel's ray meets moves (or appears, or goes) when those elements are taken out of the model.
-One rule for every kind of element: an added shape, a cut, a stroke that pushes skin. A mass is taken out together
-with the forms on it (they are its surface), but not with the masses on it: where an eye stands in front of a
-head, that pixel is the eye's. Pixels where anything else stands in front don't count either (a feature behind
-the body has no footprint: HIDDEN). Measured in the feature's own box at a finer voxel than the whole model's.
+A feature's FOOTPRINT in a view is what is SEEN OF THE THING ITSELF.
+- An ADDED shape (a blob, a bone, a loft, a sheet) owns the skin nearest its own surface (`owners`): every visible
+  pixel has one owner among the added shapes of the front part there. Blended shapes share a skin, and an eye
+  splits it that way: taking a shin out would also move the foot's rim and the hip, but those are not the leg.
+- A SHELL part (clothing laid over another part) is owned whole by its elements.
+- A CUT or a STROKE owns nothing; its footprint is the pixels whose first surface moves when it is taken out of
+  the spec, inside its own bounds, measured in its own box at a finer voxel than the whole model's.
+A mass counts the forms on it (they are its surface), not the masses on it: where an eye stands in front of a
+head, that pixel is the eye's. A feature with nothing showing from a view is HIDDEN there.
 The picture's side of the comparison is the same thing: the feature's mark, less the marks of the masses on it.
 Paint has no shape and is not measured here.
 
@@ -42,7 +45,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from . import featuremap, matched, sdf, store
+from . import featurealign, featuremap, matched, sdf, store
 from .featurerays import depth_image, first_hit, rays, relief  # noqa: F401  (the pictures and tests use them from here)
 from .spec import compile_prims
 
@@ -176,6 +179,45 @@ def seen_mark(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
     return mk
 
 
+def owners(prims: list, shells: set, whole: sdf.Grid, cam: dict, depth: np.ndarray, front: np.ndarray, part_ids: list):
+    """Which element OWNS the surface each pixel sees: of the added shapes in the front part there, the one whose
+    own surface is nearest the point. Blended shapes share a skin, and this is how an eye splits it: the hand's
+    skin is the hand's, though taking the forearm out would move it. A shell part (clothing laid over another
+    part) is owned whole, as "part:<name>". Returns (index map, -1 where nothing owns; the names)."""
+    names = sorted({p.name for p in prims if p.op == "add" and p.part not in shells}) + [f"part:{q}" for q in sorted(shells)]
+    at = {n: i for i, n in enumerate(names)}
+    W, H = cam["size"]
+    ys, xs = np.mgrid[0:H, 0:W]
+    C, d, _ = rays(cam, np.stack([xs.ravel() + 0.5, ys.ravel() + 0.5], 1))
+    hit = np.isfinite(depth).ravel()
+    P = C + np.where(hit, depth.ravel(), 0.0)[:, None] * d
+    own = np.full(H * W, -1)
+    best = np.full(H * W, np.inf)
+    fr = front.ravel()
+    for qi, q in enumerate(part_ids):
+        here = hit & (fr == qi)
+        if not here.any():
+            continue
+        if q in shells:
+            own[here] = at[f"part:{q}"]
+            continue
+        idx = np.where(here)[0]
+        pts = P[idx]
+        for p in prims:
+            if p.part != q or p.op != "add":
+                continue
+            m = 0.01 + float(np.max(p.reach)) + whole.voxel
+            near = np.all((pts >= p.lo - m) & (pts <= p.hi + m), 1)
+            if not near.any():
+                continue
+            dist = sdf.field_at([p], pts[near], clip=False)
+            k = idx[near]
+            better = dist < best[k]
+            best[k[better]] = dist[better]
+            own[k[better]] = at[p.name]
+    return own.reshape(H, W), names
+
+
 def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dict, resolution: int = 144,
                ex: dict | None = None, name: str | None = None) -> dict:
     """{(feature, view): bool mask at the view's size} for every made feature marked in a view with a camera;
@@ -189,7 +231,7 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
     by_part = {ps[0].part: sdf.evaluate(ps, at=frame) for ps in sdf.streams(prims)}
     part_ids = list(by_part)
     whole = sdf.Grid(np.minimum.reduce([g.field for g in by_part.values()]), frame[0], frame[1])
-    moved_views = align_flat(name, fm, cams, whole) if name else []
+    moved_views = featurealign.align_flat(name, fm, cams, whole) if name else []
     deep = {}
     front = {}
     for v in views:  # the whole model's first surface, and which part it belongs to: what stands in front of what
@@ -202,6 +244,12 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         idx = ((P - whole.origin) / whole.voxel).T
         val = np.stack([ndimage.map_coordinates(g.field, idx, order=1, mode="constant", cval=1.0) for g in by_part.values()])
         front[v] = np.where(hit, val.argmin(0), -1).reshape(H, W)
+    shells = {k for k, dfn in (ex.get("parts") or {}).items() if isinstance(dfn, dict) and dfn.get("shell")}
+    part_of = {n: e.get("part", "body") for kind in ("blobs", "bones") for n, e in ex[kind].items()}
+    adds = {p.name for p in prims if p.op == "add" and p.part not in shells}
+    owner, owner_names = {}, None
+    for v in views:
+        owner[v], owner_names = owners(prims, shells, whole, cams[v], deep[v], front[v], part_ids)
     lo_all = np.min([p.lo for p in prims], 0)
     hi_all = np.max([p.hi for p in prims], 0)
     out, notes = {}, {}
@@ -214,8 +262,19 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         for ch in featuremap.children(fm, f):  # its forms are its surface; the masses on it are their own
             if elements.get(ch) and fm["features"][ch].get("kind") == "form" and _mass_of(fm, ch) == f:
                 names |= resolve(ex, elements[ch], kits)[0]
+        # an added shape's footprint is the skin it owns; a shell part's is the whole shell. What is left (a cut,
+        # a stroke that pushes skin) owns nothing and is found by taking it out and seeing what changes
+        mine_idx = [owner_names.index(n) for n in names if n in adds] + \
+                   [owner_names.index(f"part:{part_of[n]}") for n in names if part_of.get(n) in shells]
         for v in marked:
-            out[(f, v)] = np.zeros((cams[v]["size"][1], cams[v]["size"][0]), bool)
+            out[(f, v)] = np.isin(owner[v], mine_idx) if mine_idx else np.zeros(owner[v].shape, bool)
+        names = {n for n in own_names if n not in adds and part_of.get(n) not in shells}
+        if not names:
+            for v in marked:
+                out[(f, v)] = _tidy(out[(f, v)])
+            if not mine_idx:
+                notes[f] = "its elements shape nothing"
+            continue
         try:
             rest = compile_prims(without(ex, names))
         except SpecError as e:
@@ -224,7 +283,8 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         rprints = {sdf.fingerprint(p) for p in rest}
         mine = [p for p in prims if sdf.fingerprint(p) not in rprints] + [p for p in rest if sdf.fingerprint(p) not in prints]
         if not mine:
-            notes[f] = "its elements shape nothing"
+            if not mine_idx:
+                notes[f] = "its elements shape nothing"
             continue
         # only the parts the feature's own elements belong to: a shell over them (clothing) is another part's
         own = {p.part for p in mine}
@@ -284,76 +344,6 @@ def _line_row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float,
             "why": "" if ok else f"the model's form runs along {along:.0%} of the line (within {tol['line_mm']:.0f} mm)"}
 
 
-def _iou(a: np.ndarray, b: np.ndarray) -> float:
-    return float((a & b).sum() / max((a | b).sum(), 1))
-
-
-def align_flat(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
-    """Lay each flat view on the model before measuring, and say what had to move. A picture can't say how tall the
-    model was built, where its ground is, or where its origin lies along its length, so those are fitted: one scale
-    for the whole sheet (from its first flat view), each view's ground row, and a side view's centre line (a front
-    or back view keeps its mirror line). What moved is a finding about the model, reported, not hidden: features
-    are then placed relative to the whole figure, as an eye compares them."""
-    import json as _json
-    from . import refread
-    flat = [v for v in cams if fm["views"].get(v, {}).get("kind") in refread.ORTHO]
-    notes, scale = [], None
-    for v in flat:
-        cam, rec = cams[v], fm["views"][v]
-        fig = np.asarray(Image.open(rec["image"]).convert("RGBA"))[..., 3] > 127
-        W, H = cam["size"]
-
-        def outline(c):
-            ys, xs = np.mgrid[0:H:2, 0:W:2]
-            return np.isfinite(first_hit(whole, c, np.stack([xs.ravel() + 1.0, ys.ravel() + 1.0], 1)).reshape(ys.shape))
-        ref = fig[::2, ::2]
-        mod = outline(cam)[:ref.shape[0], :ref.shape[1]]
-        if not mod.any():
-            continue
-        my, ry = np.where(mod.any(1))[0], np.where(ref.any(1))[0]
-        if scale is None:  # the sheet's scale: the model's drawn height against the picture's
-            scale = (my[-1] - my[0] + 1) / (ry[-1] - ry[0] + 1)
-        k0 = cam["m_per_px"]
-        k = k0 * scale if abs(scale - 1) > 0.01 else k0
-        side = rec["kind"] in ("side", "side_r")
-        trial = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"], rec["ground_px"])
-        mod = outline(trial)[:ref.shape[0], :ref.shape[1]]
-        best, at = -1.0, (0, 0)
-        for dy in range(-12, 13):
-            for dx in (range(-mod.shape[1] // 4, mod.shape[1] // 4 + 1) if side else (0,)):
-                m2 = np.roll(np.roll(mod, dy, 0), dx, 1)
-                i = _iou(m2, ref)
-                if i > best:
-                    best, at = i, (dx, dy)
-        dx, dy = 2 * at[0], 2 * at[1]
-        if k != k0 or abs(dx) >= 3 or abs(dy) >= 3:
-            new = refread.ortho_camera(rec["kind"], (W, H), k, rec["centre_px"] + dx, rec["ground_px"] + dy)
-            cam.update({q: new[q] for q in ("f_px", "aim", "m_per_px")})
-            rec.update(m_per_px=k, centre_px=float(rec["centre_px"] + dx), ground_px=int(rec["ground_px"] + dy))
-            matched.cam_path(name, v).write_text(_json.dumps(cam))
-            why = []
-            if k != k0:
-                why.append(f"the model is {1 / scale:.2f} x the height the sheet was read at")
-            if abs(dy) >= 3:
-                why.append(f"its lowest point is {abs(dy) * k * 1000:.0f} mm {'below' if dy < 0 else 'above'} the ground line")
-            if abs(dx) >= 3:
-                why.append(f"its centre line is {abs(dx) * k * 1000:.0f} mm from where the drawn feet put it")
-            notes.append(f"{v}: {'; '.join(why)}. The view now sits on the model (outlines overlap {best:.0%})")
-            for c in fm["features"].values():  # a mark's place in metres follows its view
-                if v in c["marks"]:
-                    g = c["marks"][v]
-                    x0, y0, x1, y1 = g["box"]
-                    sign = -1.0 if rec["kind"] in ("back", "side_r") else 1.0
-                    axis = "x" if rec["kind"] in ("front", "back") else "y"
-                    g["world"] = {axis: round(sign * (g["centre_px"][0] - rec["centre_px"]) * k, 4),
-                                  "z": round((rec["ground_px"] - g["centre_px"][1]) * k, 4),
-                                  "z_lo": round((rec["ground_px"] - y1) * k, 4), "z_hi": round((rec["ground_px"] - y0) * k, 4),
-                                  "w": round((x1 - x0) * k, 4), "h": round((y1 - y0) * k, 4)}
-    if notes:
-        featuremap.save(name, fm)
-    return notes
-
-
 def _at_mark(ref: np.ndarray, mod: np.ndarray) -> np.ndarray:
     """The footprint's pieces that reach the mark (within a sixth of its smaller side), or its biggest piece when
     none does. Taking a thigh out also moves the hip above the belt: that is not the leg the picture marks."""
@@ -405,7 +395,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 7  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 8  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
