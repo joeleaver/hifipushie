@@ -318,15 +318,23 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     pd.finish(net)
     Xn = _push_out(t["Xn"], near, gap)
     passes, lm = [], []
+    tm = {"setup": time.time() - t0}
+    t1 = time.time()
     for npd in range(pd_iters):
         Xp, Xn = Xn, pd.step(Xn)
         if npd % PUSH_EVERY == 0 or npd == pd_iters - 1:
             Xn = _push_out(Xn, near, gap)
         if np.abs(Xn - Xp).max() < 1e-7:
             break
+    tm["pd"] = time.time() - t1
+    tm["lm"] = tm["project"] = 0.0
     for rnd in range(polish_rounds):
+        t1 = time.time()
         Xn, k, E = gn.polish(Xn, t, W_GN, near, gap, iters=lm_iters, log=log)
+        t2 = time.time()
         Xn, np_ = _project(Xn, t, near, gap, log=log)
+        tm["lm"] += t2 - t1
+        tm["project"] += time.time() - t2
         lm.append(k)
         passes.append(np_)
         if log:
@@ -339,4 +347,5 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     rep["projection_passes"] = passes
     rep["lm_passes"] = lm
     rep["pd_passes"] = npd + 1
+    rep["timing"] = {k: round(v, 2) for k, v in tm.items()}
     return X, rep
