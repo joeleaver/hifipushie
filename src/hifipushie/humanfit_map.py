@@ -174,7 +174,10 @@ def _evidence(st, views) -> list:
             src.append(f"{len(clicks)} given points")
         if not X:
             raise ValueError(f"humanfit_map: view {v.get('image') or v.get('yaw')} has no evidence (no detection, no points). "
-                             "A profile needs clicked points: the detector does not find profiles.")
+                             "A profile needs clicked points (the detector does not find profiles): give that view "
+                             "\"points\": {name: [u, v]} in full-image pixels for " + ", ".join(CLICK_SIGMAS["profile"])
+                             + " (as many as show; at least nose_bridge, nose_tip, nose_base and chin), or leave the "
+                             "profile out of the start and add it once the front and 3/4 are fitted")
         out.append({"X": np.concatenate(X), "XB": np.concatenate(XB, 1), "uv": np.concatenate(uv), "sig": np.concatenate(sig),
                     "src": ", ".join(src), "mp_idx": used, "ignored_lm68": bool(det is not None and lm68)})
     return out
