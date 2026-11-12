@@ -54,13 +54,30 @@ TOL = {"off_mm": 5.0, "off_share": 0.2, "size": (0.75, 1.33), "iou": 0.5, "line_
 IN_MASS = "="  # elements ["="]: the form is made by the shape of the mass it is on, with no element of its own
 
 
-def expanded(spec: dict) -> dict:
+def expanded(spec: dict, name: str | None = None) -> dict:
     """The spec with kits and strokes turned into their pieces and every ".L" mirrored, symmetry off: each element
-    is there under its own name, and taking one out takes out only that one."""
+    is there under its own name, and taking one out takes out only that one. With `name` it is kept beside the
+    model's map for that exact spec (seating a figure's strokes takes half a minute), provided the kept copy
+    compiles to the very same shapes."""
     import copy
-    from .spec import expand_mirror
+    import json as _json
+    from .spec import expand_mirror, geometry
+    q = None
+    if name:
+        q = featuremap.path(name).with_name(f"_ex_{_h(geometry(spec))}.json")
+        if q.exists():
+            try:
+                return _json.loads(q.read_text())
+            except Exception:  # noqa: BLE001  (a kept copy that can't be read is made again)
+                pass
     ex = copy.deepcopy(expand_mirror(spec))
     ex["symmetry"] = False
+    if q is not None:
+        for old in q.parent.glob("_ex_*.json"):
+            old.unlink()
+        back = _json.loads(_json.dumps(ex, default=float))
+        if [sdf.fingerprint(p) for p in compile_prims(back)] == [sdf.fingerprint(p) for p in compile_prims(ex)]:
+            q.write_text(_json.dumps(back))
     return ex
 
 
@@ -179,6 +196,43 @@ def seen_mark(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
     return mk
 
 
+def _h(*parts) -> str:
+    import hashlib
+    import json as _json
+    return hashlib.sha1(_json.dumps(parts, sort_keys=True, default=float).encode()).hexdigest()[:20]
+
+
+class _Kept:
+    """What a report worked out for one state of a model, kept beside its map (<model>/features/_fp): the whole
+    model's grids, each view's first surface and owners, each cut's or stroke's footprint. A new state of the
+    model empties it; a changed mark or link costs only what it changes."""
+
+    def __init__(self, name: str | None, base: str):
+        self.dir = None
+        if name:
+            self.dir = featuremap.path(name).with_name("_fp")
+            self.dir.mkdir(exist_ok=True)
+            tag = self.dir / "base"
+            if not tag.exists() or tag.read_text() != base:
+                for q in self.dir.glob("*.npz"):
+                    q.unlink()
+                tag.write_text(base)
+
+    def get(self, key: str):
+        q = self.dir / f"{key}.npz" if self.dir else None
+        if q is None or not q.exists():
+            return None
+        try:
+            with np.load(q, allow_pickle=False) as z:
+                return {k: z[k] for k in z.files}
+        except Exception:  # noqa: BLE001  (a file cut short is worked out again)
+            return None
+
+    def put(self, key: str, **arrays) -> None:
+        if self.dir:
+            np.savez_compressed(self.dir / f"{key}.npz", **arrays)
+
+
 def owners(prims: list, shells: set, whole: sdf.Grid, cam: dict, depth: np.ndarray, front: np.ndarray, part_ids: list):
     """Which element OWNS the surface each pixel sees: of the added shapes in the front part there, the one whose
     own surface is nearest the point. Blended shapes share a skin, and this is how an eye splits it: the hand's
@@ -227,29 +281,40 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
     kits = tuple(spec.get("kits") or ())
     prims = compile_prims(ex)
     prints = {sdf.fingerprint(p) for p in prims}
-    frame = sdf.frame(prims, resolution)
-    by_part = {ps[0].part: sdf.evaluate(ps, at=frame) for ps in sdf.streams(prims)}
-    part_ids = list(by_part)
-    whole = sdf.Grid(np.minimum.reduce([g.field for g in by_part.values()]), frame[0], frame[1])
+    kept = _Kept(name, _h(VERSION, resolution, sorted((p.name, sdf.fingerprint(p)) for p in prims)))
+    got = kept.get("whole")
+    if got is None:
+        frame = sdf.frame(prims, resolution)
+        fields = {ps[0].part: sdf.evaluate(ps, at=frame).field for ps in sdf.streams(prims)}
+        got = {"fields": np.stack(list(fields.values())).astype(np.float32), "parts": np.array(list(fields)),
+               "origin": np.asarray(frame[0], float), "voxel": np.array(float(frame[1]))}
+        kept.put("whole", **got)
+    part_ids = [str(q) for q in got["parts"]]
+    part_fields = got["fields"].astype(float)
+    whole = sdf.Grid(part_fields.min(0), got["origin"], float(got["voxel"]))
     moved_views = featurealign.align_flat(name, fm, cams, whole) if name else []
-    deep = {}
-    front = {}
-    for v in views:  # the whole model's first surface, and which part it belongs to: what stands in front of what
-        deep[v] = depth_image(whole, cams[v])
-        W, H = cams[v]["size"]
-        ys, xs = np.mgrid[0:H, 0:W]
-        C, d, _ = rays(cams[v], np.stack([xs.ravel() + 0.5, ys.ravel() + 0.5], 1))
-        hit = np.isfinite(deep[v]).ravel()
-        P = C + np.where(hit, deep[v].ravel(), 0.0)[:, None] * d
-        idx = ((P - whole.origin) / whole.voxel).T
-        val = np.stack([ndimage.map_coordinates(g.field, idx, order=1, mode="constant", cval=1.0) for g in by_part.values()])
-        front[v] = np.where(hit, val.argmin(0), -1).reshape(H, W)
     shells = {k for k, dfn in (ex.get("parts") or {}).items() if isinstance(dfn, dict) and dfn.get("shell")}
     part_of = {n: e.get("part", "body") for kind in ("blobs", "bones") for n, e in ex[kind].items()}
     adds = {p.name for p in prims if p.op == "add" and p.part not in shells}
-    owner, owner_names = {}, None
-    for v in views:
-        owner[v], owner_names = owners(prims, shells, whole, cams[v], deep[v], front[v], part_ids)
+    owner_names = sorted({p.name for p in prims if p.op == "add" and p.part not in shells}) + [f"part:{q}" for q in sorted(shells)]
+    deep, front, owner = {}, {}, {}
+    for v in views:  # the whole model's first surface, which part it belongs to, and which shape owns it
+        vkey = "view_" + _h(cams[v])
+        seen = kept.get(vkey)
+        if seen is None:
+            d0 = depth_image(whole, cams[v])
+            W, H = cams[v]["size"]
+            ys, xs = np.mgrid[0:H, 0:W]
+            C, d, _ = rays(cams[v], np.stack([xs.ravel() + 0.5, ys.ravel() + 0.5], 1))
+            hit = np.isfinite(d0).ravel()
+            P = C + np.where(hit, d0.ravel(), 0.0)[:, None] * d
+            idx = ((P - whole.origin) / whole.voxel).T
+            val = np.stack([ndimage.map_coordinates(g, idx, order=1, mode="constant", cval=1.0) for g in part_fields])
+            f0 = np.where(hit, val.argmin(0), -1).reshape(H, W)
+            o0, _ = owners(prims, shells, whole, cams[v], d0, f0, part_ids)
+            seen = {"deep": d0, "front": f0, "owner": o0}
+            kept.put(vkey, **seen)
+        deep[v], front[v], owner[v] = seen["deep"], seen["front"], seen["owner"]
     lo_all = np.min([p.lo for p in prims], 0)
     hi_all = np.max([p.hi for p in prims], 0)
     out, notes = {}, {}
@@ -275,6 +340,12 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
             if not mine_idx:
                 notes[f] = "its elements shape nothing"
             continue
+        rkeys = {v: "rm_" + _h(sorted(names), cams[v]) for v in marked}
+        had = {v: kept.get(rkeys[v]) for v in marked}
+        if all(h is not None for h in had.values()):
+            for v in marked:
+                out[(f, v)] = _tidy(out[(f, v)] | had[v]["mask"])
+            continue
         try:
             rest = compile_prims(without(ex, names))
         except SpecError as e:
@@ -290,6 +361,7 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         own = {p.part for p in mine}
         pa, pr = [p for p in prims if p.part in own], [p for p in rest if p.part in own]
         own_ids = [part_ids.index(q) for q in own if q in part_ids]
+        took = {v: np.zeros(owner[v].shape, bool) for v in marked}
         for piece in _pieces(mine):  # pieces far apart (a scatter of bumps) are each measured in their own box
             pad = 0.012 + float(np.max([np.max(p.reach) for p in piece]))
             lo = np.maximum(np.min([p.lo for p in piece], 0) - pad, lo_all - 0.012)
@@ -328,9 +400,10 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
                     sub = (slice(box[1], box[3]), slice(box[0], box[2]))
                     seen = (np.isin(front[v][sub], own_ids) | (front[v][sub] < 0)) \
                         & (near <= deep[v][sub] + max(1.2 * whole.voxel, 0.006))
-                    out[(f, v)][sub] |= moved & seen & np.isfinite(near)
+                    took[v][sub] |= moved & seen & np.isfinite(near)
         for v in marked:
-            out[(f, v)] = _tidy(out[(f, v)])
+            kept.put(rkeys[v], mask=took[v])
+            out[(f, v)] = _tidy(out[(f, v)] | took[v])
     return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes, "moved_views": moved_views}
 
 
@@ -395,7 +468,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 8  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 9  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
@@ -458,7 +531,7 @@ def _report(name: str, elements, views, resolution: int, tol, peek: bool = False
             skipped.append(v)
     spec = store.load(name)
     made = {f: (c.get("elements") or []) if c["kind"] != "paint" else [] for f, c in fm["features"].items()}
-    ex = expanded(spec)
+    ex = expanded(spec, name)
     bad = {f: resolve(ex, pats, tuple(spec.get("kits") or ()))[1] for f, pats in made.items() if pats and pats != [IN_MASS]}
     bad = {f: b for f, b in bad.items() if b}
     if bad:  # every wrong name at once, before anything slow
