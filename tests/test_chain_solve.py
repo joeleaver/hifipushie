@@ -214,3 +214,19 @@ def test_the_solver_reads_no_roles_or_wear_state():
         bad = words & {"band", "fall", "stand", "collar", "placket", "ring", "rings", "sleeve", "panel", "tube", "open",
                        "closed", "worn", "wear"}
         assert not bad, f"{f.name} reads a role or wear state: {bad}"
+
+
+WALL_24K = 240.0  # s: N1b measured (STATE step5_rewrite); the target is ~60 (N1b's deliverable, not yet met)
+
+
+def test_garment_sized_network_solves_in_time():
+    """tests/chain_solve_bench.py at scale 1 (~24k points: torso + two sleeves round three cylinders): hard residuals
+    and wall time. (Slow tier: tests/slow_tests.txt.)"""
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).parent))
+    import chain_solve_bench as bench
+    net, X, rep, wall = bench.run(1.0)
+    print(rep["links"]["worst_pct"], rep["contact"], rep["timing"], wall)
+    assert net.n > 20000 and rep["hard_ok"]
+    assert rep["links"]["worst_pct"] < 0.1 and rep["contact"]["inside"] == 0
+    assert wall < WALL_24K
