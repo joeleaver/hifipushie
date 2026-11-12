@@ -7,9 +7,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - Pass 1 (landed, d8f3e9b9; tag archive/before-legacy-pass1): nine unreferenced modules, 13 spikes.
 - Clothes, cut 1 (landed, 551ff8d8; tag archive/before-legacy-cloth; ledger C409):
   - the nine gated tools (fit_garment, style_garment, release_garment, arrange_garment, dress, look_cloth, check_garment,
-    check_garment_reference, game_garment), HIFIPUSHIE_LEGACY_CLOTH, the guide's paragraph filter, and the 284 functions
-    and constants nothing live reached after that, with their tests. Source 214.2k -> 207.5k lines.
-- The guide's word-match filter had hidden text in every topic (gates, tools): back. Clothes guides keep what agents saw.
+    check_garment_reference, game_garment), HIFIPUSHIE_LEGACY_CLOTH, the guide's paragraph filter (it had hidden text
+    in every topic: back), 284 functions and constants nothing live reached, their tests. Source 214.2k -> 207.5k lines.
 - Clothes, cut 2 (landed, 5ba6e0e3; tag archive/before-legacy-cloth-2; ledger C411):
   - tools design_garment, look_pattern, alter_pattern, garment_reference, garment_from_reference,
     garment_reference_brief and the guide topic cloth_reference: no blind step trial called them (17 logs);
@@ -31,8 +30,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). A family's base module holds every constant and is the only
   one that runs code at import: tests/test_constants_address.py.
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
-  says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script.
-- Rule tests from the splits: test_undefined_names.py (source AND tests), test_constants_address.py, test_moved.py.
+  says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script. Rule
+  tests from the splits: test_undefined_names.py (source AND tests), test_constants_address.py, test_moved.py.
 - Still over 500 lines because one function is: asset_export 956 (_export 888), terrain_tiles 928 (_export_tiles 799),
   vegetation_grow 750 (grow 733), hair_cards_job 600 (cards_job 570): refactoring, not moving.
 - NOT split, and why: terrain_stream (imports in the middle of the module: by hand); blender_* (Blender runs them by
