@@ -46,6 +46,7 @@ def current(frames):
     import tempfile
     from pathlib import Path
     from hifipushie import hair, scene
+    from hifipushie import hair_job
     spec = store.load(name)
     sn = stage.ensure(os.environ.get("STAGE_MODEL", name))
     st = json.loads((store._dir(sn) / "spec.json").read_text())
@@ -56,7 +57,7 @@ def current(frames):
         idv = [{**f, "out": str(Path(tmp) / f"{f['name']}_id.png")} for f in frames]
         job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": PX, "samples": 24, "hide": [], "flat": False,
                "transparent": True, "lighting": {**LIGHT, "target": fr[0]["center"]}, "eevee": stage.STAGE_EEVEE,
-               "mode": "hair_look", "hair": hair.job(sn, st), "clay_views": [], "id_views": idv, "look_engine": "eevee"}
+               "mode": "hair_look", "hair": hair_job.job(sn, st), "clay_views": [], "id_views": idv, "look_engine": "eevee"}
         scene._blender(job, 2400)
         for f, g in zip(fr, idv):
             a = np.asarray(Image.open(g["out"]).convert("RGBA"), float)

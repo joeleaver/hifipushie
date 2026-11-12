@@ -2,6 +2,7 @@
 import shutil, sys, json
 from pathlib import Path
 from hifipushie import hair, store
+from hifipushie import hair_spec
 src, dst = store._dir("hc_tess"), store.HOME / "hs_tess"
 if not dst.exists():
     shutil.copytree(src, dst)
@@ -23,4 +24,4 @@ spec["hair"] = {
     "look": {"gap": "#1c110c", "lit": "#5c3b28", "sheen": "#8a6044", "vary": 0.45, "root": 0.1, "tip_amount": 0.5},
 }
 store.save(name, spec, "hair: strand groom")
-print(hair.groom(name, replace=True))
+print(hair_spec.groom(name, replace=True))

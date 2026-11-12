@@ -4,6 +4,7 @@ heads have; the lips route kept as the head uses it. Drops the lips-only switch 
 LIGHT."""
 import sys
 from hifipushie import blockin as bi, skin_layers as sl, store
+from hifipushie import blockin_models
 src, dst = sys.argv[1:3]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
 r = sl.apply(src, out=dst, lips=kw.get("lips", "texels"), log=print)
@@ -12,5 +13,5 @@ s = store.load(dst)
 s["skin"].pop("only", None)
 for k in ("base_opacity", "fine_strength"):
     s["skin"]["stack"].pop(k, None)
-bi._save(dst, s, f"full layer stack from {src}'s pictures (lips {kw.get('lips', 'texels')})", bi._refs(dst))
+blockin_models._save(dst, s, f"full layer stack from {src}'s pictures (lips {kw.get('lips', 'texels')})", blockin_models._refs(dst))
 print("stack layers:", [(l["name"], l["opacity"]) for l in s["skin"]["stack"]["layers"]], "features:", sorted((s["skin"].get("features") or {}).keys()))

@@ -4,14 +4,15 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_compare, face_ruler_jaw
 
 m, out = sys.argv[1], sys.argv[2]
-head, views, _ = fr.reference_views(m, lids=False, lips=False, parse="auto", chin={"cloth": True})
+head, views, _ = face_ruler_compare.reference_views(m, lids=False, lips=False, parse="auto", chin={"cloth": True})
 tiles = []
 for v in views[:2]:
     cam = v["cam"]
     im_m, ps = fr.clay(head, cam, passes=True)
-    E, t, X, p, n2 = fr.jaw_contour(head, cam)
+    E, t, X, p, n2 = face_ruler_jaw.jaw_contour(head, cam)
     zb = ps["zb"]
     print(v["kind"], "contour points", len(E), "zb", zb.shape, "img", v["img"].size)
     mm1 = X[:, 2] / cam["f"] * 1000.0
@@ -22,7 +23,7 @@ for v in views[:2]:
     b = np.abs(zat(qi) - X[:, 2]) < 0.006
     print("  drop behind:", int(a.sum()), "visible:", int(b.sum()), "both:", int((a & b).sum()))
     print("  z samples: X", np.round(X[:5, 2], 4), "zb at p", np.round(zat(p)[:5], 4), "zb at qi", np.round(zat(qi)[:5], 4), "zb at qo", np.round(zat(qo)[:5], 4))
-    pm = fr._parse_maps(v, head)
+    pm = face_ruler_jaw._parse_maps(v, head)
     im = v["img"].copy()
     d = ImageDraw.Draw(im)
     for i in range(len(E)):

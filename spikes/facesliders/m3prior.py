@@ -18,13 +18,14 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces5"))
 OUT = F / "out"
 NOISE = float(os.environ.get("NOISE", "0.0003"))
 EXPR_SD = float(os.environ.get("EXPR_SD", "0.3"))   # GNM's expression units are sds of its whole expressive range
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 names = [str(x) for x in g["identity_names"]]
 hc = [i for i, x in enumerate(names) if x.startswith("head")]
 IB = np.asarray(g["vertex_identity_basis"], float)[hc]

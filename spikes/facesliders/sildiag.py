@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 import fit5
 import outl
 from hifipushie import humanfit, store
+from hifipushie import humanfit_views
 
 m = sys.argv[1]
 sp = store.load(m)
@@ -19,7 +20,7 @@ v, cam = refs["views"][vi], refs["cameras"][vi]
 st = humanfit.state(fit5.spec_with(sp, humanfit.identity(sp["base"]))["base"])
 o = outl.profile_auto(v, step=3)
 env = fit5.silhouette_env(st, cam, o)
-px = humanfit.project(cam, env["X"])
+px = humanfit_views.project(cam, env["X"])
 mm = cam["t"][2] / cam["f"] * 1000
 r = ((px - env["p"]) * env["n"]).sum(1) * mm
 for y0 in range(560, 960, 20):

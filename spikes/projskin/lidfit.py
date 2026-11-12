@@ -6,16 +6,17 @@ import copy, os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, lidfold, skin, store
+from hifipushie import blockin_clay, blockin_expression, blockin_models, skin_params
 
 ref, src, dst = sys.argv[1:4]
-rj = bi._refs(ref)
-vi = bi._front(rj)
+rj = blockin_models._refs(ref)
+vi = blockin_clay._front(rj)
 v = rj["views"][vi]
 img = Image.open(v["image"]).convert("RGB")
-P = bi.detect_view(img, v)
+P = blockin_clay.detect_view(img, v)
 rd = lidfold.read_lid(img, P)
 spec = copy.deepcopy(store.load(src))
-p = skin.params(spec)
+p = skin_params.params(spec)
 # the fold sits a little above the line the picture shows: the drape over it grows with age (dermatochalasis; Price 2009:
 # platform show falls with age). crease = the visible platform + the overhang, per column. (First rule: crease = the
 # sex norm and overhang = norm - platform: a 2.5 mm roll on a 22-year-old with a crisp crease.)
@@ -78,10 +79,11 @@ for s_, key in ((0, "R"), (1, "L")):      # read_lid: subject's right first; col
 try:
     import crease_trace as ct
     from hifipushie import gnm_fold as gf, humanfit, likeness as lk, onemesh
+    from hifipushie import humanfit_views
     cam = rj["cameras"][vi]
-    st = humanfit.state(bi.view_base(spec["base"], rj, vi))
+    st = humanfit.state(blockin_expression.view_base(spec["base"], rj, vi))
     L68 = st["L"]
-    M = humanfit.project(cam, L68[:70])
+    M = humanfit_views.project(cam, L68[:70])
     mmpx = 1000.0 * float(np.linalg.norm(L68[36] - L68[39])) / float(np.linalg.norm(M[36] - M[39]))
     Pp = np.asarray(P, float)[:, :2]
     resp = ct.ridge(img, mmpx)
@@ -113,7 +115,7 @@ try:
                 continue
             pts0 = np.asarray(tpl["P"])[r0]
             cands.append((ids, pts0))
-        ids, pts0 = min(cands, key=lambda c: np.linalg.norm(humanfit.project(cam, c[1]).mean(0) - cen))
+        ids, pts0 = min(cands, key=lambda c: np.linalg.norm(humanfit_views.project(cam, c[1]).mean(0) - cen))
         out = []
         cross_px = []
         from scipy.spatial import cKDTree
@@ -122,7 +124,7 @@ try:
             a_, b_ = rows.get(int(ids[j, 0])), rows.get(int(ids[j, 10]))
             if a_ is None or b_ is None:
                 continue
-            p0, p1 = humanfit.project(cam, np.asarray(tpl["P"])[[a_, b_]])
+            p0, p1 = humanfit_views.project(cam, np.asarray(tpl["P"])[[a_, b_]])
             dr = (p1 - p0) / max(np.linalg.norm(p1 - p0), 1e-9)
             far = abs(ang[j]) > 60.0                     # round the corners the crease runs far out along the chain (his ~11 mm)
             hs = np.arange(max(1.5, tps_mid - 1.5), tps_mid + (12.0 if far else 6.0), 0.1)    # (the lash line and the lid edge lie below)
@@ -146,7 +148,7 @@ try:
         ectr = np.asarray(tpl["P"])[[rows[int(x)] for x in ids[:, 0] if int(x) in rows]].mean(0)
         okc = skin_[allg] & (ring_s[allg] >= 1) & (np.linalg.norm(Pall - ectr, axis=1) < 0.03)
         cg, cP = allg[okc], Pall[okc]
-        c2 = humanfit.project(cam, cP)
+        c2 = humanfit_views.project(cam, cP)
         past = ((tr - outer_) @ ex) * mmpx
         # the tail STARTS where the fold's own chains stop (1 mm overlap to blend): started at the canthus it ran along
         # the fold's roll over the outer third (a crumpled pale "crust") and dented the corner (a pale blob)
@@ -192,12 +194,12 @@ try:
             for j in range(len(ids)):
                 a_, b_ = rows.get(int(ids[j, 0])), rows.get(int(ids[j, 10]))
                 if a_ is not None and b_ is not None:
-                    p0, p1 = humanfit.project(cam, np.asarray(tpl["P"])[[a_, b_]])
+                    p0, p1 = humanfit_views.project(cam, np.asarray(tpl["P"])[[a_, b_]])
                     dr2.line([tuple(p0), tuple(p0 + (p1 - p0) / np.linalg.norm(p1 - p0) * 14 / mmpx)], fill=(0, 255, 0), width=1)
             if btr is not None:
                 dr2.line([tuple(q) for q in btr], fill=(255, 220, 0), width=2)
             if tail_ids:
-                tq = humanfit.project(cam, np.asarray(tpl["P"])[[rows[i_] for i_ in tail_ids]])
+                tq = humanfit_views.project(cam, np.asarray(tpl["P"])[[rows[i_] for i_ in tail_ids]])
                 dr2.line([tuple(q) for q in tq], fill=(0, 80, 255), width=2)
             box = (int(cen[0] - 25 / mmpx), int(cen[1] - 25 / mmpx), int(cen[0] + 25 / mmpx), int(cen[1] + 25 / mmpx))
             im2.crop(box).resize((600, 600)).save(os.environ["LIDFIT_DEBUG"] + f"_{key}.png")
@@ -244,8 +246,8 @@ if bags and os.environ.get("LIDFIT_BAGS", "1") == "1":
         shp["cheek_flat"] = {"amount": round(0.6 * amt * ag_ / 0.5, 5)}
     spec["base"]["head"]["shape"] = shp
     print("head.shape bags:", {k: shp[k] for k in ("eye_bag", "cheek_flat") if k in shp})
-rj2 = copy.deepcopy(bi._refs(src))
+rj2 = copy.deepcopy(blockin_models._refs(src))
 if rj2.get("blockin"):
     rj2["blockin"] = {**rj2["blockin"], "root": dst}
-bi._save(dst, spec, f"upper-lid fold in mesh space from {ref}'s front picture", rj2)
+blockin_models._save(dst, spec, f"upper-lid fold in mesh space from {ref}'s front picture", rj2)
 print(dst, "base.head.lid_fold =", cfg)

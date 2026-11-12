@@ -4,6 +4,7 @@ the factor, and the factor with each read type / view left out (the same reads, 
 import sys
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import face_ruler_compare, face_ruler_solve
 import common as C
 
 name = sys.argv[1]
@@ -14,7 +15,7 @@ rj = C.refs(name)
 c0 = bi.identity(store.load(name))
 start = kw.get("start")
 off = c0 - bi.identity(store.load(start)) if start else None
-solve0 = fr.solve
+solve0 = face_ruler_solve.solve
 log = []
 
 
@@ -25,11 +26,11 @@ def spy(obs, head, **k):
     return out
 
 
-fr.solve = spy
+face_ruler_solve.solve = spy
 b0 = rj.get("blockin") or {}
-fr.compare(name, rounds=3, prior_off=off, cam_sd=sd6, lids=True, lips=True, parse="auto", adapt=True, cmax=3.0,
+face_ruler_compare.compare(name, rounds=3, prior_off=off, cam_sd=sd6, lids=True, lips=True, parse="auto", adapt=True, cmax=3.0,
            cam_done0=np.zeros((len(rj["views"]), 6)), kinds=b0.get("kinds"), readers=b0.get("readers"))
-fr.solve = solve0
+face_ruler_solve.solve = solve0
 print(f"== {name}: {len(log)} capped solves (a round may solve twice: + the size / neck rows)")
 for i, (obs, head, k, out) in enumerate(log):
     c_at = np.asarray(head["c"], float)

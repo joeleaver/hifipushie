@@ -113,11 +113,12 @@ CROPS = {"direction__three_quarter__top_front": ("v1", 30.0, 60.0, 85.0),
 def geo(m):
     import copy
     from hifipushie import hair, hair_loose as hl, hair_read as hr, humanfit, store
+    from hifipushie import hair_groom, hair_head, hair_job, hair_seat, humanfit_views
     spec = store.load(m)
-    sc = hair.scalp(m, spec)
+    sc = hair_head.scalp(m, spec)
     col = hl.collider(m, spec, sc)
-    g = hair.fit_to_head(copy.deepcopy(hair.groom_params(spec)), sc)
-    line = hair.hairline(sc, g)
+    g = hair_seat.fit_to_head(copy.deepcopy(hair_groom.groom_params(spec)), sc)
+    line = hair_groom.hairline(sc, g)
     locks = hl.grow(sc, g, line, np.random.default_rng(int(g.get("seed", 0))), col)
     P = [np.asarray(lk["pts"], float) + sc.C for lk in locks.values()]
     A = np.concatenate([p[:-1] for p in P]); B = np.concatenate([p[1:] for p in P])
@@ -125,10 +126,10 @@ def geo(m):
     res = {}
     for name, (v, az, el, mm) in CROPS.items():
         cam = refs["cameras"][int(v[1:])]
-        uv = humanfit.project(cam, sc.point(np.array([az]), np.array([el]), 0.01))[0]
+        uv = humanfit_views.project(cam, sc.point(np.array([az]), np.array([el]), 0.01))[0]
         eye, R = hr.cam_eye(cam)
         s = mm / 1000.0 * cam["f"] / np.linalg.norm(sc.C - eye)
-        ua, ub = humanfit.project(cam, A), humanfit.project(cam, B)
+        ua, ub = humanfit_views.project(cam, A), humanfit_views.project(cam, B)
         M = (A + B) / 2
         depth = (M - eye) @ R[2]
         x0, y0 = uv - s / 2
@@ -167,6 +168,7 @@ def strands(m, count=120000, out=None, patch=None):
     raster of them (anti-aliased lines, per-strand grey) measured by texmeas: lay of the geometry as the measure sees it."""
     from PIL import Image, ImageDraw
     from hifipushie import hair, hair_read as hr, hair_strands as hs, humanfit, store
+    from hifipushie import hair_groom, hair_head, hair_job, hair_seat, hair_strands_eval, humanfit_views
     import copy, time
     from laygeo import merge
     spec = store.load(m)
@@ -177,9 +179,9 @@ def strands(m, count=120000, out=None, patch=None):
     t0 = time.time()
     if not count:  # (successor 17) the render's own count: at 120k the under layers show through and the profile read ~10 deg low
         count = int((spec["hair"].get("strands") or {}).get("count", 120000))
-    sd = hair.job(m, spec, count=count)["strands"]
-    D = hs.strands_of_model(sd)
-    sc = hair.scalp(m, spec)
+    sd = hair_job.job(m, spec, count=count)["strands"]
+    D = hair_strands_eval.strands_of_model(sd)
+    sc = hair_head.scalp(m, spec)
     pts, cnt, obj, names = D["pts"].astype(float), D["counts"], D["obj"], list(D["names"])
     first = np.r_[0, np.cumsum(cnt)[:-1]]
     sid = np.repeat(np.arange(len(cnt)), cnt)
@@ -195,12 +197,12 @@ def strands(m, count=120000, out=None, patch=None):
     res = {}
     for name, (v, az, el, mm) in CROPS.items():
         cam = refs["cameras"][int(v[1:])]
-        uv = humanfit.project(cam, sc.point(np.array([az]), np.array([el]), 0.01))[0]
+        uv = humanfit_views.project(cam, sc.point(np.array([az]), np.array([el]), 0.01))[0]
         eye, R = hr.cam_eye(cam)
         s = mm / 1000.0 * cam["f"] / np.linalg.norm(sc.C - eye)
         x0, y0 = uv - s / 2
-        qa = (humanfit.project(cam, A) - [x0, y0]) / s * 520
-        qb = (humanfit.project(cam, B) - [x0, y0]) / s * 520
+        qa = (humanfit_views.project(cam, A) - [x0, y0]) / s * 520
+        qb = (humanfit_views.project(cam, B) - [x0, y0]) / s * 520
         q = (qa + qb) / 2
         depth = ((A + B) / 2 - eye) @ R[2]
         inb = (q[:, 0] >= 0) & (q[:, 0] < 520) & (q[:, 1] >= 0) & (q[:, 1] < 520)
@@ -209,7 +211,7 @@ def strands(m, count=120000, out=None, patch=None):
         # normal faces the camera) let the far side's hairline strands print over the forehead in the profile crop
         # (screen 35 vs render 45).
         if HEADOCC:
-            hq = (humanfit.project(cam, HS) - [x0, y0]) / s * 520
+            hq = (humanfit_views.project(cam, HS) - [x0, y0]) / s * 520
             hz = (HS - eye) @ R[2]
             hc = (hq // 2).astype(int)
             hk = (hc[:, 0] >= 0) & (hc[:, 0] < 260) & (hc[:, 1] >= 0) & (hc[:, 1] < 260)

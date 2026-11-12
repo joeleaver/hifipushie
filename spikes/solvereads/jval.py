@@ -9,6 +9,7 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, store, gnm_mm
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_solve
 
 OUT = os.environ.get("OUT", "/mnt/data/hifipushie/solvereads/out")
 SHOTS = os.environ.get("SHOTS", "/mnt/data/hifipushie/reruns/out:/mnt/data/hifipushie/garrettgood/out").split(":")
@@ -22,7 +23,7 @@ CH = {"chin_width+5": 5 * gnm_mm.direction("chin_width"), "chin_length+4": 4 * g
 
 
 def jaw(head, view):
-    return [o for o in fr.observe(head, [dict(view, jaw=True, limbus=False)], outline=False, colour=False) if o["type"] == "jaw"]
+    return [o for o in face_ruler_solve.observe(head, [dict(view, jaw=True, limbus=False)], outline=False, colour=False) if o["type"] == "jaw"]
 
 
 def draw(img, obs, k=1.0):
@@ -42,11 +43,11 @@ def stat(o):
 
 tot = {}
 for m in models:
-    spec, rj = store.load(m), bi._refs(m)
-    head = fr.model_head(spec)
+    spec, rj = store.load(m), blockin_models._refs(m)
+    head = face_ruler_blockin.model_head(spec)
     tiles = []
     if photo:
-        _, views, _ = fr.reference_views(m, parse=False, anchors="none")
+        _, views, _ = face_ruler_compare.reference_views(m, parse=False, anchors="none")
         for v in views:
             if v["kind"] == "profile":
                 continue
@@ -59,7 +60,7 @@ for m in models:
     else:
         for vi, (v, cam, box) in enumerate(zip(rj["views"], rj["cameras"], rj["blockin"]["boxes"])):
             f = next((f"{d}/d_{m}_{vi}.png" for d in SHOTS if os.path.exists(f"{d}/d_{m}_{vi}.png")), None)
-            kind = fr.kind_of(v.get("yaw", 0))
+            kind = face_ruler_compare.kind_of(v.get("yaw", 0))
             if f is None or kind == "profile":
                 continue
             shot = Image.open(f).convert("RGB")

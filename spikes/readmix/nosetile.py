@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 import gt
 from gmk import SHORT
 from hifipushie import face_ruler as fr, likeness, mpread, store
+from hifipushie import likeness_detect, likeness_sides
 
 RM = Path(os.environ["HIFIPUSHIE_READMIX"])
 tag = sys.argv[1]
@@ -27,7 +28,7 @@ v, cam = rj["views"][vi], rj["cameras"][vi]
 img = Image.open(v["image"]).convert("RGB")
 _, P = fr._cam_points(cam, V)
 _, q68 = fr._cam_points(cam, G["WL"] @ V)
-Pd = likeness.detect_region(img, likeness._box({f"lm{i}": q68[i] for i in range(68)}, img.size))
+Pd = likeness_detect.detect_region(img, likeness_sides._box({f"lm{i}": q68[i] for i in range(68)}, img.size))
 by = {p["mp"]: p for p in mpread.table()["points"]}
 gr = G["gr"]
 for name, ctr, ids in (("nose", q68[[30, 31, 35, 33]].mean(0), [129, 358, 98, 327, 64, 294, 2, 1, 4, 48, 278]), ("mouth", q68[[48, 54, 51, 57]].mean(0), list(mpread.LIP_OUTER) + [78, 308, 13, 14])):

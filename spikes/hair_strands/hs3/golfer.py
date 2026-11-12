@@ -4,6 +4,7 @@ import json, os, sys
 from pathlib import Path
 from PIL import Image, ImageDraw
 from hifipushie import hair, store
+from hifipushie import hair_look, hair_spec
 name, out = "hs_golfer", sys.argv[1]
 S = {"clump": 0.9, "clump_size": 0.012, "clump_shape": 0.3, "tip_spread": 0.1, "loose": 0.12, "frizz": 0.15,
      "flyaway": 0.05, "tips": 0.3, "flat": 1.6, "roots": 0.2, "under_length": 0.03, "wave": 0.0}
@@ -17,13 +18,13 @@ for style in ("locks", "strands"):
     spec["hair"]["style"] = style
     if style == "strands":
         spec["hair"]["strands"] = S
-    hair.validate(spec)
-    sheet, sec, fr = hair.look(name, views=("front", "three_quarter", "side", "back"), size=size, spec=spec, clay=False)
+    hair_spec.validate(spec)
+    sheet, sec, fr = hair_look.look(name, views=("front", "three_quarter", "side", "back"), size=size, spec=spec, clay=False)
     rows.append(sheet)
-    f = hair.look.fit or {}
-    g = hair.look.gate or {}
+    f = hair_look.look.fit or {}
+    g = hair_look.look.gate or {}
     line = (f"{style}: {sec}s  IoU {f.get('iou')}  part {f.get('part_px')} px  flow err {f.get('clump_dir_deg')} deg  "
-            f"bare {hair.look.mass_share.get('matched')} (front {hair.look.mass_share.get('front')})  "
+            f"bare {hair_look.look.mass_share.get('matched')} (front {hair_look.look.mass_share.get('front')})  "
             f"gate front L/R {g.get('front', {}).get('left')}/{g.get('front', {}).get('right')} mm, 3/4 {g.get('three_quarter', {}).get('left')} mm  pass {g.get('pass')}")
     text.append(line)
     print(line)

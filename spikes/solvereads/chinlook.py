@@ -5,14 +5,15 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_outline
 
 out, models = sys.argv[1], sys.argv[2:]
 N = 420
 F = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
 rows = []
 for m in models:
-    spec, rj = store.load(m), bi._refs(m)
-    head = fr.model_head(spec)
+    spec, rj = store.load(m), blockin_models._refs(m)
+    head = face_ruler_blockin.model_head(spec)
     L = np.asarray(head["L"], float)
     tiles = []
     for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
@@ -25,7 +26,7 @@ for m in models:
         box = tuple(int(round(x)) for x in (c[0] - r, c[1] - r, c[0] + r, c[1] + r))
         ov = img.copy()
         d = ImageDraw.Draw(ov)
-        cm = fr._curve(ps["part"] >= 0)
+        cm = face_ruler_outline._curve(ps["part"] >= 0)
         if cm is not None:
             d.line([tuple(p) for p in cm], fill=(0, 230, 0), width=3)
         for i in range(3, 14):

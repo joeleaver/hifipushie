@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 import stage
 from hifipushie import likeness, lidfold, store
+from hifipushie import likeness_detect
 from hifipushie.likeness_eyes import frame
 from hifipushie.spec import expand_mirror
 
@@ -34,7 +35,7 @@ UP = 2
 def trace(im):
     mmpx = 2 * dist * np.tan(np.radians(fr["fov"]) / 2) * 1000 / im.width
     big = im.resize((im.width * UP, im.height * UP), Image.LANCZOS)
-    d = likeness.detect([big])[0]
+    d = likeness_detect.detect([big])[0]
     if d is None:
         return None
     P = np.asarray(d, float)[:, :2]

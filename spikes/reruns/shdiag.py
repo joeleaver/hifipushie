@@ -1,13 +1,14 @@
 import numpy as np
 from hifipushie import face_ruler as fr, blockin as bi, store
-m = "tk_T06"; spec = store.load(m); rj = bi._refs(m)
-A = fr.model_head(spec); c0 = bi.identity(spec)
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_features
+m = "tk_T06"; spec = store.load(m); rj = blockin_models._refs(m)
+A = face_ruler_blockin.model_head(spec); c0 = bi.identity(spec)
 c0l, w = 0.35, np.array([0.40, -0.20, -0.25]); L = (c0l, w, 1.6 * (c0l + float(np.linalg.norm(w))))
 def run(dct):
-    Bh = fr.model_head(spec, c0 + dct, A["kappa"]); res = []
+    Bh = face_ruler_blockin.model_head(spec, c0 + dct, A["kappa"]); res = []
     for v, cam in zip(rj["views"], rj["cameras"]):
-        vw = {"img": fr.clay(Bh, cam, light=L), "cam": cam, "kind": fr.kind_of(v.get("yaw", 0)), "style": "clay"}
-        obs = fr._shade_obs(A, vw)
+        vw = {"img": fr.clay(Bh, cam, light=L), "cam": cam, "kind": face_ruler_compare.kind_of(v.get("yaw", 0)), "style": "clay"}
+        obs = face_ruler_features._shade_obs(A, vw)
         o = np.array([ob["o"] for ob in obs]); J = np.array([ob["J"] for ob in obs])
         N = np.array([[ob["nu"][k] for k in sorted(ob["nu"])] for ob in obs])
         proj = lambda x: x - N @ np.linalg.lstsq(N, x, rcond=None)[0]      # the nuisance field taken out

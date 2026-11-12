@@ -3,14 +3,15 @@ OUTLINE READS, LENS, DISAGREE ..) and what each read group asks of nose_width / 
 import sys
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, gnm_mm, store
+from hifipushie import blockin_models, face_ruler_compare
 
 name = sys.argv[1]
 kw = dict(a.split("=") for a in sys.argv[2:])
 c0 = bi.identity(store.load(name))
-root = (bi._refs(name).get("blockin") or {}).get("root")
+root = (blockin_models._refs(name).get("blockin") or {}).get("root")
 off = c0 - bi.identity(store.load(root)) if root else None
-c = fr.compare(name, rounds=int(kw.get("rounds", 1)), prior_off=off, lids=True, lips=True, parse="auto", adapt=True, cmax=3.0, cam_first=1, cam_reset=False,
-               cam_done0=np.zeros((len(bi._refs(name)["views"]), 7)), dense=kw.get("dense") == "1")
+c = face_ruler_compare.compare(name, rounds=int(kw.get("rounds", 1)), prior_off=off, lids=True, lips=True, parse="auto", adapt=True, cmax=3.0, cam_first=1, cam_reset=False,
+               cam_done0=np.zeros((len(blockin_models._refs(name)["views"]), 7)), dense=kw.get("dense") == "1")
 print("reads:", {k: v for k, v in c["n"].items() if v}, "| per view:", c["n_view"])
 for x in c["notes"]:
     if x[:4] in ("NOSE", "OUTL", "NO O", "LENS", "DISA", "NOIS", "AT T"):

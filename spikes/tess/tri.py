@@ -6,6 +6,7 @@ import json, sys
 import numpy as np
 
 from hifipushie import hair, humanfit, store
+from hifipushie import hair_head, humanfit_views
 
 name = sys.argv[1]
 va, ua, wa, vb, ub, wb = int(sys.argv[2]), *map(float, sys.argv[3:5]), int(sys.argv[5]), *map(float, sys.argv[6:8])
@@ -14,7 +15,7 @@ refs = json.loads((store.HOME / name / "human_refs.json").read_text())
 
 def ray(vi, u, v):
     cam = refs["cameras"][vi]
-    R = humanfit._cam_rot(cam)
+    R = humanfit_views._cam_rot(cam)
     eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
     w, h = cam["size"]
     d = R.T @ np.array([(u - w / 2) / cam["f"], (v - h / 2) / cam["f"], 1.0])
@@ -28,7 +29,7 @@ b = np.array([(o2 - o1) @ d1, (o2 - o1) @ d2])
 s, t = np.linalg.solve(A, b)
 p1, p2 = o1 + s * d1, o2 + t * d2
 P = 0.5 * (p1 + p2)
-sc = hair.scalp(name)
+sc = hair_head.scalp(name)
 az, el, hp = sc.coords(P[None])
 print(f"xyz {np.round(P, 4)}  rays miss {np.linalg.norm(p1 - p2) * 1000:.1f} mm  az {float(az[0]) % 360:.1f} el {float(el[0]):.1f} "
       f"h {float(hp[0]) * 1000:.0f} mm off the scalp; head centre {np.round(sc.C, 4)}")

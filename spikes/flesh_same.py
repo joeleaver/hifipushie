@@ -2,6 +2,7 @@
 compare two checkouts (run once per checkout, then --diff a.npz b.npz)."""
 import sys, json, numpy as np
 from hifipushie import store, rig as R
+from hifipushie import rig_report, rig_skin
 if sys.argv[1] == "--diff":
     a, b = np.load(sys.argv[2]), np.load(sys.argv[3])
     for k in sorted({x.rsplit("_", 1)[0] for x in a.files}):
@@ -17,10 +18,10 @@ for m in sys.argv[2:]:
         store.save(name + "_fleshchk", spec, "flesh_same check")
     z = np.load(store.build(name + "_fleshchk" if m.endswith(".json") else m, 128)["mesh"])
     try:
-        rb = R.rig_bones(spec)
+        rb = rig_report.rig_bones(spec)
     except ValueError as e:
         print(name, "no rig:", str(e)[:60]); continue
-    J, W = R.skin_mesh(spec, rb, z["verts"].astype(float), z["faces"], z["part"], [str(n) for n in z["part_names"]])
+    J, W = rig_skin.skin_mesh(spec, rb, z["verts"].astype(float), z["faces"], z["part"], [str(n) for n in z["part_names"]])
     D = np.zeros((len(J), len(rb))); np.add.at(D, (np.repeat(np.arange(len(J)), J.shape[1]), J.ravel()), W.ravel())
     out[name + "_D"] = D
 np.savez(sys.argv[1], **out)

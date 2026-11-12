@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 import stage
 from hifipushie import blockin as bi, resources, faceid
+from hifipushie import blockin_clay, blockin_models
 
 G = os.environ.get("G", "/mnt/data/hifipushie/reruns") + "/out"
 N = int(os.environ.get("SIZE", "520"))
@@ -16,8 +17,8 @@ out, cols = sys.argv[1], [a.split("=", 1) for a in sys.argv[2:]]
 def shot(m, vi, cam, ib, tex):
     f = f"{G}/{'j' if tex else 'd'}_{m}_{vi}.png"
     if not os.path.exists(f):
-        rj = bi._refs(m)
-        order = [i for i in range(len(rj["views"])) if i != bi._front(rj)] + [bi._front(rj)]
+        rj = blockin_models._refs(m)
+        order = [i for i in range(len(rj["views"])) if i != blockin_clay._front(rj)] + [blockin_clay._front(rj)]
         with resources.heavy(f"judging shot {m} {vi}", gb=6):
             im = stage.shoot(m, [stage.fitted_frame(cam, [float(x) for x in ib], f"v{vi}")], stage.photo_light(m, vi), size=N * 2,
                              hair_on=False, tex=order if tex else None)[f"v{vi}"]
@@ -30,7 +31,7 @@ def shot(m, vi, cam, ib, tex):
 HEAD = 30
 blocks = []
 for title, m in cols:
-    rj = bi._refs(m)
+    rj = blockin_models._refs(m)
     rows = []
     for vi, (v, cam, box) in enumerate(zip(rj["views"], rj["cameras"], rj["blockin"]["boxes"])):
         ib = [int(round(x)) for x in box]

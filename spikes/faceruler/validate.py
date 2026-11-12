@@ -12,6 +12,7 @@ import numpy as np
 
 import drv
 from hifipushie import face_ruler as fr, gnm_mm
+from hifipushie import face_ruler_solve
 
 n, tag = int(sys.argv[1]), sys.argv[2]
 G = os.environ["G"]
@@ -45,7 +46,7 @@ for i in range(n):
     for v in VAR:
         views = [{"img": (pics if v in ("exact", "hair") else pics_p)[k], "cam": cams[k], "kind": k, "style": "clay",
                   "hair": v != "exact", "colour": v != "outline"} for k in KINDS]
-        res = fr.read(A, views, cam_sd=None if v in ("exact", "hair") else CAM_SD, rounds=3 if v in ("exact", "hair") else 4)
+        res = face_ruler_solve.read(A, views, cam_sd=None if v in ("exact", "hair") else CAM_SD, rounds=3 if v in ("exact", "hair") else 4)
         row[v] = {r["measure"]: [r["gap"], r["err"]] for r in res["gaps"]}
         row[v + "_dc"] = float(np.linalg.norm(res["dc"] - (cB - cA)))
     rows.append(row)

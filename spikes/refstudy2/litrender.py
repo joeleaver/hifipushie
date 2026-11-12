@@ -2,14 +2,15 @@
 import numpy as np
 from PIL import Image
 from hifipushie import humanfit
+from hifipushie import humanfit_views
 
 KEY = np.array([-0.35, -0.45, -0.82])
 KEY /= np.linalg.norm(KEY)
 
 
 def render(V, F, cam, box, px, lit, col=None, two=None):
-    P = humanfit.project(cam, V)
-    Rc = humanfit._cam_rot(cam)
+    P = humanfit_views.project(cam, V)
+    Rc = humanfit_views._cam_rot(cam)
     Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
     z = Xc[:, 2]
     x0, y0, x1, y1 = box

@@ -23,6 +23,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 import wholeclay as WC
 from hifipushie import humanfit, humanmacro as hmac, likeness, store
+from hifipushie import humanfit_views, likeness_detect, likeness_render
 
 T = int(os.environ.get("T", "330"))
 SQUINT_MM = float(os.environ.get("SQUINT_MM", "9"))
@@ -93,7 +94,7 @@ def step(src, dst, moves):
 def detect_view(img, v):
     """MediaPipe on a reference picture; when the face is small in a big picture (a full-figure concept), on a crop
     around the clicked points (likeness.detect_region)."""
-    P = likeness.detect([img])[0]
+    P = likeness_detect.detect([img])[0]
     if P is not None:
         return P
     pts = np.array([p for p in (v.get("points") or {}).values()], float)
@@ -101,11 +102,11 @@ def detect_view(img, v):
         return None
     lo, hi = pts.min(0), pts.max(0)
     c, s = 0.5 * (lo + hi), 1.8 * float(np.max(hi - lo))
-    return likeness.detect_region(img, (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2))
+    return likeness_detect.detect_region(img, (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2))
 
 
 def _oval_poly(img):
-    P = likeness.detect([img])[0]
+    P = likeness_detect.detect([img])[0]
     return None if P is None else np.asarray(P, float)[likeness.OVAL, :2]
 
 
@@ -114,7 +115,7 @@ def look(m, out, ref="f6_M_mace"):
     import outl
     refs = json.loads((store.HOME / ref / "human_refs.json").read_text())
     st = humanfit.state(store.load(m)["base"])
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     mesh["C"] = WC.haircap(mesh, st)
     if os.environ.get("EYE_PRES", "1") == "1":
         WC.eye_presentation(mesh)
@@ -128,14 +129,14 @@ def look(m, out, ref="f6_M_mace"):
     for i, vi in enumerate(VIEWS):
         v, cam = refs["views"][vi], refs["cameras"][vi]
         img = Image.open(v["image"]).convert("RGB")
-        P = humanfit.project(cam, ref_st["L"])
+        P = humanfit_views.project(cam, ref_st["L"])
         cc = 0.5 * (P.min(0) + P.max(0))
         side = 1.45 * float(np.max(P.max(0) - P.min(0)))
         box = (cc[0] - side / 2, cc[1] - side * 0.56, cc[0] + side / 2, cc[1] + side * 0.44)
         px = 2 * T
         # register like an artist lays a tracing over a photo: at the EYES (and nasion), a 2D shift only (the fitted
         # camera belongs to another face; registering on the whole outline would hide the very differences we look for)
-        Lm = humanfit.project(cam, st["L"])
+        Lm = humanfit_views.project(cam, st["L"])
         if abs(float(v.get("yaw", 0))) < 70:
             Pd = detect_view(img, v)
             if Pd is None:   # (painted concept art the detector misses: the clicked 68 where given)
@@ -182,7 +183,7 @@ def look(m, out, ref="f6_M_mace"):
             olA = np.asarray(ol).copy()
             olA[ea] = (30, 200, 30)
             ol = Image.fromarray(olA)
-        mmpx = likeness._mm_per_px(cam, mesh["L"][27:48])
+        mmpx = likeness_render._mm_per_px(cam, mesh["L"][27:48])
         sg = SQUINT_MM / mmpx * k
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
         for j, im in enumerate((ph, cl, ov, ol, sq(ph), sq(cl))):

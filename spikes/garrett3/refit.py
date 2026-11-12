@@ -15,6 +15,7 @@ import garrett3
 import garrett4
 import structure
 from hifipushie import humanfit, humanfit_map, humanmacro as hm, store
+from hifipushie import humanfit_solve
 
 D3 = os.environ.get("D3")
 SHAPE = {"planes": 2.3, "lean": {"under_jaw": 0.006, "jowl": 0.0025},
@@ -56,7 +57,7 @@ def main(dst, pose_arg=None, shape_arg=None, scale=1.25, read_extra=None):
     cams = rep["cameras"]
     b["head"].pop("pose", None)
     b = garrett4.neck_to(b, garrett4.NECK_CM)
-    b = humanfit._with_identity(b, hm.apply(humanfit.identity(b), MACROS, held=True))
+    b = humanfit_solve._with_identity(b, hm.apply(humanfit.identity(b), MACROS, held=True))
     shape = copy.deepcopy(SHAPE)
     if shape_arg:
         for k, v in json.load(open(shape_arg)).items():

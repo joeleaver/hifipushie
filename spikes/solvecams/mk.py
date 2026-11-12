@@ -7,6 +7,7 @@ import copy, json, os, sys
 import numpy as np
 import stage
 from hifipushie import blockin as bi, face_ruler as fr, gnm_mm, humanfit, resources, store
+from hifipushie import blockin_models, face_ruler_camera, face_ruler_solve, humanfit_views
 import common as C
 
 tag = sys.argv[1]
@@ -16,7 +17,7 @@ opt = C.HEADS[tag][4] if len(C.HEADS[tag]) > 4 else {}
 T = f"sc_{tag}_T"
 rng = np.random.default_rng(1000 + seed)
 if not (store.HOME / T / "spec.json").exists():
-    bi.start(T, [], sex=sex, age=35, replace=True)
+    blockin_models.start(T, [], sex=sex, age=35, replace=True)
     sp = store.load(T)
     c0 = bi.identity(sp)
     if opt.get("from"):          # another model's body, skin, hair (read only), the class mean's identity + the draw
@@ -41,7 +42,7 @@ for vn, (yaw, pitch, lens) in C.VIEWS.items():
     z = f / C.PXM
     cam = {"r": [0.0, 0.0, float(np.radians(1.5 * j[2]))], "t": [float(40 * j[3] * z / f - 0.075 * np.sin(np.radians(yaw))), float((40 * j[4] - 60) * z / f), float(z)], "f": float(f),
            "size": [w, h], "centre": ctr.tolist(), "yaw": float(-(yaw + 2 * j[0]))}
-    cam = fr.cam_moved(cam, pitch=pitch + 2 * j[1])
+    cam = face_ruler_solve.cam_moved(cam, pitch=pitch + 2 * j[1])
     cam["r"] = [float(x) for x in cam["r"]]
     cams.append(cam)
     fn = f"{C.S}/synth/sc_{tag}_{vn}.png"
@@ -55,13 +56,13 @@ for vn, (yaw, pitch, lens) in C.VIEWS.items():
             im = stage.shoot(T, [stage.fitted_frame(cam, [w / 2 - h / 2, 0.0, w / 2 + h / 2, float(h)], vn)], lt, size=int(h), hair_on=bool(opt.get("hair")))[vn]
         x0 = int(round((h - w) / 2))
         im.convert("RGB").crop((x0, 0, x0 + w, h)).save(fn)
-        print("shot", fn, "turn", round(abs(fr.view_yaw(cam)), 2), flush=True)
+        print("shot", fn, "turn", round(abs(face_ruler_camera.view_yaw(cam)), 2), flush=True)
     pts = {}
     if yaw >= 70:
-        P = humanfit.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
+        P = humanfit_views.project(cam, L[list(CL.values())]) + 2.0 * rng.standard_normal((len(CL), 2))
         pts = {k: [round(float(p[0]), 1), round(float(p[1]), 1)] for k, p in zip(CL, P)}
     views.append({"image": fn, "size": [w, h], "yaw": (yaw if yaw < 70 else -yaw), "points": pts, "name": vn})
-views = bi.with_anchor_points(views)
+views = blockin_models.with_anchor_points(views)
 rj = {"views": views, "cameras": cams, "blockin": {"root": T, "attach": "native", "truth": {"head": C.HEADS[tag]}}}
 C.write_refs(T, rj)
 for s in (kw.get("sets") or ",".join(C.SETS)).split(","):
@@ -70,7 +71,7 @@ for s in (kw.get("sets") or ",".join(C.SETS)).split(","):
     store._dir(ST).mkdir(parents=True, exist_ok=True)
     (store.HOME / ST / "spec.json").write_text(json.dumps(sp))
     C.write_refs(ST, {"views": [views[i] for i in ii], "cameras": [cams[i] for i in ii],
-                      "blockin": {"root": ST, "attach": "native", "placement": list(bi._placement(sp["base"]))}})
+                      "blockin": {"root": ST, "attach": "native", "placement": list(blockin_models._placement(sp["base"]))}})
     S0 = f"sc_{tag}_{s}00"
     if not (store.HOME / S0 / "spec.json").exists():
         if opt.get("from"):      # the start = block_in_start on that model's body with these pictures (as the tool is used)
@@ -78,9 +79,9 @@ for s in (kw.get("sets") or ",".join(C.SETS)).split(","):
             store._dir(hold).mkdir(parents=True, exist_ok=True)
             (store.HOME / hold / "spec.json").write_text(json.dumps(store.load(opt["from"])))
             C.write_refs(hold, {"views": [copy.deepcopy(views[i]) for i in ii], "cameras": [None] * len(ii)})
-            e = bi.start(S0, hold, sex=sex, cameras="refit", replace=True)
+            e = blockin_models.start(S0, hold, sex=sex, cameras="refit", replace=True)
         else:
-            e = bi.start(S0, [copy.deepcopy(views[i]) for i in ii], sex=sex, age=35, cameras="refit", replace=True)
+            e = blockin_models.start(S0, [copy.deepcopy(views[i]) for i in ii], sex=sex, age=35, cameras="refit", replace=True)
         r0 = C.refs(S0)
         L0 = C.landmarks(S0)
         print(f"start {S0}: {e['start']['cameras']}")

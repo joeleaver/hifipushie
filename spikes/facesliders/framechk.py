@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 
 import featsheet as FS
 from hifipushie import humanfit, store
+from hifipushie import humanfit_views
 
 m, vi, rg = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
@@ -18,7 +19,7 @@ ims = FS.render_model(m, bx)
 _, _, box, img = bx[0]
 cam = refs["cameras"][vi]
 st = humanfit.state(store.load(m)["base"])
-L = humanfit.project(cam, st["L"][:68])
+L = humanfit_views.project(cam, st["L"][:68])
 T = 500
 k = T / (box[2] - box[0])
 out = Image.new("RGB", (2 * T, T), "white")

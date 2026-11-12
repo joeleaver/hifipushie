@@ -3,6 +3,7 @@ import numpy as np
 
 import lidmap as lm
 from hifipushie import base as basemod, gnm_controls as gc, gnm_mm, humanmacro as hm
+from hifipushie import base_identity
 
 sp = gnm_mm._space()
 print("sets", {k: len(v) for k, v in sp["sets"].items()})
@@ -25,5 +26,5 @@ for k in range(0, 15):
         return P[i]
     print(k, len(ids), "top", np.round(at(90), 1), "lat", np.round(at(0), 1), "bot", np.round(at(-90), 1), "med", np.round(at(180), 1))
 print("hm macros", hm.NAMES)
-g0 = basemod._gnm_data()
+g0 = base_identity._gnm_data()
 print(sorted(g0.keys()))

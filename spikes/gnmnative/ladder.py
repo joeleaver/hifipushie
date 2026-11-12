@@ -10,9 +10,10 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_gnm_parts, base_identity
 from hifipushie import blockin, lidrings
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 G = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
 T = g["template_vertex_positions"].astype(float)
 J = g["template_joint_positions"].astype(float)
@@ -51,7 +52,7 @@ if sys.argv[1] == "raw":
     c = np.zeros(len(g["identity_names"]))
     c[:170] = np.asarray(D["m_f"], float)
     V = T + np.tensordot(c, g["vertex_identity_basis"], 1)
-    eg = basemod.gnm_eyes(V, g)
+    eg = base_gnm_parts.gnm_eyes(V, g)
     keep = np.asarray(g["groups"]["skin"]) > 0.5
     keep |= G["eye_interiors"]
     Q = np.asarray(g["quads"])
@@ -65,8 +66,9 @@ if sys.argv[1] == "raw":
     gaps("RUNG 1 raw GNM, female class mean", V, eg[0]["c"], eg[0]["r"], np.array([1.0, 0, 0]), np.array([0, 0, 1.0]), np.array([0, 1.0, 0]))
 else:
     from hifipushie import onemesh, store
+    from hifipushie import onemesh_head
     for name in sys.argv[2:]:
-        ht = onemesh.head_rest(store.load(name)["base"])
+        ht = onemesh_head.head_rest(store.load(name)["base"])
         fwd = np.asarray(ht["forward"], float)
         up = np.array([0, 0, 1.0])
         gaps(name, np.asarray(ht["gnm_world"], float), np.asarray(ht["eyes"][0], float), float(ht["eye_r"]), np.cross(up, fwd) * -1 if np.cross(up, fwd)[0] < 0 else np.cross(up, fwd), fwd, up)

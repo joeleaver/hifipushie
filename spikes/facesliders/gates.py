@@ -18,6 +18,7 @@ from PIL import Image
 
 import agesex
 from hifipushie import faceid, humanfit, likeness, store
+from hifipushie import humanfit_views, likeness_render
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces6"))
 PX = int(os.environ.get("PX", "512"))
@@ -45,15 +46,15 @@ def ident(sp):
 
 def renders(m, refs):
     st = humanfit.state(store.load(m)["base"])
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     out = {}
     for vi in VIEWS:
         cam = refs["cameras"][vi]
-        P = humanfit.project(cam, st["L"])
+        P = humanfit_views.project(cam, st["L"])
         c = 0.5 * (P.min(0) + P.max(0))
         side = 1.6 * float(np.max(P.max(0) - P.min(0)))
         box = (c[0] - side / 2, c[1] - side * 0.55, c[0] + side / 2, c[1] + side * 0.45)
-        im = likeness.render(mesh, cam, box, px=PX, brows=True, ao=True, shadow=8.0)[0].convert("RGB")
+        im = likeness_render.render(mesh, cam, box, px=PX, brows=True, ao=True, shadow=8.0)[0].convert("RGB")
         p = F / "out" / f"gates_{m}_v{vi}.png"
         im.save(p)
         out[vi] = (im, p, box)

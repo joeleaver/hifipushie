@@ -15,6 +15,7 @@ from scipy import ndimage as nd
 from skimage.color import rgb2lab
 
 from hifipushie import humanfit, skin_look, store
+from hifipushie import humanfit_views
 
 D = "/mnt/data/hifipushie/haircards"
 out, tags = sys.argv[1], sys.argv[2].split(",")
@@ -37,10 +38,10 @@ def crop_box(n, dist):
 def photo(v, box, dist):
     i = int(v[1:])
     cam = refs["cameras"][i]
-    Xc = (c - np.asarray(cam["centre"])) @ humanfit._cam_rot(cam).T + np.asarray(cam["t"])
+    Xc = (c - np.asarray(cam["centre"])) @ humanfit_views._cam_rot(cam).T + np.asarray(cam["t"])
     pxm = cam["f"] / Xc[2]
     s = (GPXM1 / dist) / pxm
-    u, w = humanfit.project(cam, c[None])[0]
+    u, w = humanfit_views.project(cam, c[None])[0]
     im = Image.open(refs["views"][i]["image"].replace("@refs/", str(store.HOME / "_refs") + "/")).convert("RGB")
     x0, y0, x1, y1 = box
     pb = (u + (x0 - 540) / s, w + (y0 - 540) / s, u + (x1 - 540) / s, w + (y1 - 540) / s)

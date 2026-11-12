@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import register as R  # noqa: E402
 
 from hifipushie import assets, base, makehuman  # noqa: E402
+from hifipushie import base_identity, base_tubes
 
 RING = 13  # GNM's neck ring the head is cut at (rings counted up from its bib's open edge; ~3 cm over C)
 C_RING = 10  # GNM's ring that lay where C is (the bridge continues GNM's uv grid down to it)
@@ -219,7 +220,7 @@ def spin(faces, a, b):
 
 def build(log=print):
     r = R.register(log)
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     z = np.load(assets.path("gnm", base.GNM))
     b, to_world = r["body"], r["to_world"]
     P = np.asarray(b["P"], float)
@@ -268,7 +269,7 @@ def build(log=print):
         cols[k] = [next(w for w in adj[v] if lev[w] == k) for v in cols[k + 1]]
 
     # MakeHuman: its neck loop and what lies above it
-    loops_m, top = base._neck_loops(b)
+    loops_m, top = base_tubes._neck_loops(b)
     madj = collections.defaultdict(set)
     for q in Fm:
         for k in range(4):

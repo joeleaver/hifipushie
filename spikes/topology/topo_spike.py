@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
 from hifipushie import rig, sdf, store, surface
+from hifipushie import rig_humanoid, rig_model, rig_skin, rig_twist
 from hifipushie.spec import compile_prims, expand_mirror, resolve_point
 
 SP = Path(__file__).parent
@@ -45,7 +46,7 @@ HF = remap[z["faces"]]
 HF = HF[(HF >= 0).all(1)]
 HV = z["verts"][keep].astype(np.float64)
 np.savez(OUT / "high.npz", verts=HV, faces=HF)
-bones = rig.humanoid(spec)
+bones = rig_humanoid.humanoid(spec)
 
 
 def radius(p, d, reach=0.35, n=16):
@@ -236,10 +237,10 @@ k = np.load(OUT / "dec.npz")
 meshes["decimate"] = (k["verts"].astype(np.float64), k["loops"], k["sizes"])
 print(f"decimate {time.time() - t0:.1f}s")
 
-turns = rig.test_pose(bones)
+turns = rig_twist.test_pose(bones)
 heads = np.array([b["head"] for b in bones])
 Jh = np.arange(len(bones))[:, None]
-PH = rig.pose(bones, heads, Jh, np.ones_like(Jh, float), turns)
+PH = rig_model.pose(bones, heads, Jh, np.ones_like(Jh, float), turns)
 at = {b["name"].split(":")[-1]: PH[i] for i, b in enumerate(bones)}
 views = [("front", [0, -1, 0], None, 1.15, False), ("front wire", [0, -1, 0], None, 1.15, True),
          ("R shoulder", [0, -1, 0], "RightArm", 0.32, True), ("L elbow", [1, 0, 0], "LeftForeArm", 0.26, True),
@@ -248,8 +249,8 @@ rows = []
 for name, (V, L, S) in meshes.items():
     T = fix_quads(V, L, S)
     results[name] = {"triangles": len(T), "quads": int((S == 4).sum()), "polys": len(S), **errors(V, T)}
-    J, W = rig.rig_weights(spec, bones, V, T)
-    PV = rig.pose(bones, V, J, W, turns)
+    J, W = rig_skin.rig_weights(spec, bones, V, T)
+    PV = rig_model.pose(bones, V, J, W, turns)
     np.savez(OUT / f"{name}_posed.npz", verts=PV, loops=L, sizes=S)
     np.savez(OUT / f"{name}_rest.npz", verts=V, loops=L, sizes=S)
     c = 0.5 * (PV.min(0) + PV.max(0))

@@ -6,6 +6,7 @@ import json, os, sys, time
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import store, sdf, images
+from hifipushie import images_frame
 from hifipushie.spec import expand_mirror
 
 name, folds, tag = sys.argv[1:4]
@@ -14,7 +15,7 @@ G = os.environ.get("G", ".") + "/out"
 
 
 def render(spec, part, az, centre, size, mmpx):
-    prims = images.prims_on(spec, [part])
+    prims = images_frame.prims_on(spec, [part])
     lip = max([p.lip for p in prims] + [1.0])
     a = np.radians(az)
     d = np.array([-np.sin(a), np.cos(a), 0.0])           # the ray's direction (from the camera into the head)

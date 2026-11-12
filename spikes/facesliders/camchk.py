@@ -7,13 +7,14 @@ import sys
 import numpy as np
 
 from hifipushie import humanfit, likeness, store
+from hifipushie import humanfit_views, likeness_compare
 
 name = sys.argv[1]
 refs = json.loads((store.HOME / name / "human_refs.json").read_text())
 b = store.load(name)["base"]
-cmp = likeness.compare(name, b)
+cmp = likeness_compare.compare(name, b)
 for i, (v, cam) in enumerate(zip(refs["views"], refs["cameras"])):
-    R = humanfit._cam_rot(cam)
+    R = humanfit_views._cam_rot(cam)
     fwd = R.T @ np.array([0.0, 0.0, 1.0])     # the camera's viewing direction (world)
     yaw = float(np.degrees(np.arctan2(-fwd[0], fwd[1])))
     pn = cmp["pictures"][i] if i < len(cmp["pictures"]) else {}

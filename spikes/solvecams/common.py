@@ -6,6 +6,7 @@ import json
 import numpy as np
 from scipy.spatial.transform import Rotation
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
+from hifipushie import face_ruler_camera, humanfit_views
 
 S = "/mnt/data/hifipushie/solvecams"
 HEADS = {"a": ("male", 11, 0.6, ""), "b": ("male", 12, 0.6, "chin_width:-6,jaw_width:-6"),
@@ -45,14 +46,14 @@ def cam_err(cam, true, L):
     (pitch, yaw, roll) degrees (rotation vector about the picture's x / y / z), the head's turn from the camera
     (view_yaw) minus the true one, the picture scale f / z (%), the distance z (%), the focal length (%), and where
     the true head's landmark centre falls (mm at the head, x / y)."""
-    R1, R0 = humanfit._cam_rot(cam), humanfit._cam_rot(true)
+    R1, R0 = humanfit_views._cam_rot(cam), humanfit_views._cam_rot(true)
     rv = np.degrees(Rotation.from_matrix(R1 @ R0.T).as_rotvec())
     c1 = (L.mean(0) - np.asarray(cam["centre"])) @ R1.T + np.asarray(cam["t"])
     c0 = (L.mean(0) - np.asarray(true["centre"])) @ R0.T + np.asarray(true["t"])
-    p1, p0 = humanfit.project(cam, L.mean(0)[None])[0], humanfit.project(true, L.mean(0)[None])[0]
+    p1, p0 = humanfit_views.project(cam, L.mean(0)[None])[0], humanfit_views.project(true, L.mean(0)[None])[0]
     mm = c0[2] / true["f"] * 1000
     return {"pitch": float(rv[0]), "yaw": float(rv[1]), "roll": float(rv[2]),
-            "turn": float(abs(fr.view_yaw(cam)) - abs(fr.view_yaw(true))), "view_yaw": float(abs(fr.view_yaw(cam))),
+            "turn": float(abs(face_ruler_camera.view_yaw(cam)) - abs(face_ruler_camera.view_yaw(true))), "view_yaw": float(abs(face_ruler_camera.view_yaw(cam))),
             "scale": float(100 * ((cam["f"] / c1[2]) / (true["f"] / c0[2]) - 1)), "dist": float(100 * (c1[2] / c0[2] - 1)),
             "focal": float(100 * (cam["f"] / true["f"] - 1)), "dx": float((p1 - p0)[0] * mm), "dy": float((p1 - p0)[1] * mm)}
 

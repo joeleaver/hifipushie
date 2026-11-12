@@ -15,6 +15,7 @@ from PIL import Image
 
 import stage
 from hifipushie import blockin as bi, resources, store
+from hifipushie import blockin_clay, blockin_models
 
 G = os.environ.get("G", "/mnt/data/hifipushie/gnmbrow") + "/out"
 K = int(os.environ.get("K", "3"))
@@ -23,9 +24,9 @@ SIDE = 560          # picture px (133 mm at the model)
 
 
 def box_of(rj):
-    v = rj["views"][bi._front(rj)]
+    v = rj["views"][blockin_clay._front(rj)]
     img = Image.open(v["image"]).convert("RGB")
-    P = np.asarray(bi.detect_view(img, v), float)[:, :2]
+    P = np.asarray(blockin_clay.detect_view(img, v), float)[:, :2]
     c = 0.5 * (P[468] + P[473]) + [0, -40.0]
     return img, [float(c[0] - SIDE / 2), float(c[1] - SIDE / 2), float(c[0] + SIDE / 2), float(c[1] + SIDE / 2)], P
 
@@ -53,12 +54,12 @@ def variant(tag, model, patch):
 
 
 if __name__ == "__main__":
-    rj = bi._refs(REFS)
+    rj = blockin_models._refs(REFS)
     img, box, P = box_of(rj)
     json.dump({"box": box, "K": K, "P": P.tolist()}, open(f"{G}/box.json", "w"))
     ib = [int(round(v)) for v in box]
     img.crop(tuple(ib)).resize((SIDE * K, SIDE * K), Image.LANCZOS).save(f"{G}/s_photo.png")
-    cam = rj["cameras"][bi._front(rj)]
+    cam = rj["cameras"][blockin_clay._front(rj)]
     fr = stage.fitted_frame(cam, [float(v) for v in ib], "front")
     light = stage.photo_light(REFS)
     patch = json.loads(os.environ["PATCH"]) if os.environ.get("PATCH") else None

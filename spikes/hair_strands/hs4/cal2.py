@@ -5,6 +5,7 @@ import json, os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import hair, store
+from hifipushie import hair_look
 
 COLOURS = {"black": "#17120f", "dark_brown": "#3a271c", "mid_brown": "#5c3b28", "garrett": "#55504b",
            "light_brown": "#8a6644", "blond": "#b08a55", "grey": "#8f8c88"}
@@ -28,7 +29,7 @@ for cn in cols:
     kw = dict(engine=engine, views=(VIEW,), size=256, clay=False, spec=spec)
     if engine == "cycles":
         kw.update(samples=48, denoise=False, count=40000)
-    sheet, sec, _ = hair.look(name, **kw)
+    sheet, sec, _ = hair_look.look(name, **kw)
     im = np.asarray(sheet.crop((0, 22, 256, 278)).convert("RGB"), float) / 255
     idp = np.asarray(Image.open(store._dir(name) / f"hair_id_{VIEW}.png").convert("RGB").resize((256, 256), Image.NEAREST), float)
     m = (idp[..., 1] > idp[..., 0] + 60)

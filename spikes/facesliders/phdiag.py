@@ -12,18 +12,19 @@ from PIL import Image
 import fitM
 import photom
 from hifipushie import humanfit, likeness, store
+from hifipushie import likeness_detect, likeness_render
 
 m = sys.argv[1]
 sig = float(os.environ.get("PHOTO_SIG", "0.25"))
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
 st = humanfit.state(store.load(m)["base"])
-mesh = likeness.model_mesh_from_state(st)
+mesh = likeness_render.model_mesh_from_state(st)
 B, names = fitM.basis()
 VB = photom.vertex_basis(st)
 for vi in (0, 1):
     v = refs["views"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    pv = photom.View(v, refs["cameras"][vi], mesh, likeness.detect([img])[0])
+    pv = photom.View(v, refs["cameras"][vi], mesh, likeness_detect.detect([img])[0])
     pv.fit_light(mesh)
     r0, J, keep = photom.jacobian([pv], mesh, VB, [B[:, j] for j in range(B.shape[1])])
     rid = np.full(B.shape[1], fitM.Z_RIDGE)

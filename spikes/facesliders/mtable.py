@@ -7,6 +7,7 @@ import os
 import sys
 
 from hifipushie import likeness, store
+from hifipushie import likeness_compare
 
 GROUPS = {
     "1 head shape": ["face_height", "face_index", "upper_third", "middle_third", "width_temple", "width_cheekbone",
@@ -22,7 +23,7 @@ F = os.environ.get("F", "/mnt/data/hifipushie/faces6")
 
 
 def table(m):
-    rows = likeness.compare(m, store.load(m)["base"])["rows"]
+    rows = likeness_compare.compare(m, store.load(m)["base"])["rows"]
     by = {(r["id"], r["vi"]): r for r in rows}
     out = {}
     for g, ids in GROUPS.items():

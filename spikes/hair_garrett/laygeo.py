@@ -18,6 +18,7 @@ import sys
 import numpy as np
 
 from hifipushie import hair, hair_loose as hl, store
+from hifipushie import hair_groom, hair_head, hair_seat
 
 
 def merge(a, b):
@@ -30,7 +31,7 @@ def merge(a, b):
 
 
 def measure(sc, g, col):
-    line = hair.hairline(sc, g)
+    line = hair_groom.hairline(sc, g)
     locks = hl.grow(sc, g, line, np.random.default_rng(int(g.get("seed", 0))), col)
     rise_w, rise_v, segs, sel_pts, drops, dips = [], [], [], [], [], []
     for lk in locks.values():
@@ -49,7 +50,7 @@ def measure(sc, g, col):
         P = np.asarray(lk["pts"], float) + sc.C
         a, e, h = sc.coords(P)
         a = ((a + 180) % 360) - 180
-        ln = hair._line_at(line, a)
+        ln = hair_groom._line_at(line, a)
         k = (np.abs(a) < 15) & (e > ln + 2) & (e < ln + 20)
         sel_pts.append(h[k])
         if abs(a[0]) < 60 and ((np.abs(a[3:]) < 40) & (e[3:] < ln[3:] - 5)).any():
@@ -81,13 +82,13 @@ def measure(sc, g, col):
 if __name__ == "__main__":
     m = sys.argv[1]
     spec = store.load(m)
-    sc = hair.scalp(m, spec)
+    sc = hair_head.scalp(m, spec)
     col = hl.collider(m, spec, sc)
-    base = hair.groom_params(spec)
+    base = hair_groom.groom_params(spec)
     for pf in [None] + sys.argv[2:]:
         g = copy.deepcopy(base)
         if pf:
             merge(g, json.load(open(pf)).get("groom", {}))
-        r = measure(sc, hair.fit_to_head(g, sc), col)
+        r = measure(sc, hair_seat.fit_to_head(g, sc), col)
         print(f"{pf or m:<40} " + " ".join(f"{k} {v:.1f}" if isinstance(v, float) else f"{k} {v}" for k, v in r.items()),
               flush=True)

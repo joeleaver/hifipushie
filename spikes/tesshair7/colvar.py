@@ -11,6 +11,7 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 from hifipushie import hair, store
+from hifipushie import hair_card_fit
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -37,7 +38,7 @@ for i in (0, 1, 2):
     n = ours.size[0]
     cam = refs["cameras"][i]
     mm = float(cam["t"][2]) / float(cam["f"]) * 1000.0 * max(cam["size"]) / n
-    pic = hair.ref_square(Image.open(refs["views"][i]["image"]).convert("RGB"), n)
+    pic = hair_card_fit.ref_square(Image.open(refs["views"][i]["image"]).convert("RGB"), n)
     # (the face's dark pixels are not hair: only the mask's largest piece, eroded 2 mm)
     both = ndi.binary_opening(hairmask(pic) & hairmask(ours), iterations=2)
     lab, k = ndi.label(both)
@@ -45,7 +46,7 @@ for i in (0, 1, 2):
         continue
     both = lab == (1 + int(np.argmax(ndi.sum(both, lab, range(1, k + 1)))))
     dense = ndi.binary_erosion(both, iterations=max(1, int(round(2.0 / mm))))
-    r = {"hers": hair.colour_bands(pic, dense, mm), "ours": hair.colour_bands(ours, dense, mm)}
+    r = {"hers": hair_card_fit.colour_bands(pic, dense, mm), "ours": hair_card_fit.colour_bands(ours, dense, mm)}
     out[f"v{i}"] = r
     print(f"v{i}  {mm:.2f} mm/px, {int(dense.sum())} px      hers | ours")
     for b in ("mean", "shadow", "highlight"):

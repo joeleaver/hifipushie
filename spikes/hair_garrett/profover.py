@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
 from hifipushie import hair_read, store
+from hifipushie import hair_read_capture, hair_read_measures
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -19,13 +20,13 @@ OUT = os.environ["TOUT"]
 vi = int(kw.get("view", 1))
 tag = kw.get("tag", "")
 spec = store.load(m)
-fr = [f for f in hair_read.frames(m, spec, [vi]) if f["i"] == vi][0]
+fr = [f for f in hair_read_capture.frames(m, spec, [vi]) if f["i"] == vi][0]
 img = fr["image"]
 W, H = img.size
-hn = hair_read.hairness(img, fr["hair"], fr["bg"], fr["mm"])
+hn = hair_read_measures.hairness(img, fr["hair"], fr["bg"], fr["mm"])
 theirs = np.asarray(hn["solid"], bool)
 tile = Image.open(f"{OUT}/s_{m}{tag}_v{vi}.png")
-rgba = hair_read.render_as_picture(tile.convert("RGBA") if tile.mode == "RGBA" else tile, (W, H))
+rgba = hair_read_capture.render_as_picture(tile.convert("RGBA") if tile.mode == "RGBA" else tile, (W, H))
 a = np.asarray(rgba.convert("RGB"), float)
 bgc = a[:6, :6].reshape(-1, 3).mean(0)
 fg = np.abs(a - bgc).max(-1) > 12

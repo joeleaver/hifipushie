@@ -37,7 +37,8 @@ for m in hm.NAMES:
     NAMES += [m, m + "!"]
 NAMES += ["nd:" + n for n in bi.gap_names()]
 from hifipushie import base as basemod  # noqa: E402
-regs = sorted(k for k in basemod._gnm_data()["groups"] if k.endswith("_region") and not k.startswith(("left_", "right_")))
+from hifipushie import base_identity
+regs = sorted(k for k in base_identity._gnm_data()["groups"] if k.endswith("_region") and not k.startswith(("left_", "right_")))
 NAMES += [f"pc:{r}{k}" for r in regs for k in range(4)]
 NAMES += [f"sculpt:{z}" for z in ("radix", "dorsum", "nose_tip", "alae", "upper_vermilion", "lower_vermilion", "chin",
                                   "pogonion", "under_chin", "jowls", "cheeks", "malar", "temples", "brows", "glabella",

@@ -11,16 +11,17 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain, terrain_mesh
+from hifipushie import terrain_model, terrain_tile_views, terrain_tiles
 
 spec, out = Path(sys.argv[1]), Path(sys.argv[2])
 at = [float(v) for v in sys.argv[3].split(",")] if "," in sys.argv[3] else sys.argv[3]
 radius = float(sys.argv[4]) if len(sys.argv) > 4 else 40.0
 density = float(sys.argv[5]) if len(sys.argv) > 5 else 6.0
 t0 = time.time()
-T = terrain.load(spec)
+T = terrain_model.load(spec)
 print(f"compiled {time.time() - t0:.1f} s", flush=True)
 t1 = time.time()
-r = terrain_mesh.preview_tiles(T, out, at, radius, density)
+r = terrain_tiles.preview_tiles(T, out, at, radius, density)
 print(f"preview tiles {time.time() - t1:.1f} s (export {r['manifest']['timing_s'].get('total before check')} s)",
       flush=True)
 xy = np.asarray(at[:2], float) if isinstance(at, list) else np.asarray(T.address(at)[0], float)
@@ -44,5 +45,5 @@ b = [[float(xy[0] - radius - 120), float(xy[1] - radius - 120)], [float(xy[0] + 
 t2 = time.time()
 for v in views:
     v["out"] = str(out / f"look_{v['name']}.png")
-print(terrain_mesh.render_tiles(T, out, views, size=(1200, 800), samples=32, box=b))
+print(terrain_tile_views.render_tiles(T, out, views, size=(1200, 800), samples=32, box=b))
 print(f"render {time.time() - t2:.1f} s; total {time.time() - t0:.1f} s")

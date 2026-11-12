@@ -6,6 +6,7 @@ import numpy as np
 
 import drv
 from hifipushie import face_ruler as fr, gnm_mm
+from hifipushie import face_ruler_solve
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 6
 mode = sys.argv[2] if len(sys.argv) > 2 else "transplant"
@@ -23,7 +24,7 @@ for i in range(n):
     A, B = fr.gnm_head(cA), fr.gnm_head(cB)
     views = [{"img": fr.clay(B, fr.camera(k)), "cam": fr.camera(k), "kind": k, "style": "clay"} for k in KINDS]
     t = time.time()
-    obs = fr.observe(A, views)
+    obs = face_ruler_solve.observe(A, views)
     t1 = time.time() - t
     o = np.array([ob["o"] for ob in obs])
     pred = np.array([ob["J"] for ob in obs]) @ (cB - cA)
@@ -35,7 +36,7 @@ for i in range(n):
                     print(f"  {typ:8s} {k:8s} n {s.sum():4d} |o| {np.abs(o[s]).mean():.2f} mm, o - J dc: bias {np.mean(o[s] - pred[s]):+.2f} sd {np.std(o[s] - pred[s]):.2f}")
     truth = {r["measure"]: r["gap"] for r in gnm_mm.gaps(drv.verts(cA), drv.verts(cB))}
     for m in E:
-        res = fr.solve(obs, A, span=(m == "span")) if m != "it3" else fr.read(A, views, rounds=3)
+        res = face_ruler_solve.solve(obs, A, span=(m == "span")) if m != "it3" else face_ruler_solve.read(A, views, rounds=3)
         E[m].append([r["gap"] - truth[r["measure"]] for r in sorted(res["gaps"], key=lambda r: gnm_mm.NAMES.index(r["measure"]))])
         if m == "bayes":
             post = [r["err"] for r in sorted(res["gaps"], key=lambda r: gnm_mm.NAMES.index(r["measure"]))]

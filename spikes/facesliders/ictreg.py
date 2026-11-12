@@ -23,6 +23,7 @@ from scipy.sparse.linalg import spsolve
 from scipy.spatial import cKDTree
 
 from hifipushie import assets, base as basemod
+from hifipushie import base_identity
 
 OUT = Path(os.environ.get("OUT", "/mnt/data/hifipushie/faces4/out"))
 BIND_MAX = float(os.environ.get("BIND_MAX", "0.003"))
@@ -85,7 +86,7 @@ def surface_sample(V, T, per=12):
 
 
 def main():
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     TPL = np.asarray(g["template_vertex_positions"], float)
     n = len(TPL)
     names = [str(x) for x in g["identity_names"]]
@@ -216,7 +217,7 @@ def report(Mb, IB, g, hc, sk0):
 
 
 def report_only():
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     names = [str(x) for x in g["identity_names"]]
     hc = [i for i, x in enumerate(names) if x.startswith("head")]
     IB = np.asarray(g["vertex_identity_basis"], float)[hc]

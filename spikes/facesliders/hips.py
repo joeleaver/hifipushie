@@ -2,6 +2,7 @@
 import copy
 
 from hifipushie import humanfit, humans
+from hifipushie import humanfit_solve
 
 sp = humans.spec(age=30, sex=0.0, seed=3, skin=False, source="human")
 m0 = humanfit.state(sp["base"])["measures"]
@@ -12,5 +13,5 @@ for mod in ("hips", "waist", "shoulders", "chest"):
     b["body"][mod] = 1.0
     m1 = humanfit.state(b)["measures"]
     print(mod, {k: round(m1[k] - m0[k], 2) for k in keys})
-nb, rep = humanfit.solve(sp["base"], {"hip_breadth": "-2"}, free=("body",))
+nb, rep = humanfit_solve.solve(sp["base"], {"hip_breadth": "-2"}, free=("body",))
 print(nb["body"], {k: rep[k] for k in rep if k in ("refused", "unintended")})

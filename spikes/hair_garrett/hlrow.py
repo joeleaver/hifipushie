@@ -16,6 +16,7 @@ BANDS = (0, 5, 10, 15, 20, 30, 45, 1000)
 
 def run(m, patch=None, count=120000):
     from hifipushie import hair, hair_read as hr, hair_strands as hs, humanfit, store
+    from hifipushie import hair_groom, hair_head, hair_job, hair_seat, hair_strands_eval, humanfit_views
     from laygeo import merge
     import laycal
     spec = store.load(m)
@@ -24,15 +25,15 @@ def run(m, patch=None, count=120000):
         spec = copy.deepcopy(spec)
         merge(spec["hair"], json.load(open(patch)))
         tag = m + ":" + patch.rsplit("/", 1)[-1].replace(".json", "")
-    sc = hair.scalp(m, spec)
-    g = hair.fit_to_head(copy.deepcopy(hair.groom_params(spec)), sc)
-    line = hair.hairline(sc, g)
-    sd = hair.job(m, spec, count=count)["strands"]
-    D = hs.strands_of_model(sd)
+    sc = hair_head.scalp(m, spec)
+    g = hair_seat.fit_to_head(copy.deepcopy(hair_groom.groom_params(spec)), sc)
+    line = hair_groom.hairline(sc, g)
+    sd = hair_job.job(m, spec, count=count)["strands"]
+    D = hair_strands_eval.strands_of_model(sd)
     pts, cnt = D["pts"].astype(float), D["counts"]
     first = np.r_[0, np.cumsum(cnt)[:-1]]
     ra, re_, _ = sc.coords(pts[first])
-    din = np.asarray(hair.inside(sc, line, ra, re_), float) * 1000  # mm behind the line per strand
+    din = np.asarray(hair_groom.inside(sc, line, ra, re_), float) * 1000  # mm behind the line per strand
     sid = np.repeat(np.arange(len(cnt)), cnt)
     ok = np.ones(len(pts), bool); ok[first + cnt - 1] = False
     ia = np.where(ok)[0]; ib = ia + 1
@@ -40,12 +41,12 @@ def run(m, patch=None, count=120000):
     refs = json.loads((store.HOME / m / "human_refs.json").read_text())
     v, az, el, mm = laycal.CROPS["hairline__front"]
     cam = refs["cameras"][int(v[1:])]
-    uv = humanfit.project(cam, sc.point(np.array([az]), np.array([el]), 0.01))[0]
+    uv = humanfit_views.project(cam, sc.point(np.array([az]), np.array([el]), 0.01))[0]
     eye, R = hr.cam_eye(cam)
     s = mm / 1000.0 * cam["f"] / np.linalg.norm(sc.C - eye)
     x0, y0 = uv - s / 2
-    qa = (humanfit.project(cam, A) - [x0, y0]) / s * 520
-    qb = (humanfit.project(cam, B) - [x0, y0]) / s * 520
+    qa = (humanfit_views.project(cam, A) - [x0, y0]) / s * 520
+    qb = (humanfit_views.project(cam, B) - [x0, y0]) / s * 520
     q = (qa + qb) / 2
     depth = ((A + B) / 2 - eye) @ R[2]
     inb = (q[:, 0] >= 0) & (q[:, 0] < 520) & (q[:, 1] >= 0) & (q[:, 1] < 520)

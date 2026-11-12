@@ -29,7 +29,9 @@ import numpy as np
 
 import joint as J0
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import faceatlas, headfit, humanfit, humanfit_map as hm, likeness, onemesh, store
+from hifipushie import humanfit_views, likeness_compare, likeness_measure
 
 WS = Path("/home/joe/dev/hifipushie/workspace")
 CAP = 2.5
@@ -113,12 +115,13 @@ def envelope(st, cam, o, facing=None):
     front/back edges left the chin's underside without vertices, and nearest matching slid the sides' vertices
     in under the chin: the narrow chin). {X, B (K, n, 3), p, n (outward), vs}."""
     from hifipushie import base as basemod
+    from hifipushie import base_identity
     tpl, c = st["tpl"], st["head"]["carry"]
     P = np.asarray(tpl["P"], float)
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     fade = np.asarray(onemesh.asset()["g_fade"], float)
     head = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
-    ears = np.asarray(basemod._gnm_data()["groups"]["ears"], float) > 0.5
+    ears = np.asarray(base_identity._gnm_data()["groups"]["ears"], float) > 0.5
     head &= ~ears[np.maximum(gid, 0)]
     if facing is not None:
         from hifipushie import retopo
@@ -128,7 +131,7 @@ def envelope(st, cam, o, facing=None):
         hc = P[head].mean(0)
         if np.mean(((P[head] - hc) * nv[head]).sum(1)) < 0:   # (outward)
             nv = -nv
-        Rc0 = humanfit._cam_rot(cam)
+        Rc0 = humanfit_views._cam_rot(cam)
         eye = np.asarray(cam["centre"], float) - Rc0.T @ np.asarray(cam["t"], float)
         # lit by a light from the front and above at 45 deg (the portrait's key: the underside's shadow edge is its
         # terminator): a vertex counts while n . L > facing - 0.5 (0: the terminator itself)
@@ -139,16 +142,16 @@ def envelope(st, cam, o, facing=None):
         head &= nv @ L > facing - 0.5
         # and only the face's own regions (GNM's chin / cheek / parotid): below them the submental skin and the neck
         # face the low camera and the key too (the envelope picked them, 15 px under the traced edge)
-        gg = basemod._gnm_data()["groups"]
+        gg = base_identity._gnm_data()["groups"]
         face = sum(np.asarray(gg[k], float) for k in ("chin_region", "left_cheek_region", "right_cheek_region",
                                                        "left_parotid_region", "right_parotid_region")) > 0.5
         head &= face[np.maximum(gid, 0)]
     hv = np.flatnonzero(head)
-    uv = humanfit.project(cam, P[hv])
-    Rc = humanfit._cam_rot(cam)
+    uv = humanfit_views.project(cam, P[hv])
+    Rc = humanfit_views._cam_rot(cam)
     zc = ((P[hv] - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"]))[:, 2]
     mmpx = float(np.median(zc)) / cam["f"] * 1000
-    ctr = humanfit.project(cam, st["L"][:68]).mean(0)
+    ctr = humanfit_views.project(cam, st["L"][:68]).mean(0)
     tan = np.gradient(o, axis=0)
     tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-9)
     nrm = np.c_[-tan[:, 1], tan[:, 0]]
@@ -167,7 +170,7 @@ def envelope(st, cam, o, facing=None):
         return None
     vs, keep = np.array(vs), np.array(keep)
     g = headfit._gnm()
-    Bv = np.asarray(basemod._gnm_data()["vertex_identity_basis"], float)[g["comps"]][:, gid[vs]]
+    Bv = np.asarray(base_identity._gnm_data()["vertex_identity_basis"], float)[g["comps"]][:, gid[vs]]
     Bv = float(c["s"]) * (Bv - g["JB"].mean(1, keepdims=True)) @ np.asarray(c["R"], float).T
     Bv = Bv * fade[gid[vs]][None, :, None]
     return {"X": P[vs], "B": Bv, "p": o[keep], "n": nrm[keep], "vs": vs, "keep": keep, "mmpx": mmpx}
@@ -206,11 +209,11 @@ def outline_rows(st, cam, o, names, line=""):
     "chin" line also carries the chin-width item (its two sides' points nearest CHIN_H above its lowest point)."""
     if MATCH == "silhouette":
         from scipy.spatial import cKDTree
-        sl = humanfit._silhouette(st, cam, o)
+        sl = humanfit_views._silhouette(st, cam, o)
         if sl is None:
             return None
         sl["vs"] = cKDTree(np.asarray(st["tpl"]["P"], float)).query(sl["X"])[1]
-        Rc = humanfit._cam_rot(cam)
+        Rc = humanfit_views._cam_rot(cam)
         sl["mmpx"] = float(np.median(((sl["X"] - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"]))[:, 2])) / cam["f"] * 1000
     else:
         sl = envelope(st, cam, o, SHADE_LINES.get(line))
@@ -234,7 +237,7 @@ def outline_rows(st, cam, o, names, line=""):
 def _need():
     s = {168, 152, 13, 14}
     for iid in ITEMS:
-        s |= {int(i) for i in likeness.points_of(likeness._item(iid)["measure"])}
+        s |= {int(i) for i in likeness_measure.points_of(likeness_measure._item(iid)["measure"])}
     return np.array(sorted(s))
 
 
@@ -244,7 +247,7 @@ NEED = None
 def proxy_rows(st, k):
     """The model's predicted MediaPipe points NEED in view class k: world X (n, 3), identity basis XB (K, n, 3), rows."""
     g = headfit._gnm()
-    gd = basemod._gnm_data()
+    gd = base_identity._gnm_data()
     tpl, c = st["tpl"], st["head"]["carry"]
     R, s = np.asarray(c["R"], float), float(c["s"])
     P = np.asarray(tpl["P"], float)
@@ -271,11 +274,11 @@ def pmeasure(uv, iid, mmpx):
     P[NEED] = uv
     if not np.isfinite(P[152]).all():     # (the chin point off the head: the frame's fallback, as likeness does)
         P[152] = 0.5 * (P[13] + P[14])
-    return likeness.value(likeness.Side(P, None, "detector"), likeness._item(iid)["measure"], mmpx)
+    return likeness_measure.value(likeness_measure.Side(P, None, "detector"), likeness_measure._item(iid)["measure"], mmpx)
 
 
 def proj_jac(cam, X):
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
     z = Xc[:, 2]
     J = np.zeros((len(X), 2, 3))
@@ -288,7 +291,7 @@ def proj_jac(cam, X):
 def item_targets(refname, b, views):
     """{(item, view): photo - model} from likeness.compare (photo and clay render both through the detector), the
     skipped ones with why, and the compare's rows of ITEMS."""
-    cmp = likeness.compare(refname, b)
+    cmp = likeness_compare.compare(refname, b)
     tg, why, rows = {}, [], {}
     for r in cmp["rows"]:
         if r["id"] not in ITEMS + READ_ONLY or r["vi"] == "-":
@@ -391,7 +394,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                     cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
                 J, z = proj_jac(cam, X)
                 wt = (z / cam["f"] * 1000) / e["sig"] * view_w(v)
-                r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
+                r = (e["uv"] - humanfit_views.project(cam, X)) * wt[:, None]
                 a = np.linalg.norm(r, axis=1)
                 hw = np.where(a > 2.5, np.sqrt(2.5 / np.maximum(a, 1e-9)), 1.0)
                 Ac = (np.einsum("nij,knj->nik", J, e["XB"]) * (wt * hw)[:, None, None]).reshape(-1, K)
@@ -405,7 +408,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                 PX, PXB, PSB = prox[vi]
                 X = PX + np.tensordot(c - c_lin, PXB, 1) + np.tensordot(s - s_lin, PSB, 1)
                 cam = cams[vi]
-                uv = humanfit.project(cam, X)
+                uv = humanfit_views.project(cam, X)
                 Jp, z = proj_jac(cam, X)
                 mmpx = float(np.median(z)) / cam["f"] * 1000
                 m = pmeasure(uv, iid, mmpx)
@@ -414,7 +417,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                 if (iid, vi) not in m0:
                     m0[(iid, vi)] = m
                 g = np.zeros_like(uv)
-                rel = set(likeness.points_of(likeness._item(iid)["measure"])) | {168, 152, 13, 14}
+                rel = set(likeness_measure.points_of(likeness_measure._item(iid)["measure"])) | {168, 152, 13, 14}
                 for i in [j for j in range(len(uv)) if int(NEED[j]) in rel]:
                     for d in range(2):
                         u2 = uv.copy()
@@ -435,7 +438,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                 cam = cams[vi]
                 Jp, z = proj_jac(cam, X)
                 wt = (z / cam["f"] * 1000) / OUT_SIG * view_w(views[vi])
-                r = ((humanfit.project(cam, X) - sl["p"]) * sl["n"]).sum(1) * wt
+                r = ((humanfit_views.project(cam, X) - sl["p"]) * sl["n"]).sum(1) * wt
                 hw = np.where(np.abs(r) > 2.5, np.sqrt(2.5 / np.maximum(np.abs(r), 1e-9)), 1.0)
                 nJ = np.einsum("nd,ndj->nj", sl["n"], Jp)
                 A = np.c_[np.einsum("nj,knj->nk", nJ, sl["B"]), np.einsum("nj,knj->nk", nJ, sl["SB"]) if S else np.zeros((len(X), 0))]
@@ -447,7 +450,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                     # the mentolabial sulcus' depth (the pout: the lower lip out over the fold above the chin):
                     # the deepest point of the contour between the lower lip and the chin, from the line touching
                     # both; photo (the traced points) vs model (its matched silhouette points)
-                    uvm = humanfit.project(cam, X)
+                    uvm = humanfit_views.project(cam, X)
                     mmx = float(np.median(z)) / cam["f"] * 1000
                     ph = mentolabial(sl["p"]) * mmx
                     mm_ = mentolabial(uvm) * mmx
@@ -468,7 +471,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                             info.setdefault("ml", []).append((it, ph, mm_))
                 if "chin" in sl:   # the chin's width at CHIN_H above menton: model (the two matched vertices) vs trace
                     lo, hi, wph = sl["chin"]
-                    uvx = humanfit.project(cam, X[[lo, hi]])
+                    uvx = humanfit_views.project(cam, X[[lo, hi]])
                     mmx = float(np.mean(z[[lo, hi]])) / cam["f"] * 1000
                     wmod = (uvx[1, 0] - uvx[0, 0]) * mmx
                     gx = np.zeros((2, 3))

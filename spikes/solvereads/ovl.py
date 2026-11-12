@@ -6,17 +6,18 @@ import sys
 import numpy as np
 from PIL import ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_compare, face_ruler_outline
 m, out = sys.argv[1], sys.argv[2]
-c = fr.compare(m, rounds=1, lids=True, lips=True, parse="auto", adapt=True, cmax=3.0, prior_off=None,
-               kinds=(bi._refs(m).get("blockin") or {}).get("kinds"), readers=(bi._refs(m).get("blockin") or {}).get("readers"))
-im = fr.overlay(c, height=1536)
+c = face_ruler_compare.compare(m, rounds=1, lids=True, lips=True, parse="auto", adapt=True, cmax=3.0, prior_off=None,
+               kinds=(blockin_models._refs(m).get("blockin") or {}).get("kinds"), readers=(blockin_models._refs(m).get("blockin") or {}).get("readers"))
+im = face_ruler_compare.overlay(c, height=1536)
 if len(sys.argv) > 3:
     ht = c["head"]["rebuild"](bi.identity(store.load(sys.argv[3])))
     d = ImageDraw.Draw(im)
     x0 = 0
     for v in c["views"]:
         _, ps = fr.clay(ht, v["cam"], passes=True)
-        cm = fr._curve(ps["part"] >= 0)
+        cm = face_ruler_outline._curve(ps["part"] >= 0)
         k = 1536 / v["img"].size[1]
         if cm is not None:
             d.line([(x0 + p[0] * k, p[1] * k) for p in cm], fill=(255, 0, 0), width=2)

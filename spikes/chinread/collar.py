@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 from hifipushie import face_ruler as fr, humanfit
+from hifipushie import face_ruler_blockin, face_ruler_camera, face_ruler_compare, face_ruler_jaw, humanfit_views
 
 
 def dress(img, head, cam, top=8.0, radius=0.072, colour=(132, 134, 140), seed=0):
@@ -18,7 +19,7 @@ def dress(img, head, cam, top=8.0, radius=0.072, colour=(132, 134, 140), seed=0)
     zb = ps["zb"]
     H, W = zb.shape
     w, h = cam["size"]
-    Rc = humanfit._cam_rot(cam)
+    Rc = humanfit_views._cam_rot(cam)
     k = H / float(h)
     u, v = np.meshgrid((np.arange(W) + 0.5) / k, (np.arange(H) + 0.5) / k)
     d = np.stack([(u - w / 2) / cam["f"], (v - h / 2) / cam["f"], np.ones_like(u)], -1)          # camera-frame ray, z = 1
@@ -48,7 +49,8 @@ def picture(T, vi):
     """A truth model's own dressed picture of view vi (mkhead's, or solvereads')."""
     import os
     from hifipushie import blockin as bi
-    f = bi._refs(T)["views"][vi]["image"]
+    from hifipushie import blockin_models
+    f = blockin_models._refs(T)["views"][vi]["image"]
     if not os.path.basename(f).startswith(("cz_", "sx_")):
         f = f"/mnt/data/hifipushie/solvereads/synth/{T[:-2]}_{vi}.png"
     return Image.open(f).convert("RGB")
@@ -57,13 +59,14 @@ def picture(T, vi):
 if __name__ == "__main__":
     from PIL import ImageDraw
     from hifipushie import blockin as bi, store
+    from hifipushie import blockin_models
     T, vi, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
-    cam = bi._refs(T)["cameras"][vi]
-    head = fr.model_head(store.load(T))
+    cam = blockin_models._refs(T)["cameras"][vi]
+    head = face_ruler_blockin.model_head(store.load(T))
     im, m = dress(picture(T, vi), head, cam, top=float(sys.argv[4]) if len(sys.argv) > 4 else 8.0)
-    v = {"img": im, "cam": cam, "kind": fr.kind_of(abs(fr.view_yaw(cam))), "style": "photo", "chin": {"cloth": True}}
+    v = {"img": im, "cam": cam, "kind": face_ruler_compare.kind_of(abs(face_ruler_camera.view_yaw(cam))), "style": "photo", "chin": {"cloth": True}}
     _, ps = fr.clay(head, cam, passes=True)
-    ob = fr._cloth_obs(head, v, ps)
+    ob = face_ruler_jaw._cloth_obs(head, v, ps)
     o = np.array([x["o"] for x in ob])
     print(T, vi, "cloth reads", len(o), (f"bias {o.mean():+.2f} rms {np.sqrt((o ** 2).mean()):.2f}" if len(o) else ""))
     a = np.asarray(im, float)

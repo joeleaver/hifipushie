@@ -20,19 +20,20 @@ from hifipushie import headfit
 
 headfit.N = 170
 from hifipushie import base as basemod, humanfit, likeness, onemesh, store  # noqa: E402
+from hifipushie import base_identity, likeness_compare, likeness_render, likeness_sides
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces5"))
 model = sys.argv[1]
 WHAT = (sys.argv[2] if len(sys.argv) > 2 else "id,expr,ict").split(",")
 STEP = float(sys.argv[3]) if len(sys.argv) > 3 else 2.0
 LIMIT = int(os.environ.get("LIMIT", "0"))
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 spec = store.load(model)
 base = spec["base"]
 st = humanfit.state(base)
-mesh0 = likeness.model_mesh_from_state(st)
+mesh0 = likeness_render.model_mesh_from_state(st)
 refs = json.loads((store.HOME / model / "human_refs.json").read_text())
-photos = likeness.photo_sides(likeness._refs(model))
+photos = likeness_sides.photo_sides(likeness_sides._refs(model))
 cams = refs["cameras"]
 tpl, c = st["tpl"], st["head"]["carry"]
 R, s = np.asarray(c["R"], float), float(c["s"])
@@ -61,13 +62,13 @@ def moved_mesh(D, eye_d=None):
     if eye_d is not None:
         fwd = np.asarray(st["head"].get("forward", [0, -1, 0]), float)
         r_ = float(st["head"].get("eye_r", 0.012))
-        m["eyes"] = [likeness._sphere(np.asarray(cc) + s * (e - jm) @ R.T, r_ * 0.985, fwd)
+        m["eyes"] = [likeness_render._sphere(np.asarray(cc) + s * (e - jm) @ R.T, r_ * 0.985, fwd)
                      for cc, e in zip(st["head"]["eyes"], eye_d)]
     return m
 
 
 def items(mesh):
-    cmp = likeness.compare(model, base, photos=photos, cameras=cams, mesh=mesh)
+    cmp = likeness_compare.compare(model, base, photos=photos, cameras=cams, mesh=mesh)
     out = {}
     for r in cmp["rows"]:
         b = r.get("model")
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     cams_t = copy.deepcopy(cams)
     for cm in cams_t:
         cm["yaw"] = float(cm.get("yaw", 0.0)) + 0.5
-    cmpn = likeness.compare(model, base, photos=photos, cameras=cams_t, mesh=mesh0)
+    cmpn = likeness_compare.compare(model, base, photos=photos, cameras=cams_t, mesh=mesh0)
     noise = {}
     for r in cmpn["rows"]:
         k = f"{r['id']}@{r['view']}"

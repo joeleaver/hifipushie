@@ -94,10 +94,11 @@ elif stage == "nose":  # the dorsal widths by shading under the photo's light (f
         print(f"{k:14s} photo {ph0[k]:.2f}  before {md0[k]:.2f}  after {r['after'][k]:.2f}")
 elif stage == "brow":  # the brows' height: an identity move (humanfit.solve, least change, everything else held)
     from hifipushie import humanfit
+    from hifipushie import humanfit_solve
     spec = load(DST / "spec.json")
     ph0, md0, _ = gm.measure("fs_garrett", spec["base"])
     d = round(-(md0["brow_gap"] - ph0["brow_gap"]), 2)
-    nb, rep = humanfit.solve(spec["base"], {"brow_height": f"{d:+.2f}"})
+    nb, rep = humanfit_solve.solve(spec["base"], {"brow_height": f"{d:+.2f}"})
     print("solve brow_height", d, "->", {k: rep[k] for k in rep if k in ("refused", "unintended", "moved")})
     ph1, md1, _ = gm.measure("fs_garrett", nb)
     show("before:", ph0, md0, ("brow_gap", "brow_height", "brow_tilt", "open", "canthal_tilt"))

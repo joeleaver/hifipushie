@@ -11,24 +11,25 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 from hifipushie import blockin as bi, gnm_fold as gf, humanfit, likeness as lk, store, base as basemod
+from hifipushie import blockin_clay, blockin_expression, blockin_models, humanfit_views
 
 m, out = sys.argv[1:3]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
 VI = [int(x) for x in kw.get("views", "0,1").split(",")]
 os.makedirs(out, exist_ok=True)
-spec, rj = store.load(m), bi._refs(m)
+spec, rj = store.load(m), blockin_models._refs(m)
 UP = ((33, 246, 161, 160, 159, 158, 157, 173, 133), (263, 466, 388, 387, 386, 385, 384, 398, 362))
 res = {}
 for vi in VI:
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
-    P = np.asarray(bi.detect_view(img, v), float)
+    P = np.asarray(blockin_clay.detect_view(img, v), float)
     if P.ndim != 2:      # (no face found in this view: a profile)
         continue
     P = P[:, :2]
-    st = humanfit.state(bi.view_base(spec["base"], rj, vi))
+    st = humanfit.state(blockin_expression.view_base(spec["base"], rj, vi))
     L = st["L"]
-    M = humanfit.project(cam, L[:70])
+    M = humanfit_views.project(cam, L[:70])
     mmpx = 1000.0 * float(np.linalg.norm(L[36] - L[39])) / float(np.linalg.norm(M[36] - M[39]))
     lum = np.log(np.maximum(np.asarray(img, float) @ [0.2126, 0.7152, 0.0722] / 255.0, 1e-3))
     s = max(0.8 / mmpx, 1.0)
@@ -67,11 +68,11 @@ for vi in VI:
         both = []
         for ring_ids in (ch[:, ka], gf.topo()["mir"][ch[:, ka]]):
             pts = np.array([np.asarray(tpl["P"])[rows[int(x)]] for x in ring_ids if int(x) in rows])
-            both.append(humanfit.project(cam, pts))
+            both.append(humanfit_views.project(cam, pts))
         ours = min(both, key=lambda q: np.linalg.norm(q.mean(0) - cen))
         # + the crease's TAIL past the outer canthus (lid_fold.<side>.tail), when the fold has one
         tails = [np.asarray((cfg.get(k_) or {}).get("tail", {}).get("path", []), int) for k_ in ("L", "R")]
-        tails = [humanfit.project(cam, np.array([np.asarray(tpl["P"])[rows[int(x)]] for x in t_ if int(x) in rows])) for t_ in tails if len(t_) >= 3]
+        tails = [humanfit_views.project(cam, np.array([np.asarray(tpl["P"])[rows[int(x)]] for x in t_ if int(x) in rows])) for t_ in tails if len(t_) >= 3]
         if tails:
             tq = min(tails, key=lambda q: np.linalg.norm(q.mean(0) - cen))
             if np.linalg.norm(tq.mean(0) - cen) * mmpx < 25:

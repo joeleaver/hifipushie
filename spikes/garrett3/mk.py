@@ -84,7 +84,7 @@ def main(dst="g3_garrett", src="rs2_m3"):
     }
     pf = os.path.join(D3, "skin_patch.json")
     if os.path.exists(pf):
-        from hifipushie.server import _merge_patch
+        from hifipushie.tools_skin import _merge_patch
         sp["skin"] = _merge_patch(sp["skin"], json.load(open(pf)))
     sp["paint"] = {k: v for k, v in (sp.get("paint") or {}).items() if k in ("180_mouth_inside",)}
     for k in ("subsurface", "subsurface_radius", "subsurface_scale"):   # the skin pipeline shades the skin part itself

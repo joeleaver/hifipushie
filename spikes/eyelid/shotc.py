@@ -12,6 +12,7 @@ from PIL import Image
 import shot
 import stage
 from hifipushie import blockin as bi, resources
+from hifipushie import blockin_clay, blockin_models
 
 G = os.environ["G"] + "/out"
 K = int(os.environ.get("K", "3"))
@@ -24,13 +25,13 @@ SIDE = {"lights": [{"dir": [0.8, -0.55, 0.25], "energy": 5.0, "color": [1, 1, 1]
         "world": {"color": [0.8, 0.8, 0.8], "strength": 0.25}, "view": "Khronos PBR Neutral", "exposure": 0.0}
 
 if __name__ == "__main__":
-    rj = bi._refs(REFS)
+    rj = blockin_models._refs(REFS)
     img, box, P = shot.box_of(rj)
     json.dump({"box": box, "K": K, "P": np.asarray(P).tolist()}, open(f"{G}/box.json", "w"))
     ib = [int(round(v)) for v in box]
     if not os.path.exists(f"{G}/s_photo.png"):
         img.crop(tuple(ib)).resize((shot.SIDE * K, shot.SIDE * K), Image.LANCZOS).save(f"{G}/s_photo.png")
-    cam = rj["cameras"][bi._front(rj)]
+    cam = rj["cameras"][blockin_clay._front(rj)]
     fr = stage.fitted_frame(cam, [float(v) for v in ib], "front")
     light = stage.photo_light(REFS)
     force = os.environ.get("FORCE") == "1"

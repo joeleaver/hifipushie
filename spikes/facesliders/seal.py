@@ -6,7 +6,9 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 from hifipushie import faceslide, humans, onemesh, store
+from hifipushie import onemesh_head
 
 b0 = store.load(sys.argv[1])["base"] if len(sys.argv) > 1 else humans.spec(age=40, sex=1.0, seed=None, skin=False,
                                                                            source="human")["base"]
@@ -24,7 +26,7 @@ def gaps(V):
     return 1000 * (np.interp(xs, V[U, 0], V[U, 1]) - np.interp(xs, V[L, 0], V[L, 1]))  # + = apart
 
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 X0 = np.asarray(g["template_vertex_positions"], float)
 lower = [i for i, n in enumerate(g["expression_names"]) if str(n).startswith("lower_face")]
 opening = [float(np.mean(gaps(X0 + 0.5 * g["expression_basis"][i]) - gaps(X0))) for i in lower]
@@ -36,7 +38,7 @@ for seal, expr in ((0.0, None), (0.5, None), (1.0, None), (1.0, "jaw")):
     b["head"].pop("mouth_gap", None)
     if expr:
         b["head"]["expression"] = {str(g["expression_names"][jaw[0]]): 1.0}
-    ht = onemesh.head_template(b)
+    ht = onemesh_head.head_template(b)
     gp = gaps(np.asarray(ht["carry"]["V"], float))
     print(f"seal {seal} {expr or ''}: gap mm min {gp.min():.2f} max {gp.max():.2f} mean {gp.mean():.2f}")
 D = faceslide.seal_delta(X0, 1.0)

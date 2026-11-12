@@ -12,6 +12,7 @@ import json, os, sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import likeness, skin_project as sp
+from hifipushie import likeness_detect
 
 d = sys.argv[1]
 ck = json.load(open(sys.argv[2]))
@@ -47,8 +48,8 @@ from eyetone import EYE, eye_tone  # noqa: E402  (the lid / sclera / iris / refe
 
 
 R, O = img("face_v0_ref"), img("face_v0")
-PR = np.asarray(likeness.detect([R])[0], float)[:, :2]
-PO_ = likeness.detect([O])[0]
+PR = np.asarray(likeness_detect.detect([R])[0], float)[:, :2]
+PO_ = likeness_detect.detect([O])[0]
 PO = np.asarray(PO_, float)[:, :2] if PO_ is not None else PR
 iod = float(np.linalg.norm(PR[33] - PR[263]))       # outer canthi: the face's own unit
 u = iod / 60.0                                        # ~1 mm (an outer-canthus distance ~ 60 mm... a scale, not a ruler)

@@ -5,9 +5,10 @@ import time
 import numpy as np
 
 from hifipushie import retopo, store
+from hifipushie import retopo_wrap
 
 t = time.time()
-r = retopo.wrap(store.load(sys.argv[1]))
+r = retopo_wrap.wrap(store.load(sys.argv[1]))
 np.savez(sys.argv[2], verts=r["verts"], loops=r["loops"], sizes=r["sizes"], origin=r["origin"])
 print("\n".join(r["log"]))
 for k, rings in r["patches"].items():

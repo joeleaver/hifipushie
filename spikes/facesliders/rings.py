@@ -3,8 +3,9 @@ above the upper lid: each ring's length, closedness, extent, and the heights it 
 import numpy as np
 from collections import defaultdict
 from hifipushie import base
+from hifipushie import base_identity
 
-g = base._gnm_data()
+g = base_identity._gnm_data()
 V = g["template_vertex_positions"]; Q = g["quads"]
 lm = lambda i: sum(w * V[int(v)] for v, w in zip(g["lm68"][i][0::2], g["lm68"][i][1::2]))
 mz = 0.5 * (lm(43) + lm(44))

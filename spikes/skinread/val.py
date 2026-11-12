@@ -11,6 +11,7 @@ import copy, json, os, sys, time
 import numpy as np
 from PIL import Image
 from hifipushie import skin_read as sr, blockin as bi, store, resources, skin as skinmod
+from hifipushie import blockin_models, skin_read_context, skin_read_fit, skin_read_frames, skin_read_params
 
 head, tag, truth_f = sys.argv[1:4]
 kw = dict(a.split("=") for a in sys.argv[4:])
@@ -23,21 +24,21 @@ VLIGHT = {"lights": [{"dir": [0.45, -0.72, 0.5], "energy": 2.9, "color": TINT.to
           "world": {"color": (0.75 * TINT).tolist(), "strength": 0.5}, "view": "Standard", "exposure": -0.35}
 
 tm, vm = f"sr_vt_{tag}", f"sr_v_{tag}_{mode}"
-pics = [f"{G}/val_{tag}_{i}.png" for i in range(len(bi._refs(head)["views"]))]
+pics = [f"{G}/val_{tag}_{i}.png" for i in range(len(blockin_models._refs(head)["views"]))]
 if not all(os.path.exists(p) for p in pics) or os.environ.get("FRESH"):
-    bi.fork(head, tm, replace=True)
+    blockin_models.fork(head, tm, replace=True)
     sp = store.load(tm)
     sp["skin"] = truth
     sp["paint"] = {}
     store.save(tm, sp, "skinread validation: the truth")
-    rj = bi._refs(tm)
+    rj = blockin_models._refs(tm)
     with resources.heavy(f"skinread val truth {tag}", gb=6):
-        sn = sr.stage(tm)
+        sn = skin_read_frames.stage(tm)
         for i, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
             w, h = cam["size"]
             s = max(w, h)
             x0, y0 = (w - s) / 2, (h - s) / 2
-            im = sr.shoot(sn, [sr.fitted_frame(cam, [x0, y0, x0 + s, y0 + s], "v")], VLIGHT, size=s)["v"]
+            im = skin_read_frames.shoot(sn, [skin_read_frames.fitted_frame(cam, [x0, y0, x0 + s, y0 + s], "v")], VLIGHT, size=s)["v"]
             bg = np.zeros((s, s, 4), np.uint8)
             bg[..., :3] = np.round(255 * sr._srgb(0.5 * TINT * 2 ** -0.35))
             bg[..., 3] = 255
@@ -48,12 +49,12 @@ if not all(os.path.exists(p) for p in pics) or os.environ.get("FRESH"):
             full.save(pics[i])
             print("truth picture", pics[i], full.size)
 
-bi.fork(head, vm, replace=True)
+blockin_models.fork(head, vm, replace=True)
 sp = store.load(vm)
 start = copy.deepcopy(truth) if mode == "null" else {k: truth[k] for k in ("sex", "age", "part") if k in truth}
 sp["skin"] = start
 sp["paint"] = {}
-rj = bi._refs(vm)
+rj = blockin_models._refs(vm)
 for i, v in enumerate(rj["views"]):
     v["image"] = pics[i]
     if scale != 1:
@@ -64,10 +65,10 @@ for i, v in enumerate(rj["views"]):
         cam["size"] = [int(round(x * scale)) for x in cam["size"]]
         if (rj.get("blockin") or {}).get("boxes"):
             rj["blockin"]["boxes"][i] = [x * scale for x in rj["blockin"]["boxes"][i]]
-bi._save(vm, sp, "skinread validation: the start", rj)
+blockin_models._save(vm, sp, "skinread validation: the start", rj)
 
 t = time.time()
-res = sr.apply(vm, rounds=rounds, log=lambda s: print(s) if "[measure]" not in str(s) else None)
+res = skin_read_fit.apply(vm, rounds=rounds, log=lambda s: print(s) if "[measure]" not in str(s) else None)
 print(res["text"])
 print(f"\n{time.time() - t:.0f} s")
 fit = res["skin"]
@@ -77,7 +78,7 @@ P = [p for g in ("tone", "zones", "eyes", "lips") for p in sr.GROUPS[g]]
 print(f"\n{'parameter':26s} {'truth':>8s} {'start':>8s} {'fitted':>8s}   recovered share of (truth - start)")
 rows = []
 for p in P:
-    a, b, c = sr._get(truth, p), sr._get(start, p), sr._get(fit, p)
+    a, b, c = skin_read_params._get(truth, p), skin_read_params._get(start, p), skin_read_params._get(fit, p)
     sh = (c - b) / (a - b) if abs(a - b) > 1e-6 else float("nan")
     rows.append((p, a, b, c, sh))
     print(f"{p:26s} {a:8.3f} {b:8.3f} {c:8.3f}   {sh:6.2f}")
@@ -87,10 +88,10 @@ print("freckles: truth", (truth.get("features") or {}).get("freckles"), "fitted"
 print("eyes: truth", truth.get("eyes"), "fitted", fit.get("eyes"))
 
 # the albedo against the truth's, by region (the same points, the Python albedo)
-c = sr.context(vm, render=False) if False else None
-frames = sr.capture(vm, render=False)
-X = np.concatenate([f["X"][sr.trust(f) > 0.5] for f in frames]); n = np.concatenate([f["n"][sr.trust(f) > 0.5] for f in frames])
-alb = sr.Albedo(sr.stage_spec(store.load(vm)), X, n)
+c = skin_read_context.context(vm, render=False) if False else None
+frames = skin_read_frames.capture(vm, render=False)
+X = np.concatenate([f["X"][skin_read_frames.trust(f) > 0.5] for f in frames]); n = np.concatenate([f["n"][skin_read_frames.trust(f) > 0.5] for f in frames])
+alb = skin_read_frames.Albedo(skin_read_frames.stage_spec(store.load(vm)), X, n)
 At, As, Af = alb(truth), alb(start), alb(fit)
 print(f"\n{'region':16s} albedo error vs truth, Lab:  start                 fitted")
 tot = [[], []]

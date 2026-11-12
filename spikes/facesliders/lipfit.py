@@ -33,6 +33,7 @@ import joint as J0  # noqa: E402
 import lipsolve as LV  # noqa: E402
 import lipshade as LS  # noqa: E402
 from hifipushie import base as basemod, humanfit, humanfit_map as hm, store  # noqa: E402
+from hifipushie import base_identity, humanfit_solve, humanfit_views
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces5"))
 WS = store.HOME
@@ -49,7 +50,7 @@ TOL = {"shadow": 0.04, "shadow_side": 0.03}
 FEATS = ("shadow", "shadow_side")
 LV.FEATS = FEATS
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 EN = [str(x) for x in g["expression_names"]]
 HREG = os.environ.get("HREG", "lower_face")   # lower_face | eyes (both eyes' comp k as one habitual variable)
 HN = ([(f"lower_face_region_{k:03d}",) for k in range(NH)] if HREG == "lower_face" else
@@ -65,7 +66,7 @@ NC = len(HC)
 
 def spec_with(spec, c, h):
     sp = copy.deepcopy(spec)
-    b = humanfit._with_identity(sp["base"], c)
+    b = humanfit_solve._with_identity(sp["base"], c)
     hd = b["head"]
     ex = dict(hd.get("habitual") or {})
     for t, v in zip(HN, h):
@@ -110,7 +111,7 @@ def point_system(st, views, cams, z, z_lin):
         cam = cams[vi]
         mm0 = cam["t"][2] / cam["f"] * 1000
         cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
-        Rc = humanfit._cam_rot(cam)
+        Rc = humanfit_views._cam_rot(cam)
         Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
         zz = Xc[:, 2]
         J = np.zeros((len(X), 2, 3))
@@ -119,7 +120,7 @@ def point_system(st, views, cams, z, z_lin):
         J[:, 1, 2] = -cam["f"] * Xc[:, 1] / zz ** 2
         J = J @ Rc
         wt = (zz / cam["f"] * 1000) / e["sig"]
-        r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
+        r = (e["uv"] - humanfit_views.project(cam, X)) * wt[:, None]
         a = np.linalg.norm(r, axis=1)
         hw = np.where(a > 2.5, np.sqrt(2.5 / np.maximum(a, 1e-9)), 1.0)
         A = (np.einsum("nij,knj->nik", J, XB) * (wt * hw)[:, None, None]).reshape(-1, n)

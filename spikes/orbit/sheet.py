@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin as bi, eye_ruler as er, humanfit, likeness, store
+from hifipushie import blockin_models, humanfit_views, likeness_render
 
 G = os.environ["G"] + "/out"
 R = os.environ["R"]
@@ -25,16 +26,16 @@ def label(im, txt):
 
 
 def ref_crop(name, vi):
-    rj = bi._refs(name)
+    rj = blockin_models._refs(name)
     v, cam = rj["views"][vi], rj["cameras"][vi]
     st = humanfit.state(store.load(name)["base"])
     ht = st["head"]
-    Rm = humanfit._cam_rot(cam)
+    Rm = humanfit_views._cam_rot(cam)
     eye_c = np.asarray(cam["centre"], float) - Rm.T @ np.asarray(cam["t"], float)
     c = min([np.asarray(e, float) for e in ht["eyes"]], key=lambda e: np.linalg.norm(e - eye_c))
     apex = c + float(ht["eye_r"]) * np.asarray(ht["forward"], float)
-    mm = likeness._mm_per_px(cam, st["L"][27:48])
-    pa = humanfit.project(cam, apex[None])[0]
+    mm = likeness_render._mm_per_px(cam, st["L"][27:48])
+    pa = humanfit_views.project(cam, apex[None])[0]
     half = 30.0 / mm
     return Image.open(v["image"]).convert("RGB").crop(tuple(int(round(x)) for x in (pa[0] - half, pa[1] - half, pa[0] + half, pa[1] + half)))
 

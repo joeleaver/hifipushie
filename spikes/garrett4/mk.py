@@ -84,7 +84,7 @@ def main(dst="g3_garrett", src="rs2_m3"):
     }
     pf = os.path.join(D3, "skin_patch.json")
     if os.path.exists(pf):
-        from hifipushie.server import _merge_patch
+        from hifipushie.tools_skin import _merge_patch
         sp["skin"] = _merge_patch(sp["skin"], json.load(open(pf)))
     sp["paint"] = {k: v for k, v in (sp.get("paint") or {}).items() if k in ("180_mouth_inside",)}
     pp = os.path.join(D3, "paint_patch.json")     # the model's own paint layers over the skin (nostrils...)
@@ -92,7 +92,7 @@ def main(dst="g3_garrett", src="rs2_m3"):
         sp["paint"].update(json.load(open(pp)))
     hp = os.path.join(D3, "head_patch.json")      # base.head keys merged (pose...)
     if os.path.exists(hp):
-        from hifipushie.server import _merge_patch as mp_
+        from hifipushie.tools_skin import _merge_patch as mp_
         sp["base"]["head"] = mp_(sp["base"]["head"], json.load(open(hp)))
     for k in ("subsurface", "subsurface_radius", "subsurface_scale"):   # the skin pipeline shades the skin part itself
         sp["parts"]["body"].pop(k, None)

@@ -243,6 +243,7 @@ def main():
         os.environ["DL_HAIR"] = kw["hair"]
     import stage
     from hifipushie import base as basemod, denselm, humanfit, render, resources, scene, skin, store
+    from hifipushie import base_identity, skin_params
     t0 = time.time()
     dr = dressing(rng)
     if kw.get("dressing"):
@@ -256,11 +257,12 @@ def main():
     hair_job = None
     if dr.get("hair"):
         from hifipushie import hair
+        from hifipushie import hair_spec
         try:
-            hair.groom(name, replace=True, note="denselm", patch=dr["hair"]["patch"])
+            hair_spec.groom(name, replace=True, note="denselm", patch=dr["hair"]["patch"])
         except Exception as e_:  # noqa: BLE001  (a sampled groom the tools refuse: the default one)
             print(f"step: groom {dr['hair']['kind']} failed ({str(e_)[:200]}): the default groom", flush=True)
-            hair.groom(name, replace=True, note="denselm")
+            hair_spec.groom(name, replace=True, note="denselm")
         sp = store.load(name)
         sp["hair"]["look"] = {**(sp["hair"].get("look") or {}), **hair.seen_look(dr["hair"]["color"]), "grey_amount": dr["hair"].get("grey", 0.0)}
         sp["hair"]["look"].pop("grey_amount")
@@ -269,6 +271,7 @@ def main():
         sn = stage.ensure(name, with_hair=bool(dr.get("hair")))
     if dr.get("hair"):
         from hifipushie import hair
+        from hifipushie import hair_spec
         st_ = json.loads((store._dir(sn) / "spec.json").read_text())
         hair_job = out / "hair_job.json"
         hair_job.write_text(json.dumps(hair.job(sn, st_)))
@@ -278,8 +281,9 @@ def main():
     tpl = st0["tpl"]
     P0 = np.asarray(tpl["P"], float)
     from hifipushie import likeness, onemesh
-    Fq = likeness.model_mesh_from_state(st0)["F"]
-    g = basemod._gnm_data()
+    from hifipushie import likeness_render
+    Fq = likeness_render.model_mesh_from_state(st0)["F"]
+    g = base_identity._gnm_data()
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     skin_v = (gid < 0) | (np.asarray(g["groups"]["skin_exterior"]) > 0.5)[np.maximum(gid, 0)]
     F = Fq[skin_v[Fq].all(1)]
@@ -288,7 +292,7 @@ def main():
     e_names = [str(x) for x in g["expression_names"]]
     eye0 = np.asarray(st0["L"], float)[68:70]
     eye_r = float(st0["head"].get("eye_r", 0.012))
-    iris_r = float(skin.params(sp)["eyes"].get("iris_size", 0.0118)) / 2
+    iris_r = float(skin_params.params(sp)["eyes"].get("iris_size", 0.0118)) / 2
     fwd0 = np.asarray(sp["base"].get("look_at", [0, -4, eye0[0, 2]]), float)
     centre0 = np.asarray(st0["L"], float)[[36, 45, 48, 54]].mean(0)
     ids = np.array([identity(rng, dr) for _ in range(n)])

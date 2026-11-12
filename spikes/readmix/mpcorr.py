@@ -64,11 +64,12 @@ def stage_proj():
     with a leave-out error of 1.5 mm). (TRIED: evaluating each head again through humanfit.state: 3 s a sample.)"""
     from scipy.interpolate import RBFInterpolator
     from hifipushie import base as basemod, denselm, face_ruler as fr, gnm_controls
+    from hifipushie import base_identity
     g = fr._gnm()
     sp_, gr = g["sp"], g["gr"]
     T, IB = sp_["T"], sp_["IB"]
     EB = gnm_controls.gnm()["EB"]
-    gd = basemod._gnm_data()
+    gd = base_identity._gnm_data()
     lower = [i for i, nm in enumerate(gd["expression_names"]) if str(nm).startswith("lower_face")][:40]
     Lm = denselm.landmarks()
     ns = int(Lm["n_skin"])

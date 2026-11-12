@@ -13,6 +13,7 @@ from PIL import Image
 
 import bm
 from hifipushie import blockin as bi, blockin_brows as bb, blockin_eyes as be, likeness, lidfold
+from hifipushie import likeness_detect
 
 REFS = "gd_T12"
 bx = json.load(open(bm.G + "/box.json"))
@@ -24,7 +25,7 @@ pb = bb.band(q["img"], q["P"], q["mm"])
 out = {}
 for tag in sys.argv[1:]:
     im = Image.open(f"{bm.G}/s_{tag}.png").convert("RGB")
-    P = likeness.detect([im])[0]
+    P = likeness_detect.detect([im])[0]
     r = {}
     if P is None:
         print(tag, "no detection on the shot; the photo's points are used for the lids")

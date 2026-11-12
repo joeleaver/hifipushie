@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import ictreg  # noqa: E402
 import perc  # noqa: E402
 from hifipushie import likeness  # noqa: E402
+from hifipushie import likeness_render
 
 out = sys.argv[1]
 modes = [int(x) for x in (sys.argv[2] if len(sys.argv) > 2 else "0,1,2,5,10,20,50").split(",")]
@@ -32,7 +33,7 @@ def render_ict(V, yaw):
     cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.8], "f": PX / 2 * 0.8 / half, "size": [PX, PX],
            "centre": list(map(float, cen)), "yaw": yaw}
     mesh = {"V": W, "F": T.astype(np.int64), "eyes": [], "L": L}
-    return likeness.render(mesh, cam, (0, 0, PX, PX), px=PX, brows=False)[0]
+    return likeness_render.render(mesh, cam, (0, 0, PX, PX), px=PX, brows=False)[0]
 
 
 c0 = np.zeros(len(perc.ID_NAMES))

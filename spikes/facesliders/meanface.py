@@ -6,12 +6,13 @@ import sys
 import numpy as np
 
 from hifipushie import faceatlas, humanfit, store
+from hifipushie import humanfit_solve
 
 src, out, sex = sys.argv[1], sys.argv[2], float(sys.argv[3])
 sp = json.loads((store.HOME / src / "spec.json").read_text())
 sp = sp.get("spec", sp)
 mu = sex * np.asarray(faceatlas.table()["delta_sex"], float) / 2
-sp["base"] = humanfit._with_identity(sp["base"], mu)
+sp["base"] = humanfit_solve._with_identity(sp["base"], mu)
 sp["base"]["head"]["sliders"] = {}
 d = store.HOME / out
 d.mkdir(exist_ok=True)

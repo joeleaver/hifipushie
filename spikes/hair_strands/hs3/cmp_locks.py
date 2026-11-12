@@ -9,8 +9,9 @@ if sys.argv[1].endswith(".npy"):
     sys.exit()
 import hifipushie
 from hifipushie import hair, store
+from hifipushie import hair_look
 name, out = sys.argv[1], sys.argv[2]
 spec = store.load(name)
 print("code", os.path.dirname(hifipushie.__file__), "style", spec["hair"].get("style", "locks"))
-sheet, sec, fr = hair.look(name, views=("front", "three_quarter", "back"), size=320, spec=spec)
+sheet, sec, fr = hair_look.look(name, views=("front", "three_quarter", "back"), size=320, spec=spec)
 np.save(out, np.asarray(sheet))

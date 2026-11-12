@@ -3,8 +3,9 @@ head already IS the truth (blockin.fork of the class-mean start, identity = the 
 class-mean start (blockin.root). A solve from here should stay: where it goes is the reads' own bias."""
 import json, sys
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 src, truth, name = sys.argv[1:4]
-bi.fork(src, name, replace=True)
+blockin_models.fork(src, name, replace=True)
 sp = store.load(name)
 bi.set_identity(sp, bi.identity(store.load(truth)))
 (store.HOME / name / "spec.json").write_text(json.dumps(sp))

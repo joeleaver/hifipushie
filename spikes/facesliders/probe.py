@@ -2,8 +2,9 @@
 (quad distance), each ring's vertex count, closedness and height above the margin at the pupil column (template)."""
 import numpy as np
 from hifipushie import base
+from hifipushie import base_identity
 
-g = base._gnm_data()
+g = base_identity._gnm_data()
 V = g["template_vertex_positions"]; Q = g["quads"]
 print("V", V.shape, "Q", Q.shape, "groups", list(g["groups"]))
 skin = g["skin"]

@@ -4,6 +4,7 @@ photo / ours over the columns both read (x 0.5 .. 2.5), at most 1 (laid twice it
 import copy, json, sys
 import numpy as np
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 src, d, dst = sys.argv[1:4]
 kw = dict(a.split("=", 1) for a in sys.argv[4:])
 s = copy.deepcopy(store.load(src))
@@ -23,7 +24,7 @@ else:
     k = 1.0
 st[key] = round(float(np.clip(k0 * k, 0.0, 1.0)), 2)
 print(f"{key} {k0} -> {st[key]}")
-rj = copy.deepcopy(bi._refs(src))
+rj = copy.deepcopy(blockin_models._refs(src))
 if rj.get("blockin"):
     rj["blockin"] = {**rj["blockin"], "root": dst}
-bi._save(dst, s, f"{key} {st[key]} (occfit)", rj)
+blockin_models._save(dst, s, f"{key} {st[key]} (occfit)", rj)

@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin as bi, denselm, face_ruler as fr, likeness, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, likeness_detect, likeness_render, likeness_sides
 
 tag = sys.argv[1]
 models = sys.argv[2:] or [f"cz_{t}_T" for t in ("c", "d", "e", "es", "f", "g", "h", "bs", "bq", "bm", "bp")]
@@ -23,26 +24,26 @@ rows = []
 for m in models:
     if not (store.HOME / m / "spec.json").exists():
         continue
-    rj = bi._refs(m)
-    head = fr.model_head(store.load(m))
+    rj = blockin_models._refs(m)
+    head = face_ruler_blockin.model_head(store.load(m))
     for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
         if not Path(v["image"]).exists():
             continue
         img = Image.open(v["image"]).convert("RGB")
         _, q68 = fr._cam_points(cam, np.asarray(head["L"], float)[:68])
-        mmpx = likeness._mm_per_px(cam, np.asarray(head["L"], float)[27:48])
+        mmpx = likeness_render._mm_per_px(cam, np.asarray(head["L"], float)[27:48])
         pr = denselm.predict(img, q68)
         if "dense_v" not in head:
-            fr._dense_obs(head, {"cam": cam, "kind": "front"}, pr)
+            face_ruler_camera._dense_obs(head, {"cam": cam, "kind": "front"}, pr)
         hv = head["dense_v"]
         Xc, Q = fr._cam_points(cam, head["V"][hv])
         d = (pr["xy"][:len(hv)] - Q) * mmpx
         e = np.linalg.norm(d, axis=1)
         sg = pr["sigma"][:len(hv)] * mmpx
         sure = sg < 2.0
-        yaw = abs(fr.view_yaw(cam))
+        yaw = abs(face_ruler_camera.view_yaw(cam))
         kind = "front" if yaw < 15 else "3q" if yaw < 60 else "side"
-        mp = likeness.detect_region(img, likeness._box({str(i): p for i, p in enumerate(q68)}, img.size))
+        mp = likeness_detect.detect_region(img, likeness_sides._box({str(i): p for i, p in enumerate(q68)}, img.size))
         o68 = pr["xy"][L["lm68"]]
         e68 = np.linalg.norm(o68 - q68, axis=1) * mmpx
         m68 = None if mp is None else np.linalg.norm(np.asarray(mp, float)[likeness.MP68] - q68, axis=1) * mmpx

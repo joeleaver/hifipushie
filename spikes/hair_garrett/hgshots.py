@@ -22,6 +22,7 @@ from PIL import Image
 
 import stage
 from hifipushie import hair, render, resources, scene, skin_look, store
+from hifipushie import hair_head, hair_job
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -101,7 +102,7 @@ def shoot(sn, st, shots):
               for i, (f, lt) in enumerate(shots)]
         job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": N, "samples": SAMPLES, "hide": [], "flat": False,
                "transparent": True, "lighting": fr[0]["lighting"], "eevee": stage.STAGE_EEVEE,
-               "mode": "hair_look", "hair": hair.job(sn, st), "clay_views": [], "id_views": [], "look_engine": eng}
+               "mode": "hair_look", "hair": hair_job.job(sn, st), "clay_views": [], "id_views": [], "look_engine": eng}
         out = scene._blender(job, 3600 + 900 * len(fr))
         for ln in out.splitlines():
             if ln.startswith(("@@phase", "@@frame")):
@@ -152,7 +153,7 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
     sn = stage.ensure(_st, with_hair=False)
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     st["hair"] = spec["hair"]
-    C = hair.scalp(m, spec).C
+    C = hair_head.scalp(m, spec).C
     shots = []
     for v in views:
         if v[0] == "v":

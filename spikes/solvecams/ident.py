@@ -11,6 +11,7 @@ its cameras, today's defaults as solve_step passes them), taken apart. Nothing i
 import json, sys
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, gnm_mm, solve_report as sr, store
+from hifipushie import face_ruler_compare, face_ruler_solve
 import common as C
 
 name = sys.argv[1]
@@ -26,7 +27,7 @@ truth = kw.get("truth")
 start = kw.get("start") or (root if root and root != name else None)
 off = c0 - bi.identity(store.load(start)) if start else None
 cap = {}
-solve0 = fr.solve
+solve0 = face_ruler_solve.solve
 
 
 def spy(obs, head, **k):
@@ -35,11 +36,11 @@ def spy(obs, head, **k):
     return solve0(obs, head, **k)
 
 
-fr.solve = spy
+face_ruler_solve.solve = spy
 b0 = rj.get("blockin") or {}
-res = fr.compare(name, rounds=1, prior_off=off, cam_sd=fr.PHOTO_CAM_SD6, lids=True, lips=True, anchors="differential", parse="auto",
+res = face_ruler_compare.compare(name, rounds=1, prior_off=off, cam_sd=fr.PHOTO_CAM_SD6, lids=True, lips=True, anchors="differential", parse="auto",
                  adapt=True, cmax=3.0, cam_done0=np.zeros((len(rj["views"]), 6)), kinds=b0.get("kinds"), readers=b0.get("readers"))
-fr.solve = solve0
+face_ruler_solve.solve = solve0
 obs, head, k = cap["a"]
 views = k["views"]
 kinds = [v["kind"] for v in views]

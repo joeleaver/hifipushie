@@ -5,8 +5,9 @@ upper vermilion (0 -> 13) and lower (14 -> 17). A crescent: teeth bottom sags in
 import sys, numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import likeness
+from hifipushie import likeness_detect
 IN = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95]
-fs = sys.argv[1:]; ims = [Image.open(f).convert("RGB") for f in fs]; L = likeness.detect(ims)
+fs = sys.argv[1:]; ims = [Image.open(f).convert("RGB") for f in fs]; L = likeness_detect.detect(ims)
 for f, im, l in zip(fs, ims, L):
     name = "/".join(f.split("/")[-4:]) if "offload" in f else f.split("/")[-1]
     l = np.asarray(l, float)[:, :2]; io = np.linalg.norm(l[[33, 133]].mean(0) - l[[362, 263]].mean(0))

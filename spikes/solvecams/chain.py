@@ -13,6 +13,7 @@ a similarity). Records -> /mnt/data/hifipushie/solvecams/out/<prefix>.json (+ a 
 import copy, json, sys, time
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, blockin_steps, face_ruler_camera, face_ruler_solve
 import common as C
 import errmap
 
@@ -63,24 +64,24 @@ def show(s):
 refit = kw_refit
 if start == "true" or pert or refit:
     m0 = f"{pre}00"
-    bi.fork(src, m0, replace=True)
+    blockin_models.fork(src, m0, replace=True)
     rj = C.refs(m0)
     cams = copy.deepcopy(rt["cameras"]) if start == "true" else rj["cameras"]
     if refit:
-        cams = bi.fit_cameras(store.load(m0)["base"], rj["views"])
+        cams = blockin_models.fit_cameras(store.load(m0)["base"], rj["views"])
         rj["blockin"]["cam_carried"] = True
     for p in [p for p in pert.split(",") if p]:
         vn, what, deg = p.split(":")
         i = names.index(vn)
         if what == "yaw":
-            c1 = fr.cam_moved(cams[i], yaw=float(deg))
-            if abs(abs(fr.view_yaw(c1)) - abs(fr.view_yaw(cams[i])) - float(deg)) > 0.5:
-                c1 = fr.cam_moved(cams[i], yaw=-float(deg))
+            c1 = face_ruler_solve.cam_moved(cams[i], yaw=float(deg))
+            if abs(abs(face_ruler_camera.view_yaw(c1)) - abs(face_ruler_camera.view_yaw(cams[i])) - float(deg)) > 0.5:
+                c1 = face_ruler_solve.cam_moved(cams[i], yaw=-float(deg))
         elif what == "dist":      # the camera deg % further away with the lens to match: the same picture scale at the head's centre
             k_ = 1 + 0.01 * float(deg)
             c1 = {**cams[i], "t": [cams[i]["t"][0], cams[i]["t"][1], cams[i]["t"][2] * k_], "f": cams[i]["f"] * k_}
         else:
-            c1 = fr.cam_moved(cams[i], pitch=float(deg))
+            c1 = face_ruler_solve.cam_moved(cams[i], pitch=float(deg))
         cams[i] = {k: (np.asarray(v).tolist() if hasattr(v, "tolist") or isinstance(v, (list, tuple)) else v) for k, v in c1.items()}
     rj["cameras"] = cams
     if start == "true":
@@ -94,7 +95,7 @@ show(rec["calls"][0])
 for i in range(1, n + 1):
     out = f"{pre}{i:02d}"
     t = time.time()
-    rep = bi.solve_step(src, out=out, cameras=first if i == 1 else cams_mode, dense=dense, **extra)
+    rep = blockin_steps.solve_step(src, out=out, cameras=first if i == 1 else cams_mode, dense=dense, **extra)
     so = rep["solve"]
     s = score(out)
     s.update(n=so["n"], dc=so["dc"], relax=so["relax"], damped=so.get("damped", 1), sig_scale=so["sig_scale"], kinds=so["kinds"],

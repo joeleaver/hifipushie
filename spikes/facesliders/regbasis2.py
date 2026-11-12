@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw
 
 import perc
 from hifipushie import faceext, faceslide, gnmloops, likeness
+from hifipushie import likeness_render
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces5"))
 OUT = F / "out"
@@ -191,7 +192,7 @@ def crop(V, yaw, centre_gnm, half):
     cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.8], "f": PX / 2 * 0.8 / half, "size": [PX, PX],
            "centre": list(map(float, cen)), "yaw": yaw}
     mesh = {"V": Ww, "F": perc.F_SKIN, "eyes": [(Ww, f, col) for f, col in perc.EYE_PARTS], "L": perc.WLM @ Ww}
-    im, _ = likeness.render(mesh, cam, (0, 0, PX, PX), px=PX, brows=(region == "brows"))
+    im, _ = likeness_render.render(mesh, cam, (0, 0, PX, PX), px=PX, brows=(region == "brows"))
     return im
 
 

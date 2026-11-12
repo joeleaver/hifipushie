@@ -2,8 +2,9 @@
 import sys, numpy as np
 from PIL import Image
 from hifipushie import likeness
+from hifipushie import likeness_detect
 out, fs = sys.argv[1], sys.argv[2:]
-ims = [Image.open(f).convert("RGB") for f in fs]; L = likeness.detect(ims); tiles = []
+ims = [Image.open(f).convert("RGB") for f in fs]; L = likeness_detect.detect(ims); tiles = []
 for im, l in zip(ims, L):
     l = np.asarray(l, float)[:, :2]; io = np.linalg.norm(l[[33, 133]].mean(0) - l[[362, 263]].mean(0))
     c = l[[61, 291, 13, 14]].mean(0); h = 0.8 * io

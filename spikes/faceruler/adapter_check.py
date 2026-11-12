@@ -1,22 +1,23 @@
 """t8.py: the block-in model adapter: observed outline offsets between two models vs the Jacobian's prediction."""
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_solve
 
 a, b = "gk_s376", "gk_s540"
 sa, sb = store.load(a), store.load(b)
 print({k: sa["base"]["head"].get(k) for k in ("gnm_base", "scale", "dimorphism")}, {k: sb["base"]["head"].get(k) for k in ("gnm_base", "scale", "dimorphism")})
 print("same base apart from identity:", {k for k in sa["base"]["head"] if sa["base"]["head"].get(k) != sb["base"]["head"].get(k)},
       {k for k in sa["base"] if k != "head" and sa["base"].get(k) != sb["base"].get(k)})
-A, B = fr.model_head(sa), fr.model_head(sb)
+A, B = face_ruler_blockin.model_head(sa), face_ruler_blockin.model_head(sb)
 print("kappa", A["kappa"], "relative residual of the real vertex move", A["kappa_res"])
 dc = bi.identity(sb) - bi.identity(sa)
-rj = bi._refs("gd_T12")
+rj = blockin_models._refs("gd_T12")
 for t in (0.25, 1.0):
-    Bt = fr.model_head(sa, bi.identity(sa) + t * dc, A["kappa"])
+    Bt = face_ruler_blockin.model_head(sa, bi.identity(sa) + t * dc, A["kappa"])
     for v, cam in zip(rj["views"], rj["cameras"]):
-        k = fr.kind_of(v.get("yaw", 0))
+        k = face_ruler_compare.kind_of(v.get("yaw", 0))
         view = {"img": fr.clay(Bt, cam), "cam": cam, "kind": k, "style": "dressed"}
-        obs = fr.observe(A, [view])
+        obs = face_ruler_solve.observe(A, [view])
         o = np.array([ob["o"] for ob in obs])
         p = np.array([ob["J"] for ob in obs]) @ (t * dc)
         sl = float(o @ p / (p @ p))

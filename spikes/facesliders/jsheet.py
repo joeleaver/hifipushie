@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import sheet1
 from hifipushie import likeness, store
+from hifipushie import likeness_render
 
 F = os.environ.get("F", "/mnt/data/hifipushie/facesliders")
 T = 400
@@ -39,8 +40,8 @@ for vi, vn in [x for x in ((0, "front"), (1, "desk"), (2, "prof")) if x[0] < len
         if os.environ.get("NOCLAY"):
             continue
         cam = json.loads((store.HOME / m / "human_refs.json").read_text())["cameras"][vi]
-        mesh = likeness.model_mesh(store.load(m)["base"])
-        im = likeness.render(mesh, cam, crop, px=T)[0]
+        mesh = likeness_render.model_mesh(store.load(m)["base"])
+        im = likeness_render.render(mesh, cam, crop, px=T)[0]
         row.append(tile(im, f"{lb} clay"))
     rows.append(row)
 W = max(len(r) for r in rows) * T

@@ -5,6 +5,7 @@ prior as shipped (70 mm +- 40 %; 8-click views +- 5 %). -> out/refit_<tag>.json"
 import copy, json, sys
 import numpy as np
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 import common as C
 
 tag = sys.argv[1]
@@ -20,7 +21,7 @@ for v, tc in zip(rt["views"], rt["cameras"]):
             v1["yaw"] = float(np.sign(v["yaw"] or 1) * (abs(v["yaw"]) + dy)) if (dy == 0 or abs(v["yaw"]) >= 20) else None
             if v1["yaw"] is None:
                 continue
-            cam = bi.fit_cameras(base, [v1])[0]
+            cam = blockin_models.fit_cameras(base, [v1])[0]
             e = C.cam_err(cam, tc, Lt)
             rec.append({"view": v["name"], "head": hn, "stated_err": dy, **e})
             print(f"{v['name']:4s} on {hn:4s} stated {dy:+3d}: turn {e['view_yaw']:5.1f} " + C.cam_text(e), flush=True)

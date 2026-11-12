@@ -3,6 +3,7 @@ cached (the solver's own behaviour, without the render loop). Prints truth | sta
 import copy, json, os, pickle, sys, time
 import numpy as np
 from hifipushie import skin_read as sr, blockin as bi, store
+from hifipushie import blockin_models, skin_read_fit, skin_read_frames, skin_read_params, skin_read_reads
 
 head, tag, truth_f = sys.argv[1:4]
 G = os.environ["G"] + "/out"
@@ -11,25 +12,25 @@ vm = f"sr_v_{tag}_dbg"
 fp = f"{G}/frames_{vm}.pkl"
 start = {k: truth[k] for k in ("sex", "age", "part") if k in truth}
 if not os.path.exists(fp) or os.environ.get("FRESH"):
-    bi.fork(head, vm, replace=True)
+    blockin_models.fork(head, vm, replace=True)
     sp = store.load(vm); sp["skin"] = start; sp["paint"] = {}
-    rj = bi._refs(vm)
+    rj = blockin_models._refs(vm)
     for i, v in enumerate(rj["views"]):
         v["image"] = f"{G}/val_{tag}_{i}.png"
-    bi._save(vm, sp, "skinread fit debug", rj)
-    frames = sr.capture(vm, log=lambda s: None)
+    blockin_models._save(vm, sp, "skinread fit debug", rj)
+    frames = skin_read_frames.capture(vm, log=lambda s: None)
     pickle.dump(frames, open(fp, "wb"))
 frames = pickle.load(open(fp, "rb"))
 t = time.time()
-r = sr.read(vm, frames=frames, log=lambda s: None)
+r = skin_read_reads.read(vm, frames=frames, log=lambda s: None)
 print(r["text"]); print("read", round(time.time() - t), "s")
-f = sr.fit(r)
+f = skin_read_fit.fit(r)
 print(f["text"])
 fit = f["skin"]
 P = [p for g in ("tone", "zones", "eyes", "lips") for p in sr.GROUPS[g]]
 print(f"\n{'parameter':26s} {'truth':>8s} {'start':>8s} {'fitted':>8s}")
 for p in P:
-    print(f"{p:26s} {sr._get(truth, p):8.3f} {sr._get(start, p):8.3f} {sr._get(fit, p):8.3f}")
+    print(f"{p:26s} {skin_read_params._get(truth, p):8.3f} {skin_read_params._get(start, p):8.3f} {skin_read_params._get(fit, p):8.3f}")
 print("stubble truth", (truth.get("hair") or {}).get("stubble"), "\n   fitted", (fit.get("hair") or {}).get("stubble"))
 print("brows", (fit.get("hair") or {}).get("brows"), "freckles", (fit.get("features") or {}).get("freckles"), "eyes", fit.get("eyes"))
 c = r["ctx"]

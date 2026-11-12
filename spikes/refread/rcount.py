@@ -5,23 +5,24 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, faceparse as fp, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_outline, face_ruler_solve
 
 OUT = "/mnt/data/hifipushie/refread/out"
 for m in sys.argv[1:]:
-    spec, rj = store.load(m), bi._refs(m)
-    head = fr.model_head(spec)
+    spec, rj = store.load(m), blockin_models._refs(m)
+    head = face_ruler_blockin.model_head(spec)
     tiles = []
     for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
         img = Image.open(v["image"]).convert("RGB")
-        kind = fr.kind_of(v.get("yaw", 0))
+        kind = face_ruler_compare.kind_of(v.get("yaw", 0))
         base = {"cam": cam, "kind": kind, "style": "photo", "hair": True, "face_only": True, "img": img, "limbus": False}
         res = {}
-        pm, ps = fr.photo_masks(img, cam, head)
-        res["photo"] = [o for o in fr.observe(head, [dict(base, mask=pm, trust=ps)], colour=False) if o["type"] == "outline"]
+        pm, ps = face_ruler_outline.photo_masks(img, cam, head)
+        res["photo"] = [o for o in face_ruler_solve.observe(head, [dict(base, mask=pm, trust=ps)], colour=False) if o["type"] == "outline"]
         for model in ("mediapipe", "bisenet"):
             g, s, full = fp.masks(img, cam, head, model=model)
-            res[model] = [o for o in fr.observe(head, [dict(base, mask=g, trust=s)], colour=False) if o["type"] == "outline"]
-        print(f"{m} view {vi} {kind}: plain backdrop {fr.plain_backdrop(img):.2f}")
+            res[model] = [o for o in face_ruler_solve.observe(head, [dict(base, mask=g, trust=s)], colour=False) if o["type"] == "outline"]
+        print(f"{m} view {vi} {kind}: plain backdrop {face_ruler_outline.plain_backdrop(img):.2f}")
         for k, ob in res.items():
             o = np.array([x["o"] for x in ob])
             if len(o):

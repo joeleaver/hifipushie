@@ -1,8 +1,9 @@
 import copy, sys
 import numpy as np
 from hifipushie import faceslide, onemesh, store
+from hifipushie import onemesh_head
 b0 = copy.deepcopy(store.load(sys.argv[1])["base"])
-V = np.asarray(onemesh.head_template(b0)["carry"]["V"], float)
+V = np.asarray(onemesh_head.head_template(b0)["carry"]["V"], float)
 T = faceslide.head_template(V)
 orig = faceslide._fold_turn
 def spy(X, u, h, sel, H0, NY=None):

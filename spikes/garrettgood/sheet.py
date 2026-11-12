@@ -5,6 +5,7 @@ unseen.py-style second use: sheet.py <out> <title> --unseen <label>=<model> ...:
 import os, sys
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi
+from hifipushie import blockin_models
 
 G = os.environ.get("G", "/mnt/data/hifipushie/garrettgood") + "/out"
 N = int(os.environ.get("SIZE", "560"))
@@ -34,7 +35,7 @@ if unseen:
             W.paste(tile(f"{G}/n_{m}_{v}.png"), (k * N, y + 50))
     W.save(out); print(out); sys.exit()
 
-rj = bi._refs(cols[0][1])
+rj = blockin_models._refs(cols[0][1])
 nv = len(rj["views"])
 W = Image.new("RGB", (N * (1 + len(kinds) * len(cols)), TOP + HEAD + N * nv), "white")
 d = ImageDraw.Draw(W)

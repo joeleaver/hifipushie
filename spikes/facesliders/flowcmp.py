@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import hair, humanfit, store
+from hifipushie import hair_groom, hair_head, hair_spec, humanfit_views
 
 name = sys.argv[1]
 out = sys.argv[2] if len(sys.argv) > 2 else f"{os.environ.get('F', '/mnt/data/hifipushie/faces2')}/out/flow_{name}.png"
@@ -21,9 +22,9 @@ tr = json.load(open(f"{T}/{TR}.json"))
 sp = store.load(name)
 refs = json.loads((store.HOME / name / "human_refs.json").read_text())
 cam = refs["cameras"][vi]
-sc = hair.scalp(name, sp)
-g = hair.groom_params(sp)
-line = hair.hairline(sc, g)
+sc = hair_head.scalp(name, sp)
+g = hair_groom.groom_params(sp)
+line = hair_groom.hairline(sc, g)
 im = Image.open(tr["photo"]).convert("RGB")
 d = ImageDraw.Draw(im)
 for k, pts in (tr.get("flow") or {}).items():
@@ -33,16 +34,16 @@ if tr.get("part"):
 d.line([tuple(p) for p in tr["face_hull"]] + [tuple(tr["face_hull"][0])], fill=(0, 255, 255), width=2)
 a = np.arange(0.0, 360.0, 1.0)
 L = sc.point(a, line, 0.0)
-U = humanfit.project(cam, L)
+U = humanfit_views.project(cam, L)
 fwd = np.abs(((a + 180) % 360) - 180) < 100
 d.line([tuple(p) for p in U[fwd]], fill=(255, 255, 255), width=2)
 for n, lk in (sp["hair"].get("locks") or {}).items():
     if lk.get("space") == "xyz" or not (n.startswith("tg0_") or n.startswith("td")):
         continue
-    P = hair.lock_world(sc, lk, lk["pts"])
+    P = hair_spec.lock_world(sc, lk, lk["pts"])
     if np.abs(((P[0] - sc.C)[0])) > 0.09:
         continue
-    Q = humanfit.project(cam, P)
+    Q = humanfit_views.project(cam, P)
     if vi == 0:  # (the front view: only the part of the lock on the front of the head; the rest runs behind it)
         azs = np.array([abs(((float(p[0]) + 180) % 360) - 180) for p in lk["pts"]])
         Q = Q[: max(2, int(np.argmax(azs > 80)) if (azs > 80).any() else len(Q))]

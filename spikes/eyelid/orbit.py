@@ -11,11 +11,12 @@ from PIL import Image, ImageDraw
 
 import lidmap as lm
 from hifipushie import blockin as bi, blockin_eyes as be, humanfit, likeness, store
+from hifipushie import blockin_models, humanfit_views, likeness_render
 
 G = os.environ["G"] + "/out"
 name = sys.argv[1]
 vi = int(sys.argv[2]) if len(sys.argv) > 2 else 2
-rj = bi._refs(name)
+rj = blockin_models._refs(name)
 v, cam = rj["views"][vi], rj["cameras"][vi]
 img = Image.open(v["image"]).convert("RGB")
 st = humanfit.state(store.load(name)["base"])
@@ -26,13 +27,13 @@ fwd = np.asarray(ht["forward"], float)
 r = float(ht["eye_r"])
 side = 1.0 if float(v.get("yaw", 90)) > 0 else -1.0
 # which eye faces this camera: the one whose centre projects nearer the camera
-R = humanfit._cam_rot(cam)
+R = humanfit_views._cam_rot(cam)
 eye_c = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
 eyes = [np.asarray(e, float) for e in ht["eyes"]]
 c = min(eyes, key=lambda e: np.linalg.norm(e - eye_c))
 apex = c + r * fwd
-mm = likeness._mm_per_px(cam, L[27:48])
-P = lambda X: humanfit.project(cam, np.atleast_2d(X))   # noqa: E731
+mm = likeness_render._mm_per_px(cam, L[27:48])
+P = lambda X: humanfit_views.project(cam, np.atleast_2d(X))   # noqa: E731
 pa = P(apex)[0]
 K = 4
 half = 30.0 / mm

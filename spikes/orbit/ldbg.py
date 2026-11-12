@@ -9,31 +9,32 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_orbit, face_ruler_outline, humanfit_views
 
 G = os.environ["G"] + "/out"
 D = os.environ.get("D", "/mnt/data/hifipushie/faceruler/out")
 a, b, kind = sys.argv[1:4]
 photo = len(sys.argv) > 4
-rj = bi._refs(b if photo else os.environ.get("REFS", "gd_T12"))
-kinds = [fr.kind_of(v.get("yaw", 0)) for v in rj["views"]]
+rj = blockin_models._refs(b if photo else os.environ.get("REFS", "gd_T12"))
+kinds = [face_ruler_compare.kind_of(v.get("yaw", 0)) for v in rj["views"]]
 vi = kinds.index(kind)
 cam = rj["cameras"][vi]
 if photo:
     img, org = Image.open(rj["views"][vi]["image"]).convert("RGB"), (0.0, 0.0)
 else:
     img, org = Image.open(f"{D}/d_{b}_{kind}.png").convert("RGB"), json.load(open(f"{D}/d_box.json"))["box"][:2]
-ha = fr.model_head(store.load(a))
-la = fr.limbus_model(ha, float(os.environ["IRIS"]) if os.environ.get("IRIS") else None)
-lb = None if photo else fr.limbus_model(fr.model_head(store.load(b)))
-lum = fr._lum(img)
+ha = face_ruler_blockin.model_head(store.load(a))
+la = face_ruler_orbit.limbus_model(ha, float(os.environ["IRIS"]) if os.environ.get("IRIS") else None)
+lb = None if photo else face_ruler_orbit.limbus_model(face_ruler_blockin.model_head(store.load(b)))
+lum = face_ruler_orbit._lum(img)
 from scipy import ndimage as ndi  # noqa: E402
-valid = ndi.binary_erosion(fr.foreground(img), iterations=3)
-eye_c = np.asarray(cam["centre"], float) - humanfit._cam_rot(cam).T @ np.asarray(cam["t"], float)
+valid = ndi.binary_erosion(face_ruler_outline.foreground(img), iterations=3)
+eye_c = np.asarray(cam["centre"], float) - humanfit_views._cam_rot(cam).T @ np.asarray(cam["t"], float)
 dist = [np.linalg.norm(q["X"] - eye_c) for q in la]
 K = 6
 tiles = []
 for j in (0, 1):
-    rd = fr.limbus_read(lum, cam, la[j], org, 1.0, far=dist[j] > min(dist) + 1e-6, valid=valid)
+    rd = face_ruler_orbit.limbus_read(lum, cam, la[j], org, 1.0, far=dist[j] > min(dist) + 1e-6, valid=valid)
     if rd is None:
         continue
     half = 14.0 / rd["mmpx"]

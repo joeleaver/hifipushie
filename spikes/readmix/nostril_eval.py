@@ -7,19 +7,20 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, face_ruler_nose
 
 RM = Path(os.environ["HIFIPUSHIE_READMIX"])
 allo = {}
 for k in sys.argv[1:]:
     name = k if k.startswith("sc_") else f"gt_{k}_T"
-    head = fr.model_head(store.load(name))
-    rj = bi._refs(name)
+    head = face_ruler_blockin.model_head(store.load(name))
+    rj = blockin_models._refs(name)
     for v, cam in zip(rj["views"], rj["cameras"]):
-        if abs(fr.view_yaw(cam)) > fr.NOSTRIL_TURN:
+        if abs(face_ruler_camera.view_yaw(cam)) > fr.NOSTRIL_TURN:
             continue
         img = Image.open(v["image"]).convert("RGB")
         view = {"img": img, "cam": cam, "kind": "front"}
-        obs = fr._nostril_obs(head, view)
+        obs = face_ruler_nose._nostril_obs(head, view)
         txt = "; ".join(f"{ob['name'][8:]} {ob['o']:+.2f}" for ob in obs)
         w = None
         lat = {ob["name"][8]: ob for ob in obs if ob["name"].endswith("lateral")}
@@ -30,8 +31,8 @@ for k in sys.argv[1:]:
             allo.setdefault("lateral end, outward", []).extend([lat["l"]["o"], -lat["r"]["o"]])
         if len(med) == 2:
             allo.setdefault("medial end, toward the midline", []).extend([-med["l"]["o"], med["r"]["o"]])
-        print(f"{k} {v['name']} (turn {abs(fr.view_yaw(cam)):.0f}, pitch {fr.view_pitch(cam):+.0f}): {txt or 'NOT READ'}" + (f" | outer width picture - truth {w:+.2f} mm" if w is not None else ""))
-        rims = fr.nostril_rims(head)
+        print(f"{k} {v['name']} (turn {abs(face_ruler_camera.view_yaw(cam)):.0f}, pitch {face_ruler_camera.view_pitch(cam):+.0f}): {txt or 'NOT READ'}" + (f" | outer width picture - truth {w:+.2f} mm" if w is not None else ""))
+        rims = face_ruler_nose.nostril_rims(head)
         _, P = fr._cam_points(cam, np.asarray(head["V"], float)[np.r_[rims[0], rims[1]]])
         c = P.mean(0)
         h = 22 / (cam["t"][2] / cam["f"] * 1000)

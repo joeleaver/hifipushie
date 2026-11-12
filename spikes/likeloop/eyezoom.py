@@ -9,10 +9,11 @@ from PIL import Image, ImageDraw
 
 import sheet1
 from hifipushie import likeness
+from hifipushie import likeness_sides
 
 L = os.environ["L"]
-refs = likeness._refs("ll_garrett")
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs("ll_garrett")
+ph = likeness_sides.photo_sides(refs)[0]
 P, mmpx = ph["side"].P, ph["mmpx"]
 crop = sheet1.crop_of(refs["views"][0])
 W = 420

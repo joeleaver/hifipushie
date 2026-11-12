@@ -15,6 +15,7 @@ import lipshade as LS  # noqa: E402
 import lipsolve as LV  # noqa: E402
 import sheet1  # noqa: E402
 from hifipushie import humanfit, likeness, store  # noqa: E402
+from hifipushie import likeness_detect
 
 out, refm, models = sys.argv[1], sys.argv[2], sys.argv[3:]
 refs = json.loads((store.HOME / refm / "human_refs.json").read_text())
@@ -22,7 +23,7 @@ v0 = refs["views"][0]
 crop = [int(round(c)) for c in sheet1.crop_of(v0)]
 ph = np.asarray(Image.open(v0["image"]).convert("RGB").crop(tuple(crop)).resize((LV.SIZE, LV.SIZE), Image.LANCZOS))
 full = Image.open(v0["image"]).convert("RGB")
-Pfull = likeness.detect([full])[0]
+Pfull = likeness_detect.detect([full])[0]
 trace = LB.read(full, Pfull)
 tiles = [("photo", ph, None)]
 for m in models:

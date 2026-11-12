@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import likeness, lidfold
+from hifipushie import likeness_detect
 from hifipushie.likeness_eyes import frame
 
 
@@ -56,7 +57,7 @@ if __name__ == "__main__":
         tag, path = a.split("=", 1)
         path, _, mm = path.partition("@")
         im = Image.open(path).convert("RGB")
-        P = likeness.detect([im])[0]
+        P = likeness_detect.detect([im])[0]
         r = limbus(im, P)
         d = float(np.mean([e["d_px"] for e in r]))
         mp = float(np.mean([e["mp_px"] for e in r]))

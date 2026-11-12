@@ -9,6 +9,7 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod, sdf, skin_look, store
+from hifipushie import base_surface
 from hifipushie.spec import compile_prims, expand_mirror
 
 name = sys.argv[1]
@@ -85,7 +86,7 @@ for v in vals:
         st["base"]["smooth"] = SM
     prims = compile_prims(st)
     bp = [p for p in prims if p.kind == "base"][0]
-    surf = basemod.surface(expand_mirror(st), st["base"])
+    surf = base_surface.surface(expand_mirror(st), st["base"])
     W, Fq = surf["quads"]
     for dx in (0.0,):
         x0 = ex + dx

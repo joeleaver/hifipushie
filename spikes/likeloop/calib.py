@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
 from hifipushie import faceid, likeness, likeness_pair, store
+from hifipushie import likeness_detect, likeness_render, likeness_sides
 
 W = store.HOME
 STRANGERS = ["om_new_man_30", "om_new_man_75", "om_new_woman_30", "om_new_woman_75", "om_new_teen_boy_16",
@@ -46,11 +47,11 @@ def main(name, out):
     sc = faceid.scores(photo, list(alts.values()))
     res["photo_vs_altered"] = dict(zip(alts, sc))
     # Garrett's other reference pictures
-    refs = likeness._refs(name)
+    refs = likeness_sides._refs(name)
     others = []
     for v in refs["views"][1:]:
         img = Image.open(v["image"]).convert("RGB")
-        b = likeness._box(v["points"], img.size)
+        b = likeness_sides._box(v["points"], img.size)
         others.append(likeness_pair._crop(img, b, (900, int(900 * (b[3] - b[1]) / (b[2] - b[0])))))
     res["photo_vs_other_views"] = faceid.scores(photo, others)
     # unrelated photos
@@ -64,12 +65,12 @@ def main(name, out):
     for s in STRANGERS:
         try:
             base = store.load(s)["base"]
-            mesh = aligned(likeness.model_mesh(base), md["mesh"])
-            im = likeness.render(mesh, ph["cam"], box, light=light)[0]
+            mesh = aligned(likeness_render.model_mesh(base), md["mesh"])
+            im = likeness_render.render(mesh, ph["cam"], box, light=light)[0]
         except Exception as e:  # noqa: BLE001
             print("skip", s, e)
             continue
-        P = likeness.detect([im])[0]
+        P = likeness_detect.detect([im])[0]
         rens.append(im)
         names.append(s)
         lms.append(None if P is None else faceid.lm5_from_mediapipe(P))

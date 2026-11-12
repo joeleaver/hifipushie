@@ -21,6 +21,7 @@ import garrett
 import measured as ms
 import rs
 from hifipushie import humanfit, humanfit_map, humanmacro as hm, likeness, likeness_read as lr, store
+from hifipushie import likeness_sides
 
 D2 = os.environ.get("D2", "/mnt/data/hifipushie/refstudy2")
 LOW = (0.6, 0.75)   # outline levels THIS photo shows: cheeks and jaw below the ear lobes. At 0.9 and 1.2 the jacket's collar is the edge: no neck width from it
@@ -46,7 +47,7 @@ def low_model():
 def photo_features(cols):
     v = garrett.refs()[0]
     img = Image.open(v["image"]).convert("RGB")
-    box = [int(x) for x in likeness._box(v["points"], img.size)]
+    box = [int(x) for x in likeness_sides._box(v["points"], img.size)]
     w = box[2] - box[0]
     box = [max(box[0] - w // 3, 0), max(box[1] - w // 3, 0), min(box[2] + w // 3, img.size[0]), min(box[3] + w // 2, img.size[1])]
     c = np.asarray(img.crop(box))

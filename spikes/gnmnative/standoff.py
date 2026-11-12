@@ -11,11 +11,13 @@ import sys
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_gnm_parts, base_identity, base_measures
 from hifipushie import lidrings, onemesh, store
+from hifipushie import onemesh_head
 
 
 def head_of(b):
-    return onemesh.head_rest(b) if onemesh.applies(b) else None
+    return onemesh_head.head_rest(b) if onemesh.applies(b) else None
 
 
 def measure(b, spec=None):
@@ -23,7 +25,7 @@ def measure(b, spec=None):
     V = np.asarray(ht["gnm_world"], float)  # every GNM vertex by its own id (ht["verts"] leaves the mouth sock out)
     t = lidrings.topo()
     mir = lidrings.mirror()
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     T = g["template_vertex_positions"].astype(float)
     J = g["template_joint_positions"].astype(float)
     fwd = np.asarray(ht["forward"], float)
@@ -45,7 +47,7 @@ def measure(b, spec=None):
                 v = np.concatenate(vals)
                 rows[(k, half)] = (float(v.mean()), float(v.min()), float(v.max()))
     out["rings"] = rows
-    op = basemod.eye_opening(ht)
+    op = base_measures.eye_opening(ht)
     out["opening"] = op
     eg = ht.get("eye_gnm")
     drawn = (((spec or {}).get("skin") or {}).get("eyes") or {}).get("iris_size")
@@ -113,10 +115,10 @@ def main():
         nat["head"].pop("eye_radius", None)
         variants["GNM's own ball"] = nat
         # GNM alone (its template + this identity, no body, no style): the stand-off its own design has
-        g = basemod._gnm_data()
-        ci = basemod._gnm_coeffs(g["identity_names"], hd.get("identity"))
+        g = base_identity._gnm_data()
+        ci = base_identity._gnm_coeffs(g["identity_names"], hd.get("identity"))
         Vr = g["template_vertex_positions"].astype(float) + np.tensordot(ci, g["vertex_identity_basis"], 1)
-        eg = basemod.gnm_eyes(Vr, g)
+        eg = base_gnm_parts.gnm_eyes(Vr, g)
         t, mir = lidrings.topo(), lidrings.mirror()
         T, J = g["template_vertex_positions"].astype(float), g["template_joint_positions"].astype(float)
         print(f"\n== {name} | RAW GNM (its identity alone): ball r {eg[0]['r'] * 1000:.2f} mm")

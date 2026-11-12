@@ -8,13 +8,14 @@ import sys
 import time
 
 from hifipushie import hair_read, server
+from hifipushie import hair_read_start
 
 head, dst = sys.argv[1:3]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
 assert dst.startswith(("hg_", "hj_", "hl_")), dst
 t = time.time()
 if kw.get("read", "1") == "1":
-    r = hair_read.apply(head, out=dst, seed=int(kw.get("seed", 0)))
+    r = hair_read_start.apply(head, out=dst, seed=int(kw.get("seed", 0)))
     open(os.path.join(os.environ["TOUT"], f"start_{dst}.txt"), "w").write(r["text"])
     print(r["text"])
     print(f"reader + groom {time.time() - t:.0f} s")

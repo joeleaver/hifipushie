@@ -6,6 +6,7 @@ import sys
 import numpy as np
 
 from hifipushie import base, gnmloops, humanfit, humans, onemesh
+from hifipushie import base_identity
 
 nm = sys.argv[1]
 v = float(sys.argv[2]) if len(sys.argv) > 2 else 1.0
@@ -21,7 +22,7 @@ n1 = np.cross(P1[Q[:, 2]] - P1[Q[:, 0]], P1[Q[:, 3]] - P1[Q[:, 1]])
 bad = np.flatnonzero((n0 * n1).sum(1) < 0)
 L = np.asarray(st0["L"])
 gid = np.asarray(onemesh.asset()["gnm_exact"])[np.asarray(st0["tpl"]["fid"])]
-ext = np.asarray(base._gnm_data()["groups"]["skin_exterior"]) > 0.5
+ext = np.asarray(base_identity._gnm_data()["groups"]["skin_exterior"]) > 0.5
 for q in bad:
     c = P0[Q[q]].mean(0)
     g = gid[Q[q]]

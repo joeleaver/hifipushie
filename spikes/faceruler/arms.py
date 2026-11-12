@@ -16,6 +16,7 @@ import numpy as np
 import drv
 import score2
 from hifipushie import face_ruler as fr, gnm_mm
+from hifipushie import face_ruler_solve
 
 G = os.environ["G"]
 KINDS = ("front", "3q", "profile")
@@ -50,7 +51,7 @@ def pictures(cB, rng=None):
 
 def ruler(c, views, hair=False, cam=False):
     vs = [dict(v, hair=hair) for v in views]
-    res = fr.read(fr.gnm_head(c), vs, cam_sd=CAM_SD if cam else None)
+    res = face_ruler_solve.read(fr.gnm_head(c), vs, cam_sd=CAM_SD if cam else None)
     return {r["measure"]: r["gap"] for r in res["gaps"]}, res
 
 

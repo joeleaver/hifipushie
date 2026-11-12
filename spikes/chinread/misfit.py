@@ -6,6 +6,7 @@ chin / jaw body / jaw angle / cheek / above), signed (+ = the picture lies outsi
 import sys, copy
 import numpy as np
 from hifipushie import face_ruler as fr, blockin as bi, gnm_mm, solve_report as sr, store
+from hifipushie import blockin_models, face_ruler_compare, face_ruler_solve
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
@@ -19,12 +20,12 @@ for nm, amt in moves:
     else:
         r = rw["R"][rw["names"].index(nm)]
         c = c + r / (r @ r) * amt
-rj = bi._refs(m)
+rj = blockin_models._refs(m)
 b0 = rj.get("blockin") or {}
-head0, views, notes = fr.reference_views(m, lids=True, lips=True, parse="auto", kinds=b0.get("kinds"), readers=b0.get("readers"), chin={"chin_lm": "none"})
+head0, views, notes = face_ruler_compare.reference_views(m, lids=True, lips=True, parse="auto", kinds=b0.get("kinds"), readers=b0.get("readers"), chin={"chin_lm": "none"})
 head = head0["rebuild"](c)
 cam_sd = {kk: tuple(v) for kk, v in fr.PHOTO_CAM_SD6.items()}
-res = fr.read(head, views, rounds=1, cam_sd=cam_sd, cam_first=2, adapt=True, tau=0.02)
+res = face_ruler_solve.read(head, views, rounds=1, cam_sd=cam_sd, cam_first=2, adapt=True, tau=0.02)
 obs = res["obs"]
 o = np.array([ob["o"] for ob in obs])
 sp = gnm_mm._space()

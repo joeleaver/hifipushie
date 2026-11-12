@@ -17,6 +17,7 @@ from scipy.spatial import cKDTree
 from featsheet import boxes
 from noserender import lit_render
 from hifipushie import humanfit, likeness, store
+from hifipushie import likeness_render
 
 SS = int(os.environ.get("SS", "2"))
 RES = int(os.environ.get("RES", "320"))
@@ -61,7 +62,7 @@ if __name__ == "__main__":
     out = sys.argv[2] if len(sys.argv) > 2 else f"/mnt/data/hifipushie/faces6/out/fid_{m}.png"
     refs = json.loads((store.HOME / m / "human_refs.json").read_text())
     st = humanfit.state(store.load(m)["base"])
-    raw = likeness.model_mesh_from_state(st)
+    raw = likeness_render.model_mesh_from_state(st)
     Vs, Fs = shipped_mesh(m, st)
     ship = {**raw, "V": Vs, "F": Fs}
     ship.pop("_ao", None)
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     cols = {"raw quads (fast now)": raw, "shipped surface": ship}
     if os.environ.get("SMOOTH"):
         st2 = dict(st)
-        cols[f"raw + {os.environ['SMOOTH']}"] = likeness.model_mesh_from_state(st, smooth=os.environ["SMOOTH"])
+        cols[f"raw + {os.environ['SMOOTH']}"] = likeness_render.model_mesh_from_state(st, smooth=os.environ["SMOOTH"])
     bx = boxes(refs, ["nose", "lips", "eyes"])
     T = 260
     sheet = Image.new("RGB", (T * (1 + len(cols)), (T + 18) * len(bx) + 18), "white")

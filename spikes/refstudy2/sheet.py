@@ -14,6 +14,7 @@ import garrett
 import hairmesh
 import litrender
 from hifipushie import humanfit, humanfit_map, onemesh, store
+from hifipushie import onemesh_head
 
 PX = int(os.environ.get("PX", 560))
 
@@ -29,7 +30,7 @@ def resolve(name):
 
 def mesh_of(name):
     sp = store.load(name)
-    tpl = onemesh.template(sp["base"])
+    tpl = onemesh_head.template(sp["base"])
     V = np.asarray(tpl["P"], float)
     Lf = np.asarray(tpl["L"]).reshape(-1, 4)
     F = np.r_[Lf[:, [0, 1, 2]], Lf[:, [0, 2, 3]]]
@@ -37,7 +38,8 @@ def mesh_of(name):
     col = np.tile([225.0, 205.0, 185.0], (len(F), 1))
     two = np.zeros(len(F), bool)
     from hifipushie import likeness
-    for Ve, Fe, ce in likeness.model_mesh(sp["base"])["eyes"]:      # eyeballs with irises (the template has none)
+    from hifipushie import likeness_render
+    for Ve, Fe, ce in likeness_render.model_mesh(sp["base"])["eyes"]:      # eyeballs with irises (the template has none)
         col = np.r_[col, ce[Fe].mean(1)]
         two = np.r_[two, np.zeros(len(Fe), bool)]
         F = np.r_[F, Fe + len(V)]

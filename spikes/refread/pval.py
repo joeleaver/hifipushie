@@ -9,6 +9,7 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageFilter
 from hifipushie import blockin as bi, face_ruler as fr, faceparse as fp, store
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_outline, face_ruler_solve
 
 MODEL_DRAW = ("painted", "mediapipe")
 OUT = "/mnt/data/hifipushie/refread/out"
@@ -24,7 +25,7 @@ def backdrop(n, seed):
 
 def reads(head, view, mask, trust):
     v = dict(view, mask=mask, trust=trust, limbus=False)
-    ob = [o for o in fr.observe(head, [v], colour=False) if o["type"] == "outline"]
+    ob = [o for o in face_ruler_solve.observe(head, [v], colour=False) if o["type"] == "outline"]
     o = np.array([x["o"] for x in ob])
     return ob, (len(o), float(o.mean()) if len(o) else np.nan, float(np.sqrt((o ** 2).mean())) if len(o) else np.nan,
                 float(np.percentile(np.abs(o), 90)) if len(o) else np.nan)
@@ -32,8 +33,8 @@ def reads(head, view, mask, trust):
 
 tot = {}
 for m in sys.argv[1:]:
-    spec, rj = store.load(m), bi._refs(m)
-    head = fr.model_head(spec)
+    spec, rj = store.load(m), blockin_models._refs(m)
+    head = face_ruler_blockin.model_head(spec)
     tiles = []
     for vi, (v, cam, box) in enumerate(zip(rj["views"], rj["cameras"], rj["blockin"]["boxes"])):
         f = f"{SHOTS}/d_{m}_{vi}.png"
@@ -43,9 +44,9 @@ for m in sys.argv[1:]:
         n = shot.size[0]
         ib = [int(round(x)) for x in box]
         sc = n / float(ib[2] - ib[0])
-        kind = fr.kind_of(v.get("yaw", 0))
+        kind = face_ruler_compare.kind_of(v.get("yaw", 0))
         base = {"cam": cam, "kind": kind, "style": "photo", "hair": False, "face_only": True, "scale": sc, "origin": (ib[0], ib[1])}
-        fg = fr.foreground(shot)
+        fg = face_ruler_outline.foreground(shot)
         a = Image.fromarray((fg * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.8))
         dark = Image.composite(shot, backdrop(n, vi + len(m)), a)
         LO = 4
@@ -57,7 +58,7 @@ for m in sys.argv[1:]:
             view = dict(base, img=img, scale=sc)
             res = {}
             res["truth"] = reads(head, view, fg, None)
-            pm, ps = fr.photo_masks(img, cam, head, origin=(ib[0], ib[1]), scale=sc)
+            pm, ps = face_ruler_outline.photo_masks(img, cam, head, origin=(ib[0], ib[1]), scale=sc)
             res["photo"] = reads(head, view, pm, ps)
             for model in ("bisenet", "mediapipe"):
                 g, s, full = fp.masks(img, cam, head, origin=(ib[0], ib[1]), scale=sc, model=model)

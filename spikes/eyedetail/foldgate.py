@@ -11,6 +11,7 @@ from PIL import Image
 
 import stage
 from hifipushie import likeness, lidfold, store
+from hifipushie import likeness_detect
 from hifipushie.spec import expand_mirror
 
 name, tags = sys.argv[1], sys.argv[2:]
@@ -31,7 +32,7 @@ def read(im):
     mmpx = 2 * dist * np.tan(np.radians(fr["fov"]) / 2) * 1000 / im.width
     up = int(__import__("os").environ.get("UP", "2"))
     big = im.resize((im.width * up, im.height * up), Image.LANCZOS)  # (the detector likes a bigger face)
-    d = likeness.detect([big])[0]
+    d = likeness_detect.detect([big])[0]
     if d is None:
         return None
     return lidfold.read_lid(big, np.asarray(d, float)[:, :2], mmpx / up)

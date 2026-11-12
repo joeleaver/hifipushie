@@ -4,6 +4,7 @@ lips, brows, eyes, folds) and base.lashes; the references from the head model; t
 for the new forms (recrease). LIGHT. Re-check the lid fold afterwards (the lid margin moves with the head)."""
 import copy, sys, runpy
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 h, sk, dst = sys.argv[1:4]
 s = copy.deepcopy(store.load(h)); t = store.load(sk)
 s["skin"] = copy.deepcopy(t["skin"])
@@ -14,9 +15,9 @@ if (th.get("shape") or {}).get("eye_bag"):
     hd["shape"] = {**(hd.get("shape") or {}), "eye_bag": copy.deepcopy(th["shape"]["eye_bag"])}
 if "lashes" in t["base"]:
     s["base"]["lashes"] = copy.deepcopy(t["base"]["lashes"])
-rj = copy.deepcopy(bi._refs(h))
+rj = copy.deepcopy(blockin_models._refs(h))
 if rj.get("blockin"):
     rj["blockin"] = {**rj["blockin"], "root": dst}
-bi._save(dst, s, f"skin of {sk} re-seated on {h}", rj)
+blockin_models._save(dst, s, f"skin of {sk} re-seated on {h}", rj)
 sys.argv = ["recrease.py", dst]
 runpy.run_path("spikes/projskin/recrease.py", run_name="__main__")

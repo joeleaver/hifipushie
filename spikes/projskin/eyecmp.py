@@ -5,6 +5,7 @@ import json, sys
 import numpy as np
 from PIL import Image
 from hifipushie import lidfold, likeness
+from hifipushie import likeness_detect
 
 res = {}
 for d in sys.argv[1:]:
@@ -14,7 +15,7 @@ for d in sys.argv[1:]:
         if not os.path.exists(f"{d}/{f}") and os.path.exists(f"{d}/{f[:-4]}_cy.png"):
             f = f[:-4] + "_cy.png"          # (a Cycles render)
         img = Image.open(f"{d}/{f}").convert("RGB")
-        P = likeness.detect([img])[0]
+        P = likeness_detect.detect([img])[0]
         if P is None:
             row[nm] = None
             continue

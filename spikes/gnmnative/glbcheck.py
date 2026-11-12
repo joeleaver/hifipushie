@@ -5,8 +5,9 @@ import sys
 import numpy as np
 
 from hifipushie import faceshapes
+from hifipushie import faceshapes_apply
 
-g = faceshapes.read_glb(sys.argv[1])
+g = faceshapes_apply.read_glb(sys.argv[1])
 for mesh, d in g.items():
     names = d["names"]
     P = {n: np.asarray(t["POSITION"]) for n, t in zip(names, d["targets"])}

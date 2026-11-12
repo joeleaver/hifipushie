@@ -5,17 +5,18 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_compare, face_ruler_solve
 
 m, out, types = sys.argv[1], sys.argv[2], sys.argv[3].split(",")
 chin = {}
 for a in sys.argv[4:]:
     k, v = a.split("=")
     chin[k[5:]] = v if k == "chin.chin_lm" else ({"0": False, "1": True}[v] if v in "01" else float(v))
-head, views, notes = fr.reference_views(m, lids=False, lips=False, parse="auto", chin=chin)
+head, views, notes = face_ruler_compare.reference_views(m, lids=False, lips=False, parse="auto", chin=chin)
 for v in views:
     if v.get("extra"):
         v["extra_obs"] = v["extra"](head, v)
-obs = fr.observe(head, views)
+obs = face_ruler_solve.observe(head, views)
 tiles = []
 for v in views:
     if v["kind"] == "profile" and "outline" not in types:

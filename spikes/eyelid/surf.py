@@ -20,6 +20,7 @@ from scipy.interpolate import LinearNDInterpolator
 
 import lidmap as lm
 from hifipushie import onemesh, store
+from hifipushie import onemesh_head
 
 G = os.environ["G"] + "/out"
 COLS = np.arange(-9.0, 9.01, 3.0)
@@ -29,7 +30,7 @@ STEP = 0.1
 def eye_frame(name):
     """(verts in the eye frame (mm), normals, r mm) of the stage mesh near the subject's left eye."""
     sp = store.load(name)
-    ht = onemesh.head_template(sp["base"])
+    ht = onemesh_head.head_template(sp["base"])
     Vs, Ns, _ = lm.stage_mesh(name)
     R, t, med = lm.to_stage(name, ht, Vs)
     c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float) @ R.T + t

@@ -9,6 +9,7 @@ import copy, json, os, pickle, sys, time
 import numpy as np
 from PIL import Image
 from hifipushie import skin_read as sr, blockin as bi, store, resources
+from hifipushie import blockin_models, skin_read_context, skin_read_fit, skin_read_fold_fit, skin_read_folds, skin_read_frames
 
 head, tag, truth_f, start_f = sys.argv[1:5]
 kw = dict(a.split("=") for a in sys.argv[5:])
@@ -32,29 +33,29 @@ if LK == "lamp":   # a painter's lamp from the figure's right, low: the fold is 
               "world": {"color": (0.75 * TINT).tolist(), "strength": 0.4}, "view": "Standard", "exposure": -0.35}
     tkey += "_lamp"
 tm, vm = f"sf_ft_{tkey}", f"sf_f_{tag}"
-nv = len(bi._refs(head)["views"])
+nv = len(blockin_models._refs(head)["views"])
 pics = [f"{G}/fval_{tkey}_{i}.png" for i in range(nv)]
 if not all(os.path.exists(p) for p in pics) or os.environ.get("FRESH"):
-    bi.fork(head, tm, replace=True)
+    blockin_models.fork(head, tm, replace=True)
     sp = store.load(tm); sp["skin"] = truth; sp["paint"] = {}
     store.save(tm, sp, "skinfolds fold validation: the truth")
-    rj = bi._refs(tm)
+    rj = blockin_models._refs(tm)
     with resources.heavy(f"skinfolds foldval truth {tkey}", gb=6):
-        sn = sr.stage(tm, log=lambda s: None)
+        sn = skin_read_frames.stage(tm, log=lambda s: None)
         for i, cam in enumerate(rj["cameras"]):
             w, h = cam["size"]
             s = max(w, h)
             x0, y0 = (w - s) / 2, (h - s) / 2
-            im = sr.shoot(sn, [sr.fitted_frame(cam, [x0, y0, x0 + s, y0 + s], "v")], VLIGHT, size=s)["v"]
+            im = skin_read_frames.shoot(sn, [skin_read_frames.fitted_frame(cam, [x0, y0, x0 + s, y0 + s], "v")], VLIGHT, size=s)["v"]
             bg = np.zeros((s, s, 4), np.uint8)
             bg[..., :3] = np.round(255 * sr._srgb(0.5 * TINT * 2 ** -0.35)); bg[..., 3] = 255
             full = Image.alpha_composite(Image.fromarray(bg), Image.fromarray(im)).convert("RGB").crop((int(-x0), int(-y0), int(-x0) + w, int(-y0) + h))
             if scale != 1:
                 full = full.resize((int(round(w * scale)), int(round(h * scale))), Image.LANCZOS)
             full.save(pics[i])
-bi.fork(head, vm, replace=True)
+blockin_models.fork(head, vm, replace=True)
 sp = store.load(vm); sp["skin"] = start; sp["paint"] = {}
-rj = bi._refs(vm)
+rj = blockin_models._refs(vm)
 for i, v in enumerate(rj["views"]):
     v["image"] = pics[i]
     if scale != 1:
@@ -63,23 +64,23 @@ for i, v in enumerate(rj["views"]):
         cam = rj["cameras"][i]; cam["f"] *= scale; cam["size"] = [int(round(x * scale)) for x in cam["size"]]
         if (rj.get("blockin") or {}).get("boxes"):
             rj["blockin"]["boxes"][i] = [x * scale for x in rj["blockin"]["boxes"][i]]
-bi._save(vm, sp, "skinfolds fold validation: the start", rj)
+blockin_models._save(vm, sp, "skinfolds fold validation: the start", rj)
 t = time.time()
-frames = sr.capture(vm, log=lambda s: None)
-c = sr.context(vm, frames=frames, log=lambda s: None)
-fr = sr.fold_read(c)
+frames = skin_read_frames.capture(vm, log=lambda s: None)
+c = skin_read_context.context(vm, frames=frames, log=lambda s: None)
+fr = skin_read_folds.fold_read(c)
 print(f"== {tag}: truth {os.path.basename(truth_f)} folds {json.dumps(truth.get('folds'))} wrinkles {json.dumps(truth.get('wrinkles'))}")
 print(f"   start {os.path.basename(start_f)} folds {json.dumps(start.get('folds'))} wrinkles {json.dumps(start.get('wrinkles'))}; {time.time() - t:.0f} s")
-print(sr.fold_text(fr))
+print(skin_read_fold_fit.fold_text(fr))
 json.dump(fr, open(f"{G}/fval_{tag}.json", "w"), indent=1, default=str)
 if kw.get("fit"):
     sk = copy.deepcopy(start)
-    for ch in sr.fold_fit(sk, fr, True):
+    for ch in skin_read_fold_fit.fold_fit(sk, fr, True):
         print("  FIT", ch)
 if kw.get("apply"):
     # THE ROUND TRIP: read -> skin.folds (geometry) -> render -> read again, then both heads side by side
     from hifipushie import skin_folds as sf
-    res = sr.apply(vm, groups=("folds",), rounds=int(kw["apply"]), brow_shape=False, log=lambda s: None)
+    res = skin_read_fit.apply(vm, groups=("folds",), rounds=int(kw["apply"]), brow_shape=False, log=lambda s: None)
     got = sf.options((res["skin"] or {}).get("folds"))
     want = sf.options(truth.get("folds"))
     print(f"== ROUND TRIP ({kw['apply']} rounds, {time.time() - t:.0f} s): fold side | truth amount | recovered amount | recovered shift (median mm) vs truth")

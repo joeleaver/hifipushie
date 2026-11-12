@@ -20,7 +20,9 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import faceslide, gnmloops, humanfit, humanfit_map as hm, onemesh, store
+from hifipushie import humanfit_solve, humanfit_views
 from hifipushie import base as basemod
+from hifipushie import base_identity
 
 WS = Path("/home/joe/dev/hifipushie/workspace")
 CAP = 2.5           # sigma: no identity component past this
@@ -36,7 +38,7 @@ DEFAULT_SLIDERS = ("canthal_tilt", "brow_lateral", "brow_ridge", "eye_hood", "ey
 def slider_basis(st, ev_rows, names):
     """(S, n, 3) world move per slider unit of each evidence row (rows: ("v", vid (3,), w (3,)) a GNM surface point,
     ("L", i) one of the 68 landmarks, ("E", j) an eye centre)."""
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     c = st["head"]["carry"]
     R, s = np.asarray(c["R"], float), float(c["s"])
     F = faceslide.fields()
@@ -62,7 +64,7 @@ def evidence(st, views):
     """humanfit_map._evidence + each row's identity on GNM's surface (for the sliders' basis)."""
     evs = hm._evidence(st, views)
     tab = hm.table()
-    gd = basemod._gnm_data()
+    gd = base_identity._gnm_data()
     tpl = st["tpl"]
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     of = np.full(len(gd["template_vertex_positions"]), -1)
@@ -80,7 +82,7 @@ def evidence(st, views):
         if det is None and lm68:
             clicks = {**lm68, **clicks}
         for n in clicks:
-            i = humanfit.point_index(n)
+            i = humanfit_views.point_index(n)
             rows.append(("L", i) if i < 68 else ("E", i - 68))
         assert len(rows) == len(e["X"]), (len(rows), len(e["X"]))
         e["rows"] = rows
@@ -91,14 +93,14 @@ def view_rms(st, views, cams):
     out = []
     ctr = st["L"][:68].mean(0)
     for cam, e in zip(cams, hm._evidence(st, views)):
-        d = np.linalg.norm(humanfit.project(cam, e["X"]) - e["uv"], axis=1)
-        mm = d * ((e["X"] - ctr) @ humanfit._cam_rot(cam).T + cam["t"])[:, 2] / cam["f"] * 1000
+        d = np.linalg.norm(humanfit_views.project(cam, e["X"]) - e["uv"], axis=1)
+        mm = d * ((e["X"] - ctr) @ humanfit_views._cam_rot(cam).T + cam["t"])[:, 2] / cam["f"] * 1000
         out.append(float(np.sqrt(np.mean((mm / e["sig"]) ** 2))))  # (in sigmas: the solve's own units)
     return out
 
 
 def with_x(base, c, s, names):
-    b = humanfit._with_identity(copy.deepcopy(base), c)
+    b = humanfit_solve._with_identity(copy.deepcopy(base), c)
     sl = dict(b["head"].get("sliders") or {})
     sl.update({n: round(float(v), 4) for n, v in zip(names, s)})
     b["head"]["sliders"] = sl
@@ -146,7 +148,7 @@ def solve(base, views, names, log=print):
                 cam = cams[vi]
                 mm0 = cam["t"][2] / cam["f"] * 1000
                 cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
-                Rc = humanfit._cam_rot(cam)
+                Rc = humanfit_views._cam_rot(cam)
                 Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
                 z = Xc[:, 2]
                 J = np.zeros((len(X), 2, 3))
@@ -155,7 +157,7 @@ def solve(base, views, names, log=print):
                 J[:, 1, 2] = -cam["f"] * Xc[:, 1] / z ** 2
                 J = J @ Rc
                 wt = (z / cam["f"] * 1000) / e["sig"]
-                r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
+                r = (e["uv"] - humanfit_views.project(cam, X)) * wt[:, None]
                 a = np.linalg.norm(r, axis=1)
                 hw = np.where(a > 2.5, np.sqrt(2.5 / np.maximum(a, 1e-9)), 1.0)
                 Ac = (np.einsum("nij,knj->nik", J, e["XB"]) * (wt * hw)[:, None, None]).reshape(-1, K)

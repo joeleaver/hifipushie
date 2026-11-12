@@ -15,6 +15,7 @@ import agesex
 import featsheet
 import stage
 from hifipushie import faceid, humanfit, store
+from hifipushie import humanfit_views
 from shot import light
 
 F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces6"))
@@ -25,7 +26,7 @@ def boxes(acc, refs):
     st = humanfit.state(store.load(acc)["base"])
     out = []
     for vi in VIEWS:
-        P = humanfit.project(refs["cameras"][vi], st["L"])
+        P = humanfit_views.project(refs["cameras"][vi], st["L"])
         c = 0.5 * (P.min(0) + P.max(0))
         side = 1.6 * float(np.max(P.max(0) - P.min(0)))
         out.append((vi, [c[0] - side / 2, c[1] - side * 0.55, c[0] + side / 2, c[1] + side * 0.45]))

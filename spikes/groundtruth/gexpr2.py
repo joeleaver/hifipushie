@@ -3,6 +3,7 @@ expression fitted on the head as it stands: 20 lower-face components under their
 view on the head WITH its expression). The fitted expression is printed."""
 import sys
 from hifipushie import blockin as bi
+from hifipushie import blockin_steps
 
-r = bi.expression_step(sys.argv[1], out=sys.argv[2])
-print(bi.expression_text(r) if hasattr(bi, "expression_text") else r)
+r = blockin_steps.expression_step(sys.argv[1], out=sys.argv[2])
+print(blockin_steps.expression_text(r) if hasattr(bi, "expression_text") else r)

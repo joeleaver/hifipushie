@@ -50,7 +50,8 @@ def _raster():
 
 def cam_points(cam, X):
     from hifipushie import humanfit
-    Xc = (np.asarray(X, float) - np.asarray(cam["centre"], float)) @ humanfit._cam_rot(cam).T + np.asarray(cam["t"], float)
+    from hifipushie import humanfit_views
+    Xc = (np.asarray(X, float) - np.asarray(cam["centre"], float)) @ humanfit_views._cam_rot(cam).T + np.asarray(cam["t"], float)
     w, h = cam["size"]
     return Xc, np.stack([cam["f"] * Xc[:, 0] / Xc[:, 2] + w / 2, cam["f"] * Xc[:, 1] / Xc[:, 2] + h / 2], 1)
 
@@ -144,12 +145,13 @@ def look_cam(centre, yaw: float = 0.0, pitch: float = 0.0, dist: float = 1.2, le
     """A pipeline camera looking at `centre` (GNM world: the face looks along -Y): yaw degrees round the head (+ = the
     camera moves toward the head's left, as the benchmark's views), pitch = the camera raised (+) looking down."""
     from hifipushie import face_ruler as fr
+    from hifipushie import face_ruler_solve
     w, h = size
     f = lens / 36.0 * w
     cam = {"r": [0.0, 0.0, 0.0], "t": [float(shift[0]), float(shift[1]), float(dist)], "f": float(f), "size": [int(w), int(h)],
            "centre": [float(x) for x in centre], "yaw": float(-yaw)}
     if pitch:
-        cam = fr.cam_moved(cam, pitch=pitch)
+        cam = face_ruler_solve.cam_moved(cam, pitch=pitch)
         cam = {k: (np.asarray(v).tolist() if hasattr(v, "tolist") else v) for k, v in cam.items()}
     return cam
 

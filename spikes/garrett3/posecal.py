@@ -48,7 +48,8 @@ def sample(n, seed=11):
 def _cam_light(world_dir, cam):
     """rs.render's light is in the camera's frame (as likeness.KEY): the world direction turned into it."""
     from hifipushie import humanfit
-    return humanfit._cam_rot(cam) @ (np.asarray(world_dir, float) / np.linalg.norm(world_dir)) * np.array([1, 1, 1.0])
+    from hifipushie import humanfit_views
+    return humanfit_views._cam_rot(cam) @ (np.asarray(world_dir, float) / np.linalg.norm(world_dir)) * np.array([1, 1, 1.0])
 
 
 def feats(X):

@@ -7,13 +7,14 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import humanfit, likeness, likeness_eyes as le, store
+from hifipushie import humanfit_views, likeness_render, likeness_sides
 
 name = sys.argv[2] if len(sys.argv) > 2 else "ll_garrett"
 base = store.load(name)["base"]
-refs = likeness._refs(name)
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs(name)
+ph = likeness_sides.photo_sides(refs)[0]
 cam = ph["cam"]
-mesh = likeness.model_mesh(base)
+mesh = likeness_render.model_mesh(base)
 st = mesh["state"]
 P = np.asarray(st["tpl"]["P"], float)
 Q = np.asarray(st["tpl"]["L"]).reshape(-1, 4)
@@ -21,11 +22,11 @@ L = np.asarray(st["L"])
 box = le.eye_box(ph["side"].P)
 x0, y0, x1, y1 = box
 box = (x0, y0, 0.5 * (x0 + x1) + 0.05 * (x1 - x0), y1)          # the picture's left half: the right eye
-im, k = likeness.render(mesh, cam, box, px=1400, brows=False)
+im, k = likeness_render.render(mesh, cam, box, px=1400, brows=False)
 im = im.convert("RGB")
 d = ImageDraw.Draw(im)
-uv = (humanfit.project(cam, P) - [box[0], box[1]]) * k
-Rc = humanfit._cam_rot(cam)
+uv = (humanfit_views.project(cam, P) - [box[0], box[1]]) * k
+Rc = humanfit_views._cam_rot(cam)
 Xc = (P - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
 fn = np.cross(Xc[Q[:, 2]] - Xc[Q[:, 0]], Xc[Q[:, 3]] - Xc[Q[:, 1]])
 front = (fn * Xc[Q].mean(1)).sum(1) < 0

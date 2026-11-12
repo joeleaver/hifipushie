@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 
 import outl
 from hifipushie import humanfit, store
+from hifipushie import humanfit_views
 
 name, trm, out = sys.argv[1:4]
 only = int(sys.argv[4]) if len(sys.argv) > 4 else None
@@ -24,16 +25,16 @@ for i, (v, cam) in enumerate(zip(refs["views"], refs["cameras"])):
         continue
     im = Image.open(v["image"]).convert("RGB")
     d = ImageDraw.Draw(im)
-    allv = humanfit.project(cam, np.asarray(st["tpl"]["P"], float)[::5])
+    allv = humanfit_views.project(cam, np.asarray(st["tpl"]["P"], float)[::5])
     for a in allv:
         d.point(tuple(a), fill=(0, 255, 0))
     for ln, o in zip([k for k in ("cheek.R", "cheek.L", "jaw.R", "jaw.L", "chin", "profile")
                       if outl.traced(trm, v["image"], (k,))], lines):
         d.line([tuple(p) for p in o], fill=(255, 40, 40), width=2)
-        sl = humanfit._silhouette(st, cam, np.asarray(o, float)) if os.environ.get("SIL") else __import__("joint2").envelope(st, cam, np.asarray(o, float), __import__("joint2").SHADE_LINES.get(ln))
+        sl = humanfit_views._silhouette(st, cam, np.asarray(o, float)) if os.environ.get("SIL") else __import__("joint2").envelope(st, cam, np.asarray(o, float), __import__("joint2").SHADE_LINES.get(ln))
         if sl is None:
             continue
-        uv = humanfit.project(cam, sl["X"])
+        uv = humanfit_views.project(cam, sl["X"])
         for a, b in zip(uv, sl["p"]):
             d.line([tuple(a), tuple(b)], fill=(255, 255, 0), width=1)
             d.ellipse([a[0] - 2, a[1] - 2, a[0] + 2, a[1] + 2], fill=(0, 120, 255))

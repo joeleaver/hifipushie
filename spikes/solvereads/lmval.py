@@ -6,6 +6,7 @@ import os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, face_ruler as fr, store, gnm_mm, likeness
+from hifipushie import blockin_models, face_ruler_blockin, face_ruler_camera, face_ruler_compare, likeness_detect
 
 SHOTS = os.environ.get("SHOTS", "/mnt/data/hifipushie/reruns/out:/mnt/data/hifipushie/garrettgood/out").split(":")
 GR = {"chin 7-9": (7, 8, 9), "jaw 5,6,10,11": (5, 6, 10, 11), "angle 3,4,12,13": (3, 4, 12, 13)}
@@ -17,17 +18,17 @@ CH = {"chin_width+5": 5 * gnm_mm.direction("chin_width"), "chin_length+4": 4 * g
       "jaw_width+6": 6 * gnm_mm.direction("jaw_width"), "under_chin+4": 4 * gnm_mm.direction("under_chin"), "random3": rnd}
 tot = {}
 for m in sys.argv[1:]:
-    spec, rj = store.load(m), bi._refs(m)
-    head = fr.model_head(spec)
+    spec, rj = store.load(m), blockin_models._refs(m)
+    head = face_ruler_blockin.model_head(spec)
     for vi, (v, cam, box) in enumerate(zip(rj["views"], rj["cameras"], rj["blockin"]["boxes"])):
         f = next((f"{d}/d_{m}_{vi}.png" for d in SHOTS if os.path.exists(f"{d}/d_{m}_{vi}.png")), None)
-        kind = fr.kind_of(v.get("yaw", 0))
+        kind = face_ruler_compare.kind_of(v.get("yaw", 0))
         if f is None or kind == "profile":
             continue
         shot = Image.open(f).convert("RGB")
         ib = [int(round(x)) for x in box]
         sc = shot.size[0] / float(ib[2] - ib[0])
-        Ps = likeness.detect([shot])[0]
+        Ps = likeness_detect.detect([shot])[0]
         if Ps is None:
             print(m, kind, "no face on the dressed shot")
             continue
@@ -36,7 +37,7 @@ for m in sys.argv[1:]:
         pts = {"lm30": [0, 0]}
         for nm, dlt in {"null": None, **CH}.items():
             h2 = head if dlt is None else head["rebuild"](head["c"] + dlt)
-            ob = [o for o in fr._anchor_obs(h2, view, pts, det) if o["type"] == "landmark" and o.get("diff")]
+            ob = [o for o in face_ruler_camera._anchor_obs(h2, view, pts, det) if o["type"] == "landmark" and o.get("diff")]
             for g, ids in GR.items():
                 sel = [o for o in ob if int(o["name"][2:].split(".")[0]) in ids]
                 if not sel:

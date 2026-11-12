@@ -2,6 +2,7 @@
 LIGHT. A hand pass: the agent's finishing choice after the measured base."""
 import copy, json, sys
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 src, dst = sys.argv[1:3]
 s = copy.deepcopy(store.load(src))
 for a in sys.argv[3:]:
@@ -9,8 +10,8 @@ for a in sys.argv[3:]:
     grp, key = k.split(".", 1)
     tgt = s["skin"].setdefault("eyes", {}) if grp == "eyes" else s["skin"].setdefault("hair", {}).setdefault("brows", {})
     tgt[key] = json.loads(v)
-rj = copy.deepcopy(bi._refs(src))
+rj = copy.deepcopy(blockin_models._refs(src))
 if rj.get("blockin"):
     rj["blockin"] = {**rj["blockin"], "root": dst}
-bi._save(dst, s, f"hand pass: {sys.argv[3:]}", rj)
+blockin_models._save(dst, s, f"hand pass: {sys.argv[3:]}", rj)
 print(dst, s["skin"].get("eyes"), s["skin"]["hair"].get("brows"))

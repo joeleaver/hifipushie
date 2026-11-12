@@ -3,8 +3,9 @@ lm68 corners, its own eyeball (sclera sphere, iris), how its ball fills the ring
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 T = np.asarray(g["template_vertex_positions"], float) * 1000
 gr = {k: np.asarray(v, float) > 0.5 for k, v in g["groups"].items()}
 skin = np.asarray(g["skin"]).astype(bool)

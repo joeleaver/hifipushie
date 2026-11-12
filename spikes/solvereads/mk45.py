@@ -5,17 +5,18 @@ import copy, json, os, sys
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 import stage
 from hifipushie import blockin as bi, face_ruler as fr, resources, server, store
+from hifipushie import blockin_models, face_ruler_camera, face_ruler_solve
 tag = sys.argv[1]
 deg = float(sys.argv[2]) if len(sys.argv) > 2 else 45.0
 S = "/mnt/data/hifipushie/solvereads/synth"
 T = f"sx_{tag}_T"
-rj = bi._refs(T)
+rj = blockin_models._refs(T)
 cam = rj["cameras"][1]
-y0 = fr.view_yaw(cam)
-c1 = fr.cam_moved(cam, yaw=deg - abs(y0))
-if abs(abs(fr.view_yaw(c1)) - deg) > 1.0:
-    c1 = fr.cam_moved(cam, yaw=-(deg - abs(y0)))
-print("3/4 camera:", y0, "->", fr.view_yaw(c1))
+y0 = face_ruler_camera.view_yaw(cam)
+c1 = face_ruler_solve.cam_moved(cam, yaw=deg - abs(y0))
+if abs(abs(face_ruler_camera.view_yaw(c1)) - deg) > 1.0:
+    c1 = face_ruler_solve.cam_moved(cam, yaw=-(deg - abs(y0)))
+print("3/4 camera:", y0, "->", face_ruler_camera.view_yaw(c1))
 w, h = cam["size"]
 f = f"{S}/sx_{tag}_q.png"
 if not os.path.exists(f):
@@ -23,10 +24,10 @@ if not os.path.exists(f):
         im = stage.shoot(T, [stage.fitted_frame(c1, [w / 2 - h / 2, 0.0, w / 2 + h / 2, float(h)], "q")], stage.photo_light(T, 0), size=int(h), hair_on=False)["q"]
     x0 = int(round((h - w) / 2))
     im.convert("RGB").crop((x0, 0, x0 + int(w), int(h))).save(f)
-src = bi._refs(f"sx_{tag}_R")
+src = blockin_models._refs(f"sx_{tag}_R")
 views = copy.deepcopy(src["views"])
 views[1] = {"image": f, "size": [int(w), int(h)], "yaw": 45, "points": {}}
-views = bi.with_anchor_points(views)
+views = blockin_models.with_anchor_points(views)
 holder = f"sx_{tag}q_R"
 d = store._dir(holder); d.mkdir(parents=True, exist_ok=True)
 (d / "spec.json").write_text(json.dumps(store.load(f"sx_{tag}_R")))

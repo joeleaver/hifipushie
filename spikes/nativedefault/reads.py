@@ -8,6 +8,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin as bi
+from hifipushie import blockin_steps
 from hifipushie import blockin_eyes as be
 from hifipushie import server, store
 
@@ -27,7 +28,7 @@ for nm, fn in (("EYE RULER", lambda: server.eye_ruler(m, save=f"/mnt/data/hifipu
         print(f"-- {nm}: failed: {type(e).__name__}: {str(e)[:300]}")
 if kw.get("iris"):
     if ic.get("photo_mm") and ic.get("eyes_000") is not None and abs(ic["ratio"] - 1) > 0.02:
-        rep = bi.step(m, {"iris_mm": round(ic["photo_mm"], 2)}, out=kw["iris"], seen=f"the picture's limbus {ic['photo_mm']:.2f} mm, GNM's {ic['model_mm']:.2f}",
+        rep = blockin_steps.step(m, {"iris_mm": round(ic["photo_mm"], 2)}, out=kw["iris"], seen=f"the picture's limbus {ic['photo_mm']:.2f} mm, GNM's {ic['model_mm']:.2f}",
                       why="the iris read sets GNM's limbus component (eyes_000)")
         sp = store.load(kw["iris"])
         print(f"-- IRIS STEP -> {kw['iris']}: eyes_000 {sp['base']['head']['identity'].get('eyes_000')}; " + be.iris_check(kw["iris"])["text"][:160])

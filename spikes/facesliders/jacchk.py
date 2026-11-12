@@ -10,6 +10,7 @@ import numpy as np
 import fit5
 import outl
 from hifipushie import humanfit, store
+from hifipushie import humanfit_views
 
 m = sys.argv[1]
 y0, y1 = (float(sys.argv[2]), float(sys.argv[3])) if len(sys.argv) > 3 else (790.0, 830.0)
@@ -25,7 +26,7 @@ c = humanfit.identity(sp["base"])
 def read(cc):
     st = humanfit.state(fit5.spec_with(sp, cc)["base"])
     env = fit5.silhouette_env(st, cam, o)
-    px = humanfit.project(cam, env["X"])
+    px = humanfit_views.project(cam, env["X"])
     J, z = fit5.proj_jac(cam, env["X"])
     mm = z / cam["f"] * 1000
     r = ((px - env["p"]) * env["n"]).sum(1) * mm

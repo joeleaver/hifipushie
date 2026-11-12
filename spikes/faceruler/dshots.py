@@ -10,14 +10,15 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "garrett3"))
 import stage  # noqa: E402
 from hifipushie import blockin as bi, face_ruler as fr, resources  # noqa: E402
+from hifipushie import blockin_models, face_ruler_compare
 
 G = os.environ["G"] + "/out"
 REFS = os.environ.get("REFS", "gd_T12")
 BOX = [0.0, 150.0, 1152.0, 1302.0]
 
 if __name__ == "__main__":
-    rj = bi._refs(REFS)
-    frames = [stage.fitted_frame(cam, BOX, fr.kind_of(v.get("yaw", 0))) for v, cam in zip(rj["views"], rj["cameras"])]
+    rj = blockin_models._refs(REFS)
+    frames = [stage.fitted_frame(cam, BOX, face_ruler_compare.kind_of(v.get("yaw", 0))) for v, cam in zip(rj["views"], rj["cameras"])]
     light = stage.photo_light(REFS)
     json.dump({"box": BOX, "refs": REFS}, open(f"{G}/d_box.json", "w"))
     for name in sys.argv[1:]:

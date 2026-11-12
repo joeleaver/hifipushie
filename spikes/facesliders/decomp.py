@@ -16,6 +16,7 @@ import fit5
 import gates
 import lipborder as LB
 from hifipushie import humanfit, humanfit_map as hm, likeness, store
+from hifipushie import likeness_detect
 
 NC, NE = fit5.NC, fit5.NE
 
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     border = None
     if fit5.USE_BORDER:
         img = Image.open([v for v in views if abs(float(v.get("yaw", 0))) < 20][0]["image"]).convert("RGB")
-        border = LB.read(img, likeness.detect([img])[0])
+        border = LB.read(img, likeness_detect.detect([img])[0])
     st = humanfit.state(fit5.spec_with(store.load(src), x[:NC])["base"])
     rviews = hm._resolve(st, views)
     fit5.TERMS = {}

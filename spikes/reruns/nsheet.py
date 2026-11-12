@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw
 sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3"]
 import stage
 from hifipushie import blockin as bi, resources, store
+from hifipushie import blockin_clay, blockin_models
 
 G = os.environ.get("G", "/mnt/data/hifipushie/reruns") + "/out"
 N = int(os.environ.get("SIZE", "560"))
@@ -13,8 +14,8 @@ VIEWS = ("three_quarter", "three_quarter_other", "profile_right", "low_angle")
 out, cols = sys.argv[1], [a.split("=", 1) for a in sys.argv[2:]]
 rows = []
 for title, m in cols:
-    rj = bi._refs(m)
-    order = [i for i in range(len(rj["views"])) if i != bi._front(rj)] + [bi._front(rj)]
+    rj = blockin_models._refs(m)
+    order = [i for i in range(len(rj["views"])) if i != blockin_clay._front(rj)] + [blockin_clay._front(rj)]
     fs = [f"{G}/n_{m}_{v}.png" for v in VIEWS]
     if not all(os.path.exists(f) for f in fs):
         fr = stage.view_frames(store.load(m), VIEWS)

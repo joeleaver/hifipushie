@@ -3,16 +3,17 @@ measured plain-skin median (grid + refine), saved. Prints before / after."""
 import numpy as np
 from PIL import Image
 from hifipushie import skin, skin_project as sp, store, images
+from hifipushie import skin_params, skin_project_atlas, skin_project_detail
 from scipy.optimize import minimize
 import sys
 m = sys.argv[1]
-spec = store.load(m); at = sp.atlas(spec["base"])
+spec = store.load(m); at = skin_project_atlas.atlas(spec["base"])
 pj = spec["skin"]["projection"]
 alb = sp._lin(np.asarray(Image.open(images.id_path(pj["albedo"])).convert("RGB"), float) / 255.0)[at["ii"], at["jj"]]
 cf = np.asarray(Image.open(images.id_path(pj["confidence"])).convert("RGB"), float)[..., 0][at["ii"], at["jj"]] / 255.0
-q = sp._plain(at) & (cf > 0.6)
+q = skin_project_detail._plain(at) & (cf > 0.6)
 want = sp.lab(np.median(alb[q], 0)[None])[0]
-t0 = skin.params(spec)["tone"]
+t0 = skin_params.params(spec)["tone"]
 def lab_of(x):
     t = {**t0, "melanin": float(np.clip(x[0], 0, 1)), "blood": float(np.clip(x[1], 0, 1)), "undertone": float(np.clip(x[2], -1, 1))}
     return sp.lab(sp._lin(np.asarray(skin.tone_rgb(t), float))[None])[0], t

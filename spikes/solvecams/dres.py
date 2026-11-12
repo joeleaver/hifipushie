@@ -5,13 +5,14 @@ do with it."""
 import sys
 import numpy as np
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_compare
 import common as C
 
 fr.DENSE = True
 for name in sys.argv[1:]:
     rj = C.refs(name)
     b0 = rj.get("blockin") or {}
-    head, views, notes = fr.reference_views(name, lids=True, lips=True, parse="auto", kinds=b0.get("kinds"), readers=b0.get("readers"))
+    head, views, notes = face_ruler_compare.reference_views(name, lids=True, lips=True, parse="auto", kinds=b0.get("kinds"), readers=b0.get("readers"))
     print(f"== {name}")
     for v in views:
         obs = [ob for ob in v["extra"](head, v) if ob["type"] == "dense"]

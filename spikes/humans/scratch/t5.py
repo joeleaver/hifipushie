@@ -3,6 +3,7 @@ import sys
 import numpy as np
 from scipy.spatial import cKDTree
 from hifipushie import base, makehuman, headfit
+from hifipushie import base_implied, base_measures
 import quick
 
 S = "/tmp/claude-1000/-home-joe-dev-hifipushie/1d5c679b-4c56-495b-8635-72e86a3b3567/scratchpad/humans3/"
@@ -11,8 +12,8 @@ for age, sex in ((1, 0.5), (3, 0.0)):
     body = {"source": "makehuman", "age": age, "sex": sex}
     b = {"body": body, "eyes": "eyes", "head": {"source": "gnm", "follow_body": True, "seed": 5, "spread": 0.4, "mouth_gap": 0.0}}
     b["head"].update(eval(sys.argv[1]) if len(sys.argv) > 1 else {})
-    spec = base.inject({"base": b, "joints": {}})
-    h = base.head_of(spec, b)
+    spec = base_implied.inject({"base": b, "joints": {}})
+    h = base_measures.head_of(spec, b)
     tpl = base.source(b)
     P = np.asarray(tpl["P"], float)
     lmb = P[headfit.table()["lm68"]]

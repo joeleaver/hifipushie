@@ -2,6 +2,7 @@
 a hair look with spec overrides held in memory (nothing saved)."""
 import json, os, sys, time
 from hifipushie import hair, store
+from hifipushie import hair_look, hair_spec
 name, out = sys.argv[1], sys.argv[2]
 spec = store.load(name)
 h = spec.setdefault("hair", {})
@@ -26,16 +27,17 @@ for a in sys.argv[3:]:
         d[ks[-1]] = json.loads(v)
     else: h.setdefault("strands", {})[k] = json.loads(v)
 from hifipushie import hair_strands as HS
+from hifipushie import hair_strands_job
 skip = [q for q in os.environ.get("HS_SKIP", "").split(",") if q]
-_st = HS.stacks
+_st = hair_strands_job.stacks
 def stacks(*a, **k):
     d = _st(*a, **k)
     return {n: [m for m in st if not any(q in m[0] for q in skip)] for n, st in d.items()}
-HS.stacks = stacks
-hair.validate(spec)
+hair_strands_job.stacks = stacks
+hair_spec.validate(spec)
 t = time.time()
-sheet, sec, fr = hair.look(name, views=views, size=size, save=os.path.join(os.environ["HR"], out), spec=spec, **kw)
+sheet, sec, fr = hair_look.look(name, views=views, size=size, save=os.path.join(os.environ["HR"], out), spec=spec, **kw)
 print("\n".join(l for l in fr if "strands" in l), [l.split()[1] for l in fr if "frame" in l])
-print("look", sec, "s", "bare", hair.look.mass_share)
-g = hair.look.gate
+print("look", sec, "s", "bare", hair_look.look.mass_share)
+g = hair_look.look.gate
 print("gate", {k: v for k, v in g.items() if k != "owners"} if isinstance(g, dict) else g)

@@ -9,6 +9,7 @@ import numpy as np
 from scipy import ndimage
 
 from hifipushie import terrain, terrain_mesh as tm
+from hifipushie import terrain_model, terrain_relief, terrain_tile_jobs
 
 ROOT = Path("/home/joe/dev/hifipushie")
 SPECS = {"alps": ("workspace/terrain/t3_alps/spec.json", [2215, 3690]),
@@ -16,7 +17,7 @@ SPECS = {"alps": ("workspace/terrain/t3_alps/spec.json", [2215, 3690]),
 
 
 def measure(T, at, size=40.0, h=0.1):
-    field = tm.build_field(T)[0]
+    field = terrain_tile_jobs.build_field(T)[0]
     r = field.rock
     fd0 = field.face_dir(np.array([at[0]]), np.array([at[1]]))[0]
     n = fd0 / max(np.linalg.norm(fd0), 1e-9)
@@ -27,7 +28,7 @@ def measure(T, at, size=40.0, h=0.1):
     P = np.c_[at[0] + (U.ravel() - size / 2) * t[0], at[1] + (U.ravel() - size / 2) * t[1], z0 - size / 2 + V.ravel()]
     fd = np.tile(fd0, (len(P), 1))
     g = field.grain_at(P[:, 0], P[:, 1]) if field.grain is not None else None
-    O = tm.rock_relief(P, r, g, None, fd, None).reshape(len(s), len(s))
+    O = terrain_relief.rock_relief(P, r, g, None, fd, None).reshape(len(s), len(s))
     out = {"rms_total": round(float(O.std()), 3), "bands_rms_m": {}}
     for a, b in ((0.2, 1.0), (1.0, 3.0), (3.0, 10.0), (10.0, 30.0)):
         band = ndimage.gaussian_filter(O, a / h / 2) - ndimage.gaussian_filter(O, b / h / 2)
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2 and "," in sys.argv[2]:
         at = [float(v) for v in sys.argv[2].split(",")]
     size = float(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3][0].isdigit() else 40.0
-    T = terrain.load(ROOT / spec)
+    T = terrain_model.load(ROOT / spec)
     if "--noblocks" in sys.argv:  # (the rock before jointed blocks: joints back on)
         T.spec["rock"] = {**(T.spec.get("rock") or {}), "blocks": 0}
     print(json.dumps({name: measure(T, at, size)}, indent=1))

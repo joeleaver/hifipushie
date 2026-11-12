@@ -11,6 +11,7 @@ from PIL import Image
 
 import mk
 from hifipushie import blockin as bi, blockin_eyes as be, store
+from hifipushie import blockin_clay, blockin_models
 
 src, dst = sys.argv[1], sys.argv[2]
 ne = int(sys.argv[3]) if len(sys.argv) > 3 else be.NE
@@ -19,8 +20,8 @@ crease = None if crease == "none" else crease
 iters = int(sys.argv[5]) if len(sys.argv) > 5 else 6
 if os.environ.get("SIGSHAPE"):
     be.SIG_SHAPE = float(os.environ["SIGSHAPE"])
-rj = bi._refs(src)
-v = rj["views"][bi._front(rj)]
+rj = blockin_models._refs(src)
+v = rj["views"][blockin_clay._front(rj)]
 ev = be.photo_evidence(Image.open(v["image"]).convert("RGB"), v)
 rv = be.ruler_evidence(src)
 ev["ruler"] = {k: rv[k] for k in ("up", "lo", "inner", "outer", "crease_cols")}

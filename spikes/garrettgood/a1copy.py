@@ -6,25 +6,26 @@ camera's move and the outline / anchor residuals before and after, for both head
 import copy, json, sys
 import numpy as np
 from hifipushie import blockin as bi, face_ruler as fr, store
+from hifipushie import blockin_models, face_ruler_compare, face_ruler_solve
 
 best, rounds = sys.argv[1], 4
 SRC, OUT = (sys.argv[2], sys.argv[3]) if len(sys.argv) > 3 else ("garrett_a1", "gg_a1copy")   # any head through the same pictures
 sp = copy.deepcopy(store.load(SRC))
 for k in ("hair", "cloth"):
     sp.pop(k, None)
-rj = copy.deepcopy(bi._refs(best))
+rj = copy.deepcopy(blockin_models._refs(best))
 rj["blockin"] = {"root": OUT, "boxes": rj["blockin"]["boxes"]}
 rj.pop("expressions", None)
 c0 = bi.identity(sp).copy()
-bi._save(OUT, sp, f"{SRC}'s spec under the good references (cameras of {best}); identity untouched", rj)
+blockin_models._save(OUT, sp, f"{SRC}'s spec under the good references (cameras of {best}); identity untouched", rj)
 
 
 def resid(name):
-    head, views, _ = fr.reference_views(name, True, lids=True, lips=True, anchors="differential", parse="auto")
+    head, views, _ = face_ruler_compare.reference_views(name, True, lids=True, lips=True, anchors="differential", parse="auto")
     for v in views:
         if v.get("extra"):
             v["extra_obs"] = v["extra"](head, v)
-    obs = fr.observe(head, views)
+    obs = face_ruler_solve.observe(head, views)
     out = {}
     for o in obs:
         out.setdefault((o["type"], o["view"]), []).append(o["o"])
@@ -44,19 +45,19 @@ for _ in range(rounds):
     for v in views:
         if v.get("extra"):
             v["extra_obs"] = v["extra"](head, v)
-    obs = fr.observe(head, views)
-    o_ = fr.solve(obs, head, views=views, tau=0.02, cam_sd=loose)
+    obs = face_ruler_solve.observe(head, views)
+    o_ = face_ruler_solve.solve(obs, head, views=views, tau=0.02, cam_sd=loose)
     th = np.asarray(o_["cam"], float).reshape(len(views), 6)
     lim = 2.5 * np.array([loose[v["kind"]] for v in views], float)
     th = np.clip(th, -lim, lim)
     for v, t_ in zip(views, th):
-        v["cam"] = fr.cam_moved(v["cam"], *t_)
+        v["cam"] = face_ruler_solve.cam_moved(v["cam"], *t_)
     tot += th
     print("round: cameras moved (shift mm, shift mm, scale %, roll, yaw, pitch deg):", np.round(th, 2).tolist(), "|dc| of the held head", round(float(np.linalg.norm(o_["dc"])), 3))
 print("cameras' whole move from", best, ":", np.round(tot, 2).tolist())
 for i, v in enumerate(views):
     rj["cameras"][i] = {**rj["cameras"][i], **{k: (np.asarray(x).tolist() if hasattr(x, "tolist") else x) for k, x in v["cam"].items()}}
-bi._save(OUT, sp, f"cameras refit on {SRC}'s head (head held)", rj)
+blockin_models._save(OUT, sp, f"cameras refit on {SRC}'s head (head held)", rj)
 assert np.allclose(bi.identity(store.load(OUT)), c0), "identity moved"
 _, _, r = resid(OUT); show(f"{OUT} AFTER the camera refit", r)
 print("identity untouched: |c|", round(float(np.linalg.norm(c0)), 2))

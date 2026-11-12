@@ -11,6 +11,7 @@ import shutil
 import sys
 
 from hifipushie import hair, store
+from hifipushie import hair_seat
 
 dst, head = sys.argv[1], sys.argv[2]
 H = store.HOME
@@ -32,7 +33,7 @@ skin.setdefault("hair", {})["stubble"] = {"amount": 1.0, "style": "short", "leng
 skin["hair"].pop("lashes", None)
 sp["skin"] = skin
 sp["parts"] = g4["parts"]
-sp["hair"] = hair.carry("gc_c1")  # (gc_c1 has its groom.fit)
+sp["hair"] = hair_seat.carry("gc_c1")  # (gc_c1 has its groom.fit)
 # the concept's hair is short salt-and-pepper GREY: gc_c1's colour match chased the concept's colour bands and
 # rendered dark brown (eevee_sat 0.6 over brown lit / sheen). Greyed: a grey strand share, near-neutral lit / sheen /
 # gap, eevee's saturation at the measured 0.35 or under; the strands' wave off (a neat short cut)

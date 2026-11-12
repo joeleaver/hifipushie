@@ -5,6 +5,7 @@ Textures come from the GLB (shapes don't move UVs)."""
 import copy, pickle, sys, time
 import numpy as np
 from hifipushie import faceshapes as fs
+from hifipushie import faceshapes_apply
 import mouthhits, teethcount
 
 dump, glb, out = sys.argv[1:4]
@@ -20,9 +21,9 @@ d = pickle.load(open(dump, "rb"))
 parts = copy.deepcopy(d["parts"]); log = []
 print("parts:", list(parts))
 want = sorted({k for po in poses for k in mouthhits.SH[po]} | {"jawOpen"})  # only the shapes measured
-names = [n for n in fs.names_of(d["face_shapes"]) if n in want]
+names = [n for n in faceshapes_apply.names_of(d["face_shapes"]) if n in want]
 t = time.time()
-fs.apply(d["spec"], parts, names, log)
+faceshapes_apply.apply(d["spec"], parts, names, log)
 print(f"apply {time.time() - t:.0f}s;", next((l for l in log if "closed lips' seam" in l), ""))
 _, _, TEX = mouthhits.load(glb)
 g = {"meshes": {}}; UVF = {}

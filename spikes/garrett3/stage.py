@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import hair, humanfit, render, scene, skin_look, store, stylesheet
+from hifipushie import hair_job, humanfit_views, scene_sync
 
 # the photo's light: a big soft source above and in front (shade under the brow, nose, lower lip and chin, the
 # cheeks falling off a little to the sides), a weak frontal fill, a pale room
@@ -37,7 +38,8 @@ def photo_light(name, vi=None):
     """FRONT_LIGHT re-aimed and re-balanced to the front picture's own fitted light (blockin.photo_lighting: the clay
     sheets' light): use it for dressed vs photo comparisons (the fixed 42-deg key read narrower / harder)."""
     from hifipushie import blockin
-    return blockin.photo_lighting(name, FRONT_LIGHT, vi)
+    from hifipushie import blockin_look
+    return blockin_look.photo_lighting(name, FRONT_LIGHT, vi)
 
 
 POSE = {"lid_upper": 0.0013, "brow_inner": -0.0015, "brow_outer": -0.0012, "smile": -0.0015}  # the photo's (garrett3.POSE)
@@ -101,7 +103,7 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
         mark.touch()  # last use, for store.prune_stages
         return sn
     t = time.time()
-    r = scene.sync(sn, resolution=256)
+    r = scene_sync.sync(sn, resolution=256)
     mark.write_text(key)
     store.prune_stages("_g3_", "g3_stage.key", keep=sn)
     log(f"stage {sn}: synced in {time.time() - t:.0f} s ({', '.join(f'{k} {v}' for k, v in r['seconds'].items())})")
@@ -111,7 +113,7 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
 def fitted_frame(cam, crop, name):
     """A humanfit camera {"r", "t", "f", "size", "centre", "yaw"} + a SQUARE pixel crop [x0, y0, x1, y1] of its
     picture -> a render frame (perspective, lens shift)."""
-    R = humanfit._cam_rot(cam)
+    R = humanfit_views._cam_rot(cam)
     eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
     fwd = R.T @ np.array([0.0, 0.0, 1.0])
     up = R.T @ np.array([0.0, -1.0, 0.0])
@@ -167,7 +169,7 @@ def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=F
         if ee:
             job["eevee"] = ee
         if hair_on and st.get("hair"):
-            job.update(mode="hair_look", hair=hair.job(sn, st), clay_views=[], id_views=[], look_engine=engine)
+            job.update(mode="hair_look", hair=hair_job.job(sn, st), clay_views=[], id_views=[], look_engine=engine)
         else:
             job.update(mode="render", hide_hair=True)   # (the stage's blend may hold an earlier sync's groom: hidden)
             if engine == "cycles":

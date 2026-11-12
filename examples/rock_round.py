@@ -14,6 +14,7 @@ import numpy as np
 from scipy import ndimage
 
 from hifipushie import terrain, terrain_mesh
+from hifipushie import terrain_model, terrain_tile_views, terrain_tiles
 
 HERE = Path(__file__).parent
 SPECS = {"alps": "workspace/terrain/t3_alps/spec.json", "pebble": "workspace/terrain/pebble_disc/spec.json"}
@@ -47,7 +48,7 @@ def main():
     passes = [a for a in sys.argv[2:] if a in ("far", "near")] or ["far", "near"]
     V = json.loads((HERE / "rock_views.json").read_text())
     for name in which:
-        T = terrain.load(ROOT / SPECS[name])
+        T = terrain_model.load(ROOT / SPECS[name])
         if "--noblocks" in sys.argv:  # (the rock as it was before terrain_blocks: a baseline for the same views)
             T.spec["rock"] = {**(T.spec.get("rock") or {}), "blocks": 0}
         for ps in passes:
@@ -55,7 +56,7 @@ def main():
             cfg = V[name][ps]
             o = out / f"{name}_{ps}"
             if "--render-only" not in sys.argv:
-                r = terrain_mesh.preview_tiles(T, o, cfg["center"], cfg.get("radius", 40.0), cfg.get("density", 6.0),
+                r = terrain_tiles.preview_tiles(T, o, cfg["center"], cfg.get("radius", 40.0), cfg.get("density", 6.0),
                                                cfg.get("cfg"))
                 print(f"{name} {ps}: preview {time.time() - t0:.0f} s, memory {r['manifest'].get('memory_gb')}",
                       flush=True)
@@ -64,7 +65,7 @@ def main():
                 v["out"] = str(o / f"{name}_{v['name']}.png")
             if "--views" in sys.argv:
                 print(json.dumps(views))
-            terrain_mesh.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, box=cfg.get("box"))
+            terrain_tile_views.render_tiles(T, o, views, size=(1200, 750), samples=32, trees=False, box=cfg.get("box"))
             print(f"{name} {ps}: done {time.time() - t0:.0f} s", flush=True)
 
 

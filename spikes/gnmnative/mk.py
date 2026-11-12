@@ -4,11 +4,12 @@ import json
 import sys
 
 from hifipushie import blockin as bi
+from hifipushie import blockin_models
 from hifipushie import store
 
 src, dst = sys.argv[1:3]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
-bi.fork(src, dst, replace=True)
+blockin_models.fork(src, dst, replace=True)
 sp = store.load(dst)
 
 
@@ -27,6 +28,6 @@ for p, v in json.loads(kw.get("set", "{}")).items():
     d, k = walk(p)
     d[k] = v
     print("set", p, "=", v)
-bi._save(dst, sp, f"gnmnative mk from {src}: {kw}", bi._refs(dst))
+blockin_models._save(dst, sp, f"gnmnative mk from {src}: {kw}", blockin_models._refs(dst))
 print(dst, "saved; head keys:", {k: v for k, v in sp["base"]["head"].items() if k != "identity"}, "cornea", sp["base"].get("cornea"),
       "skin.eyes", (sp.get("skin") or {}).get("eyes"))

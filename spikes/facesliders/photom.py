@@ -22,6 +22,7 @@ from hifipushie import headfit
 
 headfit.N = 170   # (as fit5: all head comps; set before headfit._gnm() is first called)
 from hifipushie import base as basemod, humanfit, likeness, likeness_shape as ls, onemesh  # noqa: E402
+from hifipushie import base_identity, likeness_measure, likeness_render
 
 PX_MM = float(os.environ.get("PX_MM", "0.8"))
 LP_MM = float(os.environ.get("LP_MM", "3.0"))
@@ -34,7 +35,7 @@ INNER = float(os.environ.get("PH_INNER", "0.8"))   # the mask: inside the face o
 
 def vertex_basis(st):
     """(170, n, 3): each mesh vertex's world move per identity unit (0 off GNM's head; faded to the stitch)."""
-    g = basemod._gnm_data()
+    g = base_identity._gnm_data()
     tpl = st["tpl"]
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
     c = st["head"]["carry"]
@@ -56,7 +57,7 @@ class View:
         c = 0.5 * (lo + hi)
         side = 1.15 * float(np.max(hi - lo))
         self.box = (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
-        mmpx = likeness._mm_per_px(cam, mesh["L"][27:48])
+        mmpx = likeness_render._mm_per_px(cam, mesh["L"][27:48])
         self.px = int(round(side * mmpx / PX_MM))
         self.k = self.px / side
         crop = self.img.crop(tuple(int(round(v)) for v in self.box)).resize((self.px, self.px), Image.LANCZOS)
@@ -64,7 +65,7 @@ class View:
         a = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
         self.Y = a[..., 1]                   # green: discounts redness (cheeks, lips)
         to_px = lambda Q: (np.asarray(Q, float) - [self.box[0], self.box[1]]) * self.k  # noqa: E731
-        side_ = likeness.Side(P, None)
+        side_ = likeness_measure.Side(P, None)
         sm = ls.skin_mask(side_, (self.px, self.px), to_px, self.k / mmpx)
         med = np.median(self.Y[sm]) if sm.any() else np.median(self.Y)
         self.mask0 = sm & (self.Y > HAIR_K * med)
@@ -84,7 +85,7 @@ class View:
         self.light, self.alb = None, np.zeros(6)
 
     def _passes(self, mesh, light):
-        im, k, ps = likeness.render(mesh, self.cam, self.box, px=self.px, brows=False, passes=True, ao=True,
+        im, k, ps = likeness_render.render(mesh, self.cam, self.box, px=self.px, brows=False, passes=True, ao=True,
                                     shadow=(True if SHADOW else False), light=light)
         return ps
 
@@ -99,7 +100,7 @@ class View:
 
     def fit_light(self, mesh, iters=3):
         """the photo's light (c0, w, aw) and the smooth albedo, alternately, on the current mesh."""
-        _, _, ps = likeness.render(mesh, self.cam, self.box, px=self.px, brows=False, passes=True)
+        _, _, ps = likeness_render.render(mesh, self.cam, self.box, px=self.px, brows=False, passes=True)
         m = self.mask0 & (ps["part"] == 0)
         c0, w, _ = ls.fit_light(self.Y, ps["nrm"], m)
         light = (c0, np.asarray(w, float), 1.0, 0.8)

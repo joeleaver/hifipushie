@@ -8,10 +8,11 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import face_ruler as fr
+from hifipushie import face_ruler_compare, face_ruler_outline
 
 name = sys.argv[1]
 t = time.time()
-res = fr.compare(name)
+res = face_ruler_compare.compare(name)
 print(res["text"])
 print(f"({time.time() - t:.0f} s; reads {res['n']})")
 if len(sys.argv) > 2:
@@ -20,7 +21,7 @@ if len(sys.argv) > 2:
         im = v["img"].copy()
         d = ImageDraw.Draw(im)
         _, ps = fr.clay(res["head"], v["cam"], passes=True)
-        cm = fr._curve(ps["part"] >= 0)
+        cm = face_ruler_outline._curve(ps["part"] >= 0)
         d.line([tuple(p) for p in cm], fill=(0, 220, 0), width=2)
         if v.get("outline") is not None:
             d.line([tuple(p) for p in np.asarray(v["outline"])], fill=(240, 0, 0), width=2)

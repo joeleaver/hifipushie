@@ -56,18 +56,20 @@ def frames_of(spec, names):
 
 def lights(name, spec_name=None):
     from hifipushie import skin_read as sr
+    from hifipushie import skin_read_frames
     return {"photo": sr.LIGHT, "rake": RAKE, "top": TOP, "other": OTHER}[name]
 
 
 def shoot_all(model, spec, view_names, light_names, size=640, log=print):
     """{(light, view): RGB uint8 array (composited on mid grey)}."""
     from hifipushie import skin_read as sr, resources
+    from hifipushie import skin_read_frames
     out = {}
     with resources.heavy(f"skinfolds shots {model}", gb=6, log=log):
-        sn = sr.stage(model, spec, log=log)
+        sn = skin_read_frames.stage(model, spec, log=log)
         fr = frames_of(spec, view_names)
         for ln in light_names:
-            got = sr.shoot(sn, fr, lights(ln), size=size)
+            got = skin_read_frames.shoot(sn, fr, lights(ln), size=size)
             for f in fr:
                 a = got[f["name"]].astype(float) / 255.0
                 bg = np.array([0.42, 0.42, 0.44])

@@ -9,6 +9,7 @@ import copy, json, os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, store, likeness as lk, skin_project as sp
+from hifipushie import blockin_expression, blockin_models, likeness_render, skin_project_atlas, skin_project_detail, skin_project_make, skin_project_sample
 
 OUT = "/mnt/data/hifipushie/projskin/out"
 # three different lights (stage dicts): a soft frontal window from upper left, a hard key from the subject's left side, a top light
@@ -50,11 +51,11 @@ def shoot(src, dst):
     sk.pop("projection", None)
     sk["features"] = {**(sk.get("features") or {}), "freckles": 0.7, "moles": 0.6}
     sk["wrinkles"] = {"amount": 0.45}
-    rj = copy.deepcopy(bi._refs(src))
+    rj = copy.deepcopy(blockin_models._refs(src))
     d = store._dir(dst)
     (d / "refs").mkdir(parents=True, exist_ok=True)
     rj["blockin"] = {**(rj.get("blockin") or {}), "root": dst}
-    bi._save(dst, spec, f"synthetic ground truth from {src}", rj)
+    blockin_models._save(dst, spec, f"synthetic ground truth from {src}", rj)
     S = max(max(c["size"]) for c in rj["cameras"])
     for vi, crop, fr in frames_of(rj):
         cam = rj["cameras"][vi]
@@ -68,30 +69,30 @@ def shoot(src, dst):
         rj["views"][vi] = {**rj["views"][vi], "image": str(p)}
         rj["views"][vi].pop("points", None)
         print("view", vi, "->", p)
-    bi._save(dst, spec, "synthetic references", rj)
+    blockin_models._save(dst, spec, "synthetic references", rj)
     json.dump(LIGHTS, open(d / "refs" / "lights.json", "w"))
 
 
 def score(dst, **kw):
-    spec, rj = store.load(dst), bi._refs(dst)
+    spec, rj = store.load(dst), blockin_models._refs(dst)
     d = store._dir(dst)
     out = f"{OUT}/{dst}"
     os.makedirs(out, exist_ok=True)
-    r = sp.make(dst, **kw)
+    r = skin_project_make.make(dst, **kw)
     print(r["text"])
-    at = sp.atlas(spec["base"])
+    at = skin_project_atlas.atlas(spec["base"])
     VI = list(range(len(rj["views"])))
-    meshes = bi._per_view(spec["base"], rj, VI, lambda b: lk.model_mesh(b))
+    meshes = blockin_expression._per_view(spec["base"], rj, VI, lambda b: likeness_render.model_mesh(b))
     num, den = np.zeros((len(at["ii"]), 3)), np.zeros(len(at["ii"]))
     for vi in VI:
-        s = sp.sample_view(at, meshes[vi], rj["cameras"][vi], np.asarray(Image.open(d / "refs" / f"truth_v{vi}.png").convert("RGB")))
+        s = skin_project_sample.sample_view(at, meshes[vi], rj["cameras"][vi], np.asarray(Image.open(d / "refs" / f"truth_v{vi}.png").convert("RGB")))
         w = s["vis"] * sp._sstep((s["facing"] - 0.3) / 0.4)
         num += w[:, None] * s["rgb"]
         den += w
     truth = num / np.maximum(den, 1e-6)[:, None]
     direct = r["conf"][at["ii"], at["jj"], 0] / 255.0
     ok = (direct > 0.6) & (den > 0.5)
-    regs = sp.region_masks(at)
+    regs = skin_project_detail.region_masks(at)
     res = {}
     Lt = sp.lab(truth)
     print(f"\nsynthetic truth: Lab dE (CIE76) of the recovered albedo against the true one, texels the pictures cover ({int(ok.sum())}):")
@@ -111,17 +112,17 @@ def score(dst, **kw):
     for nm in ("raw", "albedo"):
         a = np.log(np.maximum(sp._lin(r[nm][at["ii"], at["jj"], :3] / 255.0), 1e-4))
         t = np.log(np.maximum(truth, 1e-4))
-        lo_a, lo_t = sp._blur(at, a, ok.astype(float), 4.0), sp._blur(at, t, ok.astype(float), 4.0)
+        lo_a, lo_t = skin_project_atlas._blur(at, a, ok.astype(float), 4.0), skin_project_atlas._blur(at, t, ok.astype(float), 4.0)
         e_lo = float(np.sqrt(np.mean(((lo_a - lo_t)[ok] @ sp.Y) ** 2)))
-        ha, ht = (a - sp._blur(at, a, ok.astype(float), 1.2))[ok] @ sp.Y, (t - sp._blur(at, t, ok.astype(float), 1.2))[ok] @ sp.Y
+        ha, ht = (a - skin_project_atlas._blur(at, a, ok.astype(float), 1.2))[ok] @ sp.Y, (t - skin_project_atlas._blur(at, t, ok.astype(float), 1.2))[ok] @ sp.Y
         print(f"  {nm}: broad (4 mm) log-luminance rms error {e_lo:.3f}; fine band (< 1.2 mm) correlation with the truth {np.corrcoef(ha, ht)[0, 1]:.2f}, strength ratio {ha.std() / max(ht.std(), 1e-9):.2f}")
     for nm in ("raw", "albedo"):   # error maps: dE x 12 as grey
         La = sp.lab(sp._lin(r[nm][at["ii"], at["jj"], :3] / 255.0))
         de = np.where(ok, np.linalg.norm(La - Lt, axis=1), 0)
-        Image.fromarray(sp.image(at, np.clip(de * 12, 0, 255).astype(np.uint8))).save(f"{out}/err_{nm}.png")
+        Image.fromarray(skin_project_atlas.image(at, np.clip(de * 12, 0, 255).astype(np.uint8))).save(f"{out}/err_{nm}.png")
     Image.fromarray(r["albedo"][..., :3]).save(f"{out}/albedo.png")
     Image.fromarray(r["raw"][..., :3]).save(f"{out}/raw.png")
-    Image.fromarray(sp.image(at, (np.clip(sp._srgb(truth), 0, 1) * 255).astype(np.uint8))).save(f"{out}/truth.png")
+    Image.fromarray(skin_project_atlas.image(at, (np.clip(sp._srgb(truth), 0, 1) * 255).astype(np.uint8))).save(f"{out}/truth.png")
     Image.fromarray(r["conf"]).save(f"{out}/conf.png")
     Image.fromarray(r["detail"]).save(f"{out}/detail.png")
     json.dump({"score": res, "report": r["report"]}, open(f"{out}/score.json", "w"), indent=1, default=str)

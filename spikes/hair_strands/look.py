@@ -5,6 +5,7 @@ import os
 import sys
 import time
 from hifipushie import hair, store
+from hifipushie import hair_look, hair_spec
 
 name, out = sys.argv[1], sys.argv[2]
 spec = store.load(name)
@@ -23,7 +24,7 @@ for a in sys.argv[3:]:
         h.setdefault("look", {})[k[5:]] = json.loads(v) if v[:1] not in "#" else v
     else:
         h.setdefault("strands", {})[k] = json.loads(v)
-hair.validate(spec)
+hair_spec.validate(spec)
 t = time.time()
-sheet, sec, frames = hair.look(name, views=views, size=size, save=os.path.join(os.environ["HR"], out), spec=spec)
-print("look", sec, "s", "bare", hair.look.mass_share, "gate", {k: v for k, v in (hair.look.gate or {}).items() if k != "owners"} if isinstance(hair.look.gate, dict) else hair.look.gate)
+sheet, sec, frames = hair_look.look(name, views=views, size=size, save=os.path.join(os.environ["HR"], out), spec=spec)
+print("look", sec, "s", "bare", hair_look.look.mass_share, "gate", {k: v for k, v in (hair_look.look.gate or {}).items() if k != "owners"} if isinstance(hair_look.look.gate, dict) else hair_look.look.gate)

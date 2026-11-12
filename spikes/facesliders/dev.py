@@ -6,6 +6,7 @@ import sys
 import numpy as np
 
 from hifipushie import base, gnmloops, humans, onemesh, store
+from hifipushie import base_imls, base_measures, base_surface, onemesh_head
 from hifipushie.spec import expand_mirror
 
 if len(sys.argv) > 1:
@@ -17,18 +18,18 @@ out = {}
 for on in (False, True):
     gnmloops.ENABLED = on
     onemesh._CACHE.clear(); base._CACHE.clear()
-    tpl = onemesh.template(sp["base"])
-    sf = base.surface(e, sp["base"])
+    tpl = onemesh_head.template(sp["base"])
+    sf = base_surface.surface(e, sp["base"])
     out[on] = (tpl, sf)
 t0, s0 = out[False]; t1, s1 = out[True]
 n0 = len(t0["P"])
 print("template verts", n0, "->", len(t1["P"]), "faces", len(t0["S"]), "->", len(t1["S"]))
 print("old vertices identical:", np.array_equal(t0["P"], t1["P"][:n0]), "fid identical:", np.array_equal(t0["fid"], t1["fid"][:n0]))
 V0 = s0["verts"]
-f0 = base._sd_body(V0, s0)
-d = np.abs(base._sd_body(V0, s1) - f0)
+f0 = base_imls._sd_body(V0, s0)
+d = np.abs(base_imls._sd_body(V0, s1) - f0)
 d0 = np.abs(f0)
-hd = base.head_of(e, sp["base"])
+hd = base_measures.head_of(e, sp["base"])
 eye = np.asarray(hd["eyes"])
 near = np.min([np.linalg.norm(V0 - c, axis=1) for c in eye], axis=0) < 0.03
 head = V0[:, 2] > np.asarray(hd["eyes"])[0][2] - 0.15

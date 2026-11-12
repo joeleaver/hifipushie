@@ -8,15 +8,16 @@ import json, sys
 import numpy as np
 
 from hifipushie import hair, humanfit, store
+from hifipushie import hair_head, humanfit_views
 
 name, tj, vi = sys.argv[1], sys.argv[2], int(sys.argv[3])
 h = float(sys.argv[4]) if len(sys.argv) > 4 else 0.010
 refs = json.loads((store.HOME / name / "human_refs.json").read_text())
 cam = refs["cameras"][vi]
-R = humanfit._cam_rot(cam)
+R = humanfit_views._cam_rot(cam)
 eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
 w, hh = cam["size"]
-sc = hair.scalp(name)
+sc = hair_head.scalp(name)
 tr = json.load(open(tj))
 
 

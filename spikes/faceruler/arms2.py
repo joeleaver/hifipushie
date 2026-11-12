@@ -17,6 +17,7 @@ import arms
 import drv
 import score2
 from hifipushie import face_ruler as fr, gnm_mm
+from hifipushie import face_ruler_solve
 
 G = os.environ["G"]
 NM = list(gnm_mm.NAMES)
@@ -63,14 +64,14 @@ if __name__ == "__main__":
             regs = [x["region"] for x in h["changes"]]
             mesh = {r["measure"]: r["gap"] for r in gnm_mm.gaps(drv.verts(cA), drv.verts(cB))}
             fv, dev = fitted_views(cA, cB, np.random.default_rng(2000 + i))
-            rf = fr.read(fr.gnm_head(cA), fv, cam_sd=fr.CAM_SD, rounds=4)
+            rf = face_ruler_solve.read(fr.gnm_head(cA), fv, cam_sd=fr.CAM_SD, rounds=4)
             g_f = {r["measure"]: r["gap"] for r in rf["gaps"]}
             g_c = g_f
             cs, ns = sig(cA, rf)
             ne = 0
             c8 = arms.apply(cA, g_f, 8)
             fv2, _ = fitted_views(c8, cB, np.random.default_rng(3000 + i))      # look again: the camera re-fitted too
-            r2 = fr.read(fr.gnm_head(c8), fv2, cam_sd=fr.CAM_SD, rounds=4)
+            r2 = face_ruler_solve.read(fr.gnm_head(c8), fv2, cam_sd=fr.CAM_SD, rounds=4)
             A = {"fitcam:all": arms.apply(cA, g_f), "fitcam:top8": c8, "fitcam:sig": cs,
                  "fitcam:top8x2": arms.apply(c8, {r["measure"]: r["gap"] for r in r2["gaps"]}, 8)}
             g = score2.grade(cA, cB, list(A.values()), regs)

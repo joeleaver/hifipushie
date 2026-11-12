@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import likeness, lidfold
+from hifipushie import likeness_detect
 from hifipushie.likeness_eyes import eye_box, frame
 
 out = sys.argv[1]
@@ -15,7 +16,7 @@ rows = {}
 for arg in sys.argv[2:]:
     lab, p = arg.split("=", 1)
     im = Image.open(p).convert("RGB")
-    d = likeness.detect([im])[0]
+    d = likeness_detect.detect([im])[0]
     if d is None:
         print(lab, "no face")
         continue

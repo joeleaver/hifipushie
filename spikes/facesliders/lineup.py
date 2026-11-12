@@ -6,9 +6,10 @@ from PIL import Image, ImageDraw
 
 import sheet1
 from hifipushie import likeness
+from hifipushie import likeness_sides
 
-refs = likeness._refs("ll_garrett")
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs("ll_garrett")
+ph = likeness_sides.photo_sides(refs)[0]
 crop = sheet1.crop_of(refs["views"][0])
 W = 300
 cols = [("concept", ph["img"].crop(tuple(int(round(c)) for c in crop)))]

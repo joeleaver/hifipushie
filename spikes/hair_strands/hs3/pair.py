@@ -3,6 +3,7 @@ as an engine draws them: strands | each GLB under alpha test | dithered."""
 import os, sys
 from PIL import Image, ImageDraw
 from hifipushie import hair, store
+from hifipushie import hair_look
 name, out = sys.argv[1], sys.argv[2]
 glbs, kw = [], {}
 for a in sys.argv[3:]:
@@ -15,11 +16,11 @@ spec = store.load(name)
 spec["hair"]["style"] = "strands"
 rows = []
 if dist is None:
-    sheet, _, _ = hair.look(name, views=views, size=size, spec=spec, clay=False)
+    sheet, _, _ = hair_look.look(name, views=views, size=size, spec=spec, clay=False)
     rows.append(("strands (the groom, EEVEE)", sheet.crop((0, 22, size * len(views), 22 + size))))
 for lab, glb in glbs:
     for alpha in ("test", "dither"):
-        imgs, _, _ = hair.look_glb(name, glb, views=views, size=size, alpha=alpha, dist=dist)
+        imgs, _, _ = hair_look.look_glb(name, glb, views=views, size=size, alpha=alpha, dist=dist)
         r = Image.new("RGB", (size * len(views), size))
         for i, im in enumerate(imgs):
             r.paste(im, (i * size, 0))

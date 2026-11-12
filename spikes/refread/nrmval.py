@@ -10,6 +10,7 @@ import os, sys
 import numpy as np
 from PIL import Image
 from hifipushie import face_ruler as fr, facenormals as fnm, blockin as bi, store
+from hifipushie import blockin_models, blockin_steps, face_ruler_blockin, face_ruler_compare, face_ruler_features, face_ruler_solve
 
 mode = sys.argv[1]
 m = sys.argv[2] if len(sys.argv) > 2 else "tk_T06"
@@ -17,8 +18,8 @@ diff = (sys.argv[3].replace("diff=", "") if len(sys.argv) > 3 else "0")       # 
 diff = {"0": None}.get(diff, diff)
 OUT = "/mnt/data/hifipushie/refread/out"
 spec = store.load(m)
-rj = bi._refs(m)
-A = fr.model_head(spec)
+rj = blockin_models._refs(m)
+A = face_ruler_blockin.model_head(spec)
 c0 = bi.identity(spec)
 gr = fr._gnm()["gr"]
 gid = np.asarray(A["gid"], int)
@@ -26,7 +27,7 @@ cheek = np.zeros(len(gr["skin"]), bool)
 for k in ("left_cheek_region", "right_cheek_region", "left_zygomatic_region", "right_zygomatic_region",
           "left_infraorbital_region", "right_infraorbital_region", "left_parotid_region", "right_parotid_region"):
     cheek |= gr[k]
-sm = fr._normal_model(A)
+sm = face_ruler_features._normal_model(A)
 ck = cheek[gid[sm["idx"]]]
 Bn = np.einsum("kvc,vc->kv", np.asarray(A["B"][:, sm["idx"]], float), sm["N"]) * 1000.0     # mm along the normal per unit
 rng = np.random.default_rng(3)
@@ -57,7 +58,7 @@ def dressed(name, vi, cam, ib):
 def views_of(name, head):
     out = []
     for vi, (v, cam, box) in enumerate(zip(rj["views"], rj["cameras"], rj["blockin"]["boxes"])):
-        kind = fr.kind_of(v.get("yaw", 0))
+        kind = face_ruler_compare.kind_of(v.get("yaw", 0))
         if mode == "clay":
             img = fr.clay(head, cam, light=(0.45, np.array([0.10, -0.15, -0.40]), 1.6 * (0.45 + 0.44)))
             out.append({"img": img, "cam": cam, "kind": kind, "style": "clay"})
@@ -75,24 +76,24 @@ ref = None
 if diff == "1":
     ref = []
     for vw in views_of(m, A):
-        fr._normal_obs(A, vw)
+        face_ruler_features._normal_obs(A, vw)
         ref.append(vw["_nrm"])
 elif diff == "clay":
-    ref = [fr._normals_of_model(A, vw) for vw in views_of(m, A)]
+    ref = [face_ruler_features._normals_of_model(A, vw) for vw in views_of(m, A)]
 for cn, dct in CASES.items():
     name = m
     if cn != "null" and mode == "dressed":
         name = f"nv_{cn}"
         if not (store.HOME / "nv_A" / "spec.json").exists():
-            bi.fork(m, "nv_A")                       # (steps log into the fork, never into the model's own block-in)
+            blockin_models.fork(m, "nv_A")                       # (steps log into the fork, never into the model's own block-in)
         if not (store.HOME / name / "spec.json").exists():
-            bi.step("nv_A", {}, out=name, seen="refread validation", why=SAY[cn], _identity=c0 + dct)
-    Bh = fr.model_head(spec, c0 + dct, A["kappa"])
+            blockin_steps.step("nv_A", {}, out=name, seen="refread validation", why=SAY[cn], _identity=c0 + dct)
+    Bh = face_ruler_blockin.model_head(spec, c0 + dct, A["kappa"])
     vs = views_of(name, Bh)
-    obs = [ob for i, vw in enumerate(vs) for ob in fr._normal_obs(A, vw, None if ref is None else ref[i])]
+    obs = [ob for i, vw in enumerate(vs) for ob in face_ruler_features._normal_obs(A, vw, None if ref is None else ref[i])]
     if not obs:
         print(cn, "NO OBS"); continue
-    out = fr.solve(obs, A, tau=1.0)
+    out = face_ruler_solve.solve(obs, A, tau=1.0)
     o = np.array([ob["o"] for ob in obs])
     pred = np.array([ob["J"] for ob in obs]) @ dct
     de, dt = out["dc"] @ Bn, dct @ Bn

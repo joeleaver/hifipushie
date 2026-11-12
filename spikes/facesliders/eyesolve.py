@@ -19,6 +19,7 @@ from PIL import Image
 
 import stage
 from hifipushie import aperture, faceatlas, humanfit, lidfold, likeness, store
+from hifipushie import humanfit_solve, humanfit_views, likeness_detect, likeness_measure
 
 F = "/mnt/data/hifipushie/facesliders"
 src, out, fold0 = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
@@ -44,7 +45,7 @@ refs = json.loads((store.HOME / src / "human_refs.json").read_text())
 v, cam = refs["views"][0], refs["cameras"][0]
 st0 = humanfit.state(sp0["base"])
 L = st0["L"]
-eyes_px = humanfit.project(cam, L[36:48])
+eyes_px = humanfit_views.project(cam, L[36:48])
 lo, hi = eyes_px.min(0), eyes_px.max(0)
 c = 0.5 * (lo + hi)
 s = 1.7 * (hi - lo)[0]
@@ -60,11 +61,11 @@ c_id0 = humanfit.identity(sp0["base"])
 
 def measures(img):
     big = img.resize((img.width * UP, img.height * UP), Image.LANCZOS)
-    d = likeness.detect([big])[0]
+    d = likeness_detect.detect([big])[0]
     if d is None:
         return None
     P = np.asarray(d, float)[:, :2] / UP
-    side = likeness.Side(P, None, "detector")
+    side = likeness_measure.Side(P, None, "detector")
     ex, ey = side.frame()
     op = np.mean([abs((P[a] - P[b]) @ ey) for a, b in ((159, 145), (386, 374))]) * MMPX
     lash = np.mean([((P[c_] - P[a]) @ ey) for a, c_ in ((159, 468), (386, 473))]) * MMPX   # + = lid above the iris centre
@@ -82,7 +83,7 @@ def spec_of(x):
     h["pose"] = {**(h.get("pose") or {}), "lid_upper": round(float(x[0]), 6), "lid_lower": round(float(x[1]), 6)}
     h["fold"] = {**fold0, "crease_height": round(float(x[2]), 3), "fold_overhang": round(float(x[3]), 3)}
     h["sliders"] = {k: v_ for k, v_ in (h.get("sliders") or {}).items() if k not in DROP}
-    sp["base"] = humanfit._with_identity(sp["base"], c_id0 + float(x[4]) * DIR_AP)
+    sp["base"] = humanfit_solve._with_identity(sp["base"], c_id0 + float(x[4]) * DIR_AP)
     return sp
 
 
@@ -106,7 +107,7 @@ def pid(name, x):
     k = SIZE / (box[2] - box[0])
     ops, tops, bots = [], [], []
     for e in (68, 69):
-        u, v_ = (humanfit.project(cam, st["L"][e][None])[0] - [box[0], box[1]]) * k
+        u, v_ = (humanfit_views.project(cam, st["L"][e][None])[0] - [box[0], box[1]]) * k
         col = m[:, int(round(u)) - 2:int(round(u)) + 3].any(1)
         rows = _np.flatnonzero(col)
         if not len(rows):

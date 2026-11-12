@@ -11,6 +11,7 @@ from PIL import Image
 
 import sheet1
 from hifipushie import likeness
+from hifipushie import likeness_detect, likeness_sides
 from hifipushie.likeness_eyes import frame
 
 L = os.environ["L"]
@@ -44,8 +45,8 @@ def profiles(Y, P, scale, origin, mmpx):
     return out
 
 
-refs = likeness._refs("ll_garrett")
-ph = likeness.photo_sides(refs)[0]
+refs = likeness_sides._refs("ll_garrett")
+ph = likeness_sides.photo_sides(refs)[0]
 P = ph["side"].P
 rows = {"photo": profiles(lum(ph["img"]), P, 1.0, np.zeros(2), ph["mmpx"])}
 crop = sheet1.crop_of(refs["views"][0])
@@ -53,7 +54,7 @@ for arg in sys.argv[1:]:
     lab, tag = arg.split("=", 1)
     im = Image.open(f"{L}/out/{tag.split(':', 1)[1]}_front_big.png")
     s = im.size[0] / (crop[2] - crop[0])
-    Pm = likeness.detect([im])[0] / s + np.array(crop[:2])
+    Pm = likeness_detect.detect([im])[0] / s + np.array(crop[:2])
     rows[lab] = profiles(lum(im), Pm, s, np.array(crop[:2]), ph["mmpx"])
 for lab, r in rows.items():
     print(lab)

@@ -6,17 +6,18 @@ import sys, time
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import face_ruler as fr, blockin as bi, store
+from hifipushie import blockin_look, blockin_models, face_ruler_blockin, face_ruler_outline
 
 m, out = sys.argv[1], sys.argv[2]
 vs = [int(x) for x in (sys.argv[3].split("=")[1].split(",") if len(sys.argv) > 3 else "0,1")]
-rj = bi._refs(m)
-head = fr.model_head(store.load(m))
+rj = blockin_models._refs(m)
+head = face_ruler_blockin.model_head(store.load(m))
 tiles = []
 for vi in vs:
     v, cam = rj["views"][vi], rj["cameras"][vi]
     img = Image.open(v["image"]).convert("RGB")
     t = time.time()
-    im, lt, ps = bi.lit_render(head["mesh"], cam, img)
+    im, lt, ps = blockin_look.lit_render(head["mesh"], cam, img)
     print(f"view {vi}: lit_render {time.time() - t:.1f} s; light c0 {lt[0]:.3f} w {np.round(lt[1], 3)} ao share {lt[3]:.2f}; render {im.size}")
     k = im.size[1] / img.size[1]
     L = np.asarray(head["L"], float)
@@ -27,7 +28,7 @@ for vi in vs:
     la, lb = a @ [0.299, 0.587, 0.114], b @ [0.299, 0.587, 0.114]
     # the jaw polyline, resampled every 4 mm
     J = P[2:15]
-    S = fr._resample(J, 4.0 / mm)
+    S = face_ruler_outline._resample(J, 4.0 / mm)
     T = np.gradient(S, axis=0); T /= np.linalg.norm(T, axis=1, keepdims=True)
     N = np.stack([-T[:, 1], T[:, 0]], 1)
     c = P[[30, 8]].mean(0)

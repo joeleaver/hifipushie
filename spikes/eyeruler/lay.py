@@ -3,9 +3,10 @@ import json
 import sys
 
 from hifipushie import skin, store
+from hifipushie import skin_build
 
 sp = store.load(sys.argv[1])
-ly = skin.layers(sp)
+ly = skin_build.layers(sp)
 names = list(ly)
 print(len(names), "layers; eye-ish:", [n for n in names if any(k in n for k in ("eye", "carunc", "crease", "lash", "water"))])
 for n in names:

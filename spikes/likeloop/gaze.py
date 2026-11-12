@@ -4,6 +4,7 @@ import sys
 import numpy as np
 
 from hifipushie import humanfit, likeness, store
+from hifipushie import humanfit_views, likeness_sides
 
 name = sys.argv[1] if len(sys.argv) > 1 else "ll_garrett"
 b = store.load(name)["base"]
@@ -14,9 +15,9 @@ print("eye centres", E.round(4).tolist(), "look_at", la.tolist())
 for e in E:
     d = la - e
     print("gaze down deg", round(float(np.degrees(np.arctan2(-d[2], np.hypot(d[0], d[1])))), 2))
-cam = likeness._refs(name)["cameras"][0]
+cam = likeness_sides._refs(name)["cameras"][0]
 c = np.asarray(cam["centre"], float)
-Rc = humanfit._cam_rot(cam)
+Rc = humanfit_views._cam_rot(cam)
 X0 = c - Rc.T @ np.asarray(cam["t"], float)
 print("camera world position", X0.round(3).tolist())
 for e in E:

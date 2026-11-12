@@ -138,6 +138,7 @@ def to_stage(name, ht, Vs):
     from scipy.spatial import cKDTree
 
     from hifipushie import base as basemod, skin_look, store
+    from hifipushie import base_identity
     J = skin_look._J(store.load(name))
     A, B = [], []
     for k, i in basemod.LANDMARKS.items():
@@ -169,4 +170,5 @@ def to_stage(name, ht, Vs):
 def skin_ids():
     """GNM vertex ids of base.gnm_head's skin, in the order of head_template()["verts"]."""
     from hifipushie import base as basemod
-    return np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+    from hifipushie import base_identity
+    return np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))

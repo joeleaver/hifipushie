@@ -8,12 +8,13 @@ import numpy as np
 
 import stage
 from hifipushie import aperture, humanfit, scene, store
+from hifipushie import humanfit_views
 
 for name in sys.argv[1:]:
     refs = json.loads((store.HOME / name / "human_refs.json").read_text())
     cam = refs["cameras"][0]
     st = humanfit.state(store.load(name)["base"])
-    uv = humanfit.project(cam, st["L"][48:68])
+    uv = humanfit_views.project(cam, st["L"][48:68])
     c = uv.mean(0)
     s = 2.2 * np.ptp(uv[:, 0])
     fr = stage.fitted_frame(cam, [c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2], "mouth")

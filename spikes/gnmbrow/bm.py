@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import likeness, lidfold
+from hifipushie import likeness_detect
 from hifipushie.likeness_eyes import frame
 
 G = os.environ.get("G", "/mnt/data/hifipushie/gnmbrow") + "/out"
@@ -23,7 +24,7 @@ FR = (0.25, 0.5, 0.75)
 
 def read(img, P=None, draw=None):
     if P is None:
-        P = likeness.detect([img])[0]
+        P = likeness_detect.detect([img])[0]
     P = np.asarray(P, float)[:, :2]
     L = lidfold._lum(img)
     ex, ey = (np.asarray(v, float) for v in frame(P))

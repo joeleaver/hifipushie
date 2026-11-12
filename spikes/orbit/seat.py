@@ -11,6 +11,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin as bi, blockin_lid as bl, onemesh, store
+from hifipushie import onemesh_head
 
 args = sys.argv[1:]
 n = int(args.pop(0)) if args and args[0].isdigit() else 150
@@ -18,7 +19,7 @@ CLEAR = 0.25e-3
 
 
 def head(base):
-    ht = onemesh.head_template(base)
+    ht = onemesh_head.head_template(base)
     for kk in [k for k in onemesh._CACHE if isinstance(k, tuple) and k and k[0] == "head_t"]:
         onemesh._CACHE.pop(kk, None)
     return ht

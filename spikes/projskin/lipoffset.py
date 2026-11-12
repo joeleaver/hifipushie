@@ -5,11 +5,12 @@ import sys
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, humanfit, store
+from hifipushie import blockin_clay, blockin_expression, blockin_models, humanfit_views
 for m in sys.argv[1:]:
-    rj = bi._refs(m); vi = bi._front(rj); v, cam = rj["views"][vi], rj["cameras"][vi]
-    P = np.asarray(bi.detect_view(Image.open(v["image"]).convert("RGB"), v), float)[:, :2]
-    st = humanfit.state(bi.view_base(store.load(m)["base"], rj, vi)); L = st["L"]
-    M = humanfit.project(cam, L[:68])
+    rj = blockin_models._refs(m); vi = blockin_clay._front(rj); v, cam = rj["views"][vi], rj["cameras"][vi]
+    P = np.asarray(blockin_clay.detect_view(Image.open(v["image"]).convert("RGB"), v), float)[:, :2]
+    st = humanfit.state(blockin_expression.view_base(store.load(m)["base"], rj, vi)); L = st["L"]
+    M = humanfit_views.project(cam, L[:68])
     mmpx = 1000.0 * float(np.linalg.norm(L[36] - L[45])) / float(np.linalg.norm(M[36] - M[45]))
     up = np.array([0.0, -1.0])
     def dv(p, q): return float((p - q)[1]) * mmpx

@@ -9,22 +9,23 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import hair, hair_read, humanfit, store
+from hifipushie import hair_head, hair_read_capture, hair_read_measures, humanfit_views
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 OUT = os.environ["TOUT"]
 views = [int(v) for v in kw.get("views", "0,1,2").split(",")]
 spec = store.load(m)
-sc = hair.scalp(m, spec)
-fp = {f["i"]: f for f in hair_read.frames(m, spec)}
-fo = {f["i"]: f for f in hair_read.frames(m, spec, images={i: f"{OUT}/s_{m}_v{i}.png" for i in views})}
+sc = hair_head.scalp(m, spec)
+fp = {f["i"]: f for f in hair_read_capture.frames(m, spec)}
+fo = {f["i"]: f for f in hair_read_capture.frames(m, spec, images={i: f"{OUT}/s_{m}_v{i}.png" for i in views})}
 T = 520
 tiles = []
 for i in views:
     a, b = fp[i], fo[i]
     lines = {}
     for nm, f in (("picture", a), ("ours", b)):
-        pts, _ = hair_read.hairline_pixels(f["hair"], f["skin"], step=2)
+        pts, _ = hair_read_measures.hairline_pixels(f["hair"], f["skin"], step=2)
         if len(pts):
             P, hit, _ = hair_read.onto_scalp(sc, f["cam"], pts, step=0.001)
             az, el, _ = sc.coords(P)
@@ -36,7 +37,7 @@ for i in views:
             lines[nm] = (pts[ok], fa[ok], P[ok, 2])
     # crop round the front hairline: the scalp's front-top point
     cam = a["cam"]
-    c = humanfit.project(cam, sc.point(np.array([0.0 if abs(a["yaw"]) < 60 else (90.0 if a["yaw"] < 0 else -90.0) * 0.5]),
+    c = humanfit_views.project(cam, sc.point(np.array([0.0 if abs(a["yaw"]) < 60 else (90.0 if a["yaw"] < 0 else -90.0) * 0.5]),
                                        np.array([35.0]), 0.0))[0]
     s = 0.13 * cam["f"] / np.linalg.norm(sc.C - hair_read.cam_eye(cam)[0])
     box = (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2)

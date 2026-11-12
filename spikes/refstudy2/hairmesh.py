@@ -4,17 +4,18 @@ hair.cap_mesh(mass=True, sunk=True)). Run as a script: model ... -> lock count, 
 import sys
 import numpy as np
 from hifipushie import hair, store
+from hifipushie import hair_groom, hair_head, hair_lockmesh, hair_spec
 
 
 def groom_mesh(name: str, spec: dict | None = None, n: int = 16, across: int = 5, step: float = 2.0):
     spec = store.load(name) if spec is None else spec
     if not spec.get("hair"):
         return None
-    sc = hair.scalp(name, spec)
-    g = hair.groom_params(spec)
-    locks = hair.resolve(spec, sc)
-    LV, LQ = hair.lock_meshes(sc, locks, n=n, across=across)
-    UV, UQ = hair.cap_mesh(sc, g, 0.0, mass=True, sunk=True, step=step)
+    sc = hair_head.scalp(name, spec)
+    g = hair_groom.groom_params(spec)
+    locks = hair_spec.resolve(spec, sc)
+    LV, LQ = hair_lockmesh.lock_meshes(sc, locks, n=n, across=across)
+    UV, UQ = hair_lockmesh.cap_mesh(sc, g, 0.0, mass=True, sunk=True, step=step)
     UV, UQ = np.asarray(UV, float), np.asarray(UQ, int)
     V = np.r_[LV, UV]
     Q = np.r_[LQ, UQ + len(LV)]

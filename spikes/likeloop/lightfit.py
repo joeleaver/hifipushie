@@ -10,6 +10,7 @@ from PIL import Image
 
 import sheet1
 from hifipushie import humanfit, likeness, likeness_pair
+from hifipushie import humanfit_views, likeness_sides
 from hifipushie import likeness_shape as ls
 
 L = os.environ["L"]
@@ -41,7 +42,7 @@ def fit(Yimg, md, ph):
     to_px = lambda P: (np.asarray(P, float) - [ph["box"][0], ph["box"][1]]) * md["k"]  # noqa: E731
     mask = ls.skin_mask(ph["side"], (H, W), to_px, md["k"] / md["mmpx"]) & (ps["part"] == 0)
     c0, w, rms = ls.fit_light(Y, ps["nrm"], mask)
-    Rc = humanfit._cam_rot(md["cam"])
+    Rc = humanfit_views._cam_rot(md["cam"])
     dw = Rc.T @ (np.asarray(w) / max(np.linalg.norm(w), 1e-9))
     return {"c0": round(c0, 4), "w": round(float(np.linalg.norm(w)), 4), "hard": round(float(np.linalg.norm(w) / (c0 + np.linalg.norm(w))), 3),
             "dir_world": np.round(dw, 3).tolist(), "rms": round(rms, 4),
@@ -53,7 +54,7 @@ ph, md = m["ph"], m["md"]
 H, W = md["passes"]["zb"].shape
 box = ph["box"]
 print("photo", fit(ph["img"].transform((W, H), Image.EXTENT, tuple(box), Image.BICUBIC), md, ph))
-crop = sheet1.crop_of(likeness._refs("ll_garrett")["views"][0])
+crop = sheet1.crop_of(likeness_sides._refs("ll_garrett")["views"][0])
 for tag in sys.argv[1:]:
     im = Image.open(f"{L}/out/{tag}_front_big.png").convert("RGB")
     s = im.size[0] / (crop[2] - crop[0])

@@ -5,6 +5,7 @@ import json, os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image
 from hifipushie import blockin as bi, humanfit, likeness, store
+from hifipushie import blockin_models, humanfit_views
 
 D = "/mnt/data/hifipushie/refread/dl/parse"
 SRC = r'''
@@ -40,10 +41,10 @@ rows = []
 with tempfile.TemporaryDirectory(dir="/mnt/data/hifipushie/refread/out") as td:
     paths = []
     for m in models:
-        rj = bi._refs(m)
+        rj = blockin_models._refs(m)
         L = humanfit.state(store.load(m)["base"])["L"]
         for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
-            P = humanfit.project(cam, np.asarray(L, float)[:68])
+            P = humanfit_views.project(cam, np.asarray(L, float)[:68])
             c = 0.5 * (P.min(0) + P.max(0))
             s = 2.1 * float(np.ptp(P[:, 1]))
             img = Image.open(v["image"]).convert("RGB")

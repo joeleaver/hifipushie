@@ -6,6 +6,7 @@ gphone.py first told the width number (the *L00 / gt_ph*_A00 starts: a lens 39 %
 import copy, json, sys
 import numpy as np
 from hifipushie import blockin as bi, store
+from hifipushie import blockin_models
 
 T, S0 = sys.argv[1], sys.argv[2]
 rj = json.loads((store.HOME / T / "human_refs.json").read_text())
@@ -17,5 +18,5 @@ for v, cam in zip(rj["views"], rj["cameras"]):
     v["lens_mm"] = round(float(cam["f"]) * 43.27 / float(np.hypot(w, h)), 1)
     views.append(v)
 bd = sp["base"]["body"]
-e = bi.start(S0, views, sex="male" if float(bd.get("sex", 1)) >= 0.5 else "female", age=float(bd.get("age", 35)), cameras="refit", replace=True)
+e = blockin_models.start(S0, views, sex="male" if float(bd.get("sex", 1)) >= 0.5 else "female", age=float(bd.get("age", 35)), cameras="refit", replace=True)
 print(S0, [v["lens_mm"] for v in views], e["start"]["cameras"])

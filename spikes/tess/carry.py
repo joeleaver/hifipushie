@@ -3,6 +3,7 @@
 its metres scale onto the new head; regrown (groom_hair replace) and synced."""
 import copy, sys, time
 from hifipushie import hair, server, store
+from hifipushie import hair_groom, hair_head
 
 src, head, dst = sys.argv[1:4]
 fit = len(sys.argv) <= 4 or sys.argv[4] != "0"
@@ -10,8 +11,8 @@ a, b = store.load(src), copy.deepcopy(store.load(head))
 b["hair"] = {k: copy.deepcopy(v) for k, v in a["hair"].items() if k != "locks"}
 b.setdefault("parts", {})["hair"] = copy.deepcopy((a.get("parts") or {}).get("hair") or {})
 if fit:
-    b["hair"]["groom"]["fit"] = hair.head_ref(hair.scalp(src))
-    print("fit", b["hair"]["groom"]["fit"], "-> this head", hair.head_ref(hair.scalp(head)))
+    b["hair"]["groom"]["fit"] = hair_groom.head_ref(hair_head.scalp(src))
+    print("fit", b["hair"]["groom"]["fit"], "-> this head", hair_groom.head_ref(hair_head.scalp(head)))
 store.save(dst, b, f"{head} + {src}'s groom" + (" (fit to the head)" if fit else ""))
 rf = store.HOME / head / "human_refs.json"
 if rf.exists():

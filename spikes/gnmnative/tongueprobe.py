@@ -2,8 +2,9 @@
 import numpy as np
 
 from hifipushie import base as basemod
+from hifipushie import base_identity
 
-g = basemod._gnm_data()
+g = base_identity._gnm_data()
 G = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
 T = g["template_vertex_positions"].astype(float)
 E = g["expression_basis"]

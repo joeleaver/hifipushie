@@ -22,6 +22,7 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 from hifipushie import hair, hair_read as hr, hair_strands as hs, humanfit, store
+from hifipushie import hair_groom, hair_head, hair_job, hair_read_capture, hair_read_measures, hair_seat, hair_strands_eval, humanfit_views
 from laygeo import merge
 
 HAIR_RGB = np.array([62.0, 52.0, 44.0])
@@ -57,12 +58,12 @@ class Flat:
         self.A, self.B = pts[ia], pts[ia + 1]
         self.rad = D["radius"].astype(float)[sid[ia]]
         self.refs = json.loads((store.HOME / m / "human_refs.json").read_text())
-        g = hair.fit_to_head(copy.deepcopy(hair.groom_params(spec)), sc)
-        self.line = hair.hairline(sc, g)
+        g = hair_seat.fit_to_head(copy.deepcopy(hair_groom.groom_params(spec)), sc)
+        self.line = hair_groom.hairline(sc, g)
         A_, E_ = np.meshgrid(np.arange(0, 360, 0.25), np.arange(-60, 90, 0.25))
         self.saz, self.sel = A_.ravel(), E_.ravel()
         self.S = sc.point(self.saz, self.sel, 0.0)
-        self.sin = hair.inside(sc, self.line, self.saz, self.sel) > 0
+        self.sin = hair_groom.inside(sc, self.line, self.saz, self.sel) > 0
         # the strands job's scalp: its hp_density is the alpha of the root-shadow tint (blender_strands.scalp_object:
         # density x look.scalp_tint over the skin; hcover's magenta = density x 1.0)
         from scipy.spatial import cKDTree
@@ -88,7 +89,7 @@ class Flat:
             return P if Rw is None else C + (P - C) @ Rw.T
 
         S = tr(self.S)
-        q = humanfit.project(cam, S) * F
+        q = humanfit_views.project(cam, S) * F
         dz = (S - eye) @ R[2]
         # the head's depth on 3 px cells (the 0.25 deg grid is ~0.4 mm apart, a raster px ~0.2 mm: per-pixel it had
         # holes the back of the groom showed through), nearest scalp point per cell, gaps closed, back to pixels
@@ -115,14 +116,14 @@ class Flat:
         dn = np.zeros((h, w))
         dn[idx >= 0] = self.sdn[idx[idx >= 0]]
         dn = np.where(head, ndi.grey_closing(dn, 3), 0.0)
-        Xc = (C - np.asarray(cam["centre"], float)) @ humanfit._cam_rot(cam).T + np.asarray(cam["t"], float)
+        Xc = (C - np.asarray(cam["centre"], float)) @ humanfit_views._cam_rot(cam).T + np.asarray(cam["t"], float)
         mm = float(Xc[2]) / float(cam["f"]) * 1000.0  # mm a picture px at the head centre
         dens = np.zeros(h * w)
         dens_s = np.zeros(h * w)
         n = len(self.A)
         for k0 in range(0, n, 400000):
             A, B = tr(self.A[k0:k0 + 400000]), tr(self.B[k0:k0 + 400000])
-            qa, qb = humanfit.project(cam, A) * F, humanfit.project(cam, B) * F
+            qa, qb = humanfit_views.project(cam, A) * F, humanfit_views.project(cam, B) * F
             L = np.hypot(*(qb - qa).T)
             ns = np.maximum(1, np.ceil(L / 0.5)).astype(int)
             wpx = np.maximum(2 * self.rad[k0:k0 + 400000] * 1000 / mm * F, 1.0)
@@ -167,18 +168,18 @@ class Flat:
         skin = (headp & ~hpm).astype(float)
         bg = (~headp & ~hpm).astype(float)
         sk = np.zeros((H, W), bool)
-        uv = humanfit.project(r["cam"], self.sc.point(self.saz[::16], self.sel[::16], 0.0))  # (as frames' skull)
+        uv = humanfit_views.project(r["cam"], self.sc.point(self.saz[::16], self.sel[::16], 0.0))  # (as frames' skull)
         q = np.round(uv).astype(int)
         ok = (q[:, 0] >= 0) & (q[:, 0] < W) & (q[:, 1] >= 0) & (q[:, 1] < H)
         sk[q[ok, 1], q[ok, 0]] = True
         sk = ndi.binary_fill_holes(ndi.binary_closing(sk, iterations=4))
-        return {"i": ci, "image": im, "cam": r["cam"], "mm": r["mm"], "c": humanfit.project(r["cam"], self.sc.C[None])[0],
+        return {"i": ci, "image": im, "cam": r["cam"], "mm": r["mm"], "c": humanfit_views.project(r["cam"], self.sc.C[None])[0],
                 "hair": hp, "skin": skin, "bg": bg, "skull": sk}
 
 
 def standoff(sc, f):
-    hn = hr.hairness(f["image"], f["hair"], f["bg"], f["mm"])
-    o = hr.outline_rays(f["skull"], hn["solid"], hn["a"], f["bg"], f["c"], f["mm"])
+    hn = hair_read_measures.hairness(f["image"], f["hair"], f["bg"], f["mm"])
+    o = hair_read_measures.outline_rays(f["skull"], hn["solid"], hn["a"], f["bg"], f["c"], f["mm"])
     ks = np.nonzero(o["meets"])[0]
     if not len(ks):
         return {}
@@ -192,7 +193,7 @@ def standoff(sc, f):
 
 def hline(sc, f):
     """hlinetrace's line: (|az|, height z) of the hair / skin boundary cast onto the scalp, front-facing."""
-    pts, _ = hr.hairline_pixels(f["hair"], f["skin"], step=2)
+    pts, _ = hair_read_measures.hairline_pixels(f["hair"], f["skin"], step=2)
     if not len(pts):
         return None
     P, hit, _ = hr.onto_scalp(sc, f["cam"], pts, step=0.001)
@@ -248,7 +249,7 @@ def widths(sc, f, dz=(40, 60, 80, 100, 0, -20, -40)):
     sil = np.asarray(f["bg"], float) < 0.5
     out = {}
     for d in dz:
-        uv = humanfit.project(f["cam"], np.array([[sc.C[0], sc.C[1], sc.C[2] + d / 1000.0]]))[0]
+        uv = humanfit_views.project(f["cam"], np.array([[sc.C[0], sc.C[1], sc.C[2] + d / 1000.0]]))[0]
         r = int(round(uv[1]))
         if not 0 <= r < sil.shape[0]:
             continue
@@ -264,12 +265,12 @@ def back_extent(sc, f, dz=(0, -20, -40)):
     horizontal) at heights dz mm over C: the stand-off behind the ear (dz 0 .. -40 = ear height), where the reviewers
     saw a flare / skirt that the stand-off rays (median over the back region) and the front widths (+40..+80) miss."""
     sil = np.asarray(f["bg"], float) < 0.5
-    c = humanfit.project(f["cam"], sc.C[None])[0]
-    b = humanfit.project(f["cam"], (sc.C + np.array([0, 0.06, 0]))[None])[0]
+    c = humanfit_views.project(f["cam"], sc.C[None])[0]
+    b = humanfit_views.project(f["cam"], (sc.C + np.array([0, 0.06, 0]))[None])[0]
     sgn = np.sign(b[0] - c[0]) or 1.0
     out = {}
     for d in dz:
-        uv = humanfit.project(f["cam"], np.array([[sc.C[0], sc.C[1], sc.C[2] + d / 1000.0]]))[0]
+        uv = humanfit_views.project(f["cam"], np.array([[sc.C[0], sc.C[1], sc.C[2] + d / 1000.0]]))[0]
         r = int(round(uv[1]))
         if not 0 <= r < sil.shape[0]:
             continue
@@ -288,8 +289,8 @@ def hem(sc, f):
     median over columns), its softness (mm from hair 0.8 to 0.2 going down) and its spread (mm, p90 - p10 of the
     edge's height: a level blunt cut is small)."""
     hp = np.asarray(f["hair"], float)
-    c = humanfit.project(f["cam"], sc.C[None])[0]
-    b = humanfit.project(f["cam"], (sc.C + np.array([0, 0.06, 0]))[None])[0]
+    c = humanfit_views.project(f["cam"], sc.C[None])[0]
+    b = humanfit_views.project(f["cam"], (sc.C + np.array([0, 0.06, 0]))[None])[0]
     sgn = np.sign(b[0] - c[0]) or 1.0
     mm = f["mm"]
     zs, soft = [], []
@@ -365,13 +366,13 @@ def screen(m, out, patch=None, lay=True, count=0):
         spec = copy.deepcopy(spec)
         merge(spec["hair"], json.load(open(patch)))
         tag = m + "_" + patch.rsplit("/", 1)[-1].replace(".json", "")
-    sc = hair.scalp(m, spec)
-    sd = hair.job(m, spec, count=count or None)["strands"]
-    D = hs.strands_of_model(sd)
+    sc = hair_head.scalp(m, spec)
+    sd = hair_job.job(m, spec, count=count or None)["strands"]
+    D = hair_strands_eval.strands_of_model(sd)
     fl = Flat(m, spec, D, sc, sd)
     print(f"{tag}: {len(D['counts'])} strands, {len(fl.A)} segments, {time.time() - t0:.0f} s", flush=True)
     res = {"tag": tag}
-    fp = {f["i"]: f for f in hr.frames(m, spec)}
+    fp = {f["i"]: f for f in hair_read_capture.frames(m, spec)}
     so, lines, raw = [], {}, {}
     for ci in (0, 1, 2):
         f = fl.frame(ci)
@@ -384,7 +385,7 @@ def screen(m, out, patch=None, lay=True, count=0):
             # against an opacity ramp, hem_soft never moved, 4.2-5.2 vs 8.2. The same net on our flat image instead)
             pth = f"{out}/scr_{tag}_v{ci}_net.png"
             f["image"].save(pth)
-            fn = hr.frames(m, spec, views=[ci], images={ci: pth})[0]
+            fn = hair_read_capture.frames(m, spec, views=[ci], images={ci: pth})[0]
             res["hem"]["net"] = hem(sc, {**f, "hair": fn["hair"]})
             bo, bp = back_extent(sc, f), back_extent(sc, fp[ci])
             res["back_extent"] = {k: (bo[k], bp[k]) for k in bo if k in bp}

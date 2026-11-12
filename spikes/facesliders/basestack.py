@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw
 
 import wholeclay as WC
 from hifipushie import humanfit, humanmacro as hmac, likeness, store
+from hifipushie import humanfit_views, likeness_render
 
 T = int(os.environ.get("T", "300"))
 F = os.environ.get("F", "/mnt/data/hifipushie/faces6")
@@ -63,7 +64,7 @@ def pipe_mesh(base, c):
     b = copy.deepcopy(base)
     b["head"]["identity"] = {f"head_{i:03d}": round(float(v), 5) for i, v in enumerate(c)}
     st = humanfit.state(b)
-    mesh = likeness.model_mesh_from_state(st)
+    mesh = likeness_render.model_mesh_from_state(st)
     mesh["C"] = WC.haircap(mesh, st)
     return mesh, st
 
@@ -92,12 +93,12 @@ if __name__ == "__main__":
         dr.text((j * T + 4, 2), lab, fill=(0, 0, 0))
     for i, vi in enumerate((0, 1, 2)):
         cam = refs["cameras"][vi]
-        P = humanfit.project(cam, ref_st["L"])
+        P = humanfit_views.project(cam, ref_st["L"])
         cc = 0.5 * (P.min(0) + P.max(0))
         side = 1.45 * float(np.max(P.max(0) - P.min(0)))
         box = (cc[0] - side / 2, cc[1] - side * 0.56, cc[0] + side / 2, cc[1] + side * 0.44)
         for j, (lab, mesh) in enumerate(cols):
-            im, k = likeness.render(mesh, cam, box, px=2 * T, brows=False, ao=True, shadow=8.0)[:2]
+            im, k = likeness_render.render(mesh, cam, box, px=2 * T, brows=False, ao=True, shadow=8.0)[:2]
             im = WC.draw_brows(im, mesh, cam, box, k)
             sheet.paste(im.resize((T, T), Image.LANCZOS), (j * T, 18 + i * (T + 18)))
     sheet.save(out)

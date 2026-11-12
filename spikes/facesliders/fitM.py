@@ -25,6 +25,7 @@ import numpy as np
 import fit5
 import gates
 from hifipushie import humanfit, humanfit_map as hm, humanmacro as hmac, store
+from hifipushie import humanfit_solve
 
 NC = fit5.NC
 BASIS = os.environ.get("BASIS", "macros")
@@ -96,7 +97,7 @@ def fit(spec, refs, body=None, log=print):
     rviews = None
     for rnd in range(ROUNDS):
         c = B @ z
-        st = humanfit.state(humanfit._with_identity(sp["base"], c))
+        st = humanfit.state(humanfit_solve._with_identity(sp["base"], c))
         if rviews is None:
             rviews = hm._resolve(st, views)
         x = np.r_[c, np.zeros(fit5.NE * nv)]
@@ -124,12 +125,13 @@ def fit(spec, refs, body=None, log=print):
         if PHOTO_SIG > 0 and rnd > 0:   # (round 0: the landmark solve from the mean; shading from round 1, damped)
             import photom
             from hifipushie import likeness
-            mesh = likeness.model_mesh_from_state(st)
+            from hifipushie import likeness_detect, likeness_render
+            mesh = likeness_render.model_mesh_from_state(st)
             if "_pv" not in locals():
                 _pv = []
                 for vi in PHOTO_VIEWS:
                     img = __import__("PIL.Image", fromlist=["Image"]).open(views[vi]["image"]).convert("RGB")
-                    _pv.append(photom.View(views[vi], cams[vi], mesh, likeness.detect([img])[0]))
+                    _pv.append(photom.View(views[vi], cams[vi], mesh, likeness_detect.detect([img])[0]))
             for pv, vi in zip(_pv, PHOTO_VIEWS):
                 pv.cam = cams[vi]
                 pv.fit_light(mesh)
@@ -153,7 +155,7 @@ def fit(spec, refs, body=None, log=print):
                         "dof": round(dof, 1), "chi2/rows (at the round's start)": chi,
                         "chi2_total": round(sum(v[0] for v in chi.values()), 1)}))
     c = B @ z
-    st = humanfit.state(humanfit._with_identity(sp["base"], c))
+    st = humanfit.state(humanfit_solve._with_identity(sp["base"], c))
     x = np.r_[c, np.zeros(fit5.NE * nv)]
     fit5.TERMS = {}
     fit5.system(st, rviews, cams, x, x, None, nv)
@@ -168,7 +170,7 @@ def fit(spec, refs, body=None, log=print):
 
 def humanfit_spec(sp, c):
     out = copy.deepcopy(sp)
-    out["base"] = humanfit._with_identity(sp["base"], c)
+    out["base"] = humanfit_solve._with_identity(sp["base"], c)
     return out
 
 

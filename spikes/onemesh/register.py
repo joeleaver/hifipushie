@@ -10,6 +10,7 @@ from scipy.sparse.linalg import factorized
 from scipy.spatial import cKDTree
 
 from hifipushie import base, headfit, makehuman
+from hifipushie import base_identity
 
 LAM = 12.0
 LIPS = 0.2
@@ -65,7 +66,7 @@ def frames():
 
 
 def gnm_mesh():
-    g = base._gnm_data()
+    g = base_identity._gnm_data()
     hg = headfit._gnm()
     V0 = g["template_vertex_positions"].astype(float)
     Jm = hg["J0"].mean(0)
