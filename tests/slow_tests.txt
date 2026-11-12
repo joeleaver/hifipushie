@@ -195,3 +195,9 @@ tests/test_fieldjit.py::test_pebble
 tests/test_facepose.py::test_pose_is_the_exports_shapes
 # N1b: the 24k-point chain_solve benchmark (minutes by design; added by hand with the test)
 tests/test_chain_solve.py::test_garment_sized_network_solves_in_time
+tests/test_featuremap.py::test_views_get_cameras_at_the_sheets_scale
+tests/test_featuremap.py::test_a_footprint_sits_where_the_element_is
+tests/test_featuremap.py::test_patches_keep_to_one_feature
+tests/test_featuremap.py::test_the_map_says_what_it_owes
+tests/test_featuremap.py::test_the_true_model_is_right_and_planted_faults_are_found
+tests/test_featuremap.py::test_the_tools_return_a_picture_and_the_table

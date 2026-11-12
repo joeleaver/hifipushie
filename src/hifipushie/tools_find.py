@@ -50,7 +50,8 @@ with reference= beside every view; review_view one view per call."""
 
 
 # guide topics -> files; each domain file ends with "## Tool reference": a "### `tool`" section per tool
-GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.md", "cloth": "cloth_guide.md",
+GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "features": "guide_features.md",
+                "feature_map": "guide_features.md", "hair": "hair_guide.md", "cloth": "cloth_guide.md",
                 "skin": "skin_guide.md", "human": "human_guide.md", "humans": "human_guide.md",
                 "block_in": "blockin_guide.md", "blockin": "blockin_guide.md", "block-in": "blockin_guide.md",
                 "likeness": "likeness_guide.md", "terrain": "terrain_guide.md", "vegetation": "vegetation_guide.md",

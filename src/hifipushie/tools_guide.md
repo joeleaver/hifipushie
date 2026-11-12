@@ -274,6 +274,35 @@ camera, squared, padded by pad and scaled to >= min_px. Region names are what th
 words, no numbers ("left ear", "right arm, elbow"). Returns the paths and the bin/review command, one pair per
 region.
 
+### `read_reference`
+
+`read_reference(name, image=None, views=None, height=None, mask=None, boxes=None, detail='medium', view=None, focus=None, save=None)`
+
+Reads a reference picture for a sculpt. With image + views (one name per figure, left to right; boxes {view: [x0,
+y0, x1, y1]} when the figures touch) it cuts the sheet, saves each view's crop and, for "front" / "back" / "side" /
+"side_r", a camera in fit_concept_camera's format (label = the view's name: look_matched, feature_tiles, fit_matched
+and look(camera={"fitted": view}) work from it). height: metres, feet to top of the first flat view. Returns the
+view as picture | numbered patches | form lines with pixel rulers, and the patch table. Without image: shows `view`
+again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="features").
+
+### `mark_features`
+
+`mark_features(name, features=None, remove=None, notes=None, view=None, focus=None, save=None)`
+
+Adds named features to the model's feature map (kind, on, join, separate, authority, inferred, says, marks per
+view) and returns the map drawn on `view`, the table and what the map still owes. With no features it only shows
+the map. Marks and fields: guide(topic="features").
+
+### `feature_report`
+
+`feature_report(name, elements=None, views=None, view=None, resolution=144, save=None)`
+
+A model measured against its feature map from each reference view's camera. elements {feature: [element names,
+patterns like "tuft*", or "part:<part>"]} is remembered in the map; a feature with none is NOT MADE. A feature's
+footprint is the pixels its elements (and those of everything on it) change when taken out of the model, where
+nothing stands in front. Returns the rows and, for `view`, the picture with its marks beside the model with its
+footprints (green right, red off, blue outline = not made). Reading it: guide(topic="features").
+
 ### `join_report`
 
 `join_report(name, parts, side='L', sections=False)`
