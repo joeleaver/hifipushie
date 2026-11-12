@@ -70,10 +70,10 @@ def mark_features(name: str, features: dict | None = None, remove: list[str] | N
                   view: str | None = None, focus: list[float] | None = None, save: str | None = None):
     """Name what a reference shows, as marks on its pictures: the feature map a sculpt is built from and measured
     against. features: {name: {"kind": "mass" | "form" | "paint", "on": feature, "join": words, "separate": bool,
-    "authority": view, "inferred": words, "marks": {view: {"patches": [ids] | "box" | "ellipse" | "polygon" |
-    "line" (view px), "minus": {...}, "mirror": bool} | null}}}. A call adds to the map (marks are replaced per
-    view named; null clears one). Returns the map on every view (or one `view`, with rulers and focus), each
-    feature's place and size, and what the map still owes. Details: guide(topic="mark_features"); the page: guide(topic="features")."""
+    "authority": view, "inferred": words, "marks": {view: {"piece": [x, y] + "cuts" (cut off the figure's own
+    outline) | "patches": [ids] | "box" | "ellipse" | "polygon" | "line", "minus", "mirror"} | null}}}. A call
+    adds to the map (null clears a view's mark). Returns the map on every view (or one `view`, with rulers) and
+    what it still owes. Details: guide(topic="mark_features"); the page: guide(topic="features")."""
     from . import featuremap
     fm = featuremap.mark(name, features or {}, remove, notes) if (features or remove or notes is not None) \
         else featuremap.load(name)

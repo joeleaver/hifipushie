@@ -464,9 +464,9 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
     limit = max(tol["off_mm"], tol["off_share"] * min(rw, rh) * m_per_px * 1000)
     faults = []
     if np.hypot(dx, dy) > limit:
-        faults.append((np.hypot(dx, dy) / limit, f"the model's is {abs(dx):.0f} mm to the picture's "
-                                                 f"{'right' if dx > 0 else 'left'} and {abs(dy):.0f} mm "
-                                                 f"{'above' if dy > 0 else 'below'} the mark"))
+        faults.append((np.hypot(dx, dy) / limit, f"the model's middle is {abs(dx):.0f} mm to the picture's "
+                                                 f"{'right' if dx > 0 else 'left'} of the mark's and {abs(dy):.0f} mm "
+                                                 f"{'above' if dy > 0 else 'below'} it"))
     for s, word in ((sw, "wide"), (shh, "tall")):
         if not tol["size"][0] <= s <= tol["size"][1]:
             faults.append((max(s, 1 / s), f"the model's is {s:.0%} as {word} as the mark"))
@@ -478,7 +478,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 11  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 12  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:

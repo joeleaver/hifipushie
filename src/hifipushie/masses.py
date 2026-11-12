@@ -20,8 +20,10 @@ A mass is built `as`:
            sizes read across the axis in both views. The bones are the limb's bones later, for the rig.
   "flap"   a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
            long axis of its broadest mark, its width read across that axis, its thickness from its other view
-           (or `thick`, metres). `cup`: metres its edges lift (a hollow); `joints`: stations along it (4).
-What the two views can't give is said, never silently guessed: a mass marked in one flat view takes its depth from
+           (or `thick`, metres). A sheet running sideways leans the way its other view shows it. `cup`: metres its
+           edges lift (a hollow); `joints`: stations along it (4).
+Where the flat views disagree about a mass's height, the feature's `authority` view is believed and the others
+are fitted to it. What the two views can't give is said, never silently guessed: a mass marked in one flat view takes its depth from
 its width (or `depth`, metres), and its place along the missing axis from `y` / `x` (or the mass it is `on`).
 
 `.L` / `.R`: with symmetry (the default) the `.L` mass is built and mirrored; a `.R` with no `.L` twin is built
@@ -40,8 +42,9 @@ KINDS = ("ball", "drum", "flap", "trunk", "tube")
 def _flat(fm: dict, name: str, feature: str) -> dict:
     """The feature's marks as world extents: {"xz": (x, z) point cloud from front / back marks, "yz": from side
     marks}, metres, mirrored to the creature's own axes."""
-    out = {}
-    for v, g in fm["features"][feature]["marks"].items():
+    out, span = {}, {}
+    c = fm["features"][feature]
+    for v, g in c["marks"].items():
         rec = fm["views"][v]
         if rec["kind"] not in refread.ORTHO:
             continue
@@ -49,9 +52,19 @@ def _flat(fm: dict, name: str, feature: str) -> dict:
         ys, xs = np.where(featuremap.mask(name, feature, v))
         sign = -1.0 if rec["kind"] in ("back", "side_r") else 1.0
         pts = np.stack([sign * (xs + 0.5 - c0) * k, (ground - ys - 0.5) * k], 1)
-        key = "xz" if rec["kind"] in ("front", "back") else "yz"
-        out[key] = pts if key not in out else np.concatenate([out[key], pts])
-    return out
+        span[v] = (float(pts[:, 1].min()), float(pts[:, 1].max()))
+        out[v] = (("xz" if rec["kind"] in ("front", "back") else "yz"), pts)
+    auth = c.get("authority")
+    if auth in span:  # the other views' heights are fitted to the view to believe
+        a0, a1 = span[auth]
+        for v, (key, pts) in out.items():
+            if v != auth and span[v][1] > span[v][0]:
+                b0, b1 = span[v]
+                pts[:, 1] = a0 + (pts[:, 1] - b0) * (a1 - a0) / (b1 - b0)
+    merged = {}
+    for key, pts in out.values():
+        merged[key] = pts if key not in merged else np.concatenate([merged[key], pts])
+    return merged
 
 
 def _span(pts: np.ndarray, along: int, lo: float, hi: float, half: float):
@@ -73,6 +86,34 @@ def _stations(pts: np.ndarray, along: int, n: int, inset: float = 0.08):
         if s:
             out.append((float(t), s[0], s[1]))
     return out, lo, hi
+
+
+def _profile(pts: np.ndarray, zs, tall: float) -> list:
+    """(low, high) of a mark across each height in zs, read every 2 mm and smoothed over a tenth of its height (a
+    hand-drawn outline wobbles; a loft through every wobble comes out ribbed)."""
+    fine = np.arange(float(pts[:, 1].min()), float(pts[:, 1].max()) + 1e-9, 0.002)
+    lo, hi = np.full(len(fine), np.nan), np.full(len(fine), np.nan)
+    order = np.argsort(pts[:, 1])
+    zsort, vsort = pts[order, 1], pts[order, 0]
+    a = np.searchsorted(zsort, fine - 0.002)
+    b = np.searchsorted(zsort, fine + 0.002)
+    for i, (i0, i1) in enumerate(zip(a, b)):
+        if i1 > i0:
+            lo[i], hi[i] = vsort[i0:i1].min(), vsort[i0:i1].max()
+    ok = ~np.isnan(lo)
+    if ok.sum() < 3:
+        return [(None, None)] * len(zs)
+    k = max(3, int(round(0.1 * tall / 0.002)) | 1)
+    pad = k // 2
+
+    def smooth(v):
+        v = np.interp(fine, fine[ok], v[ok])
+        vp = np.pad(v, pad, mode="edge")
+        med = np.array([np.median(vp[i:i + k]) for i in range(len(v))])
+        mp = np.pad(med, pad, mode="edge")
+        return np.convolve(mp, np.ones(k) / k, mode="valid")
+    slo, shi = smooth(lo), smooth(hi)
+    return [(float(np.interp(z, fine, slo)), float(np.interp(z, fine, shi))) for z in zs]
 
 
 def _need(f: dict, feature: str, key: str):
@@ -180,6 +221,21 @@ def _flap(feature: str, f: dict, how: dict, notes: list) -> dict:
                          "cup": float(how.get("cup", 0.0)), "puff": float(how.get("puff", 0.4))})
     wide = [0.0, 0.0, 0.0]
     wide[2 if run == 0 else side_axis] = 1.0
+    if other is not None and run == 0 and len(other) > 12 and "thick" not in how:
+        # a sheet running sideways shows its TILT in the other view: there it is a slanted streak, long across the
+        # sheet's width and as thin as the sheet. Lean the width that way and take the thickness across the streak
+        q = other - other.mean(0)
+        vals, vecs = np.linalg.eigh(np.cov(q.T))
+        major, minor = vecs[:, 1] * (1 if vecs[1, 1] >= 0 else -1), vecs[:, 0]
+        if vals[1] > 2.0 * vals[0] and major[1] > 0.35:
+            wide = [0.0, 0.0, 0.0]
+            wide[thin_axis], wide[2] = float(major[0]), float(major[1])
+            thin = float(np.ptp(q @ minor))
+            for st_ in stations:
+                st_["half_width"] = round(st_["half_width"] / max(float(major[1]), 0.5), 4)
+                st_["half_thickness"] = round(min(max(thin / 2, 0.002), 0.9 * st_["half_width"]), 4)
+            notes.append(f"{feature}: tilted {np.degrees(np.arctan2(abs(major[0]), major[1])):.0f} degrees out of its "
+                         f"broad view, as its other view shows it")
     return {"blobs": {feature: {"shape": "sheet", "spine": spine, "width_axis": wide, "stations": stations}}}
 
 
@@ -194,20 +250,20 @@ def _trunk(feature: str, f: dict, how: dict, notes: list) -> dict:
         w = _span(xz, 1, end, end, max(tall / 30, 0.002))
         caps.append(float(np.clip(0.4 * (w[1] - w[0]) / 2 if w else 0.1 * tall, 0.05 * tall, 0.3 * tall)))
     half = max(tall / (2.5 * n), 0.002)
-    st = []
-    for z in np.linspace(z0 + caps[0], z1 - caps[1], n):
-        w = _span(xz, 1, z, z, half)
-        if w:
-            st.append((float(z), w[0], w[1]))
+    zs = np.linspace(z0 + caps[0], z1 - caps[1], n)
+    prof = _profile(xz, zs, tall)
+    st = [(float(z), lo_, hi_) for z, (lo_, hi_) in zip(zs, prof) if lo_ is not None]
     if len(st) < 2:
         raise ValueError(f"{feature}: its mark is too small to read sections from")
     cx = float(np.mean([(a + b) / 2 for _, a, b in st]))
+    side_prof = dict(zip([round(float(z), 6) for z in zs], _profile(yz, zs, tall))) if yz is not None else {}
     if yz is None:
         notes.append(f"{feature}: no side mark: its depth is taken as {how.get('depth_ratio', 0.85):.2f} of its width, upright")
     sections = []
     for z, a, b in st:
         hw = (b - a) / 2
-        side = _span(yz, 1, z, z, max((z1 - z0) / (2.5 * n), 0.002)) if yz is not None else None
+        side = side_prof.get(round(z, 6))
+        side = side if side and side[0] is not None else None
         if side:
             hd, oy = (side[1] - side[0]) / 2, (side[0] + side[1]) / 2
         else:

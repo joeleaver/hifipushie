@@ -155,6 +155,27 @@ def test_the_map_says_what_it_owes(fig):
     assert "side" not in fm["features"]["snout"]["marks"] and "front" in fm["features"]["snout"]["marks"]
     with pytest.raises(ValueError, match="four numbers"):
         featuremap.mark("fig", {"snout": {"marks": {"side": {"box": [[1, 2], [3, 4]]}}}})
+    # a piece of the figure: a point on the ear and one cut across its root give the ear, to the pixel
+    from scipy import ndimage
+    before = featuremap.mask("fig", "ear.L", "front").copy()
+    rec = fm["views"]["front"]
+    figure = np.asarray(Image.open(rec["image"]).convert("RGBA"))[..., 3] > 127
+    join = np.argwhere(ndimage.binary_dilation(before, iterations=2) & figure & ~before)  # where the ear meets the head
+    a, b = join[np.argmin(join @ [1, 1])], join[np.argmax(join @ [1, 1])]
+    if np.hypot(*(a - b)) < np.hypot(*(join[np.argmin(join @ [1, -1])] - join[np.argmax(join @ [1, -1])])):
+        a, b = join[np.argmin(join @ [1, -1])], join[np.argmax(join @ [1, -1])]
+    out = (b - a) / np.hypot(*(b - a)) * 8
+    cut = [[float(a[1] - out[1]), float(a[0] - out[0])], [float(b[1] + out[1]), float(b[0] + out[0])]]
+    ys, xs = np.where(ndimage.binary_erosion(before, iterations=4))
+    seed = [int(xs[len(xs) // 2]), int(ys[len(ys) // 2])]
+    featuremap.mark("fig", {"ear.L": {"marks": {"front": {"piece": seed, "cuts": [cut]}}}})
+    after = featuremap.mask("fig", "ear.L", "front")
+    assert (before & after).sum() / (before | after).sum() > 0.8
+    with pytest.raises(ValueError, match="don't part"):
+        featuremap.mark("fig", {"ear.L": {"marks": {"front": {"piece": seed, "cuts": [[[seed[0] - 3, seed[1] - 9], [seed[0] + 3, seed[1] - 9]]]}}}})
+    with pytest.raises(ValueError, match="not on the figure"):
+        featuremap.mark("fig", {"ear.L": {"marks": {"front": {"piece": [1, 1]}}}})
+    featuremap.mark("fig", {"ear.L": {"marks": {"front": fig["marks"]["ear.L"]["front"]}}})
     with pytest.raises(ValueError, match="kind is one of"):
         featuremap.mark("fig", {"thing": {"marks": {"front": {"box": [10, 10, 30, 30]}}}})
     with pytest.raises(ValueError, match="no patch"):
@@ -178,7 +199,7 @@ def test_the_true_model_is_right_and_planted_faults_are_found(fig):
     # moved: the eyes 3 cm higher
     store.save("fig", _spec(eye=(0.06, -0.125, 0.70)), "eye up")
     r = _status(featuresee.report("fig", resolution=128))[("eye.L", "front")]
-    assert r["status"] == "OFF" and "above the mark" in r["why"] and 20 < r["dy_mm"] < 40, r
+    assert r["status"] == "OFF" and "above it" in r["why"] and 20 < r["dy_mm"] < 40, r
     # shrunk: a snout half the size
     store.save("fig", _spec(snout=0.03), "small snout")
     r = _status(featuresee.report("fig", resolution=128))[("snout", "front")]

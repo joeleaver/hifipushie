@@ -11,6 +11,9 @@ believe where two disagree), `inferred` (what no view shows), `says` (anything e
 elements that make it, once it is made: featuresee.py measures those).
 
 Marks, per view, in that view's own pixels (the rulers on read_reference's pictures), always clipped to the figure:
+  {"piece": [x, y], "cuts": [[[x, y], [x, y]], ...]}: the part of the figure joined to that point once the cut
+  lines are drawn across it (an arm: a point on it and one cut at the shoulder). Its edge is the picture's own
+  outline, to the pixel: the mark for anything that shows on the silhouette.
   {"patches": [ids]} | {"box": [x0, y0, x1, y1]} | {"ellipse": [cx, cy, rx, ry]} | {"polygon": [[x, y], ...]} |
   {"line": [[x, y], ...], "width": px}; several keys add up; "minus": {...} takes away; "mirror": true on a front /
   back view also marks the ".L" / ".R" twin by reflection (only when the picture really is symmetric there).
@@ -33,7 +36,7 @@ from . import refread
 KINDS = ("mass", "form", "paint")
 UNMARKED = 0.02  # a view owes its unmarked pixels above this share of the figure
 FIELDS = ("kind", "on", "join", "separate", "authority", "inferred", "says", "elements")
-SHAPES = ("patches", "box", "ellipse", "polygon", "line")
+SHAPES = ("patches", "box", "ellipse", "polygon", "line", "piece")
 PALETTE = [(230, 25, 75), (60, 180, 75), (0, 130, 200), (245, 130, 48), (145, 30, 180), (0, 160, 160), (240, 50, 230),
            (128, 128, 0), (170, 110, 40), (128, 0, 0), (0, 0, 128), (220, 190, 0), (0, 100, 0), (255, 105, 180)]
 
@@ -75,7 +78,9 @@ def mask(name: str, feature: str, view: str) -> np.ndarray:
 WANT = {"patches": "a list of patch numbers, [12, 13]", "box": "four numbers, [x0, y0, x1, y1], or a list of such boxes",
         "ellipse": "four numbers, [cx, cy, rx, ry], or a list of such ellipses",
         "polygon": "three or more points, [[x, y], [x, y], [x, y]], or a list of such polygons",
-        "line": "two or more points, [[x, y], [x, y]], or a list of such lines"}
+        "line": "two or more points, [[x, y], [x, y]], or a list of such lines",
+        "piece": "a point on the thing, [x, y], with \"cuts\": [[[x, y], [x, y]], ...] (lines across the figure "
+                 "where it meets its neighbours)"}
 
 
 def _each(k: str, v) -> list:
@@ -96,9 +101,17 @@ def _checked(m, view: str) -> dict:
     if not isinstance(m, dict):
         raise ValueError(f"the mark in {view!r} is written {{shape: numbers}}, e.g. {{\"patches\": [12, 13]}} "
                          f"(got {m!r}; leave a view out to keep the mark it has)")
-    unknown = set(m) - set(SHAPES) - {"minus", "mirror", "width"}
+    unknown = set(m) - set(SHAPES) - {"minus", "mirror", "width", "cuts"}
     if unknown or not any(k in m for k in SHAPES):
-        raise ValueError(f"a mark in {view!r} needs one of {SHAPES} (+ minus, mirror, width); got {sorted(m)}")
+        raise ValueError(f"a mark in {view!r} needs one of {SHAPES} (+ cuts, minus, mirror, width); got {sorted(m)}")
+    if "piece" in m:
+        if not (isinstance(m["piece"], (list, tuple)) and len(m["piece"]) == 2 and all(num(c) for c in m["piece"])):
+            raise ValueError(f"'piece' in {view!r} is {WANT['piece']} (got {m['piece']!r})")
+        if not all(pts(c, 2) for c in m.get("cuts") or []) or not isinstance(m.get("cuts") or [], (list, tuple)):
+            raise ValueError(f"'cuts' in {view!r} is a list of lines, each two or more points: [[[x, y], [x, y]], ...] "
+                             f"(got {m.get('cuts')!r})")
+    elif "cuts" in m:
+        raise ValueError(f"'cuts' in {view!r} goes with \"piece\": [x, y] (the point on the thing the cuts part off)")
     four = lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v)  # noqa: E731
     ok = {"box": four, "ellipse": four, "polygon": lambda v: pts(v, 3), "line": lambda v: pts(v, 2)}
     if "patches" in m and not (isinstance(m["patches"], (list, tuple)) and m["patches"] and all(num(i) for i in m["patches"])):
@@ -111,10 +124,36 @@ def _checked(m, view: str) -> dict:
     return m
 
 
-def _shape_mask(name: str, view: str, size, m: dict) -> np.ndarray:
+def _piece(fig: np.ndarray, m: dict, view: str) -> np.ndarray:
+    """The part of the figure joined to m["piece"] once m["cuts"] are drawn across it."""
+    from scipy import ndimage
+    H, W = fig.shape
+    wall = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(wall)
+    for c in m.get("cuts") or []:
+        d.line([tuple(float(v) for v in p) for p in c], fill=255, width=3)
+    wall = np.asarray(wall) > 127
+    x, y = (int(round(float(v))) for v in m["piece"])
+    if not (0 <= x < W and 0 <= y < H and fig[y, x]):
+        raise ValueError(f"the piece's point {m['piece']} in {view!r} is not on the figure (view px, {W} x {H}: read "
+                         f"it off the rulers; it must sit ON the thing)")
+    if wall[y, x]:
+        raise ValueError(f"the piece's point {m['piece']} in {view!r} lies on one of its own cuts: move it into the thing")
+    lab, _ = ndimage.label(fig & ~wall)
+    got = lab == lab[y, x]
+    if m.get("cuts") and got.sum() > 0.92 * (fig & ~wall).sum():
+        raise ValueError(f"the cuts in {view!r} don't part the piece at {m['piece']} from the rest of the figure (it "
+                         f"is {got.sum() / fig.sum():.0%} of it): each cut must run right across the figure, from "
+                         f"outside its outline to outside it again")
+    return ndimage.binary_dilation(got, iterations=2) & fig & (got | wall)  # its share of the cut lines too
+
+
+def _shape_mask(name: str, view: str, size, m: dict, fig: np.ndarray | None = None) -> np.ndarray:
     W, H = size
     out = np.zeros((H, W), bool)
     _checked(m, view)
+    if "piece" in m:
+        out |= _piece(fig, m, view)
     if "patches" in m:
         lab = refread.patches(name, view)
         ids = [int(i) for i in m["patches"]]
@@ -138,9 +177,9 @@ def _shape_mask(name: str, view: str, size, m: dict) -> np.ndarray:
 
 def mark_mask(name: str, view: str, rec: dict, m: dict) -> np.ndarray:
     fig = np.asarray(Image.open(rec["image"]).convert("RGBA"))[..., 3] > 127
-    out = _shape_mask(name, view, rec["size"], m)
+    out = _shape_mask(name, view, rec["size"], m, fig)
     if m.get("minus"):
-        out &= ~_shape_mask(name, view, rec["size"], m["minus"])
+        out &= ~_shape_mask(name, view, rec["size"], m["minus"], fig)
     return out & fig
 
 
@@ -267,7 +306,7 @@ def checks(name: str, fm: dict) -> list[str]:
         ortho = {v: g["world"] for v, g in c["marks"].items() if "world" in g}
         if len(ortho) >= 2 and not c.get("authority"):
             los, his = [w["z_lo"] for w in ortho.values()], [w["z_hi"] for w in ortho.values()]
-            tol = max(0.02, 0.3 * max(h - lo for h, lo in zip(his, los)))  # (a thing looks a little taller or
+            tol = max(0.02, 0.2 * max(h - lo for h, lo in zip(his, los)))  # (a thing looks a little taller or
             # shorter from another side: only a real disagreement is owed)
             if max(los) - min(los) > tol or max(his) - min(his) > tol:
                 span = ", ".join(f"{v} z {w['z_lo']:.3f}-{w['z_hi']:.3f}" for v, w in ortho.items())

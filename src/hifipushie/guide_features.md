@@ -56,9 +56,15 @@ For each feature say what the pictures show and a measurement can't know:
 
 Marks are in each view's own pixels: read them off the rulers. Every mark is clipped to the figure.
 
-- `{"patches": [12, 13]}`: the numbered patches. The quick way when the patches follow the feature.
-- `{"box": [x0, y0, x1, y1]}`, `{"ellipse": [cx, cy, rx, ry]}`, `{"polygon": [[x, y], ...]}`: when they don't
-  (a mass that takes in many patches: draw round it).
+- `{"piece": [x, y], "cuts": [[[x, y], [x, y]], ...]}`: THE mark for a mass. A point on the thing, and a line
+  drawn across the figure wherever the thing meets a neighbour: the mark is the part of the figure joined to the
+  point once the cuts are made. An arm is a point on it and one cut across the shoulder; a head is a point and
+  one cut across the neck. Each cut must run from outside the outline to outside it again (overshoot both
+  ends). The mark's edge is then the picture's own outline to the pixel, which is what a shape is built from.
+- `{"patches": [12, 13]}`: the numbered patches. The quick way for a form or paint the patches follow.
+- `{"box": [x0, y0, x1, y1]}`, `{"ellipse": [cx, cy, rx, ry]}`, `{"polygon": [[x, y], ...]}`: for what lies
+  inside the outline and no cut can part off (a mass seen against another mass). A hand-drawn edge wobbles, and
+  the shape built from it wobbles too: where an edge IS the figure's outline, overrun it and let the outline cut.
 - `{"line": [[x, y], ...], "width": 3}`: a crease or a groove: something with no width of its own. It is
   measured by whether the model has form along it. A form that has height (a band, a rim, a cuff) is marked by its
   whole extent, never by a line along one edge.
@@ -105,7 +111,8 @@ Build once the map owes nothing. For every mass say what it is, `"as"`:
   its rims rounded by `"edge"` metres.
 - `"flap"`: a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
   long axis of its broadest mark, its width read across, its thickness from its other view (or `"thick"`,
-  metres). `"cup"`: metres its edges lift, for a hollow side. A ball or a tube would make it a fat lump.
+  metres). A flap that sticks out sideways leans the way its other view shows it. `"cup"`: metres its edges
+  lift, for a hollow side. A ball or a tube would make it a fat lump.
 - `"trunk"`: one upright mass through cross-sections: at each height its width from the front and back marks
   together, its depth and its lean from the side mark. For a mass that stands up and sits on the centre line. Its
   two ends are domes.
@@ -119,6 +126,10 @@ look at the outline's corners). `"sections"`: how many heights a trunk is read a
 rest; give it to a thing that is separate. `"blend"`: metres, how softly a mass melts into what it touches: 0.003
 for a thing that sits ON another with a crisp line round it, 0.02 (what you get if you say nothing) for an
 ordinary join, 0.04 for one that grows OUT of the other with no line at all. The `join` you wrote says which.
+
+Where the flat views disagree about a mass's height (drawn views often do), set its `authority`: the other
+views' marks are fitted to that one before it is built. A trunk reads its outline smoothed over a tenth of its
+height; a real step in the outline wants its own mass.
 
 Both views are needed for a shape: what a missing view would give is listed as ASSUMED, and for a ball with no
 side mark you must give `"y"` (where it sits front to back). `.L` is built and mirrored to `.R`.
