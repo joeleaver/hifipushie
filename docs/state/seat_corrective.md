@@ -4,7 +4,7 @@ Branch seat-corrective (worktree .claude/worktrees/seat-corrective), from main c
 by Baynard Racing (Puddles, gap 22). Not pushed; coordinator lands. Exploring run (no gate).
 
 ## What the tools hold now (correctives.py `_stub_target` docstring = spec; ledger C374)
-- `keys(bones, girth=)`: frames from `rig.arc_frames(bones, girth)` (the ones the weights used). New motion
+- `keys(bones, girth=)`: frames from `rig_bend.arc_frames(bones, girth)` (the ones the weights used). New motion
   `UpLeg_flex` (axis -X, key 90 = rig_audit.seated) exists ONLY on a stub (`STUB_ONLY`): a person's hip still has none.
 - Stub target: LBS, then (1) inner side (belly): the hip family's move sharpened by the limb's share `STUB_SHARP`
   (0.3, 0.9): body skin with a weight tail stays put; (2) outer side (seat): parent-side skin held at the turned

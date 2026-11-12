@@ -2,7 +2,7 @@
 
 meshes: [{"name", "V" (Blender axes), "T", "uv" (optional, [0, 1]), "N" (optional), "colour" [r, g, b] 0..1, "J", "W"
 (optional: bone indices / weights, 4 per vertex), "double_sided", "metallic", "roughness" (optional), "textures"
-(optional, T14: {"base", "mr", "normal"}: PNG paths on the uv; "alpha_cut": an alpha-tested base)}]; bones as rig.rig_bones gives them
+(optional, T14: {"base", "mr", "normal"}: PNG paths on the uv; "alpha_cut": an alpha-tested base)}]; bones as rig_report.rig_bones gives them
 ({"name", "head", "parent", "twist"?}): a joint node per bone at its head (parents first), twist bones turned as
 asset.write_glb turns them, one skin. The <glb>.json beside it carries bounds_blender (asset.preview's cameras).
 """

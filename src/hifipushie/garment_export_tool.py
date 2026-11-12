@@ -35,7 +35,8 @@ def source(rec: dict, d: Path) -> tuple[Path, str]:
 
 
 def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: bool = True) -> tuple[list, str]:
-    from . import chain_garment as cg, rig, store
+    from . import chain_garment as cg, store
+    from . import rig_report
     rec = gr.load(name, garment)
     d = cg.job_dir(name, garment, wear)
     pkl, what = source(rec, d)
@@ -47,7 +48,7 @@ def run(name: str, garment: str, wear: str = "open", role: str = ge.ROLE, look: 
     details = ge.details_of(d, pkl.name == "final.pkl")
     n_det = sum(len(x["F"]) for x in details.values())
     drape = ge.drape_of(r)
-    rb = rig.rig_bones(spec)
+    rb = rig_report.rig_bones(spec)
     g, tries = ge.fit_budget(drape, r["M"], budget, n_det, body=bV, joints=gl.joint_lines(drape, rb))
     total = len(g["T"]) + n_det
     if total > budget:

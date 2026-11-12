@@ -41,7 +41,7 @@ GLTF_NOTES = {
 
 
 # Where each term of a hair card's albedo lives (applied ONCE: the shader adds no shade of its own, "aux_shade": None).
-# hair_cards.atlas bakes the clump depth and the value per strand into the colour; hair_cards.mesh puts the root
+# hair_cards_atlas.atlas bakes the clump depth and the value per strand into the colour; hair_cards_mesh.mesh puts the root
 # ramp, the tip lift and the lock's tone into COLOR_0. The notes once had the shader multiply all three again from aux.
 HAIR_ALBEDO_TERMS = {"clump_depth": "atlas", "strand_value": "atlas", "root_ramp": "COLOR_0", "tip_lift": "COLOR_0",
                      "lock_tone": "COLOR_0"}

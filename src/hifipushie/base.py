@@ -5,7 +5,7 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
 
 - Joints: the template's skeleton (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle/toe, fingerN_k,
   thumb_k .L) is added to the spec's joints where the spec doesn't give them (`inject`, before kits), with radii
-  measured from the template. Moving a joint moves the base with it (`retopo._skeleton_warp`: per bone segment a
+  measured from the template. Moving a joint moves the base with it (`retopo_warp._skeleton_warp`: per bone segment a
   rotation and a stretch, radii kept, times "girth" {segment start joint: scale}, e.g. {"shoulder.L": 1.15} for a
   thicker upper arm). Rotations by forward kinematics down every chain from rigid fits where several bones start
   (pelvis + hips, chest, palm; `retopo._body_rotations`), a bone ending at a fit twisting into it along its length
@@ -27,7 +27,7 @@ bones, strokes, kits, shell parts, paint) edits on top of it.
   and head points over it make one IMLS point set, weighted by C2 ramps across +-SEAM (the k nearest are raised
   there). Blending two fields across a band showed as a collar; points cut hard at the plane left a crack; a tube
   matched only at the plane stood proud of the head's narrowing neck and flecked.
-- Topology payoff: `retopo.wrap` of a base-built body starts from the same template, so the export quads follow.
+- Topology payoff: `retopo_wrap.wrap` of a base-built body starts from the same template, so the export quads follow.
 
 Where the code is (split by responsibility, C417): this module holds the constants, `source` and `template_joints`.
 base_imls: Catmull-Clark, normals, the IMLS field. base_identity: GNM's data, identity fits, the posed expression,

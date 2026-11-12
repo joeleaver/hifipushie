@@ -1,8 +1,9 @@
 """hair.export.style "shells" (sh1): hair_cap.combed traces strands along the chart's lay and builds shell maps that
-thin outward; hair_cards.atlas stacks the shells' block under the tiles / bake block."""
+thin outward; hair_cards_atlas.atlas stacks the shells' block under the tiles / bake block."""
 import numpy as np
 
 from hifipushie import hair_cap, hair_cards as hc
+from hifipushie import hair_cards_atlas
 
 
 def _chart(n=256, e0=-40.0):
@@ -34,13 +35,13 @@ def test_atlas_shell_block():
     out = hair_cap.combed(ch, heights=(0.62, 0.85), base=0.4, seed=1, cover=2.0)
     S = {**hc.STRANDS, "atlas": 128}
     cap = {**out["cap"]}
-    at = hc.atlas(S, {"grey_share": 0.2}, cap=cap, key="t_shells", shells=out["shells"])
+    at = hair_cards_atlas.atlas(S, {"grey_share": 0.2}, cap=cap, key="t_shells", shells=out["shells"])
     sb = at["shells"]
     assert sb["n"] == 2 and sb["row0"] == 128 and sb["rows"] == 64 and at["rows_total"] == 192
     a = at["color"][..., 3]
     blk = a[128:, :64]
     assert blk.mean() > 0.02 and a[128:, 128:].max() == 0  # slot 0 drawn, unused slots empty
-    plain = hc.atlas(S, {"grey_share": 0.2}, cap=cap, key="t_shells0")
+    plain = hair_cards_atlas.atlas(S, {"grey_share": 0.2}, cap=cap, key="t_shells0")
     assert plain["rows_total"] == 128 and np.allclose(plain["color"], at["color"][:128])  # tiles / cap untouched
 
 

@@ -10,10 +10,10 @@ def fit(Q: np.ndarray, cen_of, end_share: float = 0.2, max_hw: float = 0.03, sta
         spread: float = 90.0, reference: bool = True, tip_taper=None, medoid: float = 0.0, per_strand: float = 0.0,
         min_stations: int | None = None, min_len: float | None = None) -> dict | None:
     """One card on a clump's strands Q (m, stations, 3, NaN past their ends), along its reference strand
-    (along_reference): hair_cards._clump's centre line and frame, from where its first strands start to where only
+    (along_reference): hair_cards_clumps._clump's centre line and frame, from where its first strands start to where only
     `end_share` of them still run (ragged ends are the picture's), its half width the strands' spread across it (90th
     percentile, capped)."""
-    from .hair_cards import _clump
+    from .hair_cards_clumps import _clump
     # (`reference`: hair converging from many roots (into a tie) is aligned along its longest strand; hair hanging from
     # one place (a tail) by distance from the root: mapped to a wavy reference's nearest station, strands of another
     # phase folded back and forth and the picture smeared)

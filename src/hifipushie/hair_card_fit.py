@@ -17,7 +17,7 @@ from .hair_spec import hair_of
 def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
     """Where a budget's cards went: per class of lock (face-framing, hanging hair, head hair, single hairs) and card
     layer, cards and triangles cut vs kept. The export report carries it, so a tier that loses a region says so."""
-    from . import hair_cards as hc
+    from . import hair_cards_budget
 
     def cls(c):
         lk = locks.get(c.get("lock")) or {}
@@ -34,7 +34,7 @@ def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
             k = f"{cls(c)}/L{int(c['layer'])}"
             d = out.setdefault(k, {"cut": [0, 0], "kept": [0, 0]})
             d[tag][0] += 1
-            d[tag][1] += hc.triangles([c], S, seg)
+            d[tag][1] += hair_cards_budget.triangles([c], S, seg)
     return dict(sorted(out.items()))
 
 

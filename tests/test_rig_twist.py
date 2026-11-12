@@ -17,6 +17,7 @@ os.environ.setdefault("HIFIPUSHIE_HOME", tempfile.mkdtemp(prefix="hp_rigtwist_")
 import numpy as np  # noqa: E402
 
 from hifipushie import rig, store  # noqa: E402
+from hifipushie import rig_head, rig_model, rig_report, rig_skin, rig_twist
 
 ROOT = Path(__file__).resolve().parent.parent
 P = rig.PREFIX
@@ -39,8 +40,8 @@ def _skin(**opts):
     if key not in _CACHE:
         spec = copy.deepcopy(m["spec"])
         spec.setdefault("rig", {}).update({"bend": False, **opts})  # (twist alone: the bend helpers are tested in test_game_ready)
-        bones = rig.rig_bones(spec)
-        J, W = rig.skin_mesh(spec, bones, m["V"], m["F"], m["part"], m["names"])
+        bones = rig_report.rig_bones(spec)
+        J, W = rig_skin.skin_mesh(spec, bones, m["V"], m["F"], m["part"], m["names"])
         _CACHE[key] = (spec, bones, J, W)
     return _CACHE[key]
 
@@ -79,10 +80,10 @@ def test_options():
     m = _model()
     for tw, n in ((False, 0), (0, 0), (1, 8), (3, 24), ({"forearm": 2, "leg": 0}, 2 * (2 + 2 + 1))):
         spec = {**m["spec"], "rig": {"twist": tw}}
-        assert sum(1 for b in rig.rig_bones(spec) if b.get("twist")) == n, tw
+        assert sum(1 for b in rig_report.rig_bones(spec) if b.get("twist")) == n, tw
     for bad in ({"wrist": 2}, {"arm": 9}):
         try:
-            rig.rig_bones({**m["spec"], "rig": {"twist": bad}})
+            rig_report.rig_bones({**m["spec"], "rig": {"twist": bad}})
         except ValueError:
             continue
         raise AssertionError(f"rig.twist {bad} accepted")
@@ -98,8 +99,8 @@ def test_undriven_is_the_old_skin():
         assert np.allclose(W.sum(1), 1, atol=1e-9) and (W >= 0).all()
     turns = {P + "LeftForeArm": ([1, 0, 0], -75), P + "RightArm": ([0, 1, 0], 45), P + "LeftUpLeg": ([1, 0, 0], -35),
              P + "RightLeg": ([1, 0, 0], 60), P + "RightHand": ([0.3, 0.2, 1], 50), P + "Neck": ([0, 0, 1], 25)}
-    A = rig.pose(off, m["V"], J0, W0, turns)
-    B = rig.pose(on, m["V"], J1, W1, turns)
+    A = rig_model.pose(off, m["V"], J0, W0, turns)
+    B = rig_model.pose(on, m["V"], J1, W1, turns)
     d = np.linalg.norm(A - B, axis=1)
     # (not exactly 0 everywhere: a vertex with four bones before the split can have five after, and its smallest
     # weight is dropped; the goblin's arms are fused to its belly, the worst case: a web of four-bone vertices)
@@ -118,9 +119,9 @@ def test_roll_decomposition():
     """roll_about is the twist of a swing-twist decomposition: a roll comes back whole, a swing across the axis
     has none, and the two composed give the roll."""
     a = np.array([0.6, 0.0, -0.8])
-    assert abs(rig.roll_about(a, (a, 75.0)) - 75.0) < 1e-9
-    assert abs(rig.roll_about(a, ([0.0, 1.0, 0.0], 40.0))) < 1e-9
-    assert abs(rig.roll_about(a, (-a, 30.0)) + 30.0) < 1e-9
+    assert abs(rig_twist.roll_about(a, (a, 75.0)) - 75.0) < 1e-9
+    assert abs(rig_twist.roll_about(a, ([0.0, 1.0, 0.0], 40.0))) < 1e-9
+    assert abs(rig_twist.roll_about(a, (-a, 30.0)) + 30.0) < 1e-9
 
 
 def test_forearm_twist_spreads():
@@ -131,8 +132,8 @@ def test_forearm_twist_spreads():
     _, off, J0, W0 = _skin(twist=False)
     for side in ("Left", "Right"):
         for deg, area in ((75.0, 0.9), (105.0, 0.82)):
-            old = rig.twist_check(off, m["V"], m["F"], J0, W0, P + side + "Hand", deg, False)
-            new = rig.twist_check(on, m["V"], m["F"], J, W, P + side + "Hand", deg, True)
+            old = rig_twist.twist_check(off, m["V"], m["F"], J0, W0, P + side + "Hand", deg, False)
+            new = rig_twist.twist_check(on, m["V"], m["F"], J, W, P + side + "Hand", deg, True)
             assert old["at_end"] > 0.7 * deg and old["area_min"] < new["area_min"], (old, new)
             assert new["at_end"] < 8 and new["at_start"] < 10, new
             assert new["step"] < 0.2 * deg and new["area_min"] > area, new
@@ -140,8 +141,8 @@ def test_forearm_twist_spreads():
             assert new["tri_p1"] > old["tri_p1"], (old["tri_p1"], new["tri_p1"])
     # three twist bones (the default) against two: smaller steps, less loss
     _, b2, J2, W2 = _skin(twist={"forearm": 2})
-    r3 = rig.twist_check(on, m["V"], m["F"], J, W, P + "RightHand", 105.0, True)
-    r2 = rig.twist_check(b2, m["V"], m["F"], J2, W2, P + "RightHand", 105.0, True)
+    r3 = rig_twist.twist_check(on, m["V"], m["F"], J, W, P + "RightHand", 105.0, True)
+    r2 = rig_twist.twist_check(b2, m["V"], m["F"], J2, W2, P + "RightHand", 105.0, True)
     assert r3["area_min"] > r2["area_min"] + 0.04, (r2["area_min"], r3["area_min"])
 
 
@@ -151,14 +152,14 @@ def test_upper_arm_and_legs():
     m = _model()
     _, on, J, W = _skin()
     for drv, deg in (("RightArm", 60.0), ("LeftArm", 60.0), ("RightUpLeg", 40.0)):
-        r = rig.twist_check(on, m["V"], m["F"], J, W, P + drv, deg, True)
+        r = rig_twist.twist_check(on, m["V"], m["F"], J, W, P + drv, deg, True)
         assert abs(r["at_start"]) < 8 and r["twist"][-1] > 0.9 * deg and r["area_min"] > 0.85, (drv, r)
-    r = rig.twist_check(on, m["V"], m["F"], J, W, P + "RightFoot", 40.0, True)
+    r = rig_twist.twist_check(on, m["V"], m["F"], J, W, P + "RightFoot", 40.0, True)
     assert r["at_end"] < 5 and r["area_min"] > 0.85, r
     # and a swing has no roll for them to take: the arm raised sideways drives nothing
-    turns = rig.drive_twist(on, {P + "RightArm": ([0, 1, 0], 45.0)})
+    turns = rig_twist.drive_twist(on, {P + "RightArm": ([0, 1, 0], 45.0)})
     ax = next(b["twist"]["axis"] for b in on if b["name"] == P + "RightArmTwist1")
-    want = rig.roll_about(ax, ([0, 1, 0], 45.0))
+    want = rig_twist.roll_about(ax, ([0, 1, 0], 45.0))
     got = turns.get(P + "RightArmTwist1", (ax, 0.0))[1]
     assert abs(got + want) < 1e-9
 
@@ -169,8 +170,8 @@ def test_head_is_rigid():
     m = _model()
     spec, on, J, W = _skin()
     _, off, J0, W0 = _skin(rigid_head=False)
-    hc = rig.head_check(on, m["V"], J, W)
-    old = rig.head_check(off, m["V"], J0, W0)
+    hc = rig_head.head_check(on, m["V"], J, W)
+    old = rig_head.head_check(off, m["V"], J0, W0)
     face = [r for r in hc["rows"] if r["rel"] >= 0.1]
     assert len(face) >= 4 and all(r["head"] >= 0.995 and r["lag_mm"] < 0.3 and r["arms"] == 0 for r in face), face
     assert max(r["lag_mm"] for r in old["rows"] if r["rel"] >= 0.1) > 5, old["rows"]  # it wasn't before
@@ -178,13 +179,13 @@ def test_head_is_rigid():
     for pn in ("teeth", "tongue", "eyes"):
         sel = m["part"] == m["names"].index(pn)
         assert sel.any() and wh[sel].min() > 0.999, (pn, wh[sel].min())
-    hf = rig.head_field(spec, on)
+    hf = rig_head.head_field(spec, on)
     h = hf["h"](m["V"])
     body = m["part"] == m["names"].index("body") if "body" in m["names"] else np.ones(len(h), bool)
     same = (h < 1e-9) & body
     assert same.sum() > 1000
-    A = rig.pose(on, m["V"][same], J[same], W[same], rig.test_pose(on))
-    B = rig.pose(off, m["V"][same], J0[same], W0[same], rig.test_pose(off))
+    A = rig_model.pose(on, m["V"][same], J[same], W[same], rig_twist.test_pose(on))
+    B = rig_model.pose(off, m["V"][same], J0[same], W0[same], rig_twist.test_pose(off))
     assert np.abs(A - B).max() < 1e-9  # unrelated regions keep their weights
     assert np.allclose(W.sum(1), 1, atol=1e-9)
     # the falloff is continuous: no vertex's Head weight steps against its neighbours'
@@ -205,14 +206,14 @@ def test_rigid_near_and_export_frames():
     c = m["V"][np.argmin(np.linalg.norm(m["V"] - (hj + [0, -0.1, -0.02]), axis=1))]  # a patch under the chin
     moved = np.linalg.norm(m["V"] - c, axis=1) < 0.03
     assert moved.sum() > 20
-    out = rig.rigid_near(on, {"all": (J, W)}, {"all": m["V"]}, {"all": moved * 0.01})
+    out = rig_head.rigid_near(on, {"all": (J, W)}, {"all": m["V"]}, {"all": moved * 0.01})
     J2, W2 = out["all"]
     wh = (W2 * (J2 == hi)).sum(1)
     assert wh[moved].min() > 0.999
     far = np.linalg.norm(m["V"] - c, axis=1) > 0.03 + 0.05
     assert np.array_equal(J2[far], J[far]) and np.allclose(W2[far], W[far])
     # a part no shape moves (a collar beside the throat) keeps its weights, however near the moved skin it lies
-    out = rig.rigid_near(on, {"all": (J, W), "collar": (J, W)}, {"all": m["V"], "collar": m["V"]}, {"all": moved * 0.01})
+    out = rig_head.rigid_near(on, {"all": (J, W), "collar": (J, W)}, {"all": m["V"], "collar": m["V"]}, {"all": moved * 0.01})
     assert np.array_equal(out["collar"][0], J) and np.array_equal(out["collar"][1], W)
     # with the head field (base bodies, regen3): past NEAR_SHORT of the band the Head share is no more than the
     # field's, and the band sets the share wanted, not a second blend over the head rule's (Garrett's notch, field
@@ -220,8 +221,8 @@ def test_rigid_near_and_export_frames():
     band = 0.08
     d = np.linalg.norm(m["V"] - c, axis=1)
     fld = lambda V: np.full(len(V), 0.3)
-    J3, W3 = rig._rigid_head(J, np.asarray(W, float), np.full(len(J), 0.3), hi)  # the head rule's share, as skin_parts
-    out = rig.rigid_near(on, {"all": (J3, W3)}, {"all": m["V"]}, {"all": moved * 0.01}, band, None, fld)
+    J3, W3 = rig_head._rigid_head(J, np.asarray(W, float), np.full(len(J), 0.3), hi)  # the head rule's share, as skin_parts
+    out = rig_head.rigid_near(on, {"all": (J3, W3)}, {"all": m["V"]}, {"all": moved * 0.01}, band, None, fld)
     wh = (out["all"][1] * (out["all"][0] == hi)).sum(1)
     assert wh[moved].min() > 0.999
     out_d = d - 0.03  # (at least: the moved patch's radius)
@@ -244,11 +245,11 @@ def test_gnm_floor():
         spec = json.loads((ROOT / "examples" / "gnm_talk.json").read_text())
         from hifipushie.spec import expand_mirror, resolve_point
         s = expand_mirror(spec)
-        bones = rig.rig_bones(spec)
+        bones = rig_report.rig_bones(spec)
     except Exception as e:  # the packs aren't here
         print("  (skipped: %s)" % str(e).splitlines()[0][:80])
         return
-    hf = rig.head_field(spec, bones)
+    hf = rig_head.head_field(spec, bones)
     assert "landmarks" in hf["how"], hf["how"]
     pts = {k: resolve_point(s, k) for k in ("lm_chin", "lm_lip_lower", "lm_nose_tip", "lm_jaw_4.L", "lm_jaw_7.R",
                                             "lm_jaw_0.L", "head")}
@@ -292,7 +293,7 @@ def test_skin_under_a_collar_follows_the_collar():
     collar = _tube(0.058, -0.01, 0.06)
     meshes = {"body": neck, "collar": collar}
     hf = {"h": lambda V: np.ones(len(V)), "part": lambda V: np.where(np.asarray(V)[:, 2] > 0.1, 1.0, 0.0), "bone": 0}
-    cov = rig.skin_cover({"parts": {}}, [], meshes, hf)
+    cov = rig_skin.skin_cover({"parts": {}}, [], meshes, hf)
     assert set(cov) == {"body"}
     z, c = neck[0][:, 2], cov["body"]
     assert (c[z < 0.035] > 0.99).all()  # under the collar: all of it follows the collar
@@ -303,7 +304,7 @@ def test_skin_under_a_collar_follows_the_collar():
     # triangle turned 38 of Garrett's triangles inside out at a 33 deg head turn)
     ring = c.reshape(-1, 48)
     assert np.abs(np.diff(ring, axis=0)).max() < 0.35
-    sharp = rig.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": {"smooth": 0}}}}, [], meshes, hf)["body"]
+    sharp = rig_skin.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": {"smooth": 0}}}}, [], meshes, hf)["body"]
     assert (sharp[z < 0.055] == 1.0).all()
-    off = rig.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": False}}}, [], meshes, hf)
+    off = rig_skin.skin_cover({"parts": {}, "rig": {"rigid_head": {"cover": False}}}, [], meshes, hf)
     assert off == {}

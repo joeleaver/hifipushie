@@ -651,7 +651,7 @@ def split_big(mesh: Path, ctx: dict, rel: dict, texture: int, log: list) -> None
 
 def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list, high: Path | None = None) -> dict:
     """Parts with a modelled topology instead of a decimation: parts.<p>.topology = "wrap" (the body of a humanoid:
-    retopo.wrap, the template's quads carried onto it; a base's grafted head keeps its own) or "limbs" (any creature:
+    retopo_wrap.wrap, the template's quads carried onto it; a base's grafted head keeps its own) or "limbs" (any creature:
     limbloops.build, quad rings down each limb of the part and out into its body, the rest of the part decimated to
     parts.<p>.topology_triangles, from the export's own high mesh), its faces buried in other parts (skin under
     clothes, where animation would only poke it through) dropped. {part: npz path}."""
@@ -680,8 +680,8 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list, high: Path |
         else:
             if ctx["origin"][pn] != "body":
                 raise ValueError(f"parts.{pn}.topology = \"wrap\": only the body (a humanoid's) can be wrapped")
-            from . import retopo
-            r = retopo.wrap(spec, log=tl)
+            from . import retopo_wrap
+            r = retopo_wrap.wrap(spec, log=tl)
         V, L, S = r["verts"], r["loops"], r["sizes"]
         names = list(ctx["streams"])
         hid = surface.hidden(ctx["streams"], V, np.full(len(V), names.index(pn)), names, ctx["voxel"],
@@ -706,10 +706,10 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list, high: Path |
         if kind != "limbs" and (defs.get(ctx["origin"][pn]) or {}).get("joint_density", True) and \
                 spec.get("rig", {}) is not False:  # (limbs pack their own joint loops)
             # the same triangles spent where it bends: hinge zones split, shafts thinned (topodensity.py)
-            from . import rig as _rig
+            from . import rig_report
             from . import topodensity
             try:
-                Vk, Lk, Sk, gk = topodensity.rebalance(_rig.rig_bones(spec), Vk, Lk, Sk, gk, ctx["streams"][pn],
+                Vk, Lk, Sk, gk = topodensity.rebalance(rig_report.rig_bones(spec), Vk, Lk, Sk, gk, ctx["streams"][pn],
                                                        ctx["voxel"], log)
             except Exception as e:  # (the plain wrap is still a body)
                 log.append(f"WARNING body density: not rebalanced ({type(e).__name__}: {e})")
@@ -1368,10 +1368,11 @@ BAKE_SKIN_DETAIL = True
 
 def face_keep_paint(parts: dict, topo: dict, log: list) -> None:
     """(one mesh, retopo.FACE_KEEP) each low-poly corner's "keep" weight: 1 where the head's surface IS the approved GNM
-    head (retopo.face_keep: eyes, mouth, nose), fading over its rings. bake() doesn't project those texels onto the field:
+    head (retopo_wrap.face_keep: eyes, mouth, nose), fading over its rings. bake() doesn't project those texels onto the field:
     the field is the smoothed copy of that head (the lips up to 6.6 mm off, game_ready.md r42), so projected, the lips'
     texels went astray (r41's lip gate 2.69 -> 4.27% with the lids kept) and their normals were the smoothed lips'."""
     from . import retopo
+    from . import retopo_wrap
     if not retopo.FACE_KEEP:
         return
     for pn, (tp, _) in topo.items():
@@ -1380,7 +1381,7 @@ def face_keep_paint(parts: dict, topo: dict, log: list) -> None:
             continue
         L, S = np.asarray(z["loops"], int), np.asarray(z["sizes"], int)
         faces = np.split(L, np.cumsum(S)[:-1])
-        w = retopo.face_keep(np.asarray(z["gnm"], int), faces)
+        w = retopo_wrap.face_keep(np.asarray(z["gnm"], int), faces)
         parts[pn]["keep"] = w[parts[pn]["corner_vert"]].astype(np.float32)[:, None]
         log.append(f"{pn}: {int((w > 0.999).sum())} vertices of the approved face kept, not projected in the bake")
 
@@ -3291,15 +3292,16 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     rigged = None
     if rig:  # an armature from the skeleton, the parts (not prefabs) skinned to it
         from . import rig as rigmod
+        from . import rig_bend, rig_head, rig_model, rig_report, rig_skin, rig_twist
         tr = time.time()
         rspec = spec
         if isinstance(rig, dict):  # export options over spec["rig"]: {"twist": ..., "rigid_head": ...}
             rspec = {**spec, "rig": {**(spec.get("rig") or {}), **rig}}
-        bones = rigmod.rig_bones(rspec)
+        bones = rig_report.rig_bones(rspec)
         skin_at = {pn: np.array(p["verts"], np.float64) for pn, p in parts.items() if pn not in pf_of}
-        rigged = {"bones": bones, "weights": rigmod.skin_parts(
+        rigged = {"bones": bones, "weights": rig_skin.skin_parts(
             rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3)) for pn in skin_at}, smooth=3)}
-        hf = rigmod.head_field(rspec, bones)
+        hf = rig_head.head_field(rspec, bones)
         ntw = sum(1 for b in bones if b.get("twist"))
         log.append(f"rig: {len(bones)} bones ({(spec.get('rig') or {}).get('type', 'humanoid')}, root "
                    f"{bones[0]['name']!r}; {ntw} twist bones after the base set), {len(rigged['weights'])} parts "
@@ -3318,7 +3320,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             Js = np.concatenate([np.asarray(rigged["weights"][pn][0]) for pn in pn_s])
             Ws = np.concatenate([np.asarray(rigged["weights"][pn][1], np.float64) for pn in pn_s])
             rows = _ra.layers(Vs, Fs_, np.repeat(np.arange(len(pn_s)), np.diff(off)), pn_s,
-                              rigmod.pose(bones, Vs, Js, Ws, rigmod.drive_twist(bones, sit)),
+                              rig_model.pose(bones, Vs, Js, Ws, rig_twist.drive_twist(bones, sit)),
                               skip=[pn for pn in pn_s if (defs.get(origin[pn]) or {}).get("rig_bone")])
             bad = [r for r in rows if r["through"] > _ra.LAYER_BAD]
             log += [("WARNING rig: " if bad else "rig: ") + ln.strip() if i == 0 else ln
@@ -3362,9 +3364,9 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 if d and pn in skin_at and len(d[0]) == len(skin_at[pn]):
                     moved[pn] = np.max(d, 0)
             before = {pn: _head_share(rigged, pn, hf["bone"]) for pn in moved}
-            skin_cov = rigmod.skin_cover(rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3))
+            skin_cov = rig_skin.skin_cover(rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3))
                                                      for pn in skin_at}, hf)
-            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"], skin_cov,
+            rigged["weights"] = rig_head.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"], skin_cov,
                                                      hf["h"] if rspec.get("base") else None)
             for pn, mv in moved.items():
                 m = mv >= rigmod.MOVED[1]
@@ -3378,7 +3380,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         p.pop("lash_centre", None)
     corr_keys = []
     if rigged and correctives:  # pose correctives (correctives.py): morph targets faded in by the joint's angle
-        from . import correctives as cormod
+        from . import correctives as cormod, rig_bend
         tc = time.time()
         corr_keys = cormod.keys(rigged["bones"])
         seen_ = {k["name"] for k in corr_keys}
@@ -3391,7 +3393,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             Fp = parts[pn]["corner_vert"].reshape(-1, 3)
             # this part's keys from its own limbs' girth (the frames its weights were painted with: a stub's hip
             # gets its seat, rig.ARC_GIRTH); a person's are the plain keys
-            kp_ = cormod.keys(rigged["bones"], girth=cormod.rigmod.limb_girth(rigged["bones"], skin_at[pn], Jp, Wp))
+            kp_ = cormod.keys(rigged["bones"], girth=rig_bend.limb_girth(rigged["bones"], skin_at[pn], Jp, Wp))
             corr_keys += [k for k in kp_ if k["name"] not in seen_]
             seen_ |= {k["name"] for k in kp_}
             D = cormod.solve(rigged["bones"], skin_at[pn], Fp, Jp, Wp, kp_, log if pn == "body" else [])
@@ -3623,11 +3625,11 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                         "layers_seated": rigged.get("layers_seated", []),
                         "rest": "every base joint unrotated at its head, pose as modelled; twist joints rotated so "
                                 "local +Y runs along their segment",
-                        "twist": rigmod.twist_table(rigged["bones"]),
+                        "twist": rig_twist.twist_table(rigged["bones"]),
                         "twist_axes": "Blender axes here (Z up, faces -Y); the GLB's node extras.hifipushie_twist "
                                       "carry the same per joint in glTF axes (axis_parent) and local (+Y)",
                         "twist_recipe": TWIST_RECIPE,
-                        "bend": rigmod.bend_table(rigged["bones"]), "bend_recipe": BEND_RECIPE,
+                        "bend": rig_bend.bend_table(rigged["bones"]), "bend_recipe": BEND_RECIPE,
                         **({"correctives": __import__("hifipushie.correctives", fromlist=["table"]).table(corr_keys),
                             "corrective_recipe": CORRECTIVE_RECIPE} if corr_keys else {}),
                         "head": (f"rigid: {hf['how']}; falloff to the neck over {hf['band'] * 1e3:.0f} mm below; "

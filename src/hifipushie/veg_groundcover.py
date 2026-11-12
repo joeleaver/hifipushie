@@ -103,11 +103,12 @@ def season_tree(T: dict, season: str) -> dict:
 def drawn_points(T: dict) -> np.ndarray:
     """Every vertex the full export draws (styled: wood, crown, heads; realistic: stalks + cards), plant axes (z up)."""
     from . import veg_export, veg_leaf, veg_mesh, veg_style
+    from . import veg_style_dress
     s = T["spec"]
     st = veg_style.sheet(s)
     P = [np.asarray(T["pos"], float)]
     if st:
-        D = veg_style.dress(T, st, None, s.get("season", "summer"))
+        D = veg_style_dress.dress(T, st, None, s.get("season", "summer"))
         for k in ("wood", "crown", "heads", "forks", "cards"):
             if D.get(k) is not None and len(D[k]["V"]):
                 P.append(np.asarray(D[k]["V"], float))
@@ -129,13 +130,14 @@ def heads(trees: list) -> list:
     """[(centre xyz, radius)] of the flower / seed heads (veg_look.parts on the solid mesh as a look builds it), from the
     season showing the most of them."""
     from . import veg_look, veg_style
+    from . import veg_style_dress
     best = []
     for t in trees:
         s = t["spec"]
         st = veg_style.sheet(s)
         if not st:
             continue  # (a realistic plant's flowers are on its card pictures)
-        D = veg_style.dress(t, st, None, s.get("season", "summer"))
+        D = veg_style_dress.dress(t, st, None, s.get("season", "summer"))
         Vs, Fs, n = [], [], 0
         C = D.get("crown")
         if C is None:
@@ -577,8 +579,10 @@ def _cache_path(spec: dict, seasons) -> Path:
     ($HIFIPUSHIE_VEG_CACHE/groundcover, else ~/.cache/hifipushie/groundcover; the 40 most recent kept)."""
     import hashlib
     import os
+    from . import veg_style as _vs
     code = b"".join((Path(__file__).with_name(f).read_bytes() for f in
-                     ("veg_style.py", "veg_small.py", "veg_leaf.py", "blender_vegetation.py", "veg_look.py")))
+                     ("veg_style.py", *(f"{m}.py" for m in _vs.MODULES),  # (veg_style.py was split: C426)
+                      "veg_small.py", "veg_leaf.py", "blender_vegetation.py", "veg_look.py")))
     # (this module's own code is in BAKE_VERSION, not its bytes: the maps are composed from the cached renders, so an
     # edit to composing, cards or files never re-renders)
     key = hashlib.sha1(json.dumps([spec, list(seasons), vegetation.VERSION, TIERS, BAKE_VERSION, SUPER, FLAT, TOP_AT, TOP_PX, HEAD_SPAN],

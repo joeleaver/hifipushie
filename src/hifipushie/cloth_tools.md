@@ -244,8 +244,8 @@ game mesh is a re-grid of the FLAT PATTERN mapped onto it (garment_game's remesh
 the pattern (pieces packed in one square). The grid is the finest that fits the role's `clothing` LOD0 budget
 (budgets.json; details count too), between 6 and 40 mm; over budget at 40 mm is refused with what to change (a bigger role,
 fewer pieces built in full at step 1, simpler details at step 7); a budget is never changed to pass. Step 7's details
-(details.pkl) are their own meshes and materials. Weights: read off the body (rig.skin_parts: the base body's own at its
-surface), Mixamo bone names (rig.rig_bones); a detail takes its nearest garment vertex's. Gate rows (numbers in the text):
+(details.pkl) are their own meshes and materials. Weights: read off the body (rig_skin.skin_parts: the base body's own at its
+surface), Mixamo bone names (rig_report.rig_bones); a detail takes its nearest garment vertex's. Gate rows (numbers in the text):
 triangles <= budget; UV stretch (3D / pattern area per triangle) p95 no more than the drape's + 0.03, p5 no more than 0.10
 below it (chords across folds); no open pattern edges; the weight check (LeftArm raised 45 deg: each vertex's distance to
 the body changes <= 12 mm p95 where the body moved). Refused unless step 9 is approved (internally an approved 7a exports the

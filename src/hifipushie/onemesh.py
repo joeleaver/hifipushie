@@ -397,10 +397,11 @@ def _style_lift(params: dict, bs: dict, at) -> tuple:
     """(how the style's body sliders move the point `at` on the MakeHuman body of `params`, the soles' new height)."""
     key = ("lift", json.dumps([params, bs, [round(float(x), 6) for x in at]], sort_keys=True, default=float))
     if key not in _CACHE:
-        from . import humanstyle, retopo
+        from . import humanstyle
+        from . import retopo_warp
         mb = bound(params, 1.0)["mh"]
         J2, girth = humanstyle.body_targets(mb["J"], bs)
-        V, _, _, fn, _ = retopo._skeleton_warp(np.asarray(mb["P"], float), mb["J"], {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
+        V, _, _, fn, _ = retopo_warp._skeleton_warp(np.asarray(mb["P"], float), mb["J"], {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
         _CACHE[key] = (fn(np.atleast_2d(np.asarray(at, float)))[0][0] - np.asarray(at, float), float(V[:, 2].min()))
     return _CACHE[key]
 
@@ -765,10 +766,10 @@ def template(base: dict) -> dict:
         chin_z = chin_mh_ = chin_lm
     bs = humanstyle.active(base, humanstyle.BODY)
     if bs:  # (humanstyle.py) proportions: joints move and girths scale, and the mesh goes with them
-        from . import retopo
+        from . import retopo_warp
         J2, girth = humanstyle.body_targets(Jb, bs)
         V0, head_j = V, Jb["head"]
-        V, _, _, carry_fn, _ = retopo._skeleton_warp(V, Jb, {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
+        V, _, _, carry_fn, _ = retopo_warp._skeleton_warp(V, Jb, {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
         mv = lambda X: carry_fn(np.atleast_2d(np.asarray(X, float)))[0]  # noqa: E731
         mvh = mv
         if nat:  # (headbody) the head RIDES the styled body, rigid (the pivot's move); the body's neck meets it again
@@ -828,7 +829,6 @@ def _carried(ht: dict, mv, dz: float = 0.0) -> dict:
     from scipy.spatial import cKDTree
 
     from . import base_imls
-    from . import retopo
     sh = np.array([0.0, 0.0, dz])
     W = mv(ht["verts"]) - sh
     A0, A1 = ht["verts"] - ht["verts"].mean(0), W - W.mean(0)
@@ -873,6 +873,7 @@ def head(s: dict, base: dict) -> dict:
     """The head's dict for everything that asks base_measures.head_of (landmarks, eyes, mouth, face shapes), in the pose the
     spec's joints give the body: the template-pose head carried by the same skeleton warp as the body's vertices."""
     from . import retopo
+    from . import retopo_warp
     tpl = template(base)
     ht = head_rest(base)
     used = {}
@@ -896,7 +897,7 @@ def head(s: dict, base: dict) -> dict:
         for j, gv in list(girth.items()):
             if j.endswith(".L"):
                 girth.setdefault(j[:-2] + ".R", gv)
-        _, _, _, apply, _ = retopo._skeleton_warp(tpl["P"], tpl["J"], s, [], girth=girth)
+        _, _, _, apply, _ = retopo_warp._skeleton_warp(tpl["P"], tpl["J"], s, [], girth=girth)
         mv = lambda X: apply(np.atleast_2d(np.asarray(X, float)))[0]  # noqa: E731
         out = _carried(ht, mv)
         out["one_mesh"] = True

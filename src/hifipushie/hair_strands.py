@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 
 from . import hair_cards as hc
+from . import hair_cards_budget, hair_cards_mesh
 
 LENS = "hp_lens"
 STRAND_RADIUS = 0.00004  # m: a real hair (0.03-0.05 mm), at REAL_COUNT strands; fewer strands are drawn wider so
@@ -185,9 +186,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                     Sl[k_] = lk["strands"][k_]
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
             inp = lk["inputs"]
-            P, rad, tilt, u, s = hc.spine(lk, n)
+            P, rad, tilt, u, s = hair_cards_mesh.spine(lk, n)
             ang = np.radians(inp.get("Flip", 0.0) + inp.get("Twist", 0.0) * u) + tilt
-            T, N, B, _ = hc.frames(P, C, ang, lk.get("core"))
+            T, N, B, _ = hair_cards_mesh.frames(P, C, ang, lk.get("core"))
             W, th = float(inp["Width"]), float(inp["Thickness"])
             lw = np.clip(lock_width(inp, u) * rad, 0.0, 4.0)
             belly = max(float(inp.get("Belly", 0.3)), 0.02)
@@ -550,7 +551,7 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
     if head:
         LP, LT, LG = [], [], []
         for lk in head:
-            P, *_ = hc.spine(lk, 16 if float(lk.get("free", 0.0)) <= 0.5 else 40)
+            P, *_ = hair_cards_mesh.spine(lk, 16 if float(lk.get("free", 0.0)) <= 0.5 else 40)
             LP.append(P)
             LT.append(_unit(np.gradient(P, axis=0)))
             LG.append(np.full(len(P), float((lk.get("inputs") or {}).get("Grey", lk.get("grey", 0.0)))))
@@ -853,7 +854,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     if bands:
         from . import hair_tied
         tile = [{"kind": "band", "u0": 0.0, "u1": 1.0}]
-        b = hc.join(*[hair_tied.band_mesh(k, tile) for k in bands])
+        b = hair_cards_budget.join(*[hair_tied.band_mesh(k, tile) for k in bands])
         np.savez(tmp / "strand_band.npz", verts=b["verts"], tris=b["tris"])
         out["band"] = str(tmp / "strand_band.npz")
     return out

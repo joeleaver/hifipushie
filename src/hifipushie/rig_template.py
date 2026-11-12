@@ -8,7 +8,7 @@ geometry: they copy the nearest template-weighted vertex and the rigid head rule
 (the export's low poly, clothes, hair shells), which read the base's weights at the closest point of its SURFACE
 whose normal agrees with theirs (`from_surface`): the nearest VERTEX of a finger's side is as often the next finger's.
 
-Distance weights (`rig.rig_weights`) stay for everything without such a template: kit characters, the stylised
+Distance weights (`rig_skin.rig_weights`) stay for everything without such a template: kit characters, the stylised
 template, creatures."""
 from __future__ import annotations
 
@@ -52,14 +52,14 @@ def _central(tpl: dict, names: list[str]) -> dict:
     """{central MakeHuman bone: {Mixamo joint: share}} by where the bone lies along pelvis -> chest -> neck -> head
     in the template's own rest: each of our spine joints takes the part of a MakeHuman spine bone that overlaps its
     own stretch (our Hips / Spine / Spine1 split pelvis -> chest in thirds, Spine2 runs to the Neck joint at shoulder
-    height: `rig.humanoid`)."""
+    height: `rig_humanoid.humanoid`)."""
     J = tpl["J"]
     pelvis, chest, neck, head = (np.asarray(J[k], float) for k in ("pelvis", "chest", "neck", "head"))
     sh_z = 0.5 * (J["shoulder.L"][2] + J["shoulder.R"][2])
     t = float(np.clip((sh_z - chest[2]) / max(neck[2] - chest[2], 1e-6), 0.2, 0.8))
     hint = tpl.get("rig") or {}
 
-    def at(name, default):  # as rig.humanoid places Neck and Head
+    def at(name, default):  # as rig_humanoid.humanoid places Neck and Head
         if name in hint:
             a, b, f = hint[name]
             return np.asarray(J[a], float) + float(f) * (np.asarray(J[b], float) - np.asarray(J[a], float))
@@ -107,7 +107,7 @@ def weights_note(spec: dict) -> str | None:
 def template_weights(spec: dict, rb: list[dict], surf: dict) -> np.ndarray | None:
     """Dense weights (base quad vertices x rig bones) from the base's template, or None when it has none (a
     template other than MakeHuman, the weights file not in the pack, spec["rig"]["weights"] = "distance", or a
-    rig that isn't the Mixamo humanoid). Twist bones get nothing here (`rig._spread_twist` shares them after)."""
+    rig that isn't the Mixamo humanoid). Twist bones get nothing here (`rig_twist._spread_twist` shares them after)."""
     from scipy.spatial import cKDTree
     names = [b["name"] for b in rb]
     if (spec.get("rig") or {}).get("weights", "template") == "distance" or PREFIX + "Hips" not in names:

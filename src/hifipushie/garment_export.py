@@ -9,7 +9,7 @@ remesh_panel: seams resampled once and shared by both sides, barycentric through
   * stiff pieces (the pattern's made pieces: collar, stand, cuffs) are re-gridded finer, to MADE_MIN_ROWS rows across;
   * fold lines (M["folds"]: a collar's roll, a pressed band) are kept as vertex rows (a chord would cut a fold);
   * the details (garment_details, step 7: details.pkl) are their own meshes and materials, as made;
-  * skinned to the character's rig (rig.rig_bones: Mixamo names) with weights READ OFF THE BODY (rig.skin_parts: the
+  * skinned to the character's rig (rig_report.rig_bones: Mixamo names) with weights READ OFF THE BODY (rig_skin.skin_parts: the
     base body's own weights at its surface, smoothed; clothes move with the skin under them); a detail takes the
     weights of the garment vertex nearest it (a button rides the cloth).
 Numbers (the text): triangles vs budget, UV stretch (3D edge / pattern edge per triangle: the drape vs its cut), the
@@ -180,10 +180,10 @@ def bone_index(rb: list[dict], short: str) -> int:
 
 
 def skin(spec: dict, rb: list[dict], V: np.ndarray, T: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """T11's weights (the old route, kept for comparison): rig.skin_parts' transfer, not smoothed over the cloth.
+    """T11's weights (the old route, kept for comparison): rig_skin.skin_parts' transfer, not smoothed over the cloth.
     The export uses garment_bend.skin (projected + geodesic)."""
-    from . import rig
-    return rig.skin_parts(spec, rb, {"garment_export_probe": (np.asarray(V, float), np.asarray(T, np.int64))},
+    from . import rig_skin
+    return rig_skin.skin_parts(spec, rb, {"garment_export_probe": (np.asarray(V, float), np.asarray(T, np.int64))},
                           smooth=3)["garment_export_probe"]
 
 

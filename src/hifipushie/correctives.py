@@ -25,6 +25,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import rig as rigmod
+from . import rig_bend, rig_twist
 
 PREFIX = rigmod.PREFIX
 # motion: (joint, axis for the LEFT side or "hinge" (the rest bend's own axis, flexing), sign, key angles in degrees
@@ -46,7 +47,7 @@ ARC_WIDEN = 1.4    # the target's zone x the weights' (the outer skin of a 120 d
 ARC_LINEAR = 0.7   # the target's turn along the zone: this much linear, the rest smoothstep (a smoothstep alone turned
                    # most of the angle mid-zone: a corner at 120 deg)
 ITERS = 12          # ARAP local / global rounds
-FREE = 2.4          # the solved region: |s| within this x the joint's outer zone half width (rig.arc_frames)
+FREE = 2.4          # the solved region: |s| within this x the joint's outer zone half width (rig_bend.arc_frames)
 TARGET = "arc"      # "arc": the family's share turned round the pivot by phi x angle; "arap": as-rigid-as-possible
 CONTACT_ROUNDS = 2
 CONTACT_SOFT = 0.004  # m: the soft contact's width (arc target)  # lay the inner side on the bisecting plane, solve again
@@ -68,10 +69,10 @@ def _children(bones):
 
 def keys(bones: list[dict], motions: dict | None = None, girth: dict | None = None) -> list[dict]:
     """Every corrective this rig gets: [{name, joint, side, axis (unit, world rest), deg, prev (name of the lower
-    key of the same motion or None), frame (rig.arc_frames row)}]. girth: rig.limb_girth of the skin the weights
+    key of the same motion or None), frame (rig_bend.arc_frames row)}]. girth: rig_bend.limb_girth of the skin the weights
     were painted on (the same frames `_arc_bend` used: a stub's zone is sized by it); STUB_ONLY motions need it."""
     names = [b["name"] for b in bones]
-    frames = {(f["joint"], f["side"]): f for f in rigmod.arc_frames(bones, girth)}
+    frames = {(f["joint"], f["side"]): f for f in rig_bend.arc_frames(bones, girth)}
     out = []
     for mo, (jn, ax, sign, degs) in (motions or MOTIONS).items():
         for side, sg in (("Left", 1.0), ("Right", -1.0)):
@@ -185,7 +186,7 @@ def arap(V: np.ndarray, F: np.ndarray, P0: np.ndarray, free: np.ndarray, iters: 
 
 
 def _skin_mats(bones, J, W, turns):
-    """Per vertex the blended skinning matrix (4x4) of LBS under `turns` (rig.pose's convention)."""
+    """Per vertex the blended skinning matrix (4x4) of LBS under `turns` (rig_model.pose's convention)."""
     n = len(bones)
     M = np.tile(np.eye(4), (n, 1, 1))
     for i, b in enumerate(bones):
@@ -229,7 +230,7 @@ def solve(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
     out: dict = {}
     for k in ks:
         f = k["frame"]
-        turns = rigmod.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"])})
+        turns = rig_twist.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"])})
         Mv, _ = _skin_mats(bones, Jw, Ww, turns)
         P0 = np.einsum("nij,nj->ni", Mv, np.c_[Vw, np.ones(len(Vw))])[:, :3]
         d = Vw - f["pivot"]
@@ -257,7 +258,7 @@ def solve(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
             # the joint family's share of each vertex turned round the pivot by phi x the angle (radius kept: the
             # outer side keeps its volume and rest form, a rotation not a chord); the rest of its weights as LBS
             x_ = np.clip(s / (2 * ARC_WIDEN * (f["inner"] + (f["outer"] - f["inner"]) * (1 + ((q @ f["o"]) / np.maximum(rho, 1e-9))) / 2)) + 0.5, 0, 1)
-            ph = ARC_LINEAR * x_ + (1 - ARC_LINEAR) * rigmod._sstep(x_)  # near-constant turn along the zone: an even arc
+            ph = ARC_LINEAR * x_ + (1 - ARC_LINEAR) * rig_bend._sstep(x_)  # near-constant turn along the zone: an even arc
             fam_w = own.copy()
             rest_part = P0 - fam_w[:, None] * 0  # (placeholder, replaced below)
             Mo = np.zeros((len(Vw), 4, 4))
@@ -284,7 +285,7 @@ def solve(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
         if np.linalg.norm(nrm) > 1e-6:
             nrm /= np.linalg.norm(nrm)
             inner = ((Vw - f["pivot"]) @ f["o"]) < 0
-            phi = rigmod._sstep(s / (2 * (f["inner"] + 1e-9)) + 0.5)
+            phi = rig_bend._sstep(s / (2 * (f["inner"] + 1e-9)) + 0.5)
             if TARGET == "arc":
                 # a soft contact: each side's inner skin is held to its own side of the bisecting plane by a soft
                 # minimum (width CONTACT_SOFT): what crossed lies on the plane, what nears it flattens against it
@@ -323,7 +324,7 @@ def _rest_delta(Mv, T, P0):
 
 
 def _stub_target(bones, V, F, J, W, fam, k, f, turns, P0, side, s):
-    """(target, solved mask, seat-held mask) of a STUB limb's key (rig.arc_frames "stub": a limb thicker than
+    """(target, solved mask, seat-held mask) of a STUB limb's key (rig_bend.arc_frames "stub": a limb thicker than
     ARC_GIRTH x its length, blended into the body: Puddles' legs). Its weights run ROUND the limb (body skin past
     rig.ARC_BODY x girth from its axis is the parent's), not along it, so the person's arc target (the turn by the
     position along the zone) would turn the thigh 70% at the knee. Here each vertex's joint-family share turns round
@@ -355,10 +356,10 @@ def _stub_target(bones, V, F, J, W, fam, k, f, turns, P0, side, s):
         notf = ~((fam[J[:, c]] == jd) | (fam[J[:, c]] == jp) | (J[:, c] == jh))
         Mo += np.where(notf, W[:, c], 0.0)[:, None, None] * Mb[J[:, c]]
     other = np.einsum("nij,nj->ni", Mo, np.c_[V, np.ones(n)])[:, :3]
-    beta = rigmod._sstep((tau - STUB_SHARP[0]) / (STUB_SHARP[1] - STUB_SHARP[0]))
+    beta = rig_bend._sstep((tau - STUB_SHARP[0]) / (STUB_SHARP[1] - STUB_SHARP[0]))
     # the inner side only (a belly over the thigh): on the outer side the weights put the bottom itself on the leg
     # (0.9 at the pivot's height) and sharpened, it swept down as a sheet; there LBS and the seat below hold
-    beta = 1 - (1 - beta) * rigmod._sstep(-((V - f["pivot"]) @ f["o"]) / (0.5 * f["stub"]))
+    beta = 1 - (1 - beta) * rig_bend._sstep(-((V - f["pivot"]) @ f["o"]) / (0.5 * f["stub"]))
     T = P0 + ((1 - beta) * free)[:, None] * (S[:, None] * V - (P0 - other))
     # the seat
     o = f["o"]
@@ -371,7 +372,7 @@ def _stub_target(bones, V, F, J, W, fam, k, f, turns, P0, side, s):
     if True:
         cap = np.maximum(floor, d_rest @ Ro)
         dl = CONTACT_SOFT
-        g = rigmod._sstep((d_rest @ o) / (0.5 * f["stub"])) * (1 - rigmod._sstep((tau - STUB_SEAT_TAU[0]) / (STUB_SEAT_TAU[1] - STUB_SEAT_TAU[0]))) * free  # parent side, outer
+        g = rig_bend._sstep((d_rest @ o) / (0.5 * f["stub"])) * (1 - rig_bend._sstep((tau - STUB_SEAT_TAU[0]) / (STUB_SEAT_TAU[1] - STUB_SEAT_TAU[0]))) * free  # parent side, outer
         dep = (T - f["pivot"]) @ Ro
         soft = -dl * np.logaddexp(-dep / dl, -cap / dl)  # a soft min(dep, cap)
         T += ((soft - dep) * g)[:, None] * Ro
@@ -385,7 +386,7 @@ def _stub_target(bones, V, F, J, W, fam, k, f, turns, P0, side, s):
     T[mush] = _umbrella(T, F, mush, STUB_MUSH)[mush] + np.einsum("nij,nj->ni", Rv, det)
     if f["mid"] is not None:  # the two sides' moves add to one across the midline (each solved 2 cm past it, both
         # whole there, the crotch moved twice: 85 edges stretched > 3x, against LBS's 20)
-        T = P0 + rigmod._sstep(0.5 + (V[:, 0] - f["mid"]) * f["side"] / rigmod.ARC_MID)[:, None] * (T - P0)
+        T = P0 + rig_bend._sstep(0.5 + (V[:, 0] - f["mid"]) * f["side"] / rigmod.ARC_MID)[:, None] * (T - P0)
     return T, free, held
 
 

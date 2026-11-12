@@ -9,6 +9,7 @@ from scipy.spatial import cKDTree
 
 from . import base
 from . import retopo
+from . import retopo_patches
 from .base_imls import _catmull_clark, _normals_and_h, _sd_body, _unit
 
 def _push(W, tpl, pushes):
@@ -65,7 +66,7 @@ def _neck_loops(tpl):
         near = set(np.flatnonzero((P[:, 2] > chin_z - 0.14) & (P[:, 2] < chin_z + 0.05) & (np.abs(P[:, 0]) < 0.14)))
         top = int(np.argmax(P[:, 2]))
         found, loose = [], []
-        for path in retopo._loops_round(P, faces, nb, ef, near, 200):
+        for path in retopo_patches._loops_round(P, faces, nb, ef, near, 200):
             Q = P[path]
             ang = np.arctan2(Q[:, 1] - Q[:, 1].mean(), Q[:, 0])
             wn = np.sum((np.diff(np.r_[ang, ang[:1]]) + np.pi) % (2 * np.pi) - np.pi) / (2 * np.pi)
@@ -164,7 +165,7 @@ def _neck_tube(W, faces, tpl, s, head, step=0.006):
             r[over] = (1 - f) * R[j, cols] + f * R[j + 1, cols]
         rings.append(foot0 + hh * n + r[:, None] * d)
     tip = rings[-1].mean(0) + step * n
-    V, fl, _, remap = retopo._stitch(W, faces, {"neck": (list(loop), top, (rings, tip))})
+    V, fl, _, remap = retopo_patches._stitch(W, faces, {"neck": (list(loop), top, (rings, tip))})
     src = np.full(len(V), -1)  # each vertex's index in the mesh that came in (-1: the tube's own)
     keep = np.flatnonzero(remap >= 0)
     src[remap[keep]] = keep

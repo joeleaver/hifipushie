@@ -12,7 +12,7 @@ has that age's measured head-to-stature proportion and the body is scaled to its
 (anthro.py: WHO, Snyder 1977): MakeHuman's baby is a one-year-old's shape at 60 cm, its child a ten-year-old.
 "nipples": 0..1 (1 as modelled) smooths them off the chest (under clothes). The skeleton is MakeHuman's default.mhskel: each joint the mean of a helper cube's vertices, which ride the
 targets, mapped to the template's joint names (pelvis, chest, neck, head, shoulder/elbow/wrist, hip/knee/ankle/toe,
-fingerN_k / thumb_k), so `retopo._skeleton_warp` and `base` treat it like the template.
+fingerN_k / thumb_k), so `retopo_warp._skeleton_warp` and `base` treat it like the template.
 """
 from __future__ import annotations
 
@@ -377,7 +377,7 @@ def body(params: dict) -> dict:
     bones = {n: (jp(b["head"]), jp(b["tail"])) for n, b in skeleton()["bones"].items()}
     nk, hd = J["neck"], J["head"]
     f = float((bones["head"][0] - nk) @ (hd - nk) / ((hd - nk) @ (hd - nk)))
-    # where the export rig's Neck and Head pivot (rig.humanoid): the "neck" joint here is the neck's base
+    # where the export rig's Neck and Head pivot (rig_humanoid.humanoid): the "neck" joint here is the neck's base
     rig_hint = {"Neck": ["neck", "head", 0.0], "Head": ["neck", "head", round(f, 4)]}
     out = {"name": "makehuman", "vid": used, "bones": bones, "rig": rig_hint, "P": V[used], "L": np.array([v for f in F for v in f]),
            "S": np.array([len(f) for f in F]), "J": J, "chin_z": float(jp("jaw____tail")[2]),

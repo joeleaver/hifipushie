@@ -3,7 +3,7 @@
 Why (2026-10-14, rig_r4..r6): with arc weights and pose correctives the knee and elbow bend round, but the review
 still read their fronts as "faceted, a mitred pipe": the template's quads are ~1.5 cm, six edges round a bent knee's
 front, and the silhouette of a bend is all corners. A rigger puts extra loops at the joints and fewer along the
-shafts. Here, within the body's budget: every face of a hinge zone (knee, elbow, shoulder, hip: `rig.arc_frames`, the
+shafts. Here, within the body's budget: every face of a hinge zone (knee, elbow, shoulder, hip: `rig_bend.arc_frames`, the
 outer zone x HINGE_ZONE along the limb) is split in four (its new vertices projected onto the model's exact surface),
 the faces round it are fanned from their centre (no T-junctions), and the rest of the body (away from the joints, hands, feet
 and neck) are decimated, border held, by as many triangles as the joints took. GNM's head and the
@@ -26,10 +26,10 @@ PAY_MARGIN = 1.4  # the hinge zones grown by this when choosing what pays (the l
 
 def hinge_mask(bones: list[dict], V: np.ndarray, axes: bool = False, margin: float = 1.0):
     """Vertices in a hinge zone (and with axes=True each one's limb axis there)."""
-    from . import rig
+    from . import rig_bend
     m = np.zeros(len(V), bool)
     U = np.zeros((len(V), 3))
-    for f in rig.arc_frames(bones):
+    for f in rig_bend.arc_frames(bones):
         d = V - f["pivot"]
         s = d @ f["u"]
         rho = np.linalg.norm(d - s[:, None] * f["u"], axis=1)

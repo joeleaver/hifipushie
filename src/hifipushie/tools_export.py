@@ -20,9 +20,10 @@ def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: 
     {bone: [axis|"roll", deg]}), glb (judge an exported GLB instead), focus/zoom, views, shapes, drive_twist,
     engine, save. Details: guide(topic="rig")."""
     from . import rig as rigmod
+    from . import rig_model, rig_report, rig_skin, rig_twist
     spec = store.load(name)
     try:
-        bones = rigmod.rig_bones(spec)
+        bones = rig_report.rig_bones(spec)
     except ValueError as e:
         return str(e)
     from . import rig_audit
@@ -40,7 +41,7 @@ def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: 
         z = np.load(meta["mesh"])
         V, F = z["verts"].astype(np.float64), z["faces"]
         Fs, rep, skip = F, np.arange(len(V)), None
-        J, W = rigmod.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
+        J, W = rig_skin.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
         extra = {k: z[k] for k in ("part", "part_names", "part_colors")}
         lpart, lnames = z["part"], [str(n) for n in z["part_names"]]
         lskip = [pn for pn in lnames if ((spec.get("parts") or {}).get(pn) or {}).get("rig_bone")]
@@ -65,11 +66,11 @@ def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: 
         bad = [k for k in pose if k not in names and rigmod.PREFIX + k not in names]
         if bad:
             return f"pose: no rig bone {bad} (have {', '.join(names)})"
-        turns = rigmod.resolve_turns(bones, {(k if k in names else rigmod.PREFIX + k): (v[0], v[1])
+        turns = rig_twist.resolve_turns(bones, {(k if k in names else rigmod.PREFIX + k): (v[0], v[1])
                                              for k, v in pose.items()})
     else:
-        turns = rigmod.test_pose(bones)
-    P = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, turns) if drive_twist else turns) if turns else V
+        turns = rig_twist.test_pose(bones)
+    P = rig_model.pose(bones, V, J, W, rig_twist.drive_twist(bones, turns) if drive_twist else turns) if turns else V
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
     N = np.zeros_like(P)
     for k in range(3):
@@ -95,7 +96,7 @@ def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: 
         # the clay: a 15k face reads lumpy in clay (7.5 mm facets) and smooth with its normal map
         from PIL import Image as _Im
         from . import asset
-        driven = rigmod.drive_twist(bones, turns) if (turns and drive_twist) else turns
+        driven = rig_twist.drive_twist(bones, turns) if (turns and drive_twist) else turns
         one = dict(shapes or {})
         one["turns"] = {k: [*(float(x) for x in v[0]), float(v[1])] for k, v in driven.items()}
         try:
@@ -121,24 +122,24 @@ def rig(name: str, pose: dict | str | None = None, resolution: int = 160, size: 
     if empty:
         text.append("bones that got no skin: " + ", ".join(empty))
     try:
-        note += rig_audit.fused_limbs(spec, rigmod.rig_bones(spec))
+        note += rig_audit.fused_limbs(spec, rig_report.rig_bones(spec))
     except Exception:
         pass
     from . import rig_template
     if not glb and rig_template.weights_note(spec):
         note.append(rig_template.weights_note(spec))
     text = note + text
-    text += rigmod.report(spec, bones, V, F, J, W)
+    text += rig_report.report(spec, bones, V, F, J, W)
     flesh = None
     try:  # kit characters: skin belongs to the bone whose modelled flesh it is (a belly beside a hanging arm)
-        if len(bones) == len(rigmod.rig_bones(spec)):
-            flesh = rig_audit.flesh_distances(spec, rigmod.rig_bones(spec), V)
+        if len(bones) == len(rig_report.rig_bones(spec)):
+            flesh = rig_audit.flesh_distances(spec, rig_report.rig_bones(spec), V)
     except Exception:
         flesh = None
     text += rig_audit.audit_text(rig_audit.audit(bones, V, F, J, W, skip=skip, flesh=flesh))
     sit = rig_audit.seated(bones)
     if sit and len(lnames) > 1:  # clothes over clothes over skin: do they stay in order when the character sits
-        Ps = rigmod.pose(bones, V, J, W, rigmod.drive_twist(bones, sit))
+        Ps = rig_model.pose(bones, V, J, W, rig_twist.drive_twist(bones, sit))
         text += rig_audit.layers_text(rig_audit.layers(V, Fs, lpart, lnames, Ps, skip=lskip))
     return [_out(img, save), "\n".join(text)]
 

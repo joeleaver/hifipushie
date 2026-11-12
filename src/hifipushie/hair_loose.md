@@ -51,7 +51,7 @@ running round the head), wrong for a tail (pasta). `curl` 1 = a helix, 0 = a fla
 Looks of loose hair take in the bust: views `bust_front`, `bust_three_quarter`, `bust_side`, `bust_back`,
 `bust_back_quarter`, `long_back`, `long_side`.
 
-Cards of loose hair: under the cards lies a solid surface INSIDE the mass (`hair_cards.mass_shell`: the strands'
+Cards of loose hair: under the cards lies a solid surface INSIDE the mass (`hair_cards_mass.mass_shell`: the strands'
 density meshed and decimated, faces toward the body dropped), so no air or skin shows between cards and a far tier
 is little more than that surface; card vertices are kept off the whole body, not only the head.
 

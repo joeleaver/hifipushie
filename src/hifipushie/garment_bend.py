@@ -6,7 +6,7 @@ vertex's own normal says nothing about which skin it lies on), then those weight
 SURFACE by a geodesic kernel of radius `geo_radius` (a rigger's smooth after a weight transfer). Why: cloth stands
 off the skin at the shoulder and armpit; two neighbouring garment vertices there project onto different body regions
 (the deltoid -> the arm, the chest's side -> the spine) and part when the arm moves: a step / a pinched notch
-(Joe, T11's shirt at 45 deg). rig.skin_parts did the same projection but with WORN_SMOOTH = 0 (no smoothing over the
+(Joe, T11's shirt at 45 deg). rig_skin.skin_parts did the same projection but with WORN_SMOOTH = 0 (no smoothing over the
 cloth). The radius (GEO_R_*): at least two grid cells (one edge can't carry a weight jump: the step spreads over two
 rows of quads) and at least twice the garment's p95 stand-off from the skin (cloth that far off has no single skin
 under it: neighbours within that distance may read skins that far apart), within [2, 6] cm (6 cm: past it a sleeve's
@@ -49,9 +49,10 @@ _FIELD: dict = {}
 
 def body_field(spec: dict, rb: list[dict]):
     """(Wq, Tq, dense weights, spread) of the base body's surface: the template's hand-made weights (MakeHuman) or
-    ours by distance (rig.skin_parts' reference); spread: the template knows no twist bones (rig._spread_twist)."""
+    ours by distance (rig_skin.skin_parts' reference); spread: the template knows no twist bones (rig_twist._spread_twist)."""
     import json
     from . import rig, rig_template
+    from . import rig_skin
     from . import base_implied, base_surface
     from .spec import expand_mirror
     key = json.dumps([spec.get("base"), [b["name"] for b in rb]], sort_keys=True, default=str)
@@ -64,7 +65,7 @@ def body_field(spec: dict, rb: list[dict]):
     ref = rig_template.template_weights(spec, rb, surf)
     spread = ref is not None
     if ref is None:
-        Jr, Wr = rig.rig_weights(spec, rb, Wq, Tq, smooth=rig.SMOOTH)
+        Jr, Wr = rig_skin.rig_weights(spec, rb, Wq, Tq, smooth=rig.SMOOTH)
         ref = np.zeros((len(Wq), len(rb)))
         np.add.at(ref, (np.repeat(np.arange(len(Wq)), Jr.shape[1]), Jr.ravel()), Wr.ravel())
     _FIELD.clear()
@@ -122,12 +123,13 @@ def dense(J, W, nb: int) -> np.ndarray:
 def skin(spec: dict, rb: list[dict], V: np.ndarray, T: np.ndarray, h: float, smooth: bool = True):
     """(J, W, info) for a garment mesh: projected body weights, smoothed over the garment by the geodesic radius.
     smooth=False: the projection alone (the body's own mesh)."""
-    from . import rig, rig_template
+    from . import rig_template
+    from . import rig_twist
     Wq, Tq, ref, spread = body_field(spec, rb)
     D, info = transfer(Wq, Tq, ref, V, T, h, smooth)
     J, W = rig_template.top_k(D)
     if spread:
-        J, W = rig._spread_twist(rb, V, J, W)
+        J, W = rig_twist._spread_twist(rb, V, J, W)
     return np.asarray(J), np.asarray(W, float), info
 
 
@@ -189,8 +191,8 @@ def poses(rb: list[dict]) -> dict:
 
 
 def posed(rb, V, J, W, turns):
-    from . import rig
-    return rig.pose(rb, V, J, W, rig.drive_twist(rb, rig.resolve_turns(rb, turns)))
+    from . import rig_model, rig_twist
+    return rig_model.pose(rb, V, J, W, rig_twist.drive_twist(rb, rig_twist.resolve_turns(rb, turns)))
 
 
 # ---------------------------------------------------------------- the check

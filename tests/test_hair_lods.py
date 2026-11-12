@@ -114,21 +114,23 @@ def test_lash_budget_fit():
 def test_halo_card_rules():
     """Round 29: lower tiers' pooled halo cards stood 1-3 cm over the crown (LOD1-3 only): the hero's rules apply to
     every tier: no card for a single hair rooted over the crown, or one that loops."""
-    from hifipushie import hair_cards, hair_clumps
+    from hifipushie import hair_clumps
+    from hifipushie import hair_cards_clumps
     C = np.array([0.0, 0.0, 1.5])
     up = np.linspace(0, 1, 6)[:, None]
     low = {"pts": C + [0.08, 0, 0] + up * [0, -0.05, -0.05]}  # rooted at the side, below the crown line
     crown = {"pts": C + [0, 0, hair_clumps.FLY_CROWN + 0.03] + up * [0, -0.05, 0]}
     loop = {"pts": C + [0.08, 0, 0] + 0.01 * np.c_[np.cos(up[:, 0] * 6), np.sin(up[:, 0] * 6), 0 * up[:, 0]]}
-    assert hair_cards.halo_card_ok(low, C)
-    assert not hair_cards.halo_card_ok(crown, C)
-    assert not hair_cards.halo_card_ok(loop, C)
+    assert hair_cards_clumps.halo_card_ok(low, C)
+    assert not hair_cards_clumps.halo_card_ok(crown, C)
+    assert not hair_cards_clumps.halo_card_ok(loop, C)
 
 
 def test_far_fly_dropped():
     """Round 30: LOD1-3 had thin fly cards standing 35-80 mm off the tail by the tie: the hero's FLY_FAR at every
     tier (a fly card further than that off the hair that isn't few single hairs gets none; face-framing ones stay)."""
-    from hifipushie import hair_cards, hair_clumps
+    from hifipushie import hair_clumps
+    from hifipushie import hair_cards_clumps
     t = np.linspace(0, 0.2, 41)  # (strand_grid: GRID stations a lock)
     A = np.stack([np.c_[t, 0 * t + k * 0.002, 0 * t] for k in range(4)])  # lock 0: a mass of 4 strands along x
     G = {"A": A, "lock": np.zeros(4, int)}
@@ -137,7 +139,7 @@ def test_far_fly_dropped():
     far = {"P": np.c_[t, 0 * t + hair_clumps.FLY_FAR + 0.02, 0 * t], "kind": "fly", "lock": "wisp"}
     face = {"P": np.c_[t, 0 * t + 0.08, 0 * t], "kind": "fly", "lock": "cheek"}
     dense = {"P": np.c_[t, 0 * t + 0.08, 0 * t], "kind": "dense", "lock": "mass"}
-    kept = hair_cards.drop_far_fly([near, far, face, dense], G, locks)
+    kept = hair_cards_clumps.drop_far_fly([near, far, face, dense], G, locks)
     assert [c["lock"] + c["kind"] for c in kept] == ["wispfly", "cheekfly", "massdense"]
 
 

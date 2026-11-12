@@ -3,7 +3,7 @@ the ceiling, so lightening levers (tone_back, the flow top's lit) did nothing on
 factor of the cards' tone into the atlas's bake block."""
 import numpy as np
 
-from hifipushie import hair_cards as hc
+from hifipushie import hair_cards_atlas
 from hifipushie import hair_colour as hcol
 
 S = {"atlas": 256, "clump": 0.5, "frizz": 0.0, "curl": 0.0, "tips": 0.5}
@@ -27,10 +27,10 @@ def _lin(c):
 
 
 def test_headroom_keeps_the_picture_and_frees_the_back_cards_tone():
-    W = hc.atlas(S, LOOK)["color"].shape[1]
+    W = hair_cards_atlas.atlas(S, LOOK)["color"].shape[1]
     B = _bake(W)
-    a1 = hc.atlas(S, {**LOOK}, bake=B, key="h1")
-    a2 = hc.atlas(S, {**LOOK, "headroom": 2.0}, bake=B, key="h2")
+    a1 = hair_cards_atlas.atlas(S, {**LOOK}, bake=B, key="h1")
+    a2 = hair_cards_atlas.atlas(S, {**LOOK, "headroom": 2.0}, bake=B, key="h2")
     Ht = a1["rows"]
     m = B["alpha"] > 0.5
     H = a1["bake_k"] / a2["bake_k"]

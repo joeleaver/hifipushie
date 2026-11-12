@@ -1,6 +1,6 @@
 """Hair cards cut by CLUMPS and textured from their own strands, the way shipped card pipelines do it.
 
-The lock cut (hair_cards.clump_cards) gives one card per groom lock: a 38 mm lock with 9-16 cards' worth of waves became
+The lock cut (hair_cards_clumps.clump_cards) gives one card per groom lock: a 38 mm lock with 9-16 cards' worth of waves became
 one flat ribbon, and a generic strand tile on it. Card artists and Epic's Hair Card Generator work the other way round:
   1. group the strands into visual CLUMPS ("strands that converge, creating a distinct volume"), per layer: a few wide
      coverage cards (Epic's tutorial: 50 clumps / 2k triangles), more mid cards (200 / 7.5k), many thin top cards,
@@ -16,7 +16,7 @@ card's root fades in over its first millimetres (roots crossing at the part read
 cards carries the part's own picture (hair_strands.cap_chart).
 
 Everything is numpy + PIL: `cut` returns card dicts like hair_cards' (P, X, N, hw, u, s, kind, layer, prio, ...) with an
-"island" key, and `bake` draws the islands into one block that hair_cards.atlas puts under its tiles.
+"island" key, and `bake` draws the islands into one block that hair_cards_atlas.atlas puts under its tiles.
 
 Where the code is (split by responsibility, C424): this module holds EVERY constant of the family (set at
 hair_clumps.NAME by export scripts and hair_cards_job; the other modules read hair_clumps.NAME) and strands, features,
@@ -282,7 +282,7 @@ SIDE_OUT_PCT = 90.0  # there the top head layer lies on its clump's outer strand
 # the envelope cap was not the cause (uncapped: +2-3 mm)
 SIDE_OUT_MAX = 0.012  # m: at most this far out
 TAIL_END = 0.03  # a hanging (tail / face) card runs on to where this share of its clump's strands still run
-MEDOID_TAIL = 1.0  # a tail card's centre line follows its clump's medoid long strand (hair_cards._medoid_line): the wave
+MEDOID_TAIL = 1.0  # a tail card's centre line follows its clump's medoid long strand (hair_cards_clumps._medoid_line): the wave
 MEDOID_FACE = 0.5  # (1.0 in b24: wisp area 1314 -> 1004 px vs the groom's 2175, the face cards on one strand) and curl (b23: straight sheets, back edge -33 mm at the curl); the same for face-framing cards (stiff strips)
 MEDOID_TAIL_TOP = 0.5  # (1.0 = MEDOID_TAIL before; 0.5: layer-2 area > 5 mm off every strand 10.96 -> 2.30 cm2, > 8 mm
 # 0.77 -> 0, figure deficit +0.7%; 0.0: 0.92 cm2 but back 3/4 deficit +190 px) round 21b: the same for the TOP tail layer (narrowest cards, 45% of the strands): on its few

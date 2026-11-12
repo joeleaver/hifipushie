@@ -184,7 +184,7 @@ def tie_style(name: str, style: dict | None = None, carry_from: str | None = Non
     is regrown. `carry_from`: first wear that model's hair (hairline, look, strand dials, its tied style; hair.carry
     scales it to this head). Any groom.tie / loose the model had is replaced by what the style makes."""
     from . import hair_spec
-    from . import hair_flow
+    from . import hair_flow_style
     spec = store.load(name)
     if carry_from:
         src = store.load(carry_from)
@@ -205,7 +205,7 @@ def tie_style(name: str, style: dict | None = None, carry_from: str | None = Non
     if look:
         h["look"] = hair_spec.merge_patch(h.get("look") or {}, look)
     try:
-        made = hair_flow.style(g["tied"])
+        made = hair_flow_style.style(g["tied"])
     except ValueError as e:
         raise HairError(str(e)) from None
     store._dir(name).mkdir(parents=True, exist_ok=True)

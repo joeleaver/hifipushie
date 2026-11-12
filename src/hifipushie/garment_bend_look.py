@@ -20,14 +20,14 @@ def _head(rb, short):
 
 def cameras(rb, turns: dict, bent: bool) -> list[dict]:
     """Perspective panels at the posed left shoulder (front, back, under the arm) and, bent, the elbow."""
-    from . import rig
+    from . import rig_model, rig_twist
     from .garment_bend import POSE_ARM, POSE_FOREARM, posed
     sh, el = _head(rb, POSE_ARM), _head(rb, POSE_FOREARM)
     i = [b["name"].split(":")[-1] for b in rb].index(POSE_ARM)
     J = np.full((2, 4), i)
     W = np.zeros((2, 4))
     W[:, 0] = 1
-    pts = rig.pose(rb, np.stack([sh, el]), J, W, rig.drive_twist(rb, rig.resolve_turns(rb, turns)))
+    pts = rig_model.pose(rb, np.stack([sh, el]), J, W, rig_twist.drive_twist(rb, rig_twist.resolve_turns(rb, turns)))
     sh, el = pts
     pit = sh + np.array([-0.04, 0.0, -0.09])  # the armpit: below and inside the shoulder joint
     c = 0.5 * (sh + pit)

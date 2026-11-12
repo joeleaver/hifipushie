@@ -6,6 +6,7 @@ import numpy as np
 
 from hifipushie import correctives as co
 from hifipushie import rig
+from hifipushie import rig_bend, rig_model, rig_twist
 
 P = rig.PREFIX
 
@@ -47,7 +48,7 @@ def leg():
 
 def test_arc_weights_by_side():
     bones, V, F, J, W = leg()
-    J2, W2 = rig._arc_bend(bones, V, J, W)
+    J2, W2 = rig_bend._arc_bend(bones, V, J, W)
     h = np.where(J2 == 4, W2, 0).sum(1)
     knee = bones[2]["head"]
     near = np.abs(V[:, 2] - knee[2]) < 0.01
@@ -64,7 +65,7 @@ def test_arc_weights_by_side():
 
 def test_corrective_reproduces_target_and_stays_local():
     bones, V, F, J, W = leg()
-    J, W = rig._arc_bend(bones, V, J, W)
+    J, W = rig_bend._arc_bend(bones, V, J, W)
     ks = co.keys(bones, {"Leg_flex": co.MOTIONS["Leg_flex"]})
     assert [k["name"] for k in ks] == ["corr_LeftLeg_flex90", "corr_LeftLeg_flex130"], [k["name"] for k in ks]
     D = co.solve(bones, V, F, J, W, ks)
@@ -73,9 +74,9 @@ def test_corrective_reproduces_target_and_stays_local():
     knee = bones[2]["head"]
     assert d[np.abs(V[:, 2] - knee[2]) > 0.25].max() < 1e-9  # nothing away from the knee
     assert d.max() > 1e-3
-    turns = rig.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"])})
-    P0 = rig.pose(bones, V, J, W, turns)
-    P1 = rig.pose(bones, V + D[k["name"]], J, W, turns)
+    turns = rig_twist.drive_twist(bones, {k["joint"]: (k["axis"], k["deg"])})
+    P0 = rig_model.pose(bones, V, J, W, turns)
+    P1 = rig_model.pose(bones, V + D[k["name"]], J, W, turns)
     # no vertex of the bent tube crosses the bisecting plane further than the soft contact allows
     assert np.isfinite(P1).all()
     # the corrected knee's outer side stays at least as far from the pivot as LBS put it, inside the rest radius x 1.3

@@ -10,6 +10,7 @@ from scipy.spatial import cKDTree
 from . import base
 from . import base as base_mod
 from . import retopo
+from . import retopo_warp
 from .base import _source_key, source
 from .base_gnm_parts import mouth_mode, mouth_open, sock_points
 from .base_imls import _catmull_clark, _normals_and_h, _sd_body
@@ -73,7 +74,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for j, g in list(girth.items()):  # mirrored
         if j.endswith(".L"):
             girth.setdefault(j[:-2] + ".R", g)
-    W, *_ = retopo._skeleton_warp(tpl["P"], tpl["J"], spec_expanded, [], girth=girth)
+    W, *_ = retopo_warp._skeleton_warp(tpl["P"], tpl["J"], spec_expanded, [], girth=girth)
     faces, _, _ = retopo.topology(tpl["L"], tpl["S"])
     soften = base.get("soften")
     if soften:  # (the style's simplify is the head's only: softening the body with it left a ridge at the neck's

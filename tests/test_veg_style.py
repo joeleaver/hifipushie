@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import veg_export, veg_style as vs
+from hifipushie import veg_style_crown, veg_style_dress, veg_style_small, veg_style_wood
 from hifipushie import vegetation_grow
 
 BASE = {"species": "birch", "age": 22}
@@ -49,7 +50,7 @@ def test_sheet_overrides_and_unknowns():
 def test_blobby_dress():
     T = vegetation_grow.grow({**BASE, "style": "blobby"})
     st = vs.sheet(T["spec"])
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     i = D["info"]
     lo, hi = st["wood"]["limbs"]
     assert lo <= i["limbs_kept"] <= hi and i["axes_kept"] == 1 + i["limbs_kept"] + i["stubs"] < i["axes"]
@@ -58,10 +59,10 @@ def test_blobby_dress():
     W = D["wood"]
     ew = np.sort(np.vstack([W["F"][:, [0, 1]], W["F"][:, [1, 2]], W["F"][:, [2, 0]]]), axis=1)
     assert (np.unique(ew, axis=0, return_counts=True)[1] == 2).mean() > 0.99
-    ft = vs.fit(T, st)
+    ft = veg_style_dress.fit(T, st)
     mini = ft["mini"]
     ends = [np.flatnonzero(mini["axis"] == a)[-1] for a in np.unique(mini["axis"]) if a > 0]
-    dep = -vs.field(ft["ells"], mini["pos"][ends], ft["blend"])
+    dep = -veg_style_crown.field(ft["ells"], mini["pos"][ends], ft["blend"])
     assert (dep > 0).all(), dep
     # toy proportions: limbs as stout as what they carry
     size = np.mean([e["r"].mean() for e in ft["ells"] if not e.get("core")])
@@ -102,7 +103,7 @@ def test_blobby_dress():
         assert np.isfinite(w).all() and w.min() >= 0 and w.max() <= 1
     assert br.min() >= st["wind"]["mass"] - st["wind"]["squash"] and D["wood_wind"][0][D["wood"]["V"][:, 2] < 0.05].max() < 1e-3
     # lower LODs: the same masses, fewer triangles
-    D2 = vs.dress(T, st, int(st["budget"] * 0.18))
+    D2 = veg_style_dress.dress(T, st, int(st["budget"] * 0.18))
     assert D2["info"]["masses"] == i["masses"] and D2["info"]["triangles"] < 0.3 * i["triangles"]
     assert abs(D2["crown"]["V"][:, 2].max() - V[:, 2].max()) < 0.3
 
@@ -112,23 +113,23 @@ def test_conifer_tiers():
     T = vegetation_grow.grow({"species": "norway_spruce", "age": 30, "style": "blobby"})
     st = vs.sheet(T["spec"])
     assert st["crown"]["kind"] == "tiers" and "conifer" not in st and vs.sheet({"style": "blobby"})["crown"]["kind"] == "masses"
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     i = D["info"]
     assert 3 <= i["masses"] <= 7 and i["limbs_kept"] == 0 and D["forks"] is None and not i["core"]
     cz = [m["center"][2] for m in i["mass_list"]]
     assert cz == sorted(cz) and max(abs(m["center"][0]) + abs(m["center"][1]) for m in i["mass_list"]) < 0.15 * T["height"]  # stacked on the stem
     # (tiers with undercuts over a bare foot: the outline has notches and no skirt; smooth tiers to the ground were 0.85)
     assert i["match"]["iou"] > 0.65 and i["triangles"] <= st["budget"] * 1.02
-    assert all(e.get("down") is not None and e["down"] < e["r"][2] for e in vs.fit(T, st)["ells"])  # eggs: flat below, round above
-    assert vs.dress(T, st, season="winter")["crown"] is not None
+    assert all(e.get("down") is not None and e["down"] < e["r"][2] for e in veg_style_dress.fit(T, st)["ells"])  # eggs: flat below, round above
+    assert veg_style_dress.dress(T, st, season="winter")["crown"] is not None
     st2 = vs.sheet({**T["spec"], "style": {"sheet": "blobby", "conifer": {"crown": {"masses": 3}}}})
     assert st2["crown"]["masses"] == 3 and st2["crown"]["kind"] == "tiers"
 
 
 def test_deterministic():
-    a = vs.dress(vegetation_grow.grow({**BASE, "style": "blobby"}), vs.sheet({"style": "blobby"}))
+    a = veg_style_dress.dress(vegetation_grow.grow({**BASE, "style": "blobby"}), vs.sheet({"style": "blobby"}))
     vs._FIT.clear()
-    b = vs.dress(vegetation_grow.grow({**BASE, "style": "blobby"}), vs.sheet({"style": "blobby"}))
+    b = veg_style_dress.dress(vegetation_grow.grow({**BASE, "style": "blobby"}), vs.sheet({"style": "blobby"}))
     assert np.array_equal(a["crown"]["V"], b["crown"]["V"]) and np.array_equal(a["wood"]["V"], b["wood"]["V"])
 
 
@@ -141,10 +142,10 @@ def test_seasons():
     assert cols["autumn"][0] > cols["autumn"][2] and cols["spring"][1] > cols["summer"][1]
     P = vegetation_grow.grow({"species": "norway_spruce", "age": 12})
     assert vs.season_color(P["spec"], "winter", st) is not None  # an evergreen keeps its crown
-    Wn = vs.dress(vegetation_grow.grow({**BASE, "style": "blobby", "season": "winter"}), st, season="winter")
+    Wn = veg_style_dress.dress(vegetation_grow.grow({**BASE, "style": "blobby", "season": "winter"}), st, season="winter")
     assert Wn["crown"] is None
     # a bare tree keeps the summer tree's limbs and forks (it is fitted in leaf whatever the season)
-    assert Wn["info"]["axes_kept"] == vs.dress(T, st)["info"]["axes_kept"] > 1 + Wn["info"]["limbs_kept"]
+    assert Wn["info"]["axes_kept"] == veg_style_dress.dress(T, st)["info"]["axes_kept"] > 1 + Wn["info"]["limbs_kept"]
     # the realistic tree has a spring too: smaller, fresher leaves
     sp = veg_export.spring_leaves(T["spec"])
     assert sp["length"] < T["spec"]["leaves"].get("length", 0.07) and sp["color"] != T["spec"]["leaves"]["color"]
@@ -252,14 +253,14 @@ def test_lod_normals_are_the_fields():
     for sp in ({**BASE, "style": "blobby"}, {"species": "norway_spruce", "age": 30, "style": "blobby"}):
         T = vegetation_grow.grow(sp)
         st = vs.sheet(T["spec"])
-        ft = vs.fit(T, st)
+        ft = veg_style_dress.fit(T, st)
         ells, bl = ft["ells"], ft["blend"]
-        cfn = lambda q: vs.field(ells, q, bl, floor=ft["floor"])
-        wfn = lambda q: np.maximum(vs.wood_field(ft["wood"]["segs"], q, ft["wood"]["blend"]), -0.3 - q[:, 2])
+        cfn = lambda q: veg_style_crown.field(ells, q, bl, floor=ft["floor"])
+        wfn = lambda q: np.maximum(veg_style_wood.wood_field(ft["wood"]["segs"], q, ft["wood"]["blend"]), -0.3 - q[:, 2])
         for share in (1.0, 0.45, 0.18):
-            D = vs.dress(T, st, int(st["budget"] * share))
+            D = veg_style_dress.dress(T, st, int(st["budget"] * share))
             C, W = D["crown"], D["wood"]
-            g = vs.grad(cfn, C["V"])
+            g = veg_style_wood.grad(cfn, C["V"])
             g /= np.linalg.norm(g, axis=1, keepdims=True)
             o = C["V"] - np.mean([e["c"] for e in ells], axis=0)
             o /= np.linalg.norm(o, axis=1, keepdims=True)
@@ -267,7 +268,7 @@ def test_lod_normals_are_the_fields():
             n = (1 - w) * g + w * o
             n /= np.linalg.norm(n, axis=1, keepdims=True)
             assert (np.einsum("ij,ij->i", n, C["N"]) > 0.9999).all() and np.percentile(np.abs(cfn(C["V"])), 95) < 0.02, share
-            gw = vs.grad(wfn, W["V"])
+            gw = veg_style_wood.grad(wfn, W["V"])
             gw /= np.linalg.norm(gw, axis=1, keepdims=True)
             assert (np.einsum("ij,ij->i", gw, W["N"]) > 0.9999).all(), share
         # and that is what the file holds
@@ -280,7 +281,7 @@ def test_lod_normals_are_the_fields():
                 at = m["primitives"][0]["attributes"]
                 P, N = arr(at["POSITION"]).astype(float), arr(at["NORMAL"]).astype(float)
                 Pb, Nb = np.stack([P[:, 0], -P[:, 2], P[:, 1]], 1), np.stack([N[:, 0], -N[:, 2], N[:, 1]], 1)  # back to Z up
-                g = vs.grad(cfn, Pb)
+                g = veg_style_wood.grad(cfn, Pb)
                 g /= np.linalg.norm(g, axis=1, keepdims=True)
                 o = Pb - np.mean([e["c"] for e in ells], axis=0)
                 o /= np.linalg.norm(o, axis=1, keepdims=True)
@@ -317,7 +318,7 @@ def test_blobby_clump():
     R = vegetation_grow.grow({"species": "meadow_grass"})
     assert np.array_equal(T["twigs"]["pos"], R["twigs"]["pos"])  # the same individual
     st = vs.sheet(T["spec"])
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     i = D["info"]
     lo, hi = st["clump"]["blades"]
     assert lo <= i["blades"] <= hi and i["heads"] == 3 and i["triangles"] <= st["clump"]["budget"] * 1.05
@@ -331,9 +332,9 @@ def test_blobby_clump():
     assert C["col"].max() <= 1 and len(np.unique(C["col"].round(4), axis=0)) <= st["clump"]["tones"]
     assert C["wind"][1].max() > 0.05 and C["wind"][1][C["uv"][:, 0] == 0].max() == 0  # bends from the foot
     assert D["heads"]["seasons"] == ["summer", "autumn"]
-    low = vs.dress(T, st, 150)
+    low = veg_style_dress.dress(T, st, 150)
     assert low["info"]["blades"] == i["blades"] and low["info"]["triangles"] < 0.5 * i["triangles"]
-    assert vs.dress(vegetation_grow.grow({"species": "meadow_grass", "style": "blobby", "season": "winter"}), st, season="winter")["heads"] is None
+    assert veg_style_dress.dress(vegetation_grow.grow({"species": "meadow_grass", "style": "blobby", "season": "winter"}), st, season="winter")["heads"] is None
     with tempfile.TemporaryDirectory() as tmp:
         seasons = ("summer", "spring", "autumn", "winter", "snow")
         c = veg_export.write_glb(T, str(Path(tmp) / "g.glb"), "g", lods=3, seasons=seasons)
@@ -356,9 +357,9 @@ def test_anime_clouds():
     R = vegetation_grow.grow(BASE)
     assert np.array_equal(T["pos"], R["pos"])
     st = vs.sheet(T["spec"])
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     i, C = D["info"], D["crown"]
-    assert i["kind"] == "clouds" and i["match"]["iou"] >= 0.8 and not vs.warnings(i), i["match"]
+    assert i["kind"] == "clouds" and i["match"]["iou"] >= 0.8 and not veg_style_small.warnings(i), i["match"]
     assert i["triangles"] <= st["budget"] and i["cards"] > 200 and D["forks"] is None  # (the forks are in the wood: seen through the gaps)
     at = C["atlas"]
     assert at["color"].shape[2] == 4 and 0.4 < at["fill"] <= 1.0
@@ -383,9 +384,9 @@ def test_anime_clouds():
     # wind: the rims flutter, the middles don't
     assert C["wind"][3][C["rim"] < 0.01].max() == 0 and C["wind"][3].max() > 0.2
     # lower LODs: fewer, larger cards on the same clumps
-    low = vs.dress(T, st, int(0.18 * st["budget"]))
+    low = veg_style_dress.dress(T, st, int(0.18 * st["budget"]))
     assert low["info"]["cards"] < 0.3 * i["cards"] and low["info"]["card_m"] > 1.3 * i["card_m"] and low["info"]["masses"] == i["masses"]
-    assert vs.dress(vegetation_grow.grow({**BASE, "style": "anime", "season": "winter"}), st, season="winter")["crown"] is None
+    assert veg_style_dress.dress(vegetation_grow.grow({**BASE, "style": "anime", "season": "winter"}), st, season="winter")["crown"] is None
     assert veg_cloud.dab_atlas(T["spec"], st) is at
     with tempfile.TemporaryDirectory() as tmp:
         seasons = ("summer", "spring", "autumn", "winter", "snow")
@@ -466,18 +467,18 @@ def test_cartoon():
     same individual (IoU), within the budget."""
     T = vegetation_grow.grow({**BASE, "style": "cartoon"})
     st = vs.sheet(T["spec"])
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     i = D["info"]
     assert i["triangles"] <= st["budget"] * 1.05 and i.get("big_leaves", 0) >= 3 and i["match"]["iou"] > 0.75, i
     ids = np.unique(D["crown"]["uv"][:, 1])
     assert len(ids) == i["masses"] + (1 if i["core"] else 0) and ids.max() < 1, (len(ids), i["masses"])
     assert any(m.get("bumps") for m in i["mass_list"])
-    plain = vs.wood(T, {**st, "wood": {**st["wood"], "s_bend": 0.0}})
+    plain = veg_style_wood.wood(T, {**st, "wood": {**st["wood"], "s_bend": 0.0}})
     bent = D["mini"]
     tr = np.flatnonzero(bent["axis"] == bent["axis"][1])
     assert np.abs(bent["pos"][tr, :2] - plain["pos"][tr, :2]).max() > 0.05  # (the trunk bends)
     S = vegetation_grow.grow({"species": "norway_spruce", "age": 30, "style": "cartoon"})
-    ft = vs.fit(S, vs.sheet(S["spec"]))
+    ft = veg_style_dress.fit(S, vs.sheet(S["spec"]))
     assert all(e.get("cone") for e in ft["ells"]) and ft["match"]["iou"] > 0.7
 
 
@@ -485,7 +486,7 @@ def test_slab_faces_out():
     """Petals, dabs and big leaves are closed plates whose faces look outward whichever way the outline was drawn
     (a clockwise petal outline showed its underside from above: culled in an engine)."""
     for poly in (np.array([[0, 0], [1, 0.3], [2, 0], [1, -0.3]], float), np.array([[0, 0], [1, -0.3], [2, 0], [1, 0.3]], float)):
-        V, F, N = vs._slab(poly, np.zeros(3), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]), 0.1)
+        V, F, N = veg_style_small._slab(poly, np.zeros(3), np.array([1.0, 0, 0]), np.array([0, 1.0, 0]), np.array([0, 0, 1.0]), 0.1)
         fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
         top = V[F].mean(1)[:, 2] > 0.04
         assert (fn[top, 2] > 0).all() and (fn[V[F].mean(1)[:, 2] < -0.04, 2] < 0).all()
@@ -495,7 +496,7 @@ def test_head_kinds():
     """Flower heads as balls, colour dabs or petals (cartoon daisies: by the realistic flower's form)."""
     for sp, style, kind in (("meadow_grass", "anime", "dab"), ("daisy", "cartoon", "petals"), ("meadow_grass", "cartoon", "ball")):
         T = vegetation_grow.grow({"species": sp, "style": style, "season": "summer"})
-        H = vs.dress(T, vs.sheet(T["spec"]))["heads"]
+        H = veg_style_dress.dress(T, vs.sheet(T["spec"]))["heads"]
         assert H is not None and H["kind"] == kind and len(H["part_colors"]) == 3 and H["part"].max() <= 2, (sp, style, H and H["kind"])
         if kind == "petals":
             assert (H["part"] == 1).any()  # (a centre)
@@ -506,13 +507,13 @@ def test_pixar():
     the same individual; TEXCOORD_3 = (gradient, thickness m); lower LODs fewer, larger cards."""
     T = vegetation_grow.grow({**BASE, "style": "pixar"})
     st = vs.sheet(T["spec"])
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     i, C, K = D["info"], D["crown"], D["cards"]
     assert K is not None and i["cards"] > 50 and i["triangles"] <= st["budget"] * 1.05 and i["match"]["iou"] > 0.75, i
     assert C["grad"].shape[1] == 2 and (C["grad"][:, 1] > 0).all() and 0 <= C["grad"][:, 0].min() and C["grad"][:, 0].max() <= 1
     d_out = np.einsum("ij,ij->i", K["V"] - C["V"].mean(0), K["N"])  # (cards stand outside, facing out)
     assert np.median(d_out) > 0
-    D2 = vs.dress(T, st, int(0.18 * st["budget"]))
+    D2 = veg_style_dress.dress(T, st, int(0.18 * st["budget"]))
     assert D2["cards"]["cards"] < K["cards"] and D2["cards"]["card_m"] > K["card_m"]
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / "p.glb"
@@ -530,7 +531,7 @@ def test_cartoon_fixes():
     spring paints its tier rims (a ramp texture over TEXCOORD_0.x in that season's material)."""
     T = vegetation_grow.grow({"species": "oak", "style": "cartoon"})
     st = vs.sheet(T["spec"])
-    D = vs.dress(T, st)
+    D = veg_style_dress.dress(T, st)
     C = D["crown"]
     n_big = D["info"]["big_leaves"]
     assert n_big >= 3
@@ -546,10 +547,10 @@ def test_cartoon_fixes():
     assert z[0] < 0 and float(np.interp(0.0, z, r)) < 1.8 * r_bole  # (the foot node under the ground; not a bulb twice the bole)
     assert float(np.interp(3.0 * r_bole, z, r)) < 1.25 * r_bole  # (the flare is over within ~1.5 diameters)
     S = vegetation_grow.grow({"species": "daisy", "style": "cartoon", "season": "summer"})
-    H = vs.dress(S, vs.sheet(S["spec"]))["heads"]
+    H = veg_style_dress.dress(S, vs.sheet(S["spec"]))["heads"]
     assert (H["N"][H["part"] == 0][:, 2] > 0.3).all()
     G = vegetation_grow.grow({"species": "meadow_grass", "style": "anime", "season": "summer"})
-    H = vs.dress(G, vs.sheet(G["spec"]))["heads"]
+    H = veg_style_dress.dress(G, vs.sheet(G["spec"]))["heads"]
     P = H["V"][H["part"] == 0]
     assert np.ptp(P[:, 2]) > 0.03 and np.ptp(P[:, 0]) > 0.01
     P = vegetation_grow.grow({"species": "norway_spruce", "age": 30, "style": "cartoon"})

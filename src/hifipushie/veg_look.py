@@ -92,10 +92,11 @@ def part_middles(V: np.ndarray, F: np.ndarray, H: float | None = None) -> np.nda
 
 
 def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None) -> tuple[dict, dict]:
-    """A plant in a style (veg_style.dress): its drawn wood, flat bark, and the crown as one coloured closed mesh."""
+    """A plant in a style (veg_style_dress.dress): its drawn wood, flat bark, and the crown as one coloured closed mesh."""
     from . import veg_style
+    from . import veg_style_dress
     s = tree["spec"]
-    D = veg_style.dress(tree, st, triangles, s.get("season", "summer"))
+    D = veg_style_dress.dress(tree, st, triangles, s.get("season", "summer"))
     W, C = D["wood"], D["crown"]
     K = D["forks"] if C is None else None  # (the forks show when the plant is bare)
     cat = lambda k_: W[k_] if K is None else np.concatenate([W[k_], K[k_]])

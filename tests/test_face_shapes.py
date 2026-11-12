@@ -645,11 +645,13 @@ def test_jaw_leaves_the_body_under_the_neck():
     except Exception as err:
         print("skipped:", str(err)[:80])
         return
-    from hifipushie import humans, retopo
+    from hifipushie import humans
+    from hifipushie import retopo_wrap
     from hifipushie import rig as rigmod
+    from hifipushie import rig_head, rig_report
     sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human")  # (no interior key: GNM's own mouth)
     sp.setdefault("parts", {}).setdefault("body", {})["topology"] = "wrap"
-    r = retopo.wrap(sp, log=[])
+    r = retopo_wrap.wrap(sp, log=[])
     V, L, S, gnm = r["verts"], r["loops"], r["sizes"], np.asarray(r["gnm"])
     st = np.r_[0, np.cumsum(S)[:-1]]
     T = np.array([(L[a], L[a + j], L[a + j + 1]) for a, k in zip(st, S) for j in range(1, k - 1)])
@@ -674,13 +676,13 @@ def test_jaw_leaves_the_body_under_the_neck():
         assert mv[trunk].max() < rigmod.MOVED[0], (how, float(mv[trunk].max()))
         moved[how] = mv
     assert moved["by index"][gnm < 0].max() == 0.0  # (the one mesh: nothing under the seam ring moves at all)
-    bones = rigmod.rig_bones(sp)
+    bones = rig_report.rig_bones(sp)
     names = [b["name"] for b in bones]
     hi, sp2 = names.index(rigmod.PREFIX + "Head"), names.index(rigmod.PREFIX + "Spine2")
     J = np.full((len(V), 4), sp2)
     W = np.tile([1.0, 0.0, 0.0, 0.0], (len(V), 1))
     for how, mv in moved.items():
-        Jr, Wr = rigmod.rigid_near(bones, {"body": (J, W)}, {"body": V}, {"body": mv}, band=0.08)["body"]
+        Jr, Wr = rig_head.rigid_near(bones, {"body": (J, W)}, {"body": V}, {"body": mv}, band=0.08)["body"]
         head = np.where(np.asarray(Jr) == hi, np.asarray(Wr), 0.0).sum(1)
         assert head[~trunk].max() > 0.99 and head[trunk].max() == 0.0, (how, float(head[trunk].max()))
 
@@ -850,7 +852,7 @@ def _face_items(X, grp):
 
 
 def test_face_keep_regions_match_source():
-    """(r42) The export's head surface IS the approved GNM head on the whole face, not just at the lids: retopo.base_quads
+    """(r42) The export's head surface IS the approved GNM head on the whole face, not just at the lids: retopo_wrap.base_quads
     dropped the cage onto the SMOOTHED body field, which moved the lips' skin 1.2 mm on average (max 6.6), the lower
     vermilion 3.5 mm shorter, the nose tip 0.34 mm back ("neutral lips thin"). With retopo.FACE_KEEP every feature item
     (lips per column, corners, nose, philtrum, brows) and every region's vertices stay within 0.1 mm of the cage.
@@ -859,12 +861,13 @@ def test_face_keep_regions_match_source():
     if not m:
         print("skip: HP_FACE_KEEP_SPEC not set")
         return
-    from hifipushie import base as basemod, onemesh, gnmloops, retopo
+    from hifipushie import base as basemod, onemesh, gnmloops
+    from hifipushie import retopo_wrap
     from hifipushie import base_identity, base_surface
     from hifipushie.spec import expand_mirror
     spec = json.loads(Path(m).read_text())
     log = []
-    r = retopo.base_quads(spec, log)
+    r = retopo_wrap.base_quads(spec, log)
     sf = base_surface.surface(expand_mirror(spec), spec["base"])
     Vq = np.asarray(sf["quads"][0], float)
     tpl = basemod.source(spec["base"])

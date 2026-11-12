@@ -310,11 +310,12 @@ def _report_clump(name: str, T: dict) -> str:
                                    + (f"; layers out of season: {', '.join(hid)}" if hid else ""))
                + " (clump.seasons; a layer's own `seasons` list)")
     from . import veg_style
+    from . import veg_style_dress, veg_style_small
     sty = veg_style.sheet(s)
     if sty:  # what the style drew instead of the cards
-        inf_ = veg_style.dress(T, sty, season=se)["info"]
-        out += veg_style.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles; sheet numbers: get_plant shows them under `style` (block `clump`)"]
-        warn += veg_style.warnings(inf_)
+        inf_ = veg_style_dress.dress(T, sty, season=se)["info"]
+        out += veg_style_small.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles; sheet numbers: get_plant shows them under `style` (block `clump`)"]
+        warn += veg_style_small.warnings(inf_)
     return "\n".join(out + warn)
 
 
@@ -338,12 +339,13 @@ def report(name: str) -> str:
     out_g, warn_g = ground_lines(T)
     out += out_g
     from . import veg_style
+    from . import veg_style_dress, veg_style_small
     sty = veg_style.sheet(s)
     if sty:  # what the style drew of this plant, and whether it is still the same tree from afar
-        inf_ = veg_style.dress(T, sty)["info"]
-        out += veg_style.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles (wood {inf_['wood_triangles']}, crown {inf_['crown_triangles']}); "
+        inf_ = veg_style_dress.dress(T, sty)["info"]
+        out += veg_style_small.lines(inf_) + [f"style budget: LOD 0 {inf_['triangles']} triangles (wood {inf_['wood_triangles']}, crown {inf_['crown_triangles']}); "
                                         f"sheet numbers: get_plant shows them under `style`"]
-        warn_g = warn_g + veg_style.warnings(inf_)
+        warn_g = warn_g + veg_style_small.warnings(inf_)
     if st.get("dead_stubs"):
         P_, d_ = T["pos"], T["dead"]
         seg_ = np.linalg.norm(P_ - P_[T["parent"]], axis=1)

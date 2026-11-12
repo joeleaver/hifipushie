@@ -103,7 +103,7 @@ GROOM = {
     # row: 0.35 shows between the wedges, 1 is buried under the underlayer) or per row {stem: sink | false}
     "hairline_edge": None,  # {"inset": m (negative: tucked into the skin), "reach": m}: every drawn clump whose edge
     # comes within reach of the hairline lays that edge on it (the volume's rim showed between clump edges and skin)
-    "tied": None,  # a tied STYLE (hair_flow.style: {"tie": low | mid | high.., "side", "tightness", "part", "tail",
+    "tied": None,  # a tied STYLE (hair_flow_style.style: {"tie": low | mid | high.., "side", "tightness", "part", "tail",
     # "escaped", "neatness", "half", ...}): makes `tie`, the parting and strand dials. The way to ask for a ponytail.
     "tie": None,  # tied hair (hair_tied.py): {"at": [az, el], "out", "gather", "tail", "escape", "band"} or a list
     "loose": None,  # loose hair (hair_loose.py): grown all over the scalp, combed at the roots, then falling / standing:
@@ -282,7 +282,7 @@ _METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "
                ("tie", "tail", "length"), ("tie", "tail", "fullness"), ("tie", "curtain", "lift"),
                ("tie", "frame", "length"), ("tie", "frame", "width")}
 _UNITLESS = {"across", "ramp"}  # (volume.across / ramp are shares, not metres)
-# The tie's own geometry that a tied STYLE writes in absolute metres (hair_flow.style: the dome's stand-off, wisp and
+# The tie's own geometry that a tied STYLE writes in absolute metres (hair_flow_style.style: the dome's stand-off, wisp and
 # stray lengths, the tail's sway / air / lock waves). Until 2026-10-14 fit_to_head did not scale these: th_W18 carried
 # onto tp_h3 (a 15 % bigger scalp) kept its dome and face wisps at the old head's size while its tail scaled (review:
 # "shorter face wisps", a flatter top). They scale by this head over the one they were last GROWN at (`fit.abs_r`,
@@ -329,7 +329,7 @@ CAP_SMOOTH = 0.0  # deg: the mass cap's height smoothed over this (gaussian sigm
 # Generator tutorial spends ~54k on a hero's LOD 0 in five layers (coverage 4%, mid 14%, top 46%, fly-aways 18%, short
 # hairs 18%); a game character whose whole body is ~46k can't. The layers below are ours: 0 = the opaque coverage
 # (dense / hairline tiles), 1 = mid, 2+ = top and break-up, fly-aways and baby hairs on top; the cap is the scalp chart.
-# group: how big a clump of strands one card stands for (hair_cards.clump_cards): a lower tier has FEWER, WIDER cards
+# group: how big a clump of strands one card stands for (hair_cards_clumps.clump_cards): a lower tier has FEWER, WIDER cards
 # from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
 # (the scalp chart) and the tail's core carry the rest.
 SHELL_FINS = 0.0  # (sh3) shells style: keep the flow-top / arch cards whose middle lies within this share of the head's

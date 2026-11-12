@@ -1,6 +1,6 @@
 """The hair colour model in numpy (tesshair7): what blender_strands.material does to the look colour per strand, for
 everything that is not that material: the groom export's per-point colour (blender_strands.export_groom imports this
-file inside Blender: no package imports here) and the game cards' vertex colours (hair_cards.mesh).
+file inside Blender: no package imports here) and the game cards' vertex colours (hair_cards_mesh.mesh).
 
 A strand's colour = the look colour x TONE, a value multiplier from
   variation   a lock drifts +-14 % x variation; ~1.5 mm of a lock's width +-32 % x variation

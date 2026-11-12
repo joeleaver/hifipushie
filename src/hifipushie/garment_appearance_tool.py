@@ -59,7 +59,8 @@ def vertex_normals(V, F):
 
 def run(name: str, garment: str, appearance: dict | None = None, wear: str = "open", role: str = ge.ROLE,
         look: bool = True) -> tuple[list, str]:
-    from . import chain_garment as cg, garment_export_tool as get, rig, store
+    from . import chain_garment as cg, garment_export_tool as get, store
+    from . import rig_report
     rec = gr.load(name, garment)
     d = cg.job_dir(name, garment, wear)
     pkl, what = get.source(rec, d)
@@ -70,7 +71,7 @@ def run(name: str, garment: str, appearance: dict | None = None, wear: str = "op
     unnamed = [n for n in drape["names"] if n not in cloth_of]
     cmap = {n: cloth_of.get(n, fallback) for n in drape["names"]}
     spec = store.load(name)
-    rb = rig.rig_bones(spec)
+    rb = rig_report.rig_bones(spec)
     wear_v = {c: ga.high_point_wear(drape, r.get("bV"), rb, a.get("where") or [])
               for c, a in plan.items() if c != "details" and isinstance(a, dict) and a.get("wear", 0) > 0}
     size = ga.texture_size(role)

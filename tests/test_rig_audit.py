@@ -17,6 +17,7 @@ os.environ.setdefault("HIFIPUSHIE_HOME", tempfile.mkdtemp(prefix="hp_rigaudit_")
 import numpy as np  # noqa: E402
 
 from hifipushie import rig, rig_audit, rig_template, store  # noqa: E402
+from hifipushie import rig_head, rig_model, rig_report, rig_skin, rig_twist
 
 ROOT = Path(__file__).resolve().parent.parent
 P = rig.PREFIX
@@ -29,8 +30,8 @@ def _goblin():
         store.save("rigaudit_goblin", spec, "test")
         z = np.load(store.build("rigaudit_goblin", 128)["mesh"])
         V, F = z["verts"].astype(np.float64), z["faces"]
-        bones = rig.rig_bones(spec)
-        J, W = rig.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
+        bones = rig_report.rig_bones(spec)
+        J, W = rig_skin.skin_mesh(spec, bones, V, F, z["part"], [str(n) for n in z["part_names"]])
         _C["goblin"] = (spec, bones, V, F, J, W)
     return _C["goblin"]
 
@@ -42,7 +43,7 @@ def _human():
             from hifipushie import base_implied, base_surface
             from hifipushie.spec import expand_mirror
             spec = json.loads((ROOT / "examples" / "gnm_talk.json").read_text())
-            bones = rig.rig_bones(spec)
+            bones = rig_report.rig_bones(spec)
             surf = base_surface.surface(base_implied.inject(expand_mirror(spec)), spec["base"])
         except Exception as e:  # the packs aren't here
             print("  (skipped: %s)" % str(e).splitlines()[0][:80])
@@ -149,7 +150,7 @@ def test_template_weights_on_a_makehuman_body():
     digits = [r for r in a["bones"] if "Hand" in r["bone"] and r["bone"][-1].isdigit()]
     assert len(digits) == 30 and not [r for r in digits if rig_audit.is_bad(r)], [r for r in digits if rig_audit.is_bad(r)]
     # ours by distance, on the same vertices: the fault the audit was written for
-    Jd, Wd = rig.rig_weights(spec, bones, Wq, Tq)
+    Jd, Wd = rig_skin.rig_weights(spec, bones, Wq, Tq)
     ad = rig_audit.audit(bones, Wq, Tq, Jd, Wd, only=["Hand"])
     assert sum(rig_audit.is_bad(r) for r in ad["bones"]) > sum(rig_audit.is_bad(r) for r in digits)
     # the pivots: Neck at the neck's base, Head two thirds up it (MakeHuman's own head bone), clavicles unmoved
@@ -178,7 +179,7 @@ def test_parts_read_the_base_surface():
     for c in range(3):
         np.add.at(N, Tq[:, c], fn)
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
-    sk = rig.skin_parts(spec, bones, {"glove": (Wq + 0.001 * N, Tq)})
+    sk = rig_skin.skin_parts(spec, bones, {"glove": (Wq + 0.001 * N, Tq)})
     J, W = sk["glove"]
     assert np.allclose(W.sum(1), 1, atol=1e-9) and J.shape[1] == 4
     a = rig_audit.audit(bones, Wq + 0.001 * N, Tq, J, W, only=["Hand"])
@@ -186,7 +187,7 @@ def test_parts_read_the_base_surface():
     assert not [r for r in a["bones"] if r["bone"][-1].isdigit() and rig_audit.is_bad(r)]
     tw = [i for i, b in enumerate(bones) if b.get("twist")]
     assert (W * np.isin(J, tw)).sum() > 100  # the forearm and upper arm are shared out along their twist bones
-    r = rig.twist_check(bones, Wq + 0.001 * N, Tq, J, W, P + "RightHand", 105.0, True)
+    r = rig_twist.twist_check(bones, Wq + 0.001 * N, Tq, J, W, P + "RightHand", 105.0, True)
     assert r["at_end"] < 8 and r["area_min"] > 0.82, r
 
 
@@ -207,7 +208,7 @@ def test_grafted_neck_and_worn_parts():
     assert far.sum() > 500
     arms = [i for i, n in enumerate(names) if "Arm" in n or "Shoulder" in n]
     assert D[far][:, arms].max() < 1e-9 and D[far, names.index(P + "Neck")].min() > 1 - 1e-9
-    hf = rig.head_field(spec, bones)
+    hf = rig_head.head_field(spec, bones)
     hv = hf["h"](Wq)
     ring = (hv > 0.3) & (hv < 1.0) & (Wq[:, 1] > bones[names.index(P + "Head")]["head"][1])  # the nape's band
     assert ring.sum() > 20
@@ -218,7 +219,7 @@ def test_grafted_neck_and_worn_parts():
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-30)
     low = hv < 1.0  # a "collar": everything under the head, 4 mm off the skin; a "cap": the head, 4 mm off
     use = np.flatnonzero(low | (hv >= 1.0))
-    sk = rig.skin_parts(spec, bones, {"body": (Wq, Tq), "collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int)),
+    sk = rig_skin.skin_parts(spec, bones, {"body": (Wq, Tq), "collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int)),
                                      "cap": (Wq[~low] + 0.004 * N[~low], np.zeros((0, 3), int))})
     hi = names.index(P + "Head")
 
@@ -229,7 +230,7 @@ def test_grafted_neck_and_worn_parts():
     assert head_w(*sk["cap"]).min() > 0.999                # and what sits on the head is all head
     spec2 = copy.deepcopy(spec)
     spec2.setdefault("parts", {}).setdefault("collar", {})["rig_head"] = True
-    sk2 = rig.skin_parts(spec2, bones, {"collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int))})
+    sk2 = rig_skin.skin_parts(spec2, bones, {"collar": (Wq[low] + 0.004 * N[low], np.zeros((0, 3), int))})
     assert head_w(*sk2["collar"])[ring[low]].min() > 0.2
     # a strap attached to a bag bound to Hips: beside the bag it is the bag's joint's, far from it the body's
     knee = bones[names.index(P + "LeftLeg")]["head"]
@@ -238,7 +239,7 @@ def test_grafted_neck_and_worn_parts():
     spec3 = copy.deepcopy(spec)
     spec3.setdefault("parts", {}).update({"bag": {"rig_bone": "Hips"}, "strap": {"rig_attach": "bag"}})
     none = np.zeros((0, 3), int)
-    sk3 = rig.skin_parts(spec3, bones, {"bag": (bag, none), "strap": (Wq[thigh], none)})
+    sk3 = rig_skin.skin_parts(spec3, bones, {"bag": (bag, none), "strap": (Wq[thigh], none)})
     hips = (sk3["strap"][1] * (sk3["strap"][0] == names.index(P + "Hips"))).sum(1)
     d = np.linalg.norm(Wq[thigh][:, None] - bag[None], axis=2).min(1)
     assert hips[d < 0.02].min() > 0.8 and hips[d > rig.ATTACH].max() < 0.05, (hips[d < 0.02].min(), hips[d > rig.ATTACH].max())
@@ -248,12 +249,12 @@ def test_grafted_neck_and_worn_parts():
     spec4 = copy.deepcopy(spec)
     spec4.setdefault("parts", {})["shorts"] = {}
     mesh = {"shorts": (Wq[hem] + 0.004 * N[hem], none)}
-    leg = rig.drop_joints(bones, ["Leg"])
+    leg = rig_skin.drop_joints(bones, ["Leg"])
     assert {names[i][len(P):] for i in np.flatnonzero(leg)} >= {"LeftLeg", "RightLeg", "LeftLegTwist1"}
-    assert not leg[names.index(P + "LeftUpLeg")] and not rig.drop_joints(bones, ["LeftLeg"])[names.index(P + "RightLeg")]
-    J0, W0 = rig.skin_parts(spec4, bones, mesh)["shorts"]
+    assert not leg[names.index(P + "LeftUpLeg")] and not rig_skin.drop_joints(bones, ["LeftLeg"])[names.index(P + "RightLeg")]
+    J0, W0 = rig_skin.skin_parts(spec4, bones, mesh)["shorts"]
     spec4["parts"]["shorts"]["rig_drop"] = ["Leg"]
-    J1, W1 = rig.skin_parts(spec4, bones, mesh)["shorts"]
+    J1, W1 = rig_skin.skin_parts(spec4, bones, mesh)["shorts"]
     up = names.index(P + "LeftUpLeg")
     upt = [i for i, n in enumerate(names) if n.startswith(P + "LeftUpLeg")]
     assert (W0 * leg[J0]).sum(1).max() > 0.3                      # the transfer gave the hem to the shin
@@ -262,14 +263,14 @@ def test_grafted_neck_and_worn_parts():
     assert np.allclose((W1 * (J1 == up)).sum(1), (W0 * (J0 == up)).sum(1) + (W0 * leg[J0]).sum(1), atol=1e-9)
     # a share: half of the thigh's weight (twist joints with it) to the pelvis, the shin's all the way up to both
     spec4["parts"]["shorts"]["rig_drop"] = {"Leg": 1.0, "UpLeg": 0.5}
-    J2, W2 = rig.skin_parts(spec4, bones, mesh)["shorts"]
+    J2, W2 = rig_skin.skin_parts(spec4, bones, mesh)["shorts"]
     hip = names.index(P + "Hips")
     th0 = (W1 * np.isin(J1, upt)).sum(1)
     assert np.allclose(W2.sum(1), 1.0) and (W2 * leg[J2]).sum(1).max() == 0.0
     assert np.allclose((W2 * np.isin(J2, upt)).sum(1), 0.5 * th0, atol=0.02)
     assert np.allclose((W2 * (J2 == hip)).sum(1), (W1 * (J1 == hip)).sum(1) + 0.5 * th0, atol=0.02)
     try:
-        rig.drop_joints(bones, ["Shin"])
+        rig_skin.drop_joints(bones, ["Shin"])
         raise AssertionError("an unknown joint passed")
     except ValueError as e:
         assert "UpLeg" in str(e)
@@ -306,11 +307,11 @@ def test_layers_stay_in_order_seated():
     assert set(sit) == {P + k for k in ("LeftUpLeg", "RightUpLeg", "LeftLeg", "RightLeg")}
 
     def through(sp):
-        sk = rig.skin_parts(sp, bones, meshes)
+        sk = rig_skin.skin_parts(sp, bones, meshes)
         g = {k: {"V": v[0], "F": v[1], "J": np.asarray(sk[k][0]), "W": np.asarray(sk[k][1]), "targets": {}}
              for k, v in meshes.items()}
         V, F, J, W, part, pn = rig_audit.joined(g)
-        rows = rig_audit.layers(V, F, part, pn, rig.pose(bones, V, J, W, rig.drive_twist(bones, sit)))
+        rows = rig_audit.layers(V, F, part, pn, rig_model.pose(bones, V, J, W, rig_twist.drive_twist(bones, sit)))
         return sum(r["through"] for r in rows if {r["outer"], r["inner"]} == {"jacket", "trousers"}), rows
     n0, rows0 = through(spec)
     assert n0 <= rig_audit.LAYER_BAD, rows0
@@ -324,11 +325,11 @@ def test_layers_stay_in_order_seated():
     for how in rig.PART_WEIGHTS:
         sp = copy.deepcopy(spec)
         sp.setdefault("parts", {})["jacket"] = {"rig_weights": how}
-        J, W = rig.skin_parts(sp, bones, {"jacket": meshes["jacket"]})["jacket"]
+        J, W = rig_skin.skin_parts(sp, bones, {"jacket": meshes["jacket"]})["jacket"]
         assert np.allclose(np.asarray(W).sum(1), 1, atol=1e-9), how
     sp["parts"]["jacket"] = {"rig_weights": "harmonic"}
     try:
-        rig.skin_parts(sp, bones, {"jacket": meshes["jacket"]})
+        rig_skin.skin_parts(sp, bones, {"jacket": meshes["jacket"]})
         raise AssertionError("an unknown rig_weights passed")
     except ValueError as e:
         assert "surface" in str(e)

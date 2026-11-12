@@ -275,8 +275,9 @@ def test_hair_atlas_bakes_what_the_notes_say():
     the colour, so a shader must not apply them again."""
     import numpy as np
     from hifipushie import hair_cards as hc
+    from hifipushie import hair_cards_atlas
     S = {**hc.strands_of({}), "atlas": 128, "source": "drawn"}
-    at = hc.atlas(S, {"gap": "#201810", "lit": "#806040", "vary": 0.25})
+    at = hair_cards_atlas.atlas(S, {"gap": "#201810", "lit": "#806040", "vary": 0.25})
     col, aux = at["color"], at["aux"]
     on = aux[..., 3] > 0.9
     lum = col[..., :3].mean(-1)
@@ -302,21 +303,22 @@ def test_budget_gate_maps_parts_and_flags_over():
 
 def test_bend_helper_takes_the_hinge_overlap_and_is_driven_by_half():
     from hifipushie import rig
+    from hifipushie import rig_bend, rig_twist
     P = rig.PREFIX
     rb = [{"name": P + "Hips", "head": np.zeros(3), "parent": -1, "end": False},
           {"name": P + "LeftUpLeg", "head": np.array([0.1, 0, 0]), "parent": 0, "end": False},
           {"name": P + "LeftLeg", "head": np.array([0.1, 0, -0.4]), "parent": 1, "end": False},
           {"name": P + "LeftFoot", "head": np.array([0.1, 0, -0.8]), "parent": 2, "end": False}]
-    rb = rig._add_bend(rb, ["Leg"])
+    rb = rig_bend._add_bend(rb, ["Leg"])
     assert rb[-1]["name"] == P + "LeftLegBend" and rb[-1]["parent"] == 1
     J = np.array([[1, 2, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]])
     W = np.array([[0.6, 0.4, 0, 0], [1.0, 0, 0, 0], [1.0, 0, 0, 0]])
-    J2, W2 = rig._share_bend(rb, J, W)
+    J2, W2 = rig_bend._share_bend(rb, J, W)
     assert np.allclose(W2.sum(1), 1.0)
     h = len(rb) - 1
     wh = np.where(J2 == h, W2, 0).sum(1)
     assert abs(wh[0] - 0.8) < 1e-9 and wh[1] == 0 and wh[2] == 0  # 2 x min(0.6, 0.4)
-    t = rig.drive_twist(rb, {P + "LeftLeg": ([1, 0, 0], 90.0)})
+    t = rig_twist.drive_twist(rb, {P + "LeftLeg": ([1, 0, 0], 90.0)})
     assert t[P + "LeftLegBend"] == ([1, 0, 0], 45.0)
 
 

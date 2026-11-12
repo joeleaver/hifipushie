@@ -25,11 +25,11 @@ def groom_params(spec: dict) -> dict:
     if bad:
         raise HairError(f"hair groom: unknown keys {sorted(bad)} (have {', '.join(sorted(hair.GROOM))})")
     if g.get("tied") is not None:  # the style makes the tie, the parting (and loose hair for half up)
-        from . import hair_flow
+        from . import hair_flow_style
         if g.get("tie"):
             raise HairError("hair groom: `tied` (a style) makes the tie: give tie keys in tied.detail.tie, not groom.tie")
         try:
-            st = hair_flow.style(g["tied"])
+            st = hair_flow_style.style(g["tied"])
         except ValueError as e:
             raise HairError(str(e)) from None
         g = {**g, "tie": st["tie"], "parting": {**st["parting"], **{k: v for k, v in (g.get("parting") or {}).items() if k != "side"}}}
