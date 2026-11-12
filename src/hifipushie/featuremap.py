@@ -72,9 +72,17 @@ def mask(name: str, feature: str, view: str) -> np.ndarray:
     return np.asarray(Image.open(mask_path(name, feature, view))) > 127
 
 
-WANT = {"patches": "a list of patch numbers, [12, 13]", "box": "four numbers, [x0, y0, x1, y1]",
-        "ellipse": "four numbers, [cx, cy, rx, ry]", "polygon": "three or more points, [[x, y], [x, y], [x, y]]",
-        "line": "two or more points, [[x, y], [x, y]]"}
+WANT = {"patches": "a list of patch numbers, [12, 13]", "box": "four numbers, [x0, y0, x1, y1], or a list of such boxes",
+        "ellipse": "four numbers, [cx, cy, rx, ry], or a list of such ellipses",
+        "polygon": "three or more points, [[x, y], [x, y], [x, y]], or a list of such polygons",
+        "line": "two or more points, [[x, y], [x, y]], or a list of such lines"}
+
+
+def _each(k: str, v) -> list:
+    """One shape or a list of them (several warts, both ends of a handle) -> a list of shapes."""
+    if k in ("box", "ellipse"):
+        return list(v) if v and isinstance(v[0], (list, tuple)) else [v]
+    return list(v) if v and isinstance(v[0], (list, tuple)) and v[0] and isinstance(v[0][0], (list, tuple)) else [v]
 
 
 def _checked(m, view: str) -> dict:
@@ -91,12 +99,12 @@ def _checked(m, view: str) -> dict:
     unknown = set(m) - set(SHAPES) - {"minus", "mirror", "width"}
     if unknown or not any(k in m for k in SHAPES):
         raise ValueError(f"a mark in {view!r} needs one of {SHAPES} (+ minus, mirror, width); got {sorted(m)}")
-    ok = {"patches": lambda v: isinstance(v, (list, tuple)) and len(v) > 0 and all(num(i) for i in v),
-          "box": lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v),
-          "ellipse": lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v),
-          "polygon": lambda v: pts(v, 3), "line": lambda v: pts(v, 2)}
+    four = lambda v: isinstance(v, (list, tuple)) and len(v) == 4 and all(num(c) for c in v)  # noqa: E731
+    ok = {"box": four, "ellipse": four, "polygon": lambda v: pts(v, 3), "line": lambda v: pts(v, 2)}
+    if "patches" in m and not (isinstance(m["patches"], (list, tuple)) and m["patches"] and all(num(i) for i in m["patches"])):
+        raise ValueError(f"'patches' in {view!r} is {WANT['patches']} (got {m['patches']!r})")
     for k, test in ok.items():
-        if k in m and not test(m[k]):
+        if k in m and not (isinstance(m[k], (list, tuple)) and m[k] and all(test(one) for one in _each(k, m[k]))):
             raise ValueError(f"{k!r} in {view!r} is {WANT[k]}, in the view's pixels (got {m[k]!r})")
     if m.get("minus") is not None:
         _checked(m["minus"], view)
@@ -116,15 +124,15 @@ def _shape_mask(name: str, view: str, size, m: dict) -> np.ndarray:
         out |= np.isin(lab, ids)
     im = Image.new("L", (W, H), 0)
     d = ImageDraw.Draw(im)
-    if "box" in m:
-        d.rectangle([float(v) for v in m["box"]], fill=255)
-    if "ellipse" in m:
-        cx, cy, rx, ry = (float(v) for v in m["ellipse"])
+    for b in _each("box", m["box"]) if "box" in m else ():
+        d.rectangle([float(v) for v in b], fill=255)
+    for e in _each("ellipse", m["ellipse"]) if "ellipse" in m else ():
+        cx, cy, rx, ry = (float(v) for v in e)
         d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=255)
-    if "polygon" in m:
-        d.polygon([tuple(float(c) for c in p) for p in m["polygon"]], fill=255)
-    if "line" in m:
-        d.line([tuple(float(c) for c in p) for p in m["line"]], fill=255, width=int(m.get("width", 3)))
+    for pg in _each("polygon", m["polygon"]) if "polygon" in m else ():
+        d.polygon([tuple(float(c) for c in p) for p in pg], fill=255)
+    for ln in _each("line", m["line"]) if "line" in m else ():
+        d.line([tuple(float(c) for c in p) for p in ln], fill=255, width=int(m.get("width", 3)))
     return out | (np.asarray(im) > 127)
 
 
@@ -278,9 +286,9 @@ def checks(name: str, fm: dict) -> list[str]:
             notes.append(f"ON {f}: it sits on {c['on']!r}, which is not a feature (have {sorted(feats)[:8]}...)")
         if c["kind"] != "mass" and not c.get("on"):
             notes.append(f"ON {f}: a {c['kind']} sits on a mass: say which (on=)")
-        if c["kind"] == "mass" and len(ortho) == 1 and not c.get("inferred"):
-            notes.append(f"DEPTH {f}: a mass marked in one view only ({next(iter(ortho))}): its depth is a guess; mark "
-                         f"it in a second view, or say so in inferred=")
+        if c["kind"] == "mass" and len(c["marks"]) == 1 and not c.get("inferred"):
+            notes.append(f"DEPTH {f}: a mass marked in one view only ({next(iter(c['marks']))}): its depth is a guess; "
+                         f"mark it in a second view (any other picture that shows it), or say so in inferred=")
     return notes
 
 

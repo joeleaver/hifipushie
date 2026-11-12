@@ -82,7 +82,21 @@ def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
                 warn += f"WARNING: {note}\n"
         except Exception:  # noqa: BLE001  (a report line must never fail a save)
             pass
-    return f"saved {name} v{v}\n" + extra + warn + summarize(spec)
+    return f"saved {name} v{v}\n" + extra + warn + _feature_line(name) + summarize(spec)
+
+
+def _feature_line(name: str) -> str:
+    """One line on every save of a model that has a feature map: how much of it no element makes yet."""
+    try:
+        p = store._dir(name) / "features" / "map.json"
+        if not p.exists():
+            return ""
+        feats = [c for c in json.loads(p.read_text())["features"].values() if c.get("kind") in ("mass", "form")]
+        todo = sum(1 for c in feats if not c.get("elements"))
+        return (f"feature map: {len(feats)} masses and forms, {todo} with no element named for them "
+                f"(feature_report says which are made, and how far off)\n") if feats else ""
+    except Exception:  # noqa: BLE001  (a report line must never fail a save)
+        return ""
 
 
 @mcp.tool(structured_output=False)

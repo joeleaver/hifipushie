@@ -108,6 +108,9 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
              f"{count['NOT MADE']} NOT MADE" + (f", {count['IN ITS MASS']} said to be in their mass (not measured)"
                                                 if count["IN ITS MASS"] else "")
              + (f", {count[CANT]} could not be measured" if count[CANT] else "")]
+    lines.append("whole outline against each picture (one row among many): "
+                 + ", ".join(f"{v} {i:.0%}" for v, i in rep["outline"].items()))
+    lines += [f"  MOVED {m}" for m in rep["moved_views"]]
     if rep["skipped_views"]:
         lines.append(f"  views with no camera yet (fit_concept_camera): {rep['skipped_views']}")
     not_made = sorted(f for f, s in by.items() if s == "NOT MADE")

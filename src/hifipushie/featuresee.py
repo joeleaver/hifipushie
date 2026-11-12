@@ -179,7 +179,7 @@ def seen_mark(name: str, fm: dict, feature: str, view: str) -> np.ndarray:
 
 
 def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dict, resolution: int = 144,
-               ex: dict | None = None) -> dict:
+               ex: dict | None = None, name: str | None = None) -> dict:
     """{(feature, view): bool mask at the view's size} for every made feature marked in a view with a camera;
     "notes" {feature: why it could not be measured}."""
     from .spec import SpecError
@@ -188,12 +188,10 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
     prims = compile_prims(ex)
     prints = {sdf.fingerprint(p) for p in prims}
     whole = sdf.evaluate(prims, resolution)
+    moved_views = align_side(name, fm, cams, whole) if name else []
     deep = {}
-    for v in views:  # the whole model's first surface: at every other pixel, enough to say what stands in front
-        W, H = cams[v]["size"]
-        ys, xs = np.mgrid[0:H:2, 0:W:2]
-        d = first_hit(whole, cams[v], np.stack([xs.ravel() + 1.0, ys.ravel() + 1.0], 1)).reshape(ys.shape)
-        deep[v] = np.repeat(np.repeat(d, 2, 0), 2, 1)[:H, :W]
+    for v in views:  # the whole model's first surface: what stands in front of what
+        deep[v] = depth_image(whole, cams[v])
     lo_all = np.min([p.lo for p in prims], 0)
     hi_all = np.max([p.hi for p in prims], 0)
     out, notes = {}, {}
@@ -220,11 +218,16 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         pad = 0.012 + float(np.max([np.max(p.reach) for p in mine]))
         lo = np.maximum(np.min([p.lo for p in mine], 0) - pad, lo_all - 0.012)
         hi = np.minimum(np.max([p.hi for p in mine], 0) + pad, hi_all + 0.012)
-        voxel = float(np.clip((hi - lo).max() / 64, 0.001, whole.voxel))
+        # fine enough for the smallest piece (a wart, a crease), within a grid of at most 150 cells a side
+        small = float(np.min([np.min(p.hi - p.lo) for p in mine]))
+        voxel = float(np.clip(min((hi - lo).max() / 72, small / 3), max((hi - lo).max() / 150, 0.0008), whole.voxel))
         shape = tuple(int(n) for n in np.ceil((hi - lo) / voxel) + 1)
         at = (lo, voxel, shape)
-        g_all = sdf.evaluate(prims, at=at)
-        g_rest = sdf.evaluate(rest, at=at) if rest else sdf.Grid(np.ones(shape), lo, voxel)
+        # only the parts the feature's own elements belong to: a shell over them (clothing) is another part's
+        own = {p.part for p in mine}
+        pa, pr = [p for p in prims if p.part in own], [p for p in rest if p.part in own]
+        g_all = sdf.evaluate(pa, at=at) if pa else sdf.Grid(np.ones(shape), lo, voxel)
+        g_rest = sdf.evaluate(pr, at=at) if pr else sdf.Grid(np.ones(shape), lo, voxel)
         corners = lo + (hi - lo) * np.array([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)])
         for v in marked:
             cam = cams[v]
@@ -238,9 +241,9 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
                 near = np.minimum(da, dr)
                 with np.errstate(invalid="ignore"):
                     moved = (np.isfinite(da) != np.isfinite(dr)) | (np.abs(da - dr) > max(0.6 * voxel, 0.0008))
-                seen = near <= deep[v][box[1]:box[3], box[0]:box[2]] + 2.5 * whole.voxel
+                seen = near <= deep[v][box[1]:box[3], box[0]:box[2]] + max(0.6 * whole.voxel, 0.004)
                 out[(f, v)][box[1]:box[3], box[0]:box[2]] = ndimage.binary_opening(moved & seen & np.isfinite(near))
-    return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes}
+    return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes, "moved_views": moved_views}
 
 
 def _line_row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict) -> dict:
@@ -251,6 +254,45 @@ def _line_row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float,
     ok = along >= tol["line_along"]
     return {"feature": f, "view": v, "status": "right" if ok else "OFF", "along": round(along, 2), "iou": round(along, 2),
             "why": "" if ok else f"the model's form runs along {along:.0%} of the line (within {tol['line_mm']:.0f} mm)"}
+
+
+def align_side(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
+    """A side view's centre line is a guess (the middle of the drawn feet): where the model's origin is along its
+    length is the modeller's choice, not something a picture shows. Slide each side view's camera so the model's
+    outline sits on the picture's, and say by how much. Front and back views have their mirror line and stay."""
+    import json as _json
+    notes = []
+    for v, cam in cams.items():
+        rec = fm["views"].get(v, {})
+        if rec.get("kind") not in ("side", "side_r"):
+            continue
+        fig = np.asarray(Image.open(rec["image"]).convert("RGBA"))[..., 3] > 127
+        W, H = cam["size"]
+        ys, xs = np.mgrid[0:H:2, 0:W:2]
+        mod = np.isfinite(first_hit(whole, cam, np.stack([xs.ravel() + 1.0, ys.ravel() + 1.0], 1)).reshape(ys.shape))
+        ref = fig[::2, ::2][:mod.shape[0], :mod.shape[1]]
+        best, at = -1.0, 0
+        for sh in range(-mod.shape[1] // 4, mod.shape[1] // 4 + 1):
+            m2 = np.roll(mod, sh, 1)
+            if sh > 0:
+                m2[:, :sh] = False
+            elif sh < 0:
+                m2[:, sh:] = False
+            i = (m2 & ref).sum() / max((m2 | ref).sum(), 1)
+            if i > best:
+                best, at = i, sh
+        px = 2 * at
+        if abs(px) >= 3:
+            _, _, R, _ = matched.axes(cam["az"], cam["el"], cam["roll"])
+            k = cam["m_per_px"]
+            cam["aim"] = [float(c) for c in np.asarray(cam["aim"], float) - px * k * R]
+            rec["centre_px"] = float(rec["centre_px"] + px)
+            matched.cam_path(name, v).write_text(_json.dumps(cam))
+            notes.append(f"{v}: the view's centre line moved {abs(px) * k * 1000:.0f} mm to sit on the model (its outline "
+                         f"now overlaps the picture's {best:.0%}); a side view's centre line is only a guess until a model exists")
+    if notes:
+        featuremap.save(name, fm)
+    return notes
 
 
 def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict, line: bool = False) -> dict:
@@ -308,7 +350,12 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
                          + ". Names are the model's own (get_model): blobs, bones, strokes, kits, or part:<part>")
     if elements:  # remembered only once every name is good
         featuremap.save(name, fm)
-    fp = footprints(spec, fm, {f: p for f, p in made.items() if p != [IN_MASS]}, list(cams), cams, resolution, ex)
+    fp = footprints(spec, fm, {f: p for f, p in made.items() if p != [IN_MASS]}, list(cams), cams, resolution, ex, name)
+    outline = {}
+    for v in cams:  # the whole outline: the one row an outline score ever had
+        fig = np.asarray(Image.open(fm["views"][v]["image"]).convert("RGBA"))[..., 3] > 127
+        mod = np.isfinite(fp["depth"][v])
+        outline[v] = float((fig & mod).sum() / max((fig | mod).sum(), 1))
     rows = []
     for f, c in fm["features"].items():
         for v in cams:
@@ -335,7 +382,8 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
     for r in rows:
         if rank[r["status"]] >= rank.get(worst.get(r["feature"]), -1):
             worst[r["feature"]] = r["status"]
-    return {"rows": rows, "by_feature": worst, "skipped_views": skipped, "footprints": fp, "cams": cams, "map": fm}
+    return {"rows": rows, "by_feature": worst, "skipped_views": skipped, "footprints": fp, "cams": cams, "map": fm,
+            "outline": outline, "moved_views": fp["moved_views"]}
 
 
 def draw(name: str, rep: dict, view: str, width: int = 620) -> Image.Image:

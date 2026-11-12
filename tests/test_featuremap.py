@@ -208,6 +208,8 @@ def test_the_tools_return_a_picture_and_the_table(fig):
     im, text = server.mark_features("fig")
     assert "7 features" in text and "masses" in text
     im, text = server.mark_features("fig", view="side")
+    from hifipushie import tools_model
+    assert "feature map: 7 masses and forms" in tools_model._feature_line("fig") and tools_model._feature_line("none") == ""
     im, text = server.feature_report("fig", {n: [n] for n in fig["marks"]}, view="front", resolution=128)
     assert "0 NOT MADE" in text and "right" in text
 

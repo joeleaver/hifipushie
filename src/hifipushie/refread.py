@@ -16,8 +16,10 @@ pixels, so the sculptor can point at it (featuremap.py) and a model can be measu
   as a camera 100 m away. The sheet's scale is metres per pixel from `height` (the top of the FIRST such view;
   the feet are z = 0); x = 0 is a front / back view's own mirror line, y = 0 the middle of a side view's feet.
   Any other name is a picture in perspective: no camera until fit_concept_camera(name, <its crop>, label=<view>).
-- PATCHES: the foreground cut into pieces of one colour and shade (Felzenszwalb), numbered top to bottom. A patch
-  is not a feature: it is something to point at. `detail` coarse / medium / fine.
+- PATCHES: the foreground cut along its steps in brightness and colour, pieces joined while they are one colour
+  with no line between them, numbered top to bottom. A patch is bounded by form lines as well as by paint, so a
+  plain-coloured subject still has patches. A patch is not a feature: it is something to point at. `detail`
+  coarse / medium / fine.
 - FORM LINES: where the picture's brightness steps (Sobel on a smoothed grey). A line is an edge of a form OR
   an edge of paint; which is the sculptor's call.
 """
@@ -159,17 +161,32 @@ def read(name: str, image: str, views: list[str], height: float | None = None, m
 
 # ---------------------------------------------------------------- patches and lines
 
+LINE = 10.0  # a full-strength line between two pieces counts like this colour step (Lab) against joining them
+
+
+def steps(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """0..1 strength of a step at each pixel: in brightness (a form line) or in colour (paint), whichever is more."""
+    from scipy import ndimage
+    from skimage import color, filters
+    lab = color.rgb2lab(filters.gaussian(rgb.astype(float) / 255, 1.0, channel_axis=-1))
+    col = np.sqrt(sum(filters.sobel(lab[..., c]) ** 2 for c in (1, 2))) / 6.0
+    col[~ndimage.binary_erosion(mask, iterations=3)] = 0
+    return np.clip(np.maximum(form_lines(rgb, mask), col), 0, 1)
+
+
 def segment(rgb: np.ndarray, mask: np.ndarray, detail: str = "medium") -> np.ndarray:
-    """Label image: 0 outside the figure, patches 1..n numbered top to bottom (then left to right). Small pieces
-    first (Felzenszwalb), then neighbours are joined while their mean colours are closer than the detail's step
-    (Lab, with lightness counted half: a shaded belly stays one patch, a change of hue splits)."""
+    """Label image: 0 outside the figure, patches 1..n numbered top to bottom (then left to right). The figure is
+    first cut along every step in brightness or colour (watershed basins of the step strength), then neighbours
+    are joined, closest first, while their mean colours (Lab, lightness counted half) plus the strength of the line
+    between them stay under the detail's step. So a patch is bounded by form lines as well as by colour: on a
+    subject of one plain colour the patches are its forms."""
     from skimage import color, filters, segmentation
     step, small = DETAIL[detail]
     lab = color.rgb2lab(filters.gaussian(rgb.astype(float) / 255, 0.8, channel_axis=-1)) * (0.5, 1.0, 1.0)
-    lab[~mask] = (200.0, 0.0, 0.0)
-    seg = segmentation.felzenszwalb(lab, scale=40, sigma=0.0, min_size=max(small // 3, 6), channel_axis=-1) + 1
-    seg[~mask] = 0
-    seg = _join(seg, lab, step)
+    edge = steps(rgb, mask)
+    seg = segmentation.watershed(np.round(filters.gaussian(edge, 0.7) * 50), mask=mask)
+    seg = _join(seg, lab, step, edge)
+    seg = np.where(mask, seg, 0)
     seg = _absorb(seg, lab, small)
     ids = [i for i in np.unique(seg) if i]
     cy = {i: np.argwhere(seg == i).mean(0) for i in ids}
@@ -181,8 +198,9 @@ def segment(rgb: np.ndarray, mask: np.ndarray, detail: str = "medium") -> np.nda
     return lut[seg]
 
 
-def _join(seg: np.ndarray, lab: np.ndarray, step: float) -> np.ndarray:
-    """Join neighbouring pieces, closest pair of mean colours first, until no two neighbours are closer than `step`."""
+def _join(seg: np.ndarray, lab: np.ndarray, step: float, edge: np.ndarray) -> np.ndarray:
+    """Join neighbouring pieces, closest pair first, until no two neighbours are closer than `step`. Closeness is
+    the difference of their mean colours plus LINE x the mean step strength along the border they share."""
     import heapq
     ids = np.unique(seg[seg > 0])
     lut = np.zeros(int(seg.max()) + 1, int)
@@ -192,15 +210,25 @@ def _join(seg: np.ndarray, lab: np.ndarray, step: float) -> np.ndarray:
     count = np.bincount(s.ravel(), minlength=n).astype(float)
     total = np.stack([np.bincount(s.ravel(), lab[..., c].ravel(), minlength=n) for c in range(3)], 1)
     nb = [set() for _ in range(n)]
-    for a, b in ((s[:, :-1], s[:, 1:]), (s[:-1], s[1:])):
+    border: dict[tuple[int, int], list[float]] = {}
+    for a, b, ea, eb in ((s[:, :-1], s[:, 1:], edge[:, :-1], edge[:, 1:]), (s[:-1], s[1:], edge[:-1], edge[1:])):
         k = (a != b) & (a > 0) & (b > 0)
-        for i, j in np.unique(np.stack([a[k], b[k]], 1), axis=0):
-            nb[i].add(int(j))
-            nb[j].add(int(i))
+        lo, hi = np.minimum(a[k], b[k]), np.maximum(a[k], b[k])
+        code, inv = np.unique(lo.astype(np.int64) * n + hi, return_inverse=True)
+        tot = np.bincount(inv, np.maximum(ea[k], eb[k]))
+        cnt = np.bincount(inv)
+        for c, t, m in zip(code, tot, cnt):
+            i, j = int(c // n), int(c % n)
+            nb[i].add(j)
+            nb[j].add(i)
+            e = border.setdefault((i, j), [0.0, 0.0])
+            e[0] += float(t)
+            e[1] += float(m)
     parent, ver = list(range(n)), [0] * n
 
     def dist(i, j):
-        return float(np.linalg.norm(total[i] / count[i] - total[j] / count[j]))
+        e = border.get((min(i, j), max(i, j)), (0.0, 1.0))
+        return float(np.linalg.norm(total[i] / count[i] - total[j] / count[j])) + LINE * e[0] / max(e[1], 1.0)
     heap = [(dist(i, j), i, j, 0, 0) for i in range(1, n) for j in nb[i] if i < j]
     heapq.heapify(heap)
     while heap:
@@ -213,8 +241,14 @@ def _join(seg: np.ndarray, lab: np.ndarray, step: float) -> np.ndarray:
         total[i] += total[j]
         count[i] += count[j]
         ver[i] += 1
+        border.pop((min(i, j), max(i, j)), None)
         for m in nb[j]:
             if m != i:
+                old = border.pop((min(j, m), max(j, m)), None)
+                if old:
+                    e = border.setdefault((min(i, m), max(i, m)), [0.0, 0.0])
+                    e[0] += old[0]
+                    e[1] += old[1]
                 nb[m].discard(j)
                 nb[m].add(i)
                 nb[i].add(m)
