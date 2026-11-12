@@ -23,8 +23,7 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
   LOD3 584 + 0 (119 mm); 0 open pattern edges each. export_asset (out3, 4 min once it had memory): the character's
   LOD1 / 2 / 3 carry exactly those counts (the log: "the garments' own LOD files ... not decimated").
   NOT YET CHECKED: each LOD's shirt equal to the garment's file vertex by vertex (the script ran last, with proof 4).
-- Looks (coordinator's read, EEVEE): dressed_export/look_dressed_lods_before_after.png (before left, after right;
-  LOD1-3 top to bottom); ws/cf_shirt/garments/shirt/step10_lods.png (the LOD files alone); look_dressed_close.png.
+- Looks (EEVEE): dressed_export/look_dressed_lods_before_after.png (before left, after right; LOD1-3 top to bottom).
 
 ## Open faults (worst first)
 1. NOT LANDED. Branch garment-lods (worktree .claude/worktrees/garment-lods), stopped at 98 % of the week's usage.
@@ -37,18 +36,17 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
    logs/equal_4.log (ALL EQUAL expected) and look_dressed_lods_before_after.png before trusting it.
 3. Skin through both sleeves at the forearm at LOD0 too: the build's own (in the garment's step-10 look), not made here.
 4. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
-5. A character's LOD GLB has no .json / _shading.json beside it, so asset_export.preview cannot draw a LOD (the sheets
-   copied LOD0's by hand); find_tool("export the dressed character as one GLB") still leads with export_garment.
-6. Not proven: the bend check at the LODs; a character with a head, skin, hair AND a chain garment; one garment over
-   another (an under garment's LOD0 cull is not applied to its own LOD file); an alpha-cut base map.
+5. A character's LOD GLB has no .json / _shading.json beside it, so asset_export.preview cannot draw a LOD (copied
+   by hand for the sheets); find_tool("export the dressed character as one GLB") still leads with export_garment.
+6. Not proven: the bend check at the LODs; a head + skin + hair AND a chain garment; one garment over another (an
+   under garment's LOD0 cull is not applied to its own LOD file); an alpha-cut base map.
 
 ## Decisions in force
 - The character takes step 10's FILES, never the garment's pickle, a rebuild or a decimation: what was looked at ships.
-- Weights map by bone name; a bone the rig no longer has is refused with "export_garment again".
-- A failed step-10 gate ships with a WARNING (its bend rows fail today on the body's own elbow tear): one line in
-  garment_asset.exported turns that into "left out" if Joe wants it stricter.
-- A LOD over its share is information; a LOD with an open pattern edge fails step 10's gate.
-- The LOD look is the garment alone (the whole body under a coarse LOD shows through everywhere: it says nothing).
+- Weights map by bone name; a bone the rig no longer has is refused with "export_garment again". A failed step-10
+  gate ships with a WARNING (one line in garment_asset.exported makes it "left out" if Joe wants it stricter).
+- A LOD over its share is information; an open pattern edge at a LOD fails step 10's gate. The LOD look is the
+  garment alone (the whole body under a coarse LOD shows through everywhere and says nothing).
 
 ## Commands
 - The proof again (copy first; never write into /mnt/data/hifipushie/t14). Env for both calls:
