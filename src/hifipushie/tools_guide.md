@@ -262,7 +262,7 @@ look_matched / feature_tiles and the blind review, not by IoU: outlines can't se
 The model from a fitted camera, at the concept's own size, pixel-aligned (the same box crops the same feature
 from both), in form-revealing clay: big area lights, a soft world, no hard shadows, so creases, necks and stalks
 read as form. Cycles, ~1 min at 1024 px. Returns concept | render; the render is <model>/cameras/<label>_render.png.
-Judge it by feature_tiles + bin/review, never by eye from a camera you picked.
+Judge it by feature_tiles + review_view, never by eye from a camera you picked.
 
 ### `feature_tiles`
 
@@ -271,7 +271,7 @@ Judge it by feature_tiles + bin/review, never by eye from a camera you picked.
 Named, same-box tiles from the concept and its matched render (look_matched first): features {region: [element or
 part names] | [x0, y0, x1, y1] in image pixels}. Each region's box is its elements' bounds through the fitted
 camera, squared, padded by pad and scaled to >= min_px. Region names are what the blind reviewer reads: plain
-words, no numbers ("left ear", "right arm, elbow"). Returns the paths and the bin/review command, one pair per
+words, no numbers ("left ear", "right arm, elbow"). Returns the paths and one review_view call per region, one pair per
 region.
 
 ### `join_report`
