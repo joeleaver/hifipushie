@@ -21,7 +21,10 @@ Per feature and view (rows where the map has a mark and the view has a camera):
   NOT MADE  no model element is named for it        HIDDEN   made, but not seen from this view
   right     centre within `off` (mm, or a share of the mark's smaller side), both sizes within `size`, overlap
             (IoU of footprint and mark) at least `iou`; a mark that is only a LINE has no size: right when the
-            model has form along most of it
+            model has form along most of it; a mark of a few pixels is measured by its place only.
+            The footprint's pieces that reach the mark are the ones compared (taking a thigh out also moves the
+            hip: not the leg the picture marks), and only changes inside the removed shapes' own bounds count (a
+            blend sags a millimetre on its neighbours)
   OFF       otherwise, with the worst number first
   IN ITS MASS  elements ["="]: the sculptor says the mass's own shape makes this form. Not measured: its tile is.
   CAN'T MEASURE  its elements can't be taken out of the model on their own (something else is built on them), or
@@ -40,113 +43,12 @@ from PIL import Image
 from scipy import ndimage
 
 from . import featuremap, matched, sdf, store
+from .featurerays import depth_image, first_hit, rays, relief  # noqa: F401  (the pictures and tests use them from here)
 from .spec import compile_prims
 
-CHUNK = 2500
-TOL = {"off_mm": 5.0, "off_share": 0.2, "size": (0.75, 1.33), "iou": 0.5, "line_mm": 6.0, "line_along": 0.6}
+TOL = {"off_mm": 5.0, "off_share": 0.2, "size": (0.75, 1.33), "iou": 0.5, "line_mm": 6.0, "line_along": 0.6,
+       "small_px": 40}
 IN_MASS = "="  # elements ["="]: the form is made by the shape of the mass it is on, with no element of its own
-
-
-def rays(cam: dict, xy: np.ndarray):
-    D, Fw, R, U = matched.axes(cam["az"], cam["el"], cam["roll"])
-    C = np.asarray(cam["aim"], float) + cam["dist"] * D
-    W, H = cam["size"]
-    f = cam["f_px"]
-    return C, Fw[None] + ((xy[:, 0] - W / 2) / f)[:, None] * R[None] - ((xy[:, 1] - H / 2) / f)[:, None] * U[None], Fw
-
-
-_MARCH = None
-
-
-def _march_kernel():
-    """The compiled ray march (numba), or False without numba / with HIFIPUSHIE_JIT=0: the numpy march below is
-    the same sampling, some 50 x slower (a 40-feature report: minutes instead of seconds)."""
-    global _MARCH
-    if _MARCH is None:
-        import os
-        _MARCH = False
-        if os.environ.get("HIFIPUSHIE_JIT", "1") != "0":
-            try:
-                from numba import njit
-
-                @njit(cache=True)
-                def march(field, origin, voxel, C, d, zs, out):
-                    nx, ny, nz = field.shape
-                    for r in range(d.shape[0]):
-                        pf, pz, hit = 1.0, zs[0], np.inf
-                        for k in range(zs.shape[0]):
-                            z = zs[k]
-                            x = (C[0] + z * d[r, 0] - origin[0]) / voxel
-                            y = (C[1] + z * d[r, 1] - origin[1]) / voxel
-                            w = (C[2] + z * d[r, 2] - origin[2]) / voxel
-                            if x < 0 or y < 0 or w < 0 or x > nx - 1 or y > ny - 1 or w > nz - 1:
-                                f = 1.0
-                            else:
-                                i, j, m = min(int(x), nx - 2), min(int(y), ny - 2), min(int(w), nz - 2)
-                                a, b, c = x - i, y - j, w - m
-                                f = ((field[i, j, m] * (1 - a) + field[i + 1, j, m] * a) * (1 - b)
-                                     + (field[i, j + 1, m] * (1 - a) + field[i + 1, j + 1, m] * a) * b) * (1 - c) + (
-                                    (field[i, j, m + 1] * (1 - a) + field[i + 1, j, m + 1] * a) * (1 - b)
-                                    + (field[i, j + 1, m + 1] * (1 - a) + field[i + 1, j + 1, m + 1] * a) * b) * c
-                            if f < 0:
-                                hit = z if k == 0 else pz + min(max(pf / max(pf - f, 1e-9), 0.0), 1.0) * (z - pz)
-                                break
-                            pf, pz = f, z
-                        out[r] = hit
-                _MARCH = march
-            except Exception:  # noqa: BLE001  (no numba, or it can't compile here: the numpy march)
-                _MARCH = False
-    return _MARCH
-
-
-def first_hit(grid: sdf.Grid, cam: dict, xy: np.ndarray) -> np.ndarray:
-    """Camera depth of the first surface along each pixel's ray through the grid (inf: none), to a fraction of a voxel."""
-    C, d, Fw = rays(cam, xy)
-    n = np.array(grid.field.shape)
-    corners = grid.origin + grid.voxel * (n - 1) * np.array([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)])
-    z = (corners - C) @ Fw
-    zs = np.arange(max(z.min() - grid.voxel, 1e-3), z.max() + grid.voxel, grid.voxel * 0.7)
-    out = np.full(len(xy), np.inf)
-    march = _march_kernel() if min(grid.field.shape) >= 2 else False
-    if march:
-        march(np.ascontiguousarray(grid.field, np.float64), np.asarray(grid.origin, np.float64), float(grid.voxel),
-              np.asarray(C, np.float64), np.ascontiguousarray(d, np.float64), zs, out)
-        return out
-    for a in range(0, len(xy), CHUNK):
-        P = C + zs[None, :, None] * d[a:a + CHUNK, None, :]
-        idx = ((P - grid.origin) / grid.voxel).reshape(-1, 3).T
-        f = ndimage.map_coordinates(grid.field, idx, order=1, mode="constant", cval=1.0).reshape(P.shape[:2])
-        inside = f < 0
-        hit = inside.any(1)
-        k = inside.argmax(1)
-        i = np.where(hit)[0]
-        k0 = np.maximum(k[i] - 1, 0)
-        f0, f1 = f[i, k0], f[i, k[i]]
-        t = np.where(k[i] > 0, f0 / np.maximum(f0 - f1, 1e-9), 1.0)
-        out[a + i] = zs[k0] + np.clip(t, 0, 1) * (zs[k[i]] - zs[k0])
-    return out
-
-
-def depth_image(grid: sdf.Grid, cam: dict, box=None) -> np.ndarray:
-    W, H = cam["size"]
-    x0, y0, x1, y1 = box or (0, 0, W, H)
-    ys, xs = np.mgrid[y0:y1, x0:x1]
-    return first_hit(grid, cam, np.stack([xs.ravel() + 0.5, ys.ravel() + 0.5], 1)).reshape(ys.shape)
-
-
-def relief(depth: np.ndarray, m_per_px: float) -> np.ndarray:
-    """A grey shaded picture (H, W, uint8) of a depth image, lit from the upper left front; white where empty."""
-    d = np.where(np.isfinite(depth), depth, np.nan)
-    fill = np.where(np.isnan(d), np.nanmax(d) if np.isfinite(d).any() else 0.0, d)
-    fill = ndimage.gaussian_filter(fill, 0.8)
-    gy, gx = np.gradient(fill)
-    n = np.dstack([gx / m_per_px, -gy / m_per_px, -np.ones_like(fill)])   # camera frame: right, up, toward the eye = -z
-    n /= np.linalg.norm(n, axis=-1, keepdims=True)
-    light = np.array([-0.45, 0.55, -0.70])
-    light /= np.linalg.norm(light)
-    sh = 0.25 + 0.75 * np.clip(n @ light, 0, 1)
-    out = np.where(np.isnan(d), 255, 40 + 190 * sh)
-    return out.astype(np.uint8)
 
 
 def expanded(spec: dict) -> dict:
@@ -212,6 +114,45 @@ def without(ex: dict, names: set[str]) -> dict:
     if any(isinstance(d, dict) and d.get("shell") and k not in left for k, d in parts.items()):
         out["parts"] = {k: d for k, d in parts.items() if not (isinstance(d, dict) and d.get("shell") and k not in left)}
     return out
+
+
+def _pieces(prims: list, gap: float = 0.03, most: int = 24) -> list[list]:
+    """Primitives grouped into pieces whose boxes lie within `gap` of each other (one group if there are too many)."""
+    n = len(prims)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i in range(n):
+        for j in range(i + 1, n):
+            if np.all(prims[i].lo - gap <= prims[j].hi) and np.all(prims[j].lo - gap <= prims[i].hi):
+                parent[find(i)] = find(j)
+    groups: dict[int, list] = {}
+    for i, p in enumerate(prims):
+        groups.setdefault(find(i), []).append(p)
+    return list(groups.values()) if len(groups) <= most else [prims]
+
+
+def _tidy(mask: np.ndarray) -> np.ndarray:
+    """A footprint without its slivers: a connected bit under a twentieth of the biggest bit is where taking the
+    feature out nudged a blend somewhere else (a hip above the belt when a thigh goes), not the feature. Pieces of
+    like size (a scatter of bumps, a row of teeth) all stay."""
+    if not mask.any():
+        return mask
+    lab, n = ndimage.label(mask)
+    if n <= 1:
+        return mask
+    size = ndimage.sum(mask, lab, range(1, n + 1))
+    return np.isin(lab, np.where(size >= 0.05 * size.max())[0] + 1)
+
+
+def _span(idx: np.ndarray) -> float:
+    """A mask's extent along one axis, from its pixels' 1st to 99th percentile (a stray pixel doesn't set a size)."""
+    lo, hi = np.percentile(idx, [1, 99])
+    return float(hi - lo + 1)
 
 
 def _mass_of(fm: dict, feature: str) -> str | None:
@@ -285,37 +226,51 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
         if not mine:
             notes[f] = "its elements shape nothing"
             continue
-        pad = 0.012 + float(np.max([np.max(p.reach) for p in mine]))
-        lo = np.maximum(np.min([p.lo for p in mine], 0) - pad, lo_all - 0.012)
-        hi = np.minimum(np.max([p.hi for p in mine], 0) + pad, hi_all + 0.012)
-        # fine enough for the smallest piece (a wart, a crease), within a grid of at most 150 cells a side
-        sized = [p for p in mine if p.name in own_names] or mine  # (the forms on a mass don't set the mass's grid)
-        small = float(np.min([np.min(p.hi - p.lo) for p in sized]))
-        voxel = float(np.clip(min((hi - lo).max() / 72, small / 3), max((hi - lo).max() / 150, 0.0008), whole.voxel))
-        shape = tuple(int(n) for n in np.ceil((hi - lo) / voxel) + 1)
-        at = (lo, voxel, shape)
         # only the parts the feature's own elements belong to: a shell over them (clothing) is another part's
         own = {p.part for p in mine}
         pa, pr = [p for p in prims if p.part in own], [p for p in rest if p.part in own]
-        g_all = sdf.evaluate(pa, at=at) if pa else sdf.Grid(np.ones(shape), lo, voxel)
-        g_rest = sdf.evaluate(pr, at=at) if pr else sdf.Grid(np.ones(shape), lo, voxel)
-        corners = lo + (hi - lo) * np.array([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+        own_ids = [part_ids.index(q) for q in own if q in part_ids]
+        for piece in _pieces(mine):  # pieces far apart (a scatter of bumps) are each measured in their own box
+            pad = 0.012 + float(np.max([np.max(p.reach) for p in piece]))
+            lo = np.maximum(np.min([p.lo for p in piece], 0) - pad, lo_all - 0.012)
+            hi = np.minimum(np.max([p.hi for p in piece], 0) + pad, hi_all + 0.012)
+            # fine enough for the smallest piece (a wart, a crease), within a grid of at most 150 cells a side
+            sized = [p for p in piece if p.name in own_names] or piece  # (forms on a mass don't set the mass's grid)
+            small = float(np.min([np.min(p.hi - p.lo) for p in sized]))
+            voxel = float(np.clip(min((hi - lo).max() / 72, small / 3), max((hi - lo).max() / 150, 0.0008), whole.voxel))
+            shape = tuple(int(n) for n in np.ceil((hi - lo) / voxel) + 1)
+            at = (lo, voxel, shape)
+            g_all = sdf.evaluate(pa, at=at) if pa else sdf.Grid(np.ones(shape), lo, voxel)
+            g_rest = sdf.evaluate(pr, at=at) if pr else sdf.Grid(np.ones(shape), lo, voxel)
+            corners = lo + (hi - lo) * np.array([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+            for v in marked:
+                cam = cams[v]
+                W, H = cam["size"]
+                xy, _ = matched.project(corners, cam)
+                x0, y0 = np.floor(xy.min(0)).astype(int) - 2
+                x1, y1 = np.ceil(xy.max(0)).astype(int) + 2
+                box = (max(x0, 0), max(y0, 0), min(x1, W), min(y1, H))
+                if box[2] > box[0] and box[3] > box[1]:
+                    da, dr = depth_image(g_all, cam, box), depth_image(g_rest, cam, box)
+                    near = np.minimum(da, dr)
+                    with np.errstate(invalid="ignore"):
+                        moved = (np.isfinite(da) != np.isfinite(dr)) | (np.abs(da - dr) > max(0.6 * voxel, 0.0008))
+                    # only inside the shapes that went: beside them the blend sags a millimetre or two on their
+                    # neighbours (a foot's rim when a shin goes), which is not the feature
+                    inside = np.zeros(da.shape, bool)
+                    for p in piece:
+                        c8 = p.lo + (p.hi - p.lo) * np.array([[i, j, k] for i in (0, 1) for j in (0, 1) for k in (0, 1)])
+                        q, _ = matched.project(c8, cam)
+                        a0, b0 = np.floor(q.min(0)).astype(int) - 2 - np.array(box[:2])
+                        a1, b1 = np.ceil(q.max(0)).astype(int) + 3 - np.array(box[:2])
+                        inside[max(b0, 0):max(b1, 0), max(a0, 0):max(a1, 0)] = True
+                    moved &= inside
+                    sub = (slice(box[1], box[3]), slice(box[0], box[2]))
+                    seen = (np.isin(front[v][sub], own_ids) | (front[v][sub] < 0)) \
+                        & (near <= deep[v][sub] + max(1.2 * whole.voxel, 0.006))
+                    out[(f, v)][sub] |= moved & seen & np.isfinite(near)
         for v in marked:
-            cam = cams[v]
-            W, H = cam["size"]
-            xy, _ = matched.project(corners, cam)
-            x0, y0 = np.floor(xy.min(0)).astype(int) - 2
-            x1, y1 = np.ceil(xy.max(0)).astype(int) + 2
-            box = (max(x0, 0), max(y0, 0), min(x1, W), min(y1, H))
-            if box[2] > box[0] and box[3] > box[1]:
-                da, dr = depth_image(g_all, cam, box), depth_image(g_rest, cam, box)
-                near = np.minimum(da, dr)
-                with np.errstate(invalid="ignore"):
-                    moved = (np.isfinite(da) != np.isfinite(dr)) | (np.abs(da - dr) > max(0.6 * voxel, 0.0008))
-                sub = (slice(box[1], box[3]), slice(box[0], box[2]))
-                mine_part = np.isin(front[v][sub], [part_ids.index(q) for q in own if q in part_ids])
-                seen = (mine_part | (front[v][sub] < 0)) & (near <= deep[v][sub] + max(1.2 * whole.voxel, 0.006))
-                out[(f, v)][box[1]:box[3], box[0]:box[2]] = ndimage.binary_opening(moved & seen & np.isfinite(near))
+            out[(f, v)] = _tidy(out[(f, v)])
     return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes, "moved_views": moved_views}
 
 
@@ -399,17 +354,40 @@ def align_flat(name: str, fm: dict, cams: dict, whole: sdf.Grid) -> list[str]:
     return notes
 
 
+def _at_mark(ref: np.ndarray, mod: np.ndarray) -> np.ndarray:
+    """The footprint's pieces that reach the mark (within a sixth of its smaller side), or its biggest piece when
+    none does. Taking a thigh out also moves the hip above the belt: that is not the leg the picture marks."""
+    lab, n = ndimage.label(mod)
+    if n <= 1:
+        return mod
+    ry, rx = np.where(ref)
+    reach = max(3, int(round(0.16 * min(np.ptp(rx) + 1, np.ptp(ry) + 1))))
+    near = ndimage.binary_dilation(ref, iterations=reach)
+    hit = np.unique(lab[near & mod])
+    if len(hit):
+        return np.isin(lab, hit)
+    size = ndimage.sum(mod, lab, range(1, n + 1))
+    return lab == int(np.argmax(size)) + 1
+
+
 def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict, line: bool = False) -> dict:
     ry, rx = np.where(ref)
     if not mod.any():
         return {"feature": f, "view": v, "status": "HIDDEN", "why": "made, but nothing of it is seen from this view"}
     if line:
         return _line_row(f, v, ref, mod, m_per_px, tol)
+    mod = _at_mark(ref, mod)
+    if ref.sum() < tol["small_px"] or min(np.ptp(rx), np.ptp(ry)) + 1 < 5:  # a few pixels: where it is, not its shape
+        my, mx = np.where(mod)
+        d = float(np.hypot(mx.mean() - rx.mean(), my.mean() - ry.mean())) * m_per_px * 1000
+        ok = d <= max(tol["off_mm"], 1.5 * m_per_px * 1000)
+        return {"feature": f, "view": v, "status": "right" if ok else "OFF", "iou": 0.0, "small": True,
+                "why": "" if ok else f"centre {d:.0f} mm from the mark (too small in this picture to measure its size)"}
     my, mx = np.where(mod)
     dx = (mx.mean() - rx.mean()) * m_per_px * 1000
     dy = (ry.mean() - my.mean()) * m_per_px * 1000   # up is +
-    rw, rh = np.ptp(rx) + 1, np.ptp(ry) + 1
-    sw, shh = (np.ptp(mx) + 1) / rw, (np.ptp(my) + 1) / rh
+    rw, rh = _span(rx), _span(ry)
+    sw, shh = _span(mx) / rw, _span(my) / rh
     iou = float((ref & mod).sum() / max((ref | mod).sum(), 1))
     limit = max(tol["off_mm"], tol["off_share"] * min(rw, rh) * m_per_px * 1000)
     faults = []
@@ -427,7 +405,7 @@ def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol:
             "iou": round(iou, 2), "why": "; ".join(t for _, t in faults)}
 
 
-VERSION = 4  # bump when a report's numbers change for the same model and map (kept reports are then redone)
+VERSION = 7  # bump when a report's numbers change for the same model and map (kept reports are then redone)
 
 
 def _key(name: str, views, resolution: int, tol: dict) -> str:
