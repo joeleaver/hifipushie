@@ -168,13 +168,13 @@ def base_colour(T, slope=None, hn=None):
 def colour(T):
     """sRGB (ny, nx, 3): what the heightfield views paint on rock, for 3D rock to match: the base colour, then every
     rock-type cover layer where its mask is (in paint order), then the rock's tone (pale buttresses, dark gullies)."""
-    from . import terrain_design as design
+    from . import terrain_design_cover
     c = base_colour(T)
     for name, m in (getattr(T, "cover", None) or {}).items():
-        sc = design._spec_cover(T, name)
+        sc = terrain_design_cover._spec_cover(T, name)
         if sc.get("type", name) in ("rock", "scree") or "rock" in name:
             a = np.clip(m, 0, 1)[..., None]
-            c = c * (1 - a) + np.array(design.cover_colour(T, name)) * a
+            c = c * (1 - a) + np.array(terrain_design_cover.cover_colour(T, name)) * a
     tone = (getattr(T, "rock", None) or {}).get("tone")
     if tone is not None:
         c = c * tone[..., None]

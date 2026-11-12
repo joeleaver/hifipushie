@@ -293,8 +293,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     skin_folds.build(spec, p, J, layer, ctx)
     _hair(p, J, layer, T, ctx)
     if p.get("projection") and ctx["face"]:   # the references as albedo (skin_project): over our colours and painted hair
-        from . import skin_project
-        skin_project.layers(spec, p["projection"], out, part)
+        from . import skin_project_model
+        skin_project_model.layers(spec, p["projection"], out, part)
     _scars(spec, p, J, layer, T, ctx)
     _tattoos(spec, p, layer, ctx)
     from . import skin_makeup

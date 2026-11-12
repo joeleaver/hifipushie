@@ -33,6 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from . import sdf, veg_leaf, veg_mesh, vegetation
+from . import vegetation_kernels, vegetation_measures, vegetation_tree
 
 STYLES = Path(__file__).with_name("vegetation_styles")
 AZIMUTHS = (0, 60, 120)
@@ -213,7 +214,7 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
     trunk = trunk[trunk >= 1]
     tpos = {int(n): i for i, n in enumerate(trunk)}
     lo, hi = (w["limbs"], w["limbs"]) if isinstance(w["limbs"], int) else w["limbs"]
-    allL = vegetation.limbs(tree, 400, 0.0)
+    allL = vegetation_tree.limbs(tree, 400, 0.0)
     cand = sorted([L for L in allL if int(par[tree["axes"][L["axis"]]["node"]]) in tpos], key=lambda L: -L["diameter"])
     n_keep = 0
     if cand:
@@ -297,7 +298,7 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
     zc = float(P[trunk[top_base], 2]) if kept else 0.35 * float(tree["height"])  # the crown's base on the trunk
     zt = max(float(tp[-1, 2]), 1e-3)
     if w.get("s_bend"):  # cartoon: one S along the bare trunk, `s_bend` x its height out and back (0 at the foot and the crown)
-        ang = 2 * math.pi * float(vegetation._u(np.array([int(tree["spec"].get("seed", 1)) + 11], np.uint64), 99)[0])
+        ang = 2 * math.pi * float(vegetation_kernels._u(np.array([int(tree["spec"].get("seed", 1)) + 11], np.uint64), 99)[0])
         dvec = np.array([math.cos(ang), math.sin(ang), 0.0])
         zz = np.clip(tp[:, 2] / max(zc, 1e-3), 0, 1)
         tp = tp + (float(w["s_bend"]) * zc * np.sin(2 * math.pi * zz))[:, None] * dvec[None]
@@ -341,7 +342,7 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
     n_ax, n_stub = 1, 0
     for L in kept:
         n0 = tree["axes"][L["axis"]]["node"]
-        full = vegetation.stout_path(tree, n0, kids)
+        full = vegetation_tree.stout_path(tree, n0, kids)
         root = index[int(par[n0])]
         r0 = max(fat * float(rad[n0]), float(w.get("limb_min", 0.0)) * fat * r_ref, float(w.get("limb_mass", 0.0)) * size)
         r0 = min(r0, 0.8 * radius[root])
@@ -370,7 +371,7 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
                 continue
             sroot = index[int(par[c])]
             sr0 = min(max(fat * float(rad[c]), float(w.get("stub_radius", 0.6)) * radius[sroot]), 0.8 * radius[sroot])
-            sn = within(vegetation.stout_path(tree, c, kids), float(w.get("stub_reach", 0.6)), must=True,
+            sn = within(vegetation_tree.stout_path(tree, c, kids), float(w.get("stub_reach", 0.6)), must=True,
                         keep=float(w.get("keep_in", 0.5)) + floor * sr0)  # (as a limb: on into the crown, ending in a mass)
             if len(sn) < 2 or length(sn)[-1] < float(w.get("stub_min", 1.0)):
                 continue
@@ -592,7 +593,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         show = float(cr.get("trunk_show", 0.0))
         z0, z1 = max(float(np.percentile(X[:, 2], 1)), show), float(X[:, 2].max())
         un = float(cr.get("tier_uneven", 0.0))
-        jit = (vegetation._u(np.arange(3 * k + 3).astype(np.uint64) + np.uint64(1000 * (seed + 1)), 91) - 0.5) * 2 if un else np.zeros(3 * k + 3)
+        jit = (vegetation_kernels._u(np.arange(3 * k + 3).astype(np.uint64) + np.uint64(1000 * (seed + 1)), 91) - 0.5) * 2 if un else np.zeros(3 * k + 3)
         frac = (np.arange(k + 1) / k) ** float(cr.get("tier_power", 1.0))
         frac[1:-1] += 0.5 * un * jit[1:k] * np.diff(frac).min()
         edges = z0 + (z1 - z0) * frac
@@ -623,14 +624,14 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
                 z0 = max(edges[j] - 0.15 * hgt, show) if j else max(edges[0], show)
                 Hc = float(cr.get("cone_height", 1.6)) * hgt if j < k - 1 else max(ztop - z0, hgt)
                 e["cone"] = {"z0": float(z0), "h": float(min(Hc, ztop - z0)), "teeth": int(cr.get("teeth", 9)), "zig": float(cr.get("zig", 0.12)),
-                             "phase": float(vegetation._u(np.array([j + 7 * (seed + 1)], np.uint64), 93)[0])}
+                             "phase": float(vegetation_kernels._u(np.array([j + 7 * (seed + 1)], np.uint64), 93)[0])}
                 e["c"] = np.array([c[0], c[1], z0 + 0.3 * e["cone"]["h"]])
                 e["r"] = np.array([rx, ry, 0.5 * e["cone"]["h"]])
                 e.pop("down", None)
             out.append(e)
         return _scallops(_subclumps(out, X, cr, twig), cr, seed)
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
-        X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
+        X = X[np.argsort(vegetation_kernels._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
     es = float(cr.get("edge_share", 0.0))
     if es > 0:
         # two sizes of cloud: k big ones over the crown's inner foliage, `edge_count` x k small ones over the outer
@@ -720,7 +721,7 @@ def _scallops(out: list, cr: dict, seed: int) -> list:
         rb = float(cr.get("scallop_size", 0.4)) * rm
         U = _fibonacci(3 * n)
         U = U[U[:, 2] > -0.25][:n] if (U[:, 2] > -0.25).sum() >= n else U[:n]
-        ph = 2 * math.pi * float(vegetation._u(np.array([j + 1000 * (seed + 1)], np.uint64), 95)[0])
+        ph = 2 * math.pi * float(vegetation_kernels._u(np.array([j + 1000 * (seed + 1)], np.uint64), 95)[0])
         Rz = np.array([[math.cos(ph), -math.sin(ph), 0], [math.sin(ph), math.cos(ph), 0], [0, 0, 1.0]])
         U = U @ Rz.T
         nn = U / e["r"]
@@ -831,7 +832,7 @@ def _decimate(V, F, target: int):
 
 # ---------------------------------------------------------------- silhouettes: is it still the same tree?
 def _fill(mask):
-    any_, left, right = vegetation._rows(mask)
+    any_, left, right = vegetation_measures._rows(mask)
     f = np.zeros_like(mask)
     for i in np.flatnonzero(any_):
         f[i, left[i]: right[i] + 1] = True
@@ -839,7 +840,7 @@ def _fill(mask):
 
 
 def mesh_mask(meshes: list, azimuth: float, x0: float, z1: float, px: float, shape) -> np.ndarray:
-    """Triangle meshes [(V, F)] seen from the side, in a given frame (as vegetation.silhouette's)."""
+    """Triangle meshes [(V, F)] seen from the side, in a given frame (as vegetation_measures.silhouette's)."""
     from PIL import Image, ImageDraw
     im = Image.new("L", (shape[1], shape[0]), 0)
     d = ImageDraw.Draw(im)
@@ -855,7 +856,7 @@ def mesh_mask(meshes: list, azimuth: float, x0: float, z1: float, px: float, sha
 
 def reference(tree: dict, azimuths=AZIMUTHS, px: float = 10.0) -> list:
     """The realistic tree's silhouettes in leaf (mask, frame) per azimuth: what every style is held against."""
-    return [vegetation.silhouette(in_leaf(tree), az, px, leaves=True, pad=3.0) for az in azimuths]
+    return [vegetation_measures.silhouette(in_leaf(tree), az, px, leaves=True, pad=3.0) for az in azimuths]
 
 
 def compare(tree: dict, meshes: list, azimuths=AZIMUTHS, px: float = 10.0, refs: list | None = None) -> dict:
@@ -975,7 +976,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         wd = st.get("wind") or {}
         anchor = np.array([int(np.argmin(np.linalg.norm(mini["pos"] - e["c"], axis=1))) for e in ells])
         b_m = np.maximum(wn["branch"][anchor], float(wd.get("mass", 0.3)))
-        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation._u(np.arange(len(ells)).astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
+        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation_kernels._u(np.arange(len(ells)).astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
         mv = C_["mass"]
         # a long slow sweep (the clump with its limb, top more than bottom) and the cards' rims fluttering
         out["crown"] = {**C_, "tone": C_["step"],
@@ -1041,7 +1042,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         hj = float(cr.get("hue_jitter", 0.0))
         if hj:  # cartoon: the hue moves a little per clump (toward yellow or blue-green), the tone steps stay
             sd = int(tree["spec"].get("seed", 1))
-            hu = (vegetation._u(own.astype(np.uint64) + np.uint64(1000 * (sd + 1)), 97) - 0.5) * 2 * hj
+            hu = (vegetation_kernels._u(own.astype(np.uint64) + np.uint64(1000 * (sd + 1)), 97) - 0.5) * 2 * hj
             mcol = mcol * np.stack([1 + hu, np.ones_like(hu), 1 - hu], 1)
         gain = float(max(t0, t1) * (1 + abs(warm)) * (1 + abs(hj)))  # COLOR_0 must stay within 0..1 (glTF): the material's colour carries the rest
         mcol = mcol / gain
@@ -1055,7 +1056,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         mp = mini["pos"]
         anchor = np.array([int(np.argmin(np.linalg.norm(mp - ells[own[j]]["c"], axis=1))) for j in range(len(ells))])
         b_m = np.maximum(wn["branch"][anchor], float(wd.get("mass", 0.3)))
-        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation._u(own.astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
+        ph_m = np.where(mini["order"][anchor] > 0, wn["phase"][anchor], vegetation_kernels._u(own.astype(np.uint64) + np.uint64(int(tree["spec"].get("seed", 1))), 57))
         sw = np.exp(-(D - D.min(1, keepdims=True)) / max(0.5 * blend, 1e-3))
         sw /= sw.sum(1, keepdims=True)
         trunk_w = np.clip(V[:, 2] / max(tree["height"], 1e-6), 0, 1) ** 1.5
@@ -1203,11 +1204,11 @@ def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | Non
         ex /= np.linalg.norm(ex)
         ez = np.cross(up, ex)
         if np.linalg.norm(ez) < 0.3:  # (on top of the crown: stand it up, face toward a hashed side)
-            a_ = 2 * math.pi * float(vegetation._u(np.array([i + 7], np.uint64), 98)[0])
+            a_ = 2 * math.pi * float(vegetation_kernels._u(np.array([i + 7], np.uint64), 98)[0])
             ez = np.cross(np.array([math.cos(a_), math.sin(a_), 0.0]), ex)
         ez /= np.linalg.norm(ez)
         ey = np.cross(ez, ex)
-        roll = (float(vegetation._u(np.array([i + 31], np.uint64), 98)[0]) - 0.5) * float(cr.get("big_leaf_roll", 0.9))
+        roll = (float(vegetation_kernels._u(np.array([i + 31], np.uint64), 98)[0]) - 0.5) * float(cr.get("big_leaf_roll", 0.9))
         ey, ez = ey * math.cos(roll) + ez * math.sin(roll), ez * math.cos(roll) - ey * math.sin(roll)
         o = V[i] - float(cr.get("big_leaf_sink", 0.3)) * L * ex
         Vl, Fl, Nl = _slab(poly, o, ex, ey, ez, 0.03 * L, cup=float(cr.get("big_leaf_cup", 0.15)) / max(L, 1e-6))
@@ -1417,7 +1418,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             sgn = 1 if k % 2 else -1
             for ci in base_pick:
                 pick.append(ci)
-                yaw.append(sgn * fa * ((k + 1) // 2) * (0.7 + 0.6 * float(vegetation._u(tw["key"][ci: ci + 1], 60 + k)[0])))
+                yaw.append(sgn * fa * ((k + 1) // 2) * (0.7 + 0.6 * float(vegetation_kernels._u(tw["key"][ci: ci + 1], 60 + k)[0])))
                 shrink.append(1.0 - 0.12 * ((k + 1) // 2))
         n_obj = len(pick) + len(heads)
         hk = cs.get("heads_kind", "ball")
@@ -1458,7 +1459,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             uvs.append(np.c_[tt, np.full(len(V), (bi + 0.5) / max(len(pick), 1))])
             cols.append(np.full((len(V), 3), tone))
             own = tt ** 1.5 * float(np.clip(L / 1.2, 0.08, 1.0))
-            winds.append(np.c_[np.zeros(len(V)), own, np.full(len(V), float(vegetation._u(tw["key"][ci: ci + 1], 57)[0])), np.zeros(len(V))])
+            winds.append(np.c_[np.zeros(len(V)), own, np.full(len(V), float(vegetation_kernels._u(tw["key"][ci: ci + 1], 57)[0])), np.zeros(len(V))])
             n0 += len(V)
         if Vs:
             gain = float(max(cs["tone"]))
@@ -1477,7 +1478,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             r = np.full(len(t), max(float(cs["stalk"]) * L, 0.003))
             V, F, N, tt = _sweep(path, r, r, np.tile(tw["frame"][ci][:, 2], (len(t), 1)), max(3, sides // 2))
             def su(x, ci=ci):  # the head's own random numbers (array or scalar in, the same out)
-                r_ = vegetation._u(tw["key"][ci] + np.atleast_1d(np.asarray(x)).astype(np.uint64), 70)
+                r_ = vegetation_kernels._u(tw["key"][ci] + np.atleast_1d(np.asarray(x)).astype(np.uint64), 70)
                 return r_ if np.ndim(x) else float(r_[0])
             hd = d * (1 - float(cs.get("head_up", 0.6))) + up * float(cs.get("head_up", 0.6))  # (a flower faces the sky by `head_up`, the rest along its stalk: a head along a leaning stalk faced sideways, its petals in their own shade)
             r_head = float(cs["ball"]) * L
@@ -1486,7 +1487,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
                 r_head = max(r_head, float(cs.get("petal_size", 1.0)) * float(fl_["radius"]))
             Vb, Fb, Nb, Pb = _head(hk, path[-1], hd, r_head, cs, su, max(5, sides + 2))
             head_part.append(Pb)
-            ph = float(vegetation._u(tw["key"][ci: ci + 1], 57)[0])
+            ph = float(vegetation_kernels._u(tw["key"][ci: ci + 1], 57)[0])
             for V_, F_, N_, t_ in ((V, F, N, tt), (Vb, Fb, Nb, np.ones(len(Vb)))):
                 Vs.append(V_); Fs.append(F_ + n0); Ns.append(N_)
                 uvs.append(np.c_[t_, np.full(len(V_), (hi_ + 0.5) / len(heads))])

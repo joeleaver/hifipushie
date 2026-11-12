@@ -19,7 +19,7 @@ from .terrain_measure import _TerrainMeasure
 # ---------------------------------------------------------------- the terrain
 class Terrain(_TerrainSkeleton, _TerrainBase, _TerrainFeatures, _TerrainLandforms, _TerrainMeasure):
     def __init__(self, spec: dict):
-        from . import terrain_design as design
+        from . import terrain_design_cover, terrain_design_routes, terrain_design_walls
         from .terrain_erode import erode
         self.source = spec
         spec = normalise(spec)
@@ -67,8 +67,8 @@ class Terrain(_TerrainSkeleton, _TerrainBase, _TerrainFeatures, _TerrainLandform
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         # rugged after the water exists (zones near the sea or a lake were empty before it), never under it
-        design.rugged(self)
-        design.apply(self)
+        terrain_design_walls.rugged(self)
+        terrain_design_routes.apply(self)
         pre = self.H.copy()
         erode(self)  # after the design: its places are protected, and lakes are where water ends
         forms.settle(self)  # caprocks stay flat
@@ -83,9 +83,9 @@ class Terrain(_TerrainSkeleton, _TerrainBase, _TerrainFeatures, _TerrainLandform
         terrain_lines.apply(self)  # hedges, stone walls, fences, banks, ditches, lines of trees
         from . import terrain_rock
         terrain_rock.apply(self)  # buttresses, couloirs, ledges and a boulder foot on every steep face
-        design.check(self)
+        terrain_design_walls.check(self)
         self._fill_lakes()
-        self.cover = design.cover(self)
+        self.cover = terrain_design_cover.cover(self)
         if getattr(self, "detail", None):  # what the finer cells cost: these stages ran on f^2 as many cells
             fine = _time.time() - _t0
             self.detail["seconds"] = fine

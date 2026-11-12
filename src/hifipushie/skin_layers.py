@@ -23,7 +23,7 @@ own scale; what no layer takes is the RESIDUAL):
   lips         all three, inside the vermilion (its edge from the picture's own colour edge), 0.8 mm
   beard        neutral + melanin, the beard zones, 2 mm              stubble shadow: density / colour (drives strands or paint)
   freckles     melanin's fine band (0.35-1.5 mm, positive), plain skin, as a DENSITY map (3 mm) for the generator;
-               prominent marks are placed one by one (skin_project.marks)
+               prominent marks are placed one by one (skin_project_model.marks)
   shade        neutral, everywhere, 3 mm            dark with no pigment colour and no layer of its own: mostly the
                shade of forms the head does not have (Stage 2 takes it back as form)
 Each map is filled where no picture vouches for it: the mirror image first, then the layer's own neighbourhood inside
@@ -42,6 +42,7 @@ import json
 import numpy as np
 
 from . import skin_project as sp
+from . import skin_project_atlas, skin_project_detail, skin_project_sample
 
 VERSION = 1
 P0 = 0.8                 # a layer's default opacity: its stored multiplier is exact at P0 and leaves room to 1.0 (x 1.25)
@@ -156,7 +157,7 @@ def _atlas_of(spec: dict):
     pj = (spec.get("skin") or {}).get("projection") or {}
     if not pj.get("albedo") or not pj.get("confidence") or not pj.get("delight", True):
         raise ValueError("skin_layers: the model has no de-lit skin projection (skin_project first)")
-    at = sp.atlas(spec["base"])
+    at = skin_project_atlas.atlas(spec["base"])
     alb = sp._lin(np.asarray(Image.open(images.id_path(pj["albedo"])).convert("RGB"), float) / 255.0)[at["ii"], at["jj"]]
     cf = np.asarray(Image.open(images.id_path(pj["confidence"])).convert("RGB"), float)[..., 0][at["ii"], at["jj"]] / 255.0
     return at, alb, cf, pj
@@ -165,7 +166,7 @@ def _atlas_of(spec: dict):
 def _lip_mask(at, regs, hm, meas) -> np.ndarray:
     """The vermilion from the picture's own COLOUR EDGE: round GNM's lips (4 mm out), where the haemoglobin amount is
     over the midpoint between the lips' own median and the median of the skin round them."""
-    near = sp._blur(at, regs["lips"].astype(float), None, 2.0) > 0.02
+    near = skin_project_atlas._blur(at, regs["lips"].astype(float), None, 2.0) > 0.02
     inner = regs["lips"] & meas
     ring = near & ~regs["lips"] & meas
     if inner.sum() < 300 or ring.sum() < 300:
@@ -173,7 +174,7 @@ def _lip_mask(at, regs, hm, meas) -> np.ndarray:
     hi, lo = float(np.median(hm[inner])), float(np.median(hm[ring]))
     if hi - lo < 0.05:
         return regs["lips"].astype(float)
-    hs = sp._blur(at, hm, meas.astype(float), 0.5)
+    hs = skin_project_atlas._blur(at, hm, meas.astype(float), 0.5)
     m = sp._sstep((hs - (lo + 0.35 * (hi - lo))) / (0.3 * (hi - lo))) * near
     return np.where(meas, m, regs["lips"].astype(float))
 
@@ -201,7 +202,7 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     ph = sp._lin(np.asarray(img, float) / 255.0)
     H, W = ph.shape[:2]
     mesh = blockin_expression._per_view(spec["base"], rj, [vi], lambda b: likeness_render.model_mesh(b))[vi]
-    smp = sp.sample_view(at, mesh, cam, np.asarray(img))
+    smp = skin_project_sample.sample_view(at, mesh, cam, np.asarray(img))
     cols, masks = {}, {}
     for key in ("lip_upper", "lip_lower"):
         m = Image.new("L", (W, H), 0)
@@ -217,7 +218,7 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
         uv = smp["uv"]
         xi, yi = np.clip(uv[:, 0].round().astype(int), 0, W - 1), np.clip(uv[:, 1].round().astype(int), 0, H - 1)
         masks[key] = mm[yi, xi] & smp["vis"]
-    plain = sp._plain(at) & smp["vis"] & (smp["facing"] > 0.6)
+    plain = skin_project_detail._plain(at) & smp["vis"] & (smp["facing"] > 0.6)
     pj = spec["skin"]["projection"]
     from . import images
     alb = sp._lin(np.asarray(Image.open(images.id_path(pj["albedo"])).convert("RGB"), float) / 255.0)[at["ii"], at["jj"]]
@@ -233,10 +234,10 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
     f_ = np.linspace(0, 1, 20)[:, None]
     line = np.r_[Lm[[48, 60, 61, 62, 63, 64, 54]], Lm[[54, 64, 65, 66, 67, 60, 48]]]
     pts = np.concatenate([a_[None] + (b_ - a_)[None] * f_ for a_, b_ in zip(line[:-1], line[1:])])
-    dseam = cKDTree(pts).query(sp.interp(at, at["V"]))[0] * 1000.0
+    dseam = cKDTree(pts).query(skin_project_atlas.interp(at, at["V"]))[0] * 1000.0
     g_ = at["groups"]
-    mesh_in = {"lip_upper": (sp.interp(at, g_["upper_lip"]) > 0.5) & ((dseam < 2.5) | ~smp["vis"]),
-               "lip_lower": (sp.interp(at, g_["lower_lip"]) > 0.5) & ((dseam < 2.5) | ~smp["vis"])}
+    mesh_in = {"lip_upper": (skin_project_atlas.interp(at, g_["upper_lip"]) > 0.5) & ((dseam < 2.5) | ~smp["vis"]),
+               "lip_lower": (skin_project_atlas.interp(at, g_["lower_lip"]) > 0.5) & ((dseam < 2.5) | ~smp["vis"])}
     for key in ("lip_upper", "lip_lower"):
         masks[key] = masks[key] | mesh_in[key]
     for key in ("lip_upper", "lip_lower"):
@@ -244,7 +245,7 @@ def lips_from_indications(name: str, spec: dict, at: dict, base: np.ndarray, log
         # the lip AGAINST THE SKIN BESIDE IT in the same picture (a ratio: laid over whatever skin the head has; against the
         # stack's lightest-skin base it darkened twice over a darker procedural skin: dark mauve lips)
         rel = cols[key] / np.maximum(np.median(smp["rgb"][plain], 0), 1e-4)
-        m = np.clip(sp._blur(at, masks[key].astype(float), None, EDGE_MM), 0, 1)
+        m = np.clip(skin_project_atlas._blur(at, masks[key].astype(float), None, EDGE_MM), 0, 1)
         m = sp._sstep((m - 0.15) / 0.7)
         od += m[:, None] * np.clip(-np.log(np.clip(rel, 1e-3, 1.0)), 0, None)[None]
         mask = np.maximum(mask, m)
@@ -266,8 +267,8 @@ def _fill_soft(at: dict, vals: np.ndarray, w: np.ndarray, fallback: float, reach
     concentric bands with edges in profile.)"""
     from scipy import ndimage
     out = np.full(len(vals), float(fallback))
-    Wm = sp.image(at, w.astype(np.float32))
-    Vm = sp.image(at, (vals * w).astype(np.float32))
+    Wm = skin_project_atlas.image(at, w.astype(np.float32))
+    Vm = skin_project_atlas.image(at, (vals * w).astype(np.float32))
     for mm in reversed(reaches):
         sg = mm / at["mm"]
         den = ndimage.gaussian_filter(Wm, sg, truncate=3.0)[at["ii"], at["jj"]]
@@ -328,7 +329,7 @@ def occlusion(spec: dict, at: dict, part: str | None = None) -> np.ndarray:
         still = blink_still(spec)
         m = 1 - (1 - m) * (still if part == "still" else 1 - still)
     # softened over OCC_SOFT_MM (a soft hollow, not a ring with edges; 0.4 mm drew the tail's jagged path as a black line)
-    mt = sp._blur(at, sp.interp(at, m), None, OCC_SOFT_MM)
+    mt = skin_project_atlas._blur(at, skin_project_atlas.interp(at, m), None, OCC_SOFT_MM)
     # WARM, never grey: skin in shadow goes darker AND redder (light scattered under it comes out red); grey occlusion read
     # as soot round Tess's eyes, greyed her lips and the whole face. Each channel darkens by its own weight, the skin's
     # own shadow hue (shadow_weights: the atlas' darkest plain skin against its lightest)
@@ -349,7 +350,7 @@ def shadow_weights(spec: dict, at: dict) -> np.ndarray:
         _, alb, cf, _ = _atlas_of(spec)
     except Exception:  # noqa: BLE001
         return np.asarray(OCC_WEIGHTS, float)
-    q = sp._plain(at) & (cf > 0.6)
+    q = skin_project_detail._plain(at) & (cf > 0.6)
     if q.sum() < 500:
         return np.asarray(OCC_WEIGHTS, float)
     Y_ = alb[q] @ sp.Y
@@ -379,7 +380,7 @@ def crease_map(spec: dict, at: dict) -> np.ndarray:
     gidall = np.asarray(onemesh.asset()["gnm_id"])
     gid = np.where(fid < len(gidall), gidall[np.clip(fid, 0, len(gidall) - 1)], -1)
     w = np.array([ids.get(int(g_), 0.0) for g_ in gid])
-    m = sp._blur(at, sp.interp(at, w), None, CREASE_MM)
+    m = skin_project_atlas._blur(at, skin_project_atlas.interp(at, w), None, CREASE_MM)
     return np.clip(m / max(float(np.percentile(m[m > 0.01], 95)) if (m > 0.01).any() else 1.0, 1e-6), 0, 1)
 
 
@@ -397,13 +398,13 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     V = axes(tone)
     Vi = np.linalg.inv(V)                                     # amounts = D @ Vi
     meas = cf > 0.6
-    regs = sp.region_masks(at)
-    plain = sp._plain(at) & meas
+    regs = skin_project_detail.region_masks(at)
+    plain = skin_project_detail._plain(at) & meas
     c_tone = np.median(alb[plain], 0)
     D = -np.log(np.maximum(alb, 1e-4) / c_tone)
     A = D @ Vi                                                # (n, 3): m, h, d
     wm = meas.astype(float)
-    zero = np.array([np.percentile(sp._blur(at, A[:, k], wm, 4.0)[plain], LOW_PCT) for k in range(3)])
+    zero = np.array([np.percentile(skin_project_atlas._blur(at, A[:, k], wm, 4.0)[plain], LOW_PCT) for k in range(3)])
     A = A - zero                                              # over the lightest skin
     base = c_tone * np.exp(-(zero @ V))
     # an albedo over 1 cannot be laid: the stored base (sRGB) clipped its red channel at 1 and every colour over it lost
@@ -414,17 +415,17 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     ica = ica_check(D[plain][:: max(int(plain.sum() // 60000), 1)], V)
     sup = {"all": np.ones(n)}
     for k, names in SUPPORT.items():
-        sup[k] = np.clip(sp._blur(at, np.max([regs[r] for r in names if r in regs], 0).astype(float), None, 1.5), 0, 1)
+        sup[k] = np.clip(skin_project_atlas._blur(at, np.max([regs[r] for r in names if r in regs], 0).astype(float), None, 1.5), 0, 1)
     # THE LIPS' SUPPORT IS WIDE AND SOFT (GNM's lips + LIP_REACH, fading over LIP_FADE): inside it the lips layer takes
     # everything the broad layers left at its own 0.8 mm, so the vermilion border's PROFILE is the atlas' own (soft on
     # the lower lip and at the corners, sharpest at the cupid's bow), not a mask's edge. (First version: a thresholded
     # vermilion mask multiplied the layer and cut the broad layers out: one hard colour line all round. Joe: "the lip
     # color lines are a little hard".) `vermilion` (the colour edge) is kept for the report only.
     vermilion = _lip_mask(at, regs, A[:, 1], meas)
-    sup["lips"] = sp._sstep(sp._blur(at, regs["lips"].astype(float), None, LIP_REACH) / LIP_FADE)
-    lips_core = np.clip(sp._blur(at, regs["lips"].astype(float), None, 0.4) * 2.0, 0, 1)
+    sup["lips"] = sp._sstep(skin_project_atlas._blur(at, regs["lips"].astype(float), None, LIP_REACH) / LIP_FADE)
+    lips_core = np.clip(skin_project_atlas._blur(at, regs["lips"].astype(float), None, 0.4) * 2.0, 0, 1)
     # the mirror image of every unmeasured texel
-    Xn = sp.interp(at, at["neutral"])
+    Xn = skin_project_atlas.interp(at, at["neutral"])
     have, need = np.flatnonzero(meas), np.flatnonzero(~meas)
     msrc = np.full(n, -1)
     if len(have) > 1000 and len(need):
@@ -457,11 +458,11 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
             k = ax[a]
             Sa = S
             if lname == "lips" and a == "d":   # the neutral darkness only ON the lips: round them it is the shadow of a form
-                Sa = np.clip(sp._blur(at, regs["lips"].astype(float), None, 0.4) * 2.0, 0, 1)   # (the lower lip's): a dark ring
+                Sa = np.clip(skin_project_atlas._blur(at, regs["lips"].astype(float), None, 0.4) * 2.0, 0, 1)   # (the lower lip's): a dark ring
             w = known.astype(float) * (Sa > 0.05)
             if hole is not None:
                 w = w * ~hole
-            v = np.clip(sp._blur(at, R[:, k], w, mm), 0, None) * Sa
+            v = np.clip(skin_project_atlas._blur(at, R[:, k], w, mm), 0, None) * Sa
             if hole is not None and hole.any():
                 v = np.where(hole, _fill_soft(at, v, w, float(np.median(v[w > 0])) if (w > 0).any() else 0.0) * Sa, v)
             # where nothing is known: the layer's own neighbourhood inside its support, then its mean there
@@ -473,7 +474,7 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
                 if lname in ("pigment", "redness", "shade", "periorbital"):   # measured skin eased into the fill over
                     # ~2 mm inside its edge (edge texels are the least trustworthy: the hair line's, the lid band's): no
                     # seam where it stops (a thin dark line ran down from Tess's outer eye corner along the lid band's edge)
-                    kb = sp._blur(at, known.astype(float), None, 2.0)
+                    kb = skin_project_atlas._blur(at, known.astype(float), None, 2.0)
                     tk = np.clip((kb - 0.5) / 0.5, 0, 1)
                     tk = tk * tk * (3 - 2 * tk)
                     v = np.where(known, tk * v + (1 - tk) * fill_, fill_)
@@ -494,8 +495,8 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
         if lname == "lips":   # the lips' PIGMENT is the lip body's: the parting's shadow and the lower lip's grazing underside
             # (de-lighting leaves them dark) are not painted (a dark-red smear with a hard edge on a phone photo's lower lip)
             g_ = at["groups"]
-            ul, ll = sp.interp(at, g_["upper_lip"]), sp.interp(at, g_["lower_lip"])
-            seam = np.clip(sp._blur(at, (ul > 0.5).astype(float), None, 1.0) * sp._blur(at, (ll > 0.5).astype(float), None, 1.0) * 8.0, 0, 1)
+            ul, ll = skin_project_atlas.interp(at, g_["upper_lip"]), skin_project_atlas.interp(at, g_["lower_lip"])
+            seam = np.clip(skin_project_atlas._blur(at, (ul > 0.5).astype(float), None, 1.0) * skin_project_atlas._blur(at, (ll > 0.5).astype(float), None, 1.0) * 8.0, 0, 1)
             body = regs["lips"] & meas & (seam < 0.2)
             if body.sum() > 200:
                 od = np.zeros((n, 3))
@@ -516,7 +517,7 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     line = np.r_[Lm[[48, 60, 61, 62, 63, 64, 54]], Lm[[54, 64, 65, 66, 67, 60, 48]]]
     f_ = np.linspace(0, 1, 20)[:, None]
     pts = np.concatenate([a_[None] + (b_ - a_)[None] * f_ for a_, b_ in zip(line[:-1], line[1:])])
-    Xs = sp.interp(at, at["V"])
+    Xs = skin_project_atlas.interp(at, at["V"])
     dmm = cKDTree(pts).query(Xs)[0] * 1000.0
     seam = np.exp(-0.5 * (dmm / max(PARTING_MM * 1.5, 1e-6)) ** 2) * (regs["lips"] | (dmm < 1.0))
     band = regs["lips"] & meas & (seam > 0.6)
@@ -530,34 +531,34 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     # surfaces no picture saw that sit in occlusion (nostril interior, the inner lip at the seam, the lid's tuck): dark
     # and warm by their own ambient occlusion (INFERRED), on the shade (neutral) and redness (haemoglobin) layers
     from . import likeness_render
-    ao = np.clip(sp.interp(at, likeness_render.ambient_occlusion(likeness_render.model_mesh(spec["base"]))), 0, 1)
+    ao = np.clip(skin_project_atlas.interp(at, likeness_render.ambient_occlusion(likeness_render.model_mesh(spec["base"]))), 0, 1)
     cav = np.where(~meas, np.clip((CAVITY[0] - ao) / CAVITY[1], 0, 1), 0.0)
     # only inside an unmeasured REGION (a nostril, the seam's inner faces), never along a sliver of unmeasured texels (a
     # UV seam or a thin gap between views on open skin drew a thin dark scratch on a jaw)
-    reg_um = np.clip((sp._blur(at, (~meas).astype(float), None, 1.0) - 0.6) / 0.3, 0, 1)
+    reg_um = np.clip((skin_project_atlas._blur(at, (~meas).astype(float), None, 1.0) - 0.6) / 0.3, 0, 1)
     cav = cav * reg_um
     if CAVITY_SPREAD:
-        sp_ = np.clip(sp._blur(at, cav, None, CAVITY_SPREAD[0]) * CAVITY_SPREAD[1], 0, 1) * reg_um * np.clip((CAVITY_SPREAD[2] - ao) / CAVITY_SPREAD[3], 0, 1)
+        sp_ = np.clip(skin_project_atlas._blur(at, cav, None, CAVITY_SPREAD[0]) * CAVITY_SPREAD[1], 0, 1) * reg_um * np.clip((CAVITY_SPREAD[2] - ao) / CAVITY_SPREAD[3], 0, 1)
         cav = np.maximum(cav, sp_)
     # never on the lids: the skin tucked under a fold is occluded at rest but a blink shows it (a dark patch on a closed
     # lid); only surfaces that stay hidden (nostril interiors, the lip seam) take the dark-warm term
-    X_ = sp.interp(at, at["V"])
+    X_ = skin_project_atlas.interp(at, at["V"])
     for Ve, _, _ in likeness_render.model_mesh(spec["base"])["eyes"]:
         c_ = Ve.mean(0)
         cav = cav * sp._sstep((np.linalg.norm(X_ - c_, axis=1) - float(np.linalg.norm(Ve - c_, axis=1).max()) - 0.008) / 0.004)
-    cav = sp._blur(at, cav, None, 1.0)      # (0.3 mm: a hard-edged pale crescent where it stopped, under the outer corner)
+    cav = skin_project_atlas._blur(at, cav, None, 1.0)      # (0.3 mm: a hard-edged pale crescent where it stopped, under the outer corner)
     if cav.any():
         out_l["shade"]["amount"]["d"] = out_l["shade"]["amount"]["d"] + CAVITY[2] * cav
         out_l["shade"]["od"] = out_l["shade"]["od"] + (CAVITY[2] * cav)[:, None] * V[2]
         out_l["redness"]["amount"]["h"] = out_l["redness"]["amount"]["h"] + CAVITY[3] * cav
         out_l["redness"]["od"] = out_l["redness"]["od"] + (CAVITY[3] * cav)[:, None] * V[1]
     # freckles: the fine melanin band's positive part as a density (the generator draws the dots)
-    fb = sp._blur(at, A[:, 0], wm, FRECKLE_BAND[0]) - sp._blur(at, A[:, 0], wm, FRECKLE_BAND[1])
+    fb = skin_project_atlas._blur(at, A[:, 0], wm, FRECKLE_BAND[0]) - skin_project_atlas._blur(at, A[:, 0], wm, FRECKLE_BAND[1])
     # freckles are DARK spots on lighter skin: the band's dark excess over its light excess (symmetric noise, a soft or
     # compressed photo's grain, cancels: the positive part alone gave smooth phone photos 5-6 % "freckled" skin)
-    fpos = np.clip(fb, 0, None) * sp._plain(at)
-    fneg = np.clip(-fb, 0, None) * sp._plain(at)
-    fden = np.clip(sp._blur(at, fpos, wm, 3.0) - sp._blur(at, fneg, wm, 3.0), 0, None)
+    fpos = np.clip(fb, 0, None) * skin_project_detail._plain(at)
+    fneg = np.clip(-fb, 0, None) * skin_project_detail._plain(at)
+    fden = np.clip(skin_project_atlas._blur(at, fpos, wm, 3.0) - skin_project_atlas._blur(at, fneg, wm, 3.0), 0, None)
     ref = float(np.percentile(fden[plain], 99)) if plain.any() else 0.0
     fr = np.clip(fden / FRECKLE_REF, 0, 1)                    # ABSOLUTE: an even skin has no freckle map (its own p99 as 1 made noise a map)
     if (msrc >= 0).any():
@@ -565,8 +566,8 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     fr = np.where(known, fr, float(np.median(fr[plain])) if plain.any() else 0.0)
     # BLEMISHES: small red spots (papules, marks) = the fine HAEMOGLOBIN band's dark excess over its light excess (as the
     # freckles' melanin), a density for our blemish generator (the dots are ours; where and how many is the picture's)
-    hb_ = sp._blur(at, A[:, 1], wm, BLEMISH_BAND[0]) - sp._blur(at, A[:, 1], wm, BLEMISH_BAND[1])
-    bden = np.clip(sp._blur(at, np.clip(hb_, 0, None) * sp._plain(at), wm, 3.0) - sp._blur(at, np.clip(-hb_, 0, None) * sp._plain(at), wm, 3.0), 0, None)
+    hb_ = skin_project_atlas._blur(at, A[:, 1], wm, BLEMISH_BAND[0]) - skin_project_atlas._blur(at, A[:, 1], wm, BLEMISH_BAND[1])
+    bden = np.clip(skin_project_atlas._blur(at, np.clip(hb_, 0, None) * skin_project_detail._plain(at), wm, 3.0) - skin_project_atlas._blur(at, np.clip(-hb_, 0, None) * skin_project_detail._plain(at), wm, 3.0), 0, None)
     bref = float(np.percentile(bden[plain], 99)) if plain.any() else 0.0
     bl = np.clip(bden / BLEMISH_REF, 0, 1)
     if (msrc >= 0).any():
@@ -577,15 +578,15 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     # FINE TEXTURE STRENGTH (no photo pixels): how much fine-band (< 1.2 mm) contrast the atlas has that the maps do
     # not carry, as a smooth map (4 mm): it sets the strength of OUR fine generator there (the stack alone read porcelain)
     la_, lr_ = np.log(np.maximum(alb, 1e-4)) @ Y, np.log(np.maximum(rec, 1e-4)) @ Y
-    fa, frc = la_ - sp._blur(at, la_, wm, 1.2), lr_ - sp._blur(at, lr_, wm, 1.2)
-    need = np.sqrt(np.clip(sp._blur(at, fa ** 2, wm, 4.0) - sp._blur(at, frc ** 2, wm, 4.0), 0, None))
+    fa, frc = la_ - skin_project_atlas._blur(at, la_, wm, 1.2), lr_ - skin_project_atlas._blur(at, lr_, wm, 1.2)
+    need = np.sqrt(np.clip(skin_project_atlas._blur(at, fa ** 2, wm, 4.0) - skin_project_atlas._blur(at, frc ** 2, wm, 4.0), 0, None))
     # (never near a feature edge: there the "fine band the maps miss" is the edge's own contrast (the vermilion border, a
     # nostril, a lid margin), and the fine generator laid its stipple as a grey band all along the upper lip: Tess's
     # "moustache", found by switching layers off one at a time)
-    edge = np.clip(sp._blur(at, (regs["lips"] | regs["orbit"]).astype(float), None, 5.0) * 6.0, 0, 1)   # (3 mm: a faint band above the lip in the 3/4 view)
+    edge = np.clip(skin_project_atlas._blur(at, (regs["lips"] | regs["orbit"]).astype(float), None, 5.0) * 6.0, 0, 1)   # (3 mm: a faint band above the lip in the 3/4 view)
     # (a FLOOR on plain skin: a picture at 0.2-0.3 mm a pixel resolves little under 1.2 mm, so the measured band is a
     # lower bound; at the measure alone every head under the stack read smoother than its photograph)
-    fine = np.clip(np.maximum(need / FINE_FULL, FINE_FLOOR * sp._plain(at)), 0, 0.8) * (1 - np.clip(sup["lips"] + sup["brow"], 0, 1)) * (1 - edge)
+    fine = np.clip(np.maximum(need / FINE_FULL, FINE_FLOOR * skin_project_detail._plain(at)), 0, 0.8) * (1 - np.clip(sup["lips"] + sup["brow"], 0, 1)) * (1 - edge)
     if (msrc >= 0).any():
         fine[msrc >= 0] = fine[msrc[msrc >= 0]]
     fine = np.where(known, fine, float(np.median(fine[plain])) if plain.any() else 0.0)
@@ -610,15 +611,15 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     # the vermilion border's WIDTH per segment (10-90 % of the haemoglobin step, measured across the border in the
     # atlas): what the lips layer now carries at 0.3 mm (Joe: at 0.8 mm the border went from a cut-out line to blurry)
     try:
-        hs = sp._blur(at, A[:, 1], wm, 0.25)
-        lipc = X0 = sp.interp(at, at["V"])
+        hs = skin_project_atlas._blur(at, A[:, 1], wm, 0.25)
+        lipc = X0 = skin_project_atlas.interp(at, at["V"])
         lc = X0[regs["lips"] & meas].mean(0)
-        inner, ring = regs["lips"] & meas, (sp._blur(at, regs["lips"].astype(float), None, 1.5) > 0.03) & ~regs["lips"] & meas
+        inner, ring = regs["lips"] & meas, (skin_project_atlas._blur(at, regs["lips"].astype(float), None, 1.5) > 0.03) & ~regs["lips"] & meas
         hi_, lo_ = float(np.percentile(hs[inner], 60)), float(np.percentile(hs[ring], 40))
-        img = sp.image(at, hs.astype(np.float32))
+        img = skin_project_atlas.image(at, hs.astype(np.float32))
         gy, gx = np.gradient(img)
         gm = np.hypot(gx, gy)[at["ii"], at["jj"]] / at["mm"]          # per mm
-        edge = (np.abs(hs - 0.5 * (hi_ + lo_)) < 0.15 * (hi_ - lo_)) & (sp._blur(at, regs["lips"].astype(float), None, 1.0) > 0.02) & meas
+        edge = (np.abs(hs - 0.5 * (hi_ + lo_)) < 0.15 * (hi_ - lo_)) & (skin_project_atlas._blur(at, regs["lips"].astype(float), None, 1.0) > 0.02) & meas
         segs = {}
         for name_, cond in (("cupid's bow (upper middle)", (X0[:, 2] > lc[2]) & (np.abs(X0[:, 0] - lc[0]) < 0.007)),
                             ("upper sides", (X0[:, 2] > lc[2]) & (np.abs(X0[:, 0] - lc[0]) >= 0.007) & (np.abs(X0[:, 0] - lc[0]) < 0.019)),
@@ -639,10 +640,10 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
 def _error(at, rec, alb, meas, regs) -> dict:
     w = meas.astype(float)
     la, lr = np.log(np.maximum(alb, 1e-4)), np.log(np.maximum(rec, 1e-4))
-    A_low, R_low = np.exp(sp._blur(at, la, w, 6.0)), np.exp(sp._blur(at, lr, w, 6.0))
-    a_mid = sp._blur(at, la @ Y, w, 1.2) - sp._blur(at, la @ Y, w, 6.0)
-    r_mid = sp._blur(at, lr @ Y, w, 1.2) - sp._blur(at, lr @ Y, w, 6.0)
-    a_fine, r_fine = la @ Y - sp._blur(at, la @ Y, w, 1.2), lr @ Y - sp._blur(at, lr @ Y, w, 1.2)
+    A_low, R_low = np.exp(skin_project_atlas._blur(at, la, w, 6.0)), np.exp(skin_project_atlas._blur(at, lr, w, 6.0))
+    a_mid = skin_project_atlas._blur(at, la @ Y, w, 1.2) - skin_project_atlas._blur(at, la @ Y, w, 6.0)
+    r_mid = skin_project_atlas._blur(at, lr @ Y, w, 1.2) - skin_project_atlas._blur(at, lr @ Y, w, 6.0)
+    a_fine, r_fine = la @ Y - skin_project_atlas._blur(at, la @ Y, w, 1.2), lr @ Y - skin_project_atlas._blur(at, lr @ Y, w, 1.2)
     dlab = sp.lab(R_low) - sp.lab(A_low)
     out = {}
     for k, m in {"ALL": np.ones(len(meas), bool), **regs}.items():
@@ -677,8 +678,8 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
     d = store._dir(dst) / "skin_layers"
     d.mkdir(parents=True, exist_ok=True)
     H, W = at["shape"]
-    valid = sp.image(at, np.ones(len(at["ii"]), bool), False)
-    fade = np.clip(sp.interp(at, at["fade"]), 0, 1)
+    valid = skin_project_atlas.image(at, np.ones(len(at["ii"]), bool), False)
+    fade = np.clip(skin_project_atlas.interp(at, at["fade"]), 0, 1)
     # every map fades out toward the head island's own border in the atlas (where the body's mesh takes over): at the raw
     # fade the stack stopped on the island's ragged edge, a soft band and a jagged line across the neck
     from scipy import ndimage as _nd
@@ -686,13 +687,13 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
     edge = np.clip(dist_mm / COVER_EDGE_MM, 0, 1)
     fade = fade * edge * edge * (3 - 2 * edge)
     # ... and the fade itself softened: per vertex it stepped ring by ring (a ragged colour edge across the neck)
-    fade = np.clip(sp._blur(at, fade, None, COVER_SOFT_MM), 0, 1)
+    fade = np.clip(skin_project_atlas._blur(at, fade, None, COVER_SOFT_MM), 0, 1)
 
     def save_rgb(lin_or_mult, fname, alpha=None, srgb=True):
         a = np.zeros((H, W, 4), np.uint8)
         v = sp._srgb(lin_or_mult) if srgb else lin_or_mult
-        a[..., :3] = sp._bleed(sp.image(at, (np.clip(v, 0, 1) * 255 + 0.5).astype(np.uint8)), valid)
-        a[..., 3] = sp._bleed(sp.image(at, ((fade if alpha is None else alpha) * 255).astype(np.uint8)), valid)
+        a[..., :3] = skin_project_detail._bleed(skin_project_atlas.image(at, (np.clip(v, 0, 1) * 255 + 0.5).astype(np.uint8)), valid)
+        a[..., 3] = skin_project_detail._bleed(skin_project_atlas.image(at, ((fade if alpha is None else alpha) * 255).astype(np.uint8)), valid)
         Image.fromarray(a, "RGBA").save(d / fname)
         return images.ingest(d / fname)
     layers_ = []
@@ -702,7 +703,7 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
         iid = save_rgb(_multiplier(l["od"]), f"{lname}.png")
         layers_.append({"name": lname, "image": iid, "opacity": OPACITY.get(lname, P0)})
     cov = save_rgb(np.ones((len(fade), 3)), "coverage.png")
-    Image.fromarray(sp.image(at, r["provenance"])).save(d / "provenance.png")
+    Image.fromarray(skin_project_atlas.image(at, r["provenance"])).save(d / "provenance.png")
     save_rgb(r["recomposed"], "recomposed.png")
     fr_id = save_rgb(np.repeat(r["freckles"][:, None], 3, 1), "freckles.png", alpha=np.ones(len(fade)), srgb=False)
     fine_id = save_rgb(np.repeat(r["fine"][:, None], 3, 1), "fine.png", alpha=np.ones(len(fade)), srgb=False)
@@ -722,7 +723,7 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
     sk = spec["skin"]
     if freckles:   # the freckle GENERATOR confined to the density map (dots are ours; where and how many is the picture's)
         ft = dict(sk.get("features") or {})
-        dens = float(np.mean(r["freckles"][sp._plain(at) & r["meas"]] > 0.5))
+        dens = float(np.mean(r["freckles"][skin_project_detail._plain(at) & r["meas"]] > 0.5))
         if dens > 0.03:
             ft["freckles"] = {"amount": round(min(0.3 + 2.0 * dens, 1.2), 3), "mask": [{"image": {"id": fr_id, "wrap": "uv", "box": box, "channel": "luma"}}]}
             notes.append(f"  features.freckles: amount {ft['freckles']['amount']} inside the density map ({100 * dens:.0f} % of the plain skin over half density)")
@@ -783,16 +784,16 @@ def stack_on_head(spec: dict, log: list) -> dict:
     key = lt.head_key(spec["base"])
     if st.get("head") == key:
         return spec
-    at = sp.atlas(spec["base"])
+    at = skin_project_atlas.atlas(spec["base"])
     H, W = at["shape"]
-    valid = sp.image(at, np.ones(len(at["ii"]), bool), False)
+    valid = skin_project_atlas.image(at, np.ones(len(at["ii"]), bool), False)
     d = Path(tempfile.mkdtemp(prefix="hp_stack_"))
 
     def save(v, fname, alpha=None):
         a = np.zeros((H, W, 4), np.uint8)
-        a[..., :3] = sp._bleed(sp.image(at, (np.clip(sp._srgb(v), 0, 1) * 255 + 0.5).astype(np.uint8)), valid)
+        a[..., :3] = skin_project_detail._bleed(skin_project_atlas.image(at, (np.clip(sp._srgb(v), 0, 1) * 255 + 0.5).astype(np.uint8)), valid)
         al = np.ones(len(at["ii"])) if alpha is None else alpha
-        a[..., 3] = sp._bleed(sp.image(at, (np.clip(al, 0, 1) * 255).astype(np.uint8)), valid)
+        a[..., 3] = skin_project_detail._bleed(skin_project_atlas.image(at, (np.clip(al, 0, 1) * 255).astype(np.uint8)), valid)
         Image.fromarray(a, "RGBA").save(d / fname)
         return images.ingest(d / fname)
     st = dict(st)
@@ -937,9 +938,9 @@ def even_out(spec: dict, centre, radius: float = 0.006, ring: tuple = (1.6, 2.6)
     from . import images
     s = copy.deepcopy(spec)
     st = s["skin"]["stack"]
-    at = sp.atlas(s["base"])
+    at = skin_project_atlas.atlas(s["base"])
     ii, jj = at["ii"], at["jj"]
-    Xn = sp.interp(at, at["neutral"])
+    Xn = skin_project_atlas.interp(at, at["neutral"])
     cs = [np.asarray(centre, float)] + ([np.asarray(centre, float) * [-1, 1, 1]] if mirror else [])
     w = np.zeros(len(ii))
     rings = []

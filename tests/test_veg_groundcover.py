@@ -132,8 +132,8 @@ def test_export_files_contract_and_seasons(tmp_path):
 
 @pytest.mark.skipif(not os.environ.get("HIFIPUSHIE_SLOW"), reason="bakes in Blender (~5 min)")
 def test_real_bake_daisy(tmp_path):
-    from hifipushie import vegetation
-    T = vegetation.grow({"species": "daisy", "style": "blobby"})
+    from hifipushie import vegetation_grow
+    T = vegetation_grow.grow({"species": "daisy", "style": "blobby"})
     c = g.export(T, str(tmp_path), "daisy", seasons=("summer", "winter"))
     assert c["lods"][0]["triangles"] <= 800 and c["lods"][-1]["triangles"] <= 80
     sj = json.load(open(c["seasons_file"]))
@@ -157,7 +157,7 @@ def test_heads_gather_and_get_their_own_cards():
 
 
 def test_fern_is_refused():
-    from hifipushie import vegetation
-    T = vegetation.grow({"species": "fern"})
+    from hifipushie import vegetation_grow
+    T = vegetation_grow.grow({"species": "fern"})
     with pytest.raises(ValueError, match="no groundcover grade for fern"):
         g.build(T, ["summer"])

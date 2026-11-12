@@ -254,10 +254,10 @@ def build_field(T, cfg=None):
     for cv in caves:
         vols = vols + cv.tubes
         notes = notes + cv.notes
-    from . import terrain_design as design
+    from . import terrain_design_cover
     bunkers = []
     for name in getattr(T, "cover", {}):
-        c = design._spec_cover(T, name)
+        c = terrain_design_cover._spec_cover(T, name)
         if c.get("type", name) == "bunker":
             bunkers.append((T.cover[name], float(c.get("depth", 0.6)), name))
             notes = notes + [f"{name}: bunkers dug {float(c.get('depth', 0.6)):g} m in, over "

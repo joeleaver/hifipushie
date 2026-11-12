@@ -952,8 +952,8 @@ def clutter(T, mats, field, box=None, seed=11):
     # snags and limbs (terrain_snags): resting on the bed, banks and the boulders just placed, never through them
     trees_xy = getattr(T, "_snag_trees", None)
     if trees_xy is None:
-        from . import terrain_design
-        tr = terrain_design.trees(T) if getattr(T, "cover", None) else []
+        from . import terrain_design_cover
+        tr = terrain_design_cover.trees(T) if getattr(T, "cover", None) else []
         trees_xy = np.asarray(tr, float)[:, :2] if len(tr) else np.zeros((0, 2))
         T._snag_trees = trees_xy
     SR, SCp = _snags.snags(S, field, rocks[0] if rocks is not None else None, trees_xy, (zx0, zx1, zy0, zy1),

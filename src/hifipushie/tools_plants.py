@@ -128,6 +128,7 @@ def plant_form(name: str = "", species: str = "", cases: list[dict] | None = Non
     target bands; fit {habit path: [lo, hi]} searches for the least miss (iters, seeds) and saves. Details:
     guide(topic="plant_form")."""
     from . import vegetation
+    from . import vegetation_fit
     from . import veg_tools as vt
     spec = vt.load(name) if name else {"species": species}
     if not name and not species:
@@ -140,14 +141,14 @@ def plant_form(name: str = "", species: str = "", cases: list[dict] | None = Non
     msg = ""
     sd = tuple(range(1, int(seeds) + 1))
     if fit:
-        r = vegetation.fit_form(spec, cases, fit, iters=int(iters), seeds=sd)
+        r = vegetation_fit.fit_form(spec, cases, fit, iters=int(iters), seeds=sd)
         if name:
             v = vt.save(name, patch={"habit": r["habit"]}, note="fit to form targets")
             msg = f"fitted v{v}: "
         msg += f"miss {r['miss']} with habit {json.dumps(r['habit'])}\n"
         cs = r["cases"]
     else:
-        cs = vegetation.form_cases(spec, cases, sd)
+        cs = vegetation_fit.form_cases(spec, cases, sd)
     L = []
     for c in cs:
         m = c["measures"]
@@ -156,7 +157,7 @@ def plant_form(name: str = "", species: str = "", cases: list[dict] | None = Non
             t = c.get(k)
             cells.append(f"{k} {m[k]:g}" + ("" if t is None else (f" (in {t})" if t[0] <= m[k] <= t[1] else f" MISS {t}")))
         L.append(f"{c.get('name', str(c['age']) + ' y')}: " + ", ".join(cells) + f"; living limbs {m['limbs']:g}; over seeds width +-{c['spread']['width_over_height'] / 2:.2f}, crown +-{c['spread']['crown_ratio'] / 2:.2f}")
-    return msg + "\n".join(L) + f"\ntotal miss {vegetation.form_miss(cs):.2f} (0 = every target met)"
+    return msg + "\n".join(L) + f"\ntotal miss {vegetation_fit.form_miss(cs):.2f} (0 = every target met)"
 
 
 @mcp.tool(structured_output=False)
@@ -177,16 +178,16 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
     outline against it; fit {habit path: [lo, hi]} searches habit numbers (fit_iters). credit. Details:
     guide(topic="plant_reference")."""
     from . import veg_tools as vt
-    from . import vegetation
+    from . import vegetation_fit, vegetation_measures
     mask = {"polygon": polygon} if polygon else {"crop": crop, "foot": foot, "tol": tol, "horizon": horizon}
     if not polygon and (crop is None or foot is None):
         raise ValueError("give polygon (a traced outline), or crop [x0, y0, x1, y1] + foot (the trunk's x)")
     ref = vt.set_reference(name, image_path, mask, bare, credit)
     msg = ""
     if fit:
-        R = vegetation.reference_mask(ref["image"], **ref["mask"])
-        dirs = vegetation.photo_branch_directions(ref["image"], ref["mask"]) if bare else None
-        r = vegetation.fit_habit(vt.load(name), R, fit, bare=bare, iters=int(fit_iters), directions=dirs)
+        R = vegetation_measures.reference_mask(ref["image"], **ref["mask"])
+        dirs = vegetation_measures.photo_branch_directions(ref["image"], ref["mask"]) if bare else None
+        r = vegetation_fit.fit_habit(vt.load(name), R, fit, bare=bare, iters=int(fit_iters), directions=dirs)
         v = vt.save(name, patch={"habit": r["habit"]}, note="fit to reference")
         msg = f"fitted v{v}: outline IoU {r['iou']} with habit {json.dumps(r['habit'])}\n"
     return msg + vt.report(name)

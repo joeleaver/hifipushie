@@ -241,7 +241,7 @@ def atlas_frames(spec: dict, frames: list, src: dict, log=print) -> list:
     pixel's surface point (one albedo for every view: light, shading and the views' disagreement already taken out by
     skin_project) and R = OUR albedo there (no render: the instrument stays differential, T = A x P / R = the atlas);
     off the model P stays the photograph (the backdrop anchor reads it). "atlas_conf" gates the trust."""
-    from . import skin_project
+    from . import skin_project_lookup
     st = stage_spec(spec)
     H, W = src["conf"].shape
     u0, v0, u1, v1 = src["box"]
@@ -249,7 +249,7 @@ def atlas_frames(spec: dict, frames: list, src: dict, log=print) -> list:
     for f in frames:
         sk = f["skin"]
         X, n = f["X"][sk], f["n"][sk]
-        u, v, w = skin_project.lookup(spec["base"], X)
+        u, v, w = skin_project_lookup.lookup(spec["base"], X)
         x = np.clip((u - u0) / (u1 - u0) * W - 0.5, 0, W - 1.001)
         y = np.clip((v1 - v) / (v1 - v0) * H - 0.5, 0, H - 1.001)
         x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)

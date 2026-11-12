@@ -24,7 +24,7 @@ def _font(size):
 def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
     """sRGB per cell: bare ground by slope and height, then each cover layer over it (its preview colour x
     density), water on top."""
-    from . import terrain_design as design
+    from . import terrain_design_cover
     slope = T._slope()
     hn = (T.H - T.H.min()) / max(np.ptp(T.H), 1)
     arid = T.world["kind"] in ("canyon", "dunes", "plateau")
@@ -40,7 +40,7 @@ def ground_colours(T: Terrain, cover: bool = True) -> np.ndarray:
         c = c * (1 - wet[..., None]) + np.array([0.17, 0.16, 0.15]) * wet[..., None]
     if cover:
         for name, m in T.cover.items():
-            col = np.array(design.cover_colour(T, name))
+            col = np.array(terrain_design_cover.cover_colour(T, name))
             a = np.clip(m, 0, 1)[..., None]  # density 1 covers the ground (at 85% black sand showed as grass)
             c = c * (1 - a) + col * a
     tone = (getattr(T, "rock", None) or {}).get("tone")
@@ -64,7 +64,7 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
     divides, routes, sites, walls (red where climbable), names and a cover legend."""
     from PIL import Image, ImageDraw
     from skimage import measure
-    from . import terrain_design as design
+    from . import terrain_design_cover
     H = T.H
     contour = contour or _nice(max(np.ptp(H), 1) / 20)
     gy, gx = np.gradient(H, T.cell)
@@ -167,7 +167,7 @@ def map_image(T: Terrain, px: int = 1100, contour: float | None = None, labels: 
                stroke_width=2, stroke_fill=(255, 255, 255))
         y0 = 36
         for name in T.cover:
-            col = tuple(int(255 * v) for v in design.cover_colour(T, name))
+            col = tuple(int(255 * v) for v in terrain_design_cover.cover_colour(T, name))
             d.rectangle([20, y0, 36, y0 + 14], fill=col, outline=(0, 0, 0))
             d.text((42, y0 - 2), name, fill=(0, 0, 0), font=f, stroke_width=2, stroke_fill=(255, 255, 255))
             y0 += 20
@@ -184,11 +184,11 @@ def mask_sheet(T: Terrain, px: int = 360):
         v = (0.25 * shade + 0.75 * np.clip(m, 0, 1))[::-1]
         im = Image.fromarray((v * 255).astype(np.uint8)).convert("RGB")
         im = im.resize((px, int(im.height * px / im.width)), Image.LANCZOS)
-        from . import terrain_design as design
+        from . import terrain_design_cover
         c = (T.spec.get("cover") or {}).get(name, {})
-        lab = (f"{name} (~{c['count']} trees; each dot is one)" if c.get("count") and design.tree_kind(T, name)
+        lab = (f"{name} (~{c['count']} trees; each dot is one)" if c.get("count") and terrain_design_cover.tree_kind(T, name)
                else f"{name} ({100 * m.mean():.0f}%)")
-        if c.get("count") and design.tree_kind(T, name):  # a few trees' density is too faint to see: draw the mask full
+        if c.get("count") and terrain_design_cover.tree_kind(T, name):  # a few trees' density is too faint to see: draw the mask full
             v = (0.25 * shade + 0.75 * np.clip(m / max(m.max(), 1e-6), 0, 1))[::-1]
             im = Image.fromarray((v * 255).astype(np.uint8)).convert("RGB")
             im = im.resize((px, int(im.height * px / im.width)), Image.LANCZOS)
@@ -209,7 +209,7 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
     """Grid mesh npz: verts, faces, linear colours, per-vertex tree densities; a water mesh for lakes. `up` (default 2
     for grids up to 700 cells a side) resamples the grid finer for the render only, cubic, kept within its neighbours'
     range: a 70 deg face is 2-3 cells across in plan and rendered as big flat triangles (crumpled paper)."""
-    from . import terrain_design as design
+    from . import terrain_design_cover
     H = T.H[::step, ::step]
     X, Y = T.X[::step, ::step], T.Y[::step, ::step]
     col = ground_colours(T)[::step, ::step]
@@ -246,7 +246,7 @@ def write_mesh(T: Terrain, path, step: int = 1, up: int | None = None):
                             np.stack([a, b, e], 1)[~ac], np.stack([b, c, e], 1)[~ac]])
     col = col.reshape(-1, 3)
     col = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)
-    inst = design.trees(T)  # the same instances the export writes
+    inst = terrain_design_cover.trees(T)  # the same instances the export writes
     # (hedge shrubs: the views draw each hedge as one continuous mass instead: strings of balls read as beads)
     shrub_l = [k for k, v in getattr(T, "tree_layers", {}).items() if v[1] == "shrub"]
     inst = inst[~np.isin(inst[:, 3], shrub_l)] if shrub_l else inst

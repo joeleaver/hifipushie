@@ -23,7 +23,7 @@ class _TerrainMeasure:
         return np.degrees(np.arctan(np.hypot(gx, gy)))
 
     def report(self) -> str:
-        from . import terrain_design as design
+        from . import terrain_design_report
         from . import terrain_world
         out = terrain_world.report(self)
         if getattr(self, "detail", None):
@@ -150,7 +150,7 @@ class _TerrainMeasure:
             out.append(f"lake {name}: level {lk['level']:.0f} m, {lk.get('area', 0) / 1e4:.1f} ha, "
                        f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water"
                        + self._dam_report(name, lk) + self._bank_report(name, lk))
-        out += design.report(self)
+        out += terrain_design_report.report(self)
         if self.spec.get("caves"):  # (walked now: the tile export takes an hour on a big level)
             from . import terrain_caves
             cl, cw = terrain_caves.early(self)
@@ -160,7 +160,7 @@ class _TerrainMeasure:
                     self.warnings.append(w)
         out += self._highest()
         out += self._drainage()
-        out += design.intent(self)
+        out += terrain_design_report.intent(self)
         if self.warnings:
             out.append("WARNINGS:")
             out += [f"  {w}" for w in self.warnings]
@@ -290,7 +290,7 @@ class _TerrainMeasure:
         `size` resamples to an engine grid along the longer side (Unity 257/513/1025/2049: 2^n + 1; Unreal 505/1009/
         2017); `engine` "unity" picks the next 2^n + 1 when no size is given."""
         from PIL import Image
-        from . import terrain_design as design
+        from . import terrain_design_cover
         out = Path(out_dir)
         (out / "masks").mkdir(parents=True, exist_ok=True)
         ny, nx = self.H.shape
@@ -327,7 +327,7 @@ class _TerrainMeasure:
             mask(name, m)  # densities (for trees, detail), each 0..1 on its own
         # splat weights for the ground layers, painted in order, each over what's below; "ground" is what's left; they
         # sum to 1. Tree layers are instances (trees.csv) and stay out: a forest's weight had painted its ground green
-        ground = [nm for nm in self.cover if not design.tree_kind(self, nm)]
+        ground = [nm for nm in self.cover if not terrain_design_cover.tree_kind(self, nm)]
         rest = np.ones(self.X.shape)
         weights = {}
         for name in reversed(ground):
@@ -341,7 +341,7 @@ class _TerrainMeasure:
                 chans.append(np.zeros_like(chans[0]))
             rgba = (np.clip(np.stack(chans, -1), 0, 1) * 255).astype(np.uint8)
             Image.fromarray(rgba, "RGBA").save(out / f"splat{i // 4}.png")
-        inst = design.trees(self)
+        inst = terrain_design_cover.trees(self)
         with open(out / "trees.csv", "w") as f:
             f.write("x,y,z,kind,layer\n")
             layers = getattr(self, "tree_layers", {})

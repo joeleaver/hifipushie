@@ -20,7 +20,8 @@ import math
 import numpy as np
 
 from . import vegetation, veg_leaf
-from .vegetation import _child, _u
+from . import vegetation_fit, vegetation_grow
+from .vegetation_kernels import _child, _u
 
 STAND = {"species": "norway_spruce", "age": 55, "ages": 8, "spacing": 3.0, "size": [60.0, 60.0], "variants": 3,
          "edge": [], "rows": False, "jitter": 0.3, "seed": 1, "scale": [0.9, 1.1], "clearings": [], "paths": [],
@@ -113,7 +114,7 @@ def grow(stand: dict, log=None) -> dict:
         return _CACHE[key]
     vs = _variant_specs(s)
     for v in vs:
-        v["tree"] = vegetation.grow(v["spec"])
+        v["tree"] = vegetation_grow.grow(v["spec"])
         if log:
             log(f"{v['name']}: {v['tree']['height']:.1f} m, {v['tree']['stats']['nodes']} nodes")
     L = layout(s)
@@ -240,7 +241,7 @@ def measures(st: dict) -> dict:
     crown ratio, canopy cover (crown discs over the plot, capped at 1)."""
     s = st["spec"]
     area = s["size"][0] * s["size"][1]
-    cm = [vegetation.crown_measures(v["tree"]) for v in st["variants"]]
+    cm = [vegetation_fit.crown_measures(v["tree"]) for v in st["variants"]]
     k, sc = st["variant"], st["scale"]
     h = np.array([cm[i]["height"] for i in k]) * sc
     dbh = np.array([cm[i]["dbh_cm"] for i in k]) * sc
@@ -399,7 +400,7 @@ def look(st: dict, views=("inside",), out_stem: str = "stand", size: int = 720, 
 def _fern(name: str) -> dict:
     k = ("fern", name)
     if k not in _CACHE:
-        _CACHE[k] = vegetation.grow({"species": name})
+        _CACHE[k] = vegetation_grow.grow({"species": name})
     return _CACHE[k]
 
 

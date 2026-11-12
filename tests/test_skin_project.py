@@ -5,6 +5,7 @@ own light transport."""
 import numpy as np
 
 from hifipushie import assets, humanfit as hf, skin, skin_project as sp
+from hifipushie import skin_project_atlas, skin_project_detail, skin_project_light, skin_project_lookup, skin_project_model, skin_project_sample
 from hifipushie import likeness_render
 from hifipushie.spec import SpecError
 
@@ -24,7 +25,7 @@ def _have():
 
 def setup():
     if not _C:
-        _C.update(at=sp.atlas(B, 512), mesh=likeness_render.model_mesh(B))
+        _C.update(at=skin_project_atlas.atlas(B, 512), mesh=likeness_render.model_mesh(B))
     return _C
 
 
@@ -35,13 +36,13 @@ def test_atlas_and_lookup():
     H, W = at["shape"]
     assert W == 512 and 300 < H < 512 and 0.7 < at["mm"] < 1.2, (at["shape"], at["mm"])
     assert len(at["ii"]) > 0.5 * H * W                        # the head fills most of its box
-    hm = sp.interp(at, at["groups"]["hockey_mask"]) > 0.5
+    hm = skin_project_atlas.interp(at, at["groups"]["hockey_mask"]) > 0.5
     assert hm.sum() > 0.1 * len(hm)
     # every texel's surface point looks itself up: the same atlas coordinates, weight 1 away from the cut
-    X = sp.interp(at, at["V"])
+    X = skin_project_atlas.interp(at, at["V"])
     rng = np.random.default_rng(0)
     idx = rng.choice(len(X), 4000, replace=False)
-    u, v, w = sp.lookup(B, X[idx])
+    u, v, w = skin_project_lookup.lookup(B, X[idx])
     u0, v0, u1, v1 = at["box"]
     px = (u - u0) / (u1 - u0) * W
     py = (v1 - v) / (v1 - v0) * H
@@ -50,13 +51,13 @@ def test_atlas_and_lookup():
     err = np.hypot(px - (at["jj"][idx] + 0.5), py - (at["ii"][idx] + 0.5))
     assert np.percentile(err[ok], 99) < 0.75, np.percentile(err[ok], 99)
     # off the head (the chest) and inside the mouth's sock: no weight
-    far = sp.lookup(B, np.array([[0.0, -0.1, 1.2], [0.3, 0.0, 1.0]]))[2]
+    far = skin_project_lookup.lookup(B, np.array([[0.0, -0.1, 1.2], [0.3, 0.0, 1.0]]))[2]
     assert (far == 0).all()
     # a point 1 mm off the surface still lands; 2 cm off does not
-    N = sp.interp(at, likeness_render._vertex_normals(at["V"], at["T"]))
+    N = skin_project_atlas.interp(at, likeness_render._vertex_normals(at["V"], at["T"]))
     N /= np.linalg.norm(N, axis=1, keepdims=True)
-    assert (sp.lookup(B, X[idx] + 0.001 * N[idx])[2][ok] > 0.9).mean() > 0.97
-    assert (sp.lookup(B, X[idx] + 0.02 * N[idx])[2] == 0).mean() > 0.97      # (a few land on another fold of the head: an ear)
+    assert (skin_project_lookup.lookup(B, X[idx] + 0.001 * N[idx])[2][ok] > 0.9).mean() > 0.97
+    assert (skin_project_lookup.lookup(B, X[idx] + 0.02 * N[idx])[2] == 0).mean() > 0.97      # (a few land on another fold of the head: an ear)
 
 
 def test_sample_view():
@@ -71,8 +72,8 @@ def test_sample_view():
     yy, xx = np.mgrid[0:h, 0:w]
     u, v = hf.project(cam, L[30][None])[0]                    # a red dot at the nose tip
     photo[(xx - u) ** 2 + (yy - v) ** 2 < 6 ** 2] = (255, 0, 0)
-    s = sp.sample_view(at, mesh, cam, photo)
-    X = sp.interp(at, at["V"])
+    s = skin_project_sample.sample_view(at, mesh, cam, photo)
+    X = skin_project_atlas.interp(at, at["V"])
     red = (s["rgb"][:, 0] > 0.8) & (s["rgb"][:, 1] < 0.1) & s["vis"]
     assert red.sum() > 5
     assert np.linalg.norm(X[red].mean(0) - L[30]) < 0.004, X[red].mean(0) - L[30]
@@ -86,13 +87,13 @@ def test_delight_known_light():
         return
     c = setup()
     at, mesh = c["at"], c["mesh"]
-    X = sp.interp(at, at["V"])
-    N = sp.interp(at, likeness_render._vertex_normals(at["V"], at["T"]))
+    X = skin_project_atlas.interp(at, at["V"])
+    N = skin_project_atlas.interp(at, likeness_render._vertex_normals(at["V"], at["T"]))
     N /= np.linalg.norm(N, axis=1, keepdims=True)
-    front = np.flatnonzero((N[:, 1] < -0.3) & (sp.interp(at, at["groups"]["hockey_mask"]) > 0.5))
+    front = np.flatnonzero((N[:, 1] < -0.3) & (skin_project_atlas.interp(at, at["groups"]["hockey_mask"]) > 0.5))
     rng = np.random.default_rng(2)
     sub = front[rng.choice(len(front), 6000, replace=False)]
-    tr = sp.transfer(mesh, X, N, sub, n_dirs=64)
+    tr = skin_project_light.transfer(mesh, X, N, sub, n_dirs=64)
     assert tr["T"].shape == (len(X), 9) and 0.0 <= tr["ao"].min() and tr["ao"].max() <= 1.0001
     # a nostril / the lip line is occluded, the forehead open
     assert np.percentile(tr["ao"][front], 0.2) < 0.8 < 0.9 < np.percentile(tr["ao"][front], 80), np.percentile(tr["ao"][front], [0.2, 2, 80])
@@ -103,12 +104,12 @@ def test_delight_known_light():
     sh = np.zeros(9)
     sh[0], sh[3], sh[2] = 0.35, 0.12, -0.1                    # ambient, from above, from the front (-y)
     kd = np.array([0.5, -0.65, 0.55]) / np.linalg.norm([0.5, -0.65, 0.55])
-    kb = sp.key_basis(mesh, X, N, kd)
+    kb = skin_project_light.key_basis(mesh, X, N, kd)
     shade = tr["T"] @ sh + 0.9 * kb
     rgb = alb * shade[:, None] * np.array([1.0, 0.95, 0.85])   # a warm light
     view = {"rgb": rgb.astype(np.float32), "T": tr["T"], "D": tr["D"], "sub": sub, "sub_vis": tr["sub_vis"], "X": X, "N": N}
     fit = sub
-    lt = sp.fit_light(view, np.tile([0.55, 0.36, 0.27], (len(X), 1)), fit, mesh=mesh)
+    lt = skin_project_light.fit_light(view, np.tile([0.55, 0.36, 0.27], (len(X), 1)), fit, mesh=mesh)
     assert lt["key"] is not None and np.degrees(np.arccos(np.clip(np.dot(lt["key"]["dir"], kd), -1, 1))) < 14, lt["key"]
     rec = rgb / np.maximum(lt["S"], 1e-4)
     lit = shade[front] > 0.3 * np.median(shade[front])
@@ -127,7 +128,7 @@ def test_spec_layers():
                                                                "opacity": 1.0, "detail_depth": 0.0001, "head": "abc"}}}
     p = skin.params(spec)
     out = {}
-    sp.layers(spec, p["projection"], out, "body")
+    skin_project_model.layers(spec, p["projection"], out, "body")
     assert out["skin:projection"]["image"]["wrap"] == "uv" and out["skin:projection"]["color"] == "image"
     assert out["skin:projection_detail"]["height"] == -0.0001 and out["skin:projection_detail"]["mask"][0]["image"]["channel"] == "luma"
     try:
@@ -144,7 +145,7 @@ def _cut_case():
     from hifipushie import images
     at = setup()["at"]
     H, W = at["shape"]
-    X = sp.interp(at, at["V"])
+    X = skin_project_atlas.interp(at, at["V"])
 
     def f(P):
         return 0.5 + 0.4 * np.sin(60 * P[:, 2]) * np.cos(40 * P[:, 1])
@@ -152,13 +153,13 @@ def _cut_case():
     valid = np.zeros((H, W), bool)
     img[at["ii"], at["jj"]], valid[at["ii"], at["jj"]] = f(X), True
     pix = np.zeros((H, W, 4), np.float32)
-    pix[..., 3] = sp._bleed(img, valid)
+    pix[..., 3] = skin_project_detail._bleed(img, valid)
     path = "/nonexistent/cut_test.png"
     images._PIX[path] = pix
     geo = "cut_test"
     images._UVBASE[geo] = B
     fr = {"path": path, "wrap": "uv", "geo": geo, "box": at["box"], "channel": "alpha", "flip": False, "mirror": False}
-    sp.lookup(B, X[:1], both=True)
+    skin_project_lookup.lookup(B, X[:1], both=True)
     ds = sp._LOOK["seam"].query(X)[0]
     return fr, f, X[ds < 0.006], images
 
@@ -172,8 +173,8 @@ def test_cut_continuous():
     fr, f, P, images = _cut_case()
     N = np.tile([0.0, 1.0, 0.0], (len(P), 1))
     m, _ = images._one(fr, P, N)
-    ua, va, w0 = sp.lookup(B, P)
-    w = sp.lookup(B, P, both=True)[5]
+    ua, va, w0 = skin_project_lookup.lookup(B, P)
+    w = skin_project_lookup.lookup(B, P, both=True)[5]
     ok = w > 0.95                                   # (the neck's fade from the body: not the cut's business)
     assert ok.sum() > 200, ok.sum()
     err = np.abs(m - f(P) * w)[ok]
@@ -188,8 +189,8 @@ def test_cut_continuous():
     assert len(a) > 30, len(a)
     at = setup()["at"]
     u0, v0, u1, v1 = at["box"]
-    A = np.stack(sp.lookup(B, P[a], both=True), 1)
-    Bb = np.stack(sp.lookup(B, P[b], both=True), 1)
+    A = np.stack(skin_project_lookup.lookup(B, P[a], both=True), 1)
+    Bb = np.stack(skin_project_lookup.lookup(B, P[b], both=True), 1)
     assert (A[:, 4] < 0.5).all() and (Bb[:, 4] > 0.5).all()          # side A is one side of the cut, B the other
     M = 0.5 * (A + Bb)
     pix = images.pixels(fr["path"])

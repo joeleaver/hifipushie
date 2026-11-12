@@ -28,7 +28,7 @@ bare pole with three limbs at 35 years, as wide as tall at 80 and wider than tal
 was a crooked stick with antlers. `plant_form(name | species=)` grows the plant at several ages in the open, on a
 stand's edge and inside a stand, and measures what foresters measure: height, crown width / height, live crown /
 height, the height of the widest level, dbh. Give each case target bands and it marks the misses; give `fit` and it
-searches habit numbers for the least miss over all cases at once (`vegetation.fit_form`).
+searches habit numbers for the least miss over all cases at once (`vegetation_fit.fit_form`).
 
 Where targets come from, best first: yield tables and crown studies (height and dbh by age and stocking; crown
 ratios of stand trees), species accounts (final height, girth, "conical when young, rounded or flat-topped when
