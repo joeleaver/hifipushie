@@ -211,6 +211,10 @@ class Prim:
     cut_boxes: tuple = ()  # (fingerprint, lo, hi) of each targeted cut folded into it: where a moved cut changes it
 
 
+BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "loft", "super", "sweep", "collar", "lids", "displace",
+               "flatten")
+
+
 class SpecError(ValueError):
     pass
 
@@ -282,6 +286,9 @@ def _compile(spec: dict) -> list[Prim]:
         size = np.array(bl.get("size", [0.05] * 3), float)
         rot = euler_matrix(bl.get("rot", [0, 0, 0]))
         k = float(bl["blend"]) if bl.get("blend") is not None else k_default
+        if bl.get("shape", "ellipsoid") not in BLOB_SHAPES:  # (it fell through to an ellipsoid without a word)
+            raise SpecError(f"blob {name!r}: unknown shape {bl.get('shape')!r} (have {', '.join(BLOB_SHAPES)}; "
+                            "kit_reference describes each)")
         if bl.get("shape", "ellipsoid") == "lids":
             prims.append(_lids(name, bl, c, rot, k))
             continue

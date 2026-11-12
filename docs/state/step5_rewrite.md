@@ -42,7 +42,7 @@ Step 6 fills surfaces between them. Runs N1 (solver) -> N2 (plies) -> N2b (chain
 5. Edge tapes (collar's neck edge on the neckline) not pulled yet; girth pulls only.
 
 Run: `uv run pytest -q tests/test_chain_panels.py tests/test_chain_lay.py tests/test_chain_solve.py tests/test_chain_plies.py`.
-Ledger C426-C433, C435, C436.
+Ledger C426-C433, C435, C437.
 
 NEXT: N2d-2: fix the assembly's anchor (thin-body keep-out, several starts) and the collar hinge sign on the jacket,
 render the assembled panels alone until the jacket stands the right way round; then cones for caps / darts.

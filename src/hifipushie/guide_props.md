@@ -4,6 +4,9 @@ Read guide(topic="") (the playbook) first: describe the reference, then work big
 
 ## 4b. Props and environments
 
+- A prop is not a creature: start its spec with `"symmetry": false` and a small `"blend"` (0.002-0.006 m; 0 on an
+  element that must meet its neighbour at a hard edge). The defaults (mirrored across X, a 3 cm smooth blend) are a
+  creature's: a chair made with them has melted joins and a mirrored twin of every off-centre part.
 - Build a repeated thing once: `prefabs` (a chair in its own frame) placed by `instances` (at, rot, scale,
   part); `array` on an element for rows and grids (logs, planks, shingles, legs), with `jitter`. Don't write a
   script that emits hundreds of elements: the spec stays readable and one edit changes every copy.
