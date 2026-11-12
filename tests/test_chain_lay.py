@@ -1,4 +1,4 @@
-"""Step 5's chains-only network and isometric start (N2b: chain_lay_net, chain_lay): synthetic, fast."""
+"""Step 5's chains-only network (N2b: chain_lay_net) and its assembled start (N2c: chain_lay): synthetic, fast."""
 from types import SimpleNamespace
 
 import numpy as np
@@ -56,8 +56,8 @@ def test_a_strip_laid_on_a_curved_tape_is_exact():
     bottom = np.where((c.piece == 0) & (c.uv[:, 1] < 1e-9))[0]
     sd, _ = body.contact.query(S["X0"][bottom])
     print(S["start"], e.max())
-    assert np.sort(e)[-2] < 0.5  # (every link at its cut but the one where the outline's two walks meet)
-    assert np.abs(S["X0"][bottom, 2] - 0.1).max() < 0.005  # (the edge lies on its tape)
+    assert e.max() < 0.5  # (every link at its cut: assembled, bent, nothing closed by stretching)
+    assert np.abs(S["X0"][bottom, 2] - 0.1).max() < 0.01  # (the edge near its tape: settle's pull puts it on)
     assert sd.min() > 0.0
 
 
@@ -65,9 +65,9 @@ def test_two_panels_sewn_along_a_tape_edge_start_closed():
     net, holds, body = _band_and_panel()
     c, keep = chain_network(net)
     S = chain_lay.lay(net, c, keep, body, {}, holds)
-    gap = S["start"]["seam_gap_mm"]["band ~ panel"]
+    gap = S["start"]["after_bends"]["seam_gap_mm"]
     print(S["start"])
-    assert gap < 1.0  # (the panel is laid from its seam with the laid band: closed by construction)
+    assert gap == 0.0  # (the panel is sewn onto the laid band: one chain, closed by construction)
     assert S["X0"][c.piece == 1, 2].mean() < 0.1  # (away from the band, towards its own tape)
 
 

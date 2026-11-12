@@ -46,14 +46,21 @@ When those can't all hold, the build names which and where, and which step it go
 meet (step 4: the pattern), a tape a chain can't lie on (step 3 or 4), a tie that can't close (step 4). Never a held
 length.
 
-## The build (one algorithm, no roles, no wear states)
-1. **Lay the chains on their tapes.** Each edge step 4 names on a tape is walked along it by arc length (lengths exact by
-   construction). The piece's other chains are walked from where they are sewn to a laid chain, by their own links, bent
-   only; the start is isometric (memory: start isometric), so a seam that can't meet is named, not stretched closed.
-2. **Merge.** Sewn edges are one chain; tied pairs one constraint each.
-3. **Solve once, everything free** (chain_solve on the chain network): links hard, ties, contact, bending along chains,
-   fold turns, lines across, tapes as soft pulls, followers inside their host. No held set.
-4. **Report** the residual per link, seam, tie and fold, by piece, edge and step.
+## The build (one algorithm, no roles, no wear states; ASSEMBLE THEN DRESS, N2c 2026-11-12)
+Joe (2026-11-12): "in real life, the pieces would get assembled _before_ they get put on the body"; "Why do seams have to
+gradually close using a solver at all?" They don't: every seam is one shared chain from the start; only bends are chosen.
+1. **Assemble** (chain_lay.lay, no body: a thin frame, the body shrunk to its skeleton, for which way round). The piece
+   with an edge on a tape first (that edge laid along its tape by its own arc), then always the piece sewn to most placed
+   nodes: its sewn nodes stay put (one chain); the rest of its flat goes off them along and across the placed line, across
+   CONTINUING the surface already sewn there (a follower lies back on it), then bent as rigidly as possible (ARAP). Its
+   planned folds and roll lines are turned as it is sewn (pressed while the garment is made).
+2. **Close loops with bends**: one projection over the nodes, links exact, lines across exact (interfaced) or at most,
+   out of the frame. A loop still open, or a seam whose two sides are cut to different lengths, is NAMED with its gap
+   (back to step 4), never stretched.
+3. **Dress** (chain_settle.settle): the body grows inside the assembled garment (each vertex from its skeleton point out
+   to its place, in stages); at each stage chain_solve, links hard, seams one chain, contact, bending, folds, the taped
+   edge's and the girth tapes' pulls, followers as a term. Seams never reopen: there is nothing to reopen.
+4. **Report** links off cut at every stage, loops closed or named, folds off, points inside, tapes mm.
 5. (Step 6, not here) surfaces filled between the solved chains.
 
 ## What stays, what goes
@@ -79,6 +86,7 @@ length.
 | N1 | The solver (done: no held set, CHOLMOD) | done |
 | N2 | Plies as a term; a whole-surface seed (done; the seed FAILED: the step was too big, see the spec) | done |
 | N2b | The chain network (boundary + fold chains + lines across, no interior); chains laid on their tapes and walked from their seams; one solve; the jacket's chains rendered alone beside the reference | M |
+| N2c | Assemble then dress: seams one chain from the start, loops closed by bends, the body grown inside | M |
 | N3 | Step 6 fills surfaces between the solved chains; the new build wired into GarmentBuild; the old stages and the whole-surface seed deleted | L |
 | N4 | Shirt and hussar: steps 3 and 4 redone with tapes, built by the same code | M |
 | T | Blind step-5 trials, the jacket first | trials |

@@ -1,6 +1,7 @@
-"""N2b renders: the chains ALONE (links as tubes, coloured by piece) on the body, 4 sides, beside the reference.
-  capped uv run python spikes/n2b_render.py <run dir> <loaded.pkl> <reference.png> [X.npy] [quick]
-quick: a PIL line drawing (no GPU) for a fast look; else Blender tubes via cloth.render."""
+"""N2b / N2c renders: the chains ALONE (links as tubes, coloured by piece) on the body, 4 sides, beside the reference.
+  capped uv run python spikes/n2c_render.py <run dir> <loaded.pkl> <reference.png> [X.npy] [quick] [thin]
+quick: a PIL line drawing (no GPU) for a fast look; else Blender tubes via cloth.render. thin: on the thin frame the
+garment was assembled round (<run>/thin_V.npy) instead of the body."""
 import pickle
 import sys
 
@@ -12,9 +13,12 @@ xn = sys.argv[4] if len(sys.argv) > 4 else "X.npy"
 quick = "quick" in sys.argv[5:]
 d = pickle.load(open(src, "rb"))
 body = d["body"]
+if "thin" in sys.argv[5:]:
+    from types import SimpleNamespace
+    body = SimpleNamespace(V=np.load(f"{run}/thin_V.npy"), T=body.T)
 c = pickle.load(open(f"{run}/cnet.pkl", "rb"))["cnet"]
 X = np.load(f"{run}/{xn}")
-tag = xn.split(".")[0]
+tag = xn.split(".")[0] + ("_thin" if "thin" in sys.argv[5:] else "")
 PAL = ["#d62728", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
 base = sorted({n[:-2] if n[-2:] in (".L", ".R") else n for n in c.names})
 col = {n: PAL[base.index(n[:-2] if n[-2:] in (".L", ".R") else n) % len(PAL)] for n in c.names}
@@ -70,7 +74,7 @@ else:
         parts.append({"name": p, "V": V, "F": F, "color": col[p]})
     lo, hi = X.min(0), X.max(0)
     box = [[lo[0] - 0.05, lo[1] - 0.05, lo[2] - 0.03], [hi[0] + 0.05, hi[1] + 0.05, float(body.V[:, 2].max()) + 0.02]]
-    with resources.heavy("n2b chains render", gb=3.0, gpu=True, log=print):
+    with resources.heavy("n2c chains render", gb=3.0, gpu=True, log=print):
         for nm, dv in VIEWS:
             p = cloth.render(parts, f"{run}/{tag}_{nm}", views=[{"name": nm, "dir": dv}], resolution=900, box=box)[0]
             ims.append(Image.open(p).convert("RGB"))

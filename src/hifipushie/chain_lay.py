@@ -1,42 +1,48 @@
-"""CHAIN LAY (N2b of docs/proposals/step5_rewrite.md, "The build" step 1): step 5's ISOMETRIC START of the chains, and
-what chain_solve needs beside it. Replaces N2's whole-surface seed (chain_seed, deleted: it mapped every surface point
-between the tape loops and started with seams 6-10 cm open). No role names, no garment names, no wear states.
+"""CHAIN LAY (N2c of docs/proposals/step5_rewrite.md, "The build" 1-2): step 5's START is the garment ASSEMBLED as chains
+before it goes on the body. Replaces N2b's walk of each piece from one seam (its far seams started 10-30 cm apart and one
+solve closing them at their mean tore the jacket into the neck). No role names, no garment names, no wear states.
 
-Joe: "lengths given, only bends chosen"; "place where we measure"; the START is isometric: every chain is walked by its
-own links, so its lengths are exact by construction; a seam whose two exactly-laid sides cannot meet is a gap, measured
-and named (the pattern's or the tape's), never stretched closed.
+Joe (2026-11-12): "in real life, the pieces would get assembled _before_ they get put on the body"; "Why do seams have to
+gradually close using a solver at all?" They don't: every seam is ONE shared chain from the start (a node per sewn group,
+cnet.root), nothing is ever apart, nothing is closed. Lengths are given; only bends are chosen.
 
-lay(net, cnet, keep, body, plan) -> {X0, pulls, folds, ties, plies, reads, start}; cnet / keep from
-chain_lay_net.chain_network(net). Per piece, on its outline (net's own boundary loop):
-1. ON A TAPE: a piece with an edge step 4 names on a tape (starts.edges) has that edge (its longest outline run sewn to
-   cloth outside its own part) laid along the tape by arc length (piece_start.lay_on_tape: a centre piece from its
-   middle, the half sewn to ".L" cloth on +X, the rest mirrored), and pulled there (soft).
-2. FROM ITS SEAM: every other piece, the one with the longest outline run sewn to laid cloth next: that run is laid
-   along its partner's laid line by its own arc length.
-3. THE REST OF THE OUTLINE is walked from both ends of the laid run, link by link at its cut: each link leaves along the
-   flat's direction carried in a frame (the run end's tangent and the body's normal there, turned with the normal as the
-   walk goes: a development of the flat onto the body), in the body's tangent plane, kept GAP off the body, length
-   restored. The flat's side goes AWAY from the cloth the run is sewn to (the first piece: away from its partners'
-   step-3 tapes). The two walkers meet opposite the run: that link is the piece's closing gap (reported).
-   Fold rows are walked the same way from their laid end; any other chain point goes off its nearest laid one.
-4. FOLLOWERS (chain_holds.read: plies, floating layers, inside pieces): bound on their host (chain_solve_plies.bind)
-   and seeded there.
-The start's own measures (start): links % off cut per piece (0 by construction but for closing links), seam gaps by
-piece pair (mm: the honest number), closing gaps.
-FOLDS: step 2's planned turn per fold, split over the draft's rows. TIES: each closure's tied pairs, a LAYER apart.
+lay(net, cnet, keep, body, plan, holds, frame=None) -> {X0, pulls, folds, ties, plies, reads, start, order};
+cnet / keep from chain_lay_net.chain_network(net); frame: the contact the garment is assembled round (a thin body:
+chain_settle.grown(body, s)); default body.contact.
+1. ORDER (`order`): the piece with an edge step 4 names on a tape first (several: the one sewn to most), then always the
+   piece sewn to most already-placed nodes; followers (plies, inside pieces) after the pieces they follow, the same way.
+2. THE FIRST PIECE's taped edge is laid along its tape by its own arc length (piece_start.lay_on_tape) and pulled there.
+3. EACH PIECE is sewn onto what is placed: its sewn nodes stay where they are (one chain); every other point of its
+   flat goes off its nearest placed point by its flat offset, along the placed line and across it (`_ruled`), across
+   continuing the surface of the cloth already sewn there (a seam is smooth: which way round comes from the garment,
+   not the body), a follower lying back on it; the first piece away from its partners' tapes. Then BENT as rigidly as possible (`arap`: each point's neighbourhood its
+   flat shape turned, out of the frame), so its links come out near their cut before any projection. Its planned folds are then turned (`_turn`): the smaller side of each fold
+   row turned about the row by the plan's turn (split over the draft's rows), towards the outside where the draft's sign
+   says so (sign x flat winding, as fold_rows reads it).
+4. BENDS CLOSE THE LOOPS (`bend`): one projection (chain_net.project) over the nodes: every link at its cut (exact), the
+   lines across at their flat length (exact on interfaced cloth, else at most), no node inside the frame. The pieces'
+   shapes bend; no length is given up. A link still off its cut after it is a loop that cannot close by bends: named
+   by its piece and seam with its gap in mm (the pattern's fault: back to step 4), never stretched.
+5. UNSEWN FOLLOWERS (floating layers) are bound on their host (chain_solve_plies.bind), seeded there, then bent with
+   the rest (4 runs again).
+start: `measures` before and after the bends (links % off cut per piece, the loops named, fold turns, nodes inside).
+FOLDS for chain_solve: step 2's planned turn per fold over the draft's rows (fold_rows). TIES: closures, a LAYER apart.
 """
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import numpy as np
+from scipy.spatial import cKDTree
 
+from . import chain_net as cn
 from .chain_core import GAP, LAYER, ChainRefused, hand_of
+from .chain_lay_net import _side
 
-TURN_STEP = 15  # degrees between the guide turns tried (_best_guide)
-DOWN_W = 0.05  # m: what a guide whose flat -y runs against its length path (cos = -1) costs, against seam distance
-MIRROR_TOL = 1e-4  # m: a piece's flat is its other side's mirrored within this
-N_GUIDE = 60  # steps of a guide's straight walk on the body (each point's own step: its flat distance / N_GUIDE)
+CLOSE_TOL = 0.5  # % off its cut: past this after the bends, a link's loop cannot close by bends (named)
+BEND_ITERS = 80  # projection passes of the bends
+FOLD_THROUGH = 0.25  # a fold is not turned when its turning side carries more than this of a placed piece with no row
+ARAP_ITERS = 30  # local / global rounds bending a piece sewn on to its placed nodes
 
 
 def partners(net) -> dict:
@@ -59,357 +65,206 @@ def refuse_untaped(net, followers):
                            "declarations.tapes) on the step-3 tapes each piece was drafted on; nothing is guessed")
 
 
-def _run(mask):
-    """(start, length) of the longest circular run of True in mask."""
-    n = len(mask)
-    if mask.all():
-        return 0, n
-    best, cur = (0, 0), None
-    for i in range(2 * n):
-        if mask[i % n]:
-            cur = i if cur is None else cur
-            if i - cur + 1 > best[1] and i - cur < n:
-                best = (cur % n, i - cur + 1)
-        else:
-            cur = None
-    return best
-
-
 def _unit(v):
     return v / max(float(np.linalg.norm(v)), 1e-12)
 
 
-class _Walker:
-    """Lays flat links onto the body (module doc, 3)."""
-
-    def __init__(self, cnet, body, X, done):
-        self.net, self.ct, self.X, self.done = cnet, body.contact, X, done
-
-    def frame(self, v, prev, s):
-        """(t flat, T, B, n, s) at laid point v, its tangent from laid point prev."""
-        n = self.ct.query(self.X[v].reshape(1, 3))[1][0]
-        T = self.X[v] - self.X[prev]
-        T = _unit(T - (T @ n) * n)
-        return _unit(self.net.uv[v] - self.net.uv[prev]), T, np.cross(n, T), n, s
-
-    def guide(self, ids, fr, o):
-        """Where the flat puts ids: from laid point o, each along the body's surface (GAP off it) in its flat direction
-        mapped by frame fr, for its flat distance: a straight walk on the surface (a geodesic), N_GUIDE steps."""
-        t, T, B, n, s = fr
-        f = self.net.uv[ids] - self.net.uv[o]
-        dist = np.linalg.norm(f, axis=1)
-        d = np.outer(f @ t, T) + s * np.outer(f @ np.array([-t[1], t[0]]), B)
-        d = d / np.maximum(np.linalg.norm(d, axis=1), 1e-12)[:, None]
-        P = np.repeat(self.X[o][None], len(ids), 0)
-        h = (dist / N_GUIDE)[:, None]
-        for _ in range(N_GUIDE):
-            P = P + h * d
-            sd, nr = self.ct.query(P)
-            P = P + nr * (GAP - sd)[:, None]
-            d = d - (d * nr).sum(1)[:, None] * nr
-            d = d / np.maximum(np.linalg.norm(d, axis=1), 1e-12)[:, None]
-        return P
-
-    def walk(self, seq, G):
-        """Lay seq[1:] link by link from laid seq[0]: each link at its cut, aimed at its point's guide G[v], GAP off."""
-        for a, b in zip(seq[:-1], seq[1:]):
-            L = float(np.linalg.norm(self.net.uv[b] - self.net.uv[a]))
-            P = self.X[a] + L * _unit(G[b] - self.X[a])
-            for _ in range(3):
-                sd, nr = self.ct.query(P.reshape(1, 3))
-                if sd[0] >= GAP - 1e-5:
-                    break
-                P = self.X[a] + L * _unit(P + nr[0] * (GAP - sd[0]) - self.X[a])
-            self.X[b], self.done[b] = P, True
+def _rot(ax, th):
+    ax = _unit(ax)
+    K = np.array([[0, -ax[2], ax[1]], [ax[2], 0, -ax[0]], [-ax[1], ax[0], 0]])
+    return np.eye(3) + np.sin(th) * K + (1 - np.cos(th)) * K @ K
 
 
-def _hand(W, cnet, run, c, interior_uv):
-    """s: the flat's side mapped so the piece's interior goes away from point c (module doc, 3)."""
-    vote = 0.0
-    for k in range(1, len(run)):
-        t, T, B, n, _ = W.frame(run[k], run[k - 1], 1.0)
-        qb = (interior_uv - cnet.uv[run[k]]) @ np.array([-t[1], t[0]])
-        vote += np.sign(qb) * np.sign((c - W.X[run[k]]) @ B)
-    return -1.0 if vote > 0 else 1.0
+def _kabsch(A, B):
+    ma, mb = A.mean(0), B.mean(0)
+    U, _, Vt = np.linalg.svd((A - ma).T @ (B - mb))
+    D = np.diag([1.0, 1.0, np.sign(np.linalg.det(Vt.T @ U.T)) or 1.0])
+    R = Vt.T @ D @ U.T
+    return R, mb - R @ ma
 
 
-def _tape_centre(cnet, pieces):
-    st = cnet.M.get("starts") or {}
-    T = st.get("tapes") or {}
-    P = []
-    for p in pieces:
-        for nm in (st.get("pieces") or {}).get(p) or []:
-            if nm in T:
-                Q = np.asarray(T[nm]["pts"], float)
-                P.append(Q * [-1, 1, 1] if hand_of(p) < 0 else Q)
-    return np.concatenate(P).mean(0) if P else None
-
-
-def _lay_piece(W, cnet, p, loop, pt, part, body, reads, pulls, away=1.0):
-    """Lay piece p's outline (module doc, 1-3)."""
-    X, done = W.X, W.done
-    nm = cnet.names[p]
-    if any(done[loop]):
-        raise ChainRefused(f"{nm}: laid twice")
-    ext = np.array([any(cnet.piece[q] not in part for q in pt.get(int(v), ())) for v in loop])
-    laid = np.array([any(done[q] for q in pt.get(int(v), ())) for v in loop])
-    edges = (cnet.M.get("starts") or {}).get("edges") or {}
-    taped = bool(edges.get(nm) or (hand_of(nm) and edges.get(nm[:-2])))
-    r0, rn = _run(ext if taped and not laid.any() else laid)
-    if rn < 2:
-        raise ChainRefused(f"{nm}: no run of its outline is sewn to laid cloth (or on a tape): back to step 4")
-    run = loop[(r0 + np.arange(rn)) % len(loop)]
-    sewn_to = sorted({int(cnet.piece[q]) for v in run for q in pt.get(int(v), ()) if cnet.piece[q] not in part
-                      and (done[q] or not laid.any())})
-    if taped and not laid.any():
-        from .piece_start import lay_on_tape
-        centre = cnet.uv[run, 0].min() < 0 < cnet.uv[run, 0].max()
-        mid = int(np.argmin(np.abs(cnet.uv[run, 0]))) if centre else None
-        su = 1.0
-        if centre:
-            later = [hand_of(cnet.names[cnet.piece[q]]) for v in run[mid + 1:] for q in pt.get(int(v), ())]
-            su = -1.0 if sum(later) < 0 else 1.0
-        Pc, rd = lay_on_tape(SimpleNamespace(net=cnet, body=body, reads=reads), nm, run, mid=mid, su=su)
-        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(cnet.uv[run], axis=0), axis=1))]
-        sp = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Pc, axis=0), axis=1))]
-        k0 = mid if mid is not None else 0  # (lifted GAP off the skin the tape's line is longer: re-laid on it by the
-        q = s - s[k0] + sp[k0]  # edge's own arc length from where it starts, so its links stay at their cut)
-        Pc = np.column_stack([np.interp(q, sp, Pc[:, k]) for k in range(3)])
-        X[run], done[run] = Pc, True
-        pulls.append({"ids": run.copy(), "to": Pc.copy(), "weight": 1.0, "name": f"{nm} edge on {rd['tape']}"})
-        reads[nm] = {"laid": f"edge on tape {rd['tape']} ({rd['edge_mm']} of {rd['tape_mm']} mm)"}
-        c = _tape_centre(cnet, [cnet.names[q] for q in sewn_to])
-    else:
-        P = np.array([next(X[q] for q in pt[int(v)] if done[q]) for v in run])
-        s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(cnet.uv[run], axis=0), axis=1))]
-        sp = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
-        X[run] = np.column_stack([np.interp(s, sp, P[:, k]) for k in range(3)])
-        if s[-1] > sp[-1]:  # (the run is longer than its partner's line: carried on straight past its end)
-            far = s > sp[-1]
-            X[run[far]] = P[-1] + np.outer(s[far] - sp[-1], _unit(P[-1] - P[-2]))
-        done[run] = True
-        c = np.mean([X[np.where(cnet.piece == q)[0]][done[cnet.piece == q]].mean(0) for q in sewn_to], axis=0)
-        reads[nm] = {"laid": f"from its seam with {', '.join(cnet.names[q] for q in sewn_to)} ({rn} points)"}
-    if c is None:
-        c = X[run].mean(0) - np.array([0, 0, 0.1])
-    sg = away * _hand(W, cnet, run, c, cnet.uv[loop].mean(0))
-    o = run[len(run) // 2]
-    ids = np.where(cnet.piece == p)[0]
-    G = np.zeros((cnet.n, 3))
-    G[ids], reads[nm]["turn_deg"] = _best_guide(W, cnet, nm, ids, o, W.frame(o, run[len(run) // 2 - 1], sg), pt)
-    if rn < len(loop):
-        rest = loop[(r0 + rn + np.arange(len(loop) - rn)) % len(loop)]
-        h = (len(rest) + 1) // 2
-        W.walk(np.r_[run[-1], rest[:h]], G)
-        W.walk(np.r_[run[0], rest[::-1][: len(rest) - h]], G)
-        reads[nm]["closes_between"] = [int(rest[h - 1]), int(rest[h])] if h < len(rest) else [int(rest[-1]), int(run[0])]
-    reads[nm]["side"] = sg
-    return G
-
-
-def _down_frame(W, cnet, nm, fr):
-    """The frame turned about the body's normal so the flat's -y (the draft's length, P2's panel rule) runs down the
-    piece's highest step-3 length path, where it was measured; unchanged for a piece naming none."""
-    from .piece_start import _tapes_of
-    _, paths = _tapes_of(cnet, nm)
-    tops = [P if P[0, 2] >= P[-1, 2] else P[::-1] for _, P in paths if len(P) >= 2]
-    if not tops:
-        return fr
-    Q = max(tops, key=lambda P: P[0, 2])
-    t, T, B, n, s = fr
-    D = Q[-1] - Q[0]
-    D = D - (D @ n) * n
-    if np.linalg.norm(D) < 1e-6:
-        return fr
-    D = _unit(D)
-    return np.array([0.0, -1.0]), D, np.cross(n, D), n, s
-
-
-def _best_guide(W, cnet, nm, ids, o, fr, pt):
-    """The guide turned about the body's normal at o to where its SEAMS say: the turn (every TURN_STEP degrees) whose
-    guide puts the piece's points sewn to laid cloth nearest their partners, plus DOWN_W x how far the flat's -y
-    leaves the piece's highest step-3 length path (_down_frame). Returns (guide, turn in degrees)."""
-    t0, T0, B0, n, s = fr
-    dn = _down_frame(W, cnet, nm, fr)
-    D = dn[1] if dn is not fr else None
-    sewn = [(v, next(q for q in pt[int(v)] if W.done[q])) for v in ids
-            if not W.done[v] and any(W.done[q] for q in pt.get(int(v), ()))]
-    best = None
-    for deg in range(0, 360, TURN_STEP):
-        a = np.radians(deg)
-        T = np.cos(a) * T0 + np.sin(a) * B0
-        f = (t0, T, np.cross(n, T), n, s)
-        tp = np.array([-t0[1], t0[0]])
-        cost = 0.0
-        if D is not None:  # (the flat's -y mapped by f)
-            m = _unit(-t0[1] * T + s * (-tp[1]) * np.cross(n, T))
-            cost += DOWN_W * (1 - float(m @ D))
-        if sewn:
-            a_, b_ = np.array(sewn).T
-            Gs = W.guide(a_, f, o)
-            cost += float(np.linalg.norm(Gs - W.X[b_], axis=1).mean())
-        if best is None or cost < best[0] - 1e-9:
-            best = (cost, deg, f)
-    return W.guide(ids, best[2], o), best[1]
-
-
-def _mirror(W, cnet, q, reads):
-    """The other side's piece (".L" <-> ".R"), laid as q's mirror image (x -> -x: lengths exact, seams as q's) when
-    its flat is q's mirrored point for point; returns its index, or None."""
-    nm = cnet.names[q]
-    if not hand_of(nm):
-        return None
-    other = nm[:-2] + (".R" if nm.endswith(".L") else ".L")
-    if other not in cnet.names:
-        return None
-    r = cnet.names.index(other)
-    a, b = np.where(cnet.piece == q)[0], np.where(cnet.piece == r)[0]
-    if len(a) != len(b) or W.done[b].any():
-        return None
-    from scipy.spatial import cKDTree
-    dist, k = cKDTree(cnet.uv[a] * [-1, 1]).query(cnet.uv[b])
-    if dist.max() > MIRROR_TOL:
-        return None
-    W.X[b], W.done[b] = W.X[a[k]] * [-1, 1, 1], True
-    reads[other] = {"laid": f"mirror of {nm}"}
-    return r
-
-
-def _rows_and_rest(W, cnet, p, G):
-    """Fold rows walked from their laid points (an unlaid stretch from both ends), then any other chain point of p at
-    its guide."""
-    done = W.done
-    for f in cnet.M.get("folds") or []:
-        for row in f.get("rows") or []:
-            row = np.asarray(row, np.int64)
-            if cnet.piece[row[0]] != p or done[row].all():
-                continue
-            if not done[row].any():
-                W.X[row[0]], done[row[0]] = G[row[0]], True
-            k = np.flatnonzero(done[row])
-            a, b = int(k[0]), int(k[-1])
-            if a > 0:
-                W.walk(row[: a + 1][::-1], G)
-            if b < len(row) - 1:
-                W.walk(row[b:], G)
-            for i, j in _stretches(~done[row]):
-                m = (j - i + 2) // 2
-                W.walk(row[i - 1:i + m], G)
-                if not done[row[i:j + 1]].all():
-                    W.walk(row[i:j + 2][::-1][: j - i + 2 - m], G)
-    v = np.where(cnet.piece == p)[0]
-    left = v[~done[v]]
-    W.X[left], done[left] = G[left], True
-    return len(left)
-
-
-def _stretches(m):
-    """(first, last) index of each run of True in m."""
-    out, i = [], 0
-    while i < len(m):
-        if m[i]:
-            j = i
-            while j + 1 < len(m) and m[j + 1]:
-                j += 1
-            out.append((i, j))
-            i = j + 1
-        else:
-            i += 1
+def _shared(cnet, root):
+    """{(p, q): number of nodes pieces p and q share}."""
+    out: dict = {}
+    for r in np.unique(root):
+        ps = sorted(set(cnet.piece[root == r].tolist()))
+        for a in range(len(ps)):
+            for b in range(a + 1, len(ps)):
+                out[(ps[a], ps[b])] = out.get((ps[a], ps[b]), 0) + 1
     return out
 
 
-def _start_measures(cnet, X, reads) -> dict:
-    """Links % off cut on each piece's own points; seam gaps by piece pair (mm)."""
-    a, b = cnet.chain_v[:, 0], cnet.chain_v[:, 1]
-    e = np.abs(np.linalg.norm(X[b] - X[a], axis=1) / np.maximum(cnet.chain_L, 1e-12) - 1) * 100
-    by: dict = {}
-    for k in np.argsort(-e):
-        nm = cnet.names[cnet.chain_piece[k]]
-        by.setdefault(nm, round(float(e[k]), 3))
-    gaps: dict = {}
-    for i, j in cnet.sew:
-        pi, pj = cnet.names[cnet.piece[i]], cnet.names[cnet.piece[j]]
-        if pi == pj:
-            continue
-        key = " ~ ".join(sorted((pi, pj)))
-        gaps[key] = max(gaps.get(key, 0.0), float(np.linalg.norm(X[i] - X[j])) * 1e3)
-    return {"links_max_pct": round(float(e.max()), 3), "links_over_2pct": int((e > 2).sum()), "links": len(e),
-            "links_by_piece_max_pct": by, "seam_gap_mm": {k: round(v, 1) for k, v in sorted(gaps.items(), key=lambda t: -t[1])}}
+def order(cnet, follow: dict, first: int) -> list:
+    """Pieces in the order they are sewn (module doc, 1): every next one the piece sewn to most placed nodes."""
+    sh = _shared(cnet, cnet.root)
+    nb = lambda p, q: sh.get((min(p, q), max(p, q)), 0)
+    out = [first]
+    for group in ([p for p in range(len(cnet.names)) if cnet.names[p] not in follow and p != first],
+                  [p for p in range(len(cnet.names)) if cnet.names[p] in follow]):
+        left = list(group)
+        while left:
+            q = max(left, key=lambda p: (sum(nb(p, o) for o in out), -p))
+            if sum(nb(q, o) for o in out) < 3:
+                break
+            out.append(q)
+            left.remove(q)
+    return out
 
 
-def lay(net, cnet, keep, body, plan: dict | None = None, holds=None) -> dict:
-    """The start and chain_solve's inputs (module doc)."""
-    from . import chain_holds, chain_solve_plies as cp
-    plan = plan or {}
-    h = holds or chain_holds.read(net)
-    follow = {**h.plies, **h.layers, **h.inside}
-    refuse_untaped(cnet, follow)
-    pid = {nm: k for k, nm in enumerate(cnet.names)}
-    part = {pid[p]: {pid[q] for q in pa.pieces} for pa in h.parts for p in pa.pieces}
-    idx = -np.ones(net.n, np.int64)
-    idx[keep] = np.arange(len(keep))
-    loops = {pid[nm]: idx[net.loop(nm)] for nm in cnet.names}
-    pt = partners(cnet)
-    X, done = np.zeros((cnet.n, 3)), np.zeros(cnet.n, bool)
-    W = _Walker(cnet, body, X, done)
-    reads: dict = {}
-    pulls: list = []
-    edges = (cnet.M.get("starts") or {}).get("edges") or {}
-    todo = [pid[p] for p in cnet.names if p not in follow]
-    first = [q for q in todo if edges.get(cnet.names[q]) or (hand_of(cnet.names[q]) and edges.get(cnet.names[q][:-2]))]
-    if not first:
-        raise ChainRefused("step 4 names no edge on a tape: back to step 4 (a piece's edge on the tape it was drafted on)")
-    left = 0
-    def score(q):
-        return sum(any(done[x] for x in pt.get(int(v), ())) for v in loops[q])
-    while todo:
-        q = first.pop(0) if first else max(todo, key=score)
-        if q not in todo:
-            continue
-        G = _lay_piece(W, cnet, q, loops[q], pt, part.get(q, {q}), body, reads, pulls)
-        left += _rows_and_rest(W, cnet, q, G)
-        todo.remove(q)
-        r = _mirror(W, cnet, q, reads)
-        if r in todo:
-            todo.remove(r)
-    fl, walked = [pid[p] for p in follow], set()
-    while fl:  # (a follower sewn to laid cloth is walked from that seam too, on its host's side)
-        q = max(fl, key=score)
-        fl.remove(q)
-        if score(q) >= 2:
-            G = _lay_piece(W, cnet, q, loops[q], pt, set(), body, reads, pulls, away=-1.0)
-            left += _rows_and_rest(W, cnet, q, G)
-            walked.add(cnet.names[q])
-            r = _mirror(W, cnet, q, reads)
-            if r in fl:
-                fl.remove(r)
-                walked.add(cnet.names[r])
-    sign = {p: _out_sign(cnet, p, X, body) for p in cnet.names if p not in follow}
-    k_of = {p: 1 for p in follow}
-    for p, host in h.inside.items():
-        k_of[p] = 1 + sum(1 for hh in h.layers.values() if hh == host)
-    plies = []
-    for p in sorted(follow, key=lambda q: follow[q] in follow):  # (a follower of a follower after its host)
-        b = cp.bind(cnet, {p: follow[p]}, k_of, sign)[0]
-        if p not in walked:  # (sewn to nothing laid: seeded on its host, a layer in)
-            X[b["ids"]] = (b["w"][:, :, None] * X[b["tri"]]).sum(1) + b["d"][:, None] * cp.normals(X, b["tri"], b["hostF"])
-            done[b["ids"]] = True
-        sign[p] = _out_sign(cnet, p, X, body)
-        plies.append(b)
-        reads.setdefault(p, {}).update(follows=follow[p], layers_in=k_of[p])
-    start = _start_measures(cnet, X, reads)
-    start["placed_off_nearest"] = left
-    return {"X0": X, "pulls": pulls, "folds": fold_rows(cnet, plan, sign), "ties": tie_pairs(cnet, plan),
-            "plies": plies, "reads": reads, "start": start}
+def _away(cnet, p, part):
+    """The centre of the step-3 tapes of the pieces p is sewn to outside its part (the first piece goes away from it)."""
+    q = {int(cnet.piece[x]) for r in np.unique(cnet.root[cnet.piece == p]) for x in np.where(cnet.root == r)[0]}
+    P = [t for x in sorted(q - set(part)) for t in [_tape_pts(cnet, cnet.names[x])] if t is not None]
+    return np.concatenate(P).mean(0) if P else None
 
 
-def _out_sign(net, piece, X, body) -> float:
-    """+1 when the piece's F normals point away from the body at the start (area weighted), else -1."""
-    v = net.verts(piece)
-    F = net.F[np.isin(net.F, v).all(1)]
-    c = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
-    _, nb = body.contact.query(X[F].mean(1))
-    return 1.0 if float((c * nb).sum()) >= 0 else -1.0
+def _tape_pts(cnet, nm):
+    st = cnet.M.get("starts") or {}
+    T = st.get("tapes") or {}
+    names = list((st.get("pieces") or {}).get(nm) or [])
+    P = [np.asarray(T[t]["pts"], float) for t in names if t in T]
+    if not P:
+        return None
+    P = np.concatenate(P)
+    return P * [-1, 1, 1] if hand_of(nm) < 0 else P
+
+
+def _ruled(cnet, p, Xn, placed, onto: bool, away=None):
+    """Where piece p's flat goes from its placed nodes (module doc, 3): each other point off its nearest placed point by
+    its flat offset, along the placed line (T) and across it (B). B continues the surface of the cloth already sewn
+    there (a seam is smooth) or, onto=True (a follower), lies back on it; with no cloth there yet, B goes away from the
+    point `away`. Returns the positions of p's points (k, 3)."""
+    root = cnet.root
+    pts = np.where(cnet.piece == p)[0]
+    kn = placed[root[pts]]
+    uv, K = cnet.uv[pts], Xn[root[pts[kn]]]
+    ki = np.where(kn)[0]
+    kd = cKDTree(uv[ki])
+    Y = np.zeros((len(pts), 3))
+    Y[ki] = K
+    own = set(root[pts].tolist())
+    T = np.zeros((len(ki), 3))
+    B = np.zeros((len(ki), 3))
+    t2 = np.zeros((len(ki), 2))
+    cen = uv.mean(0)
+    for m, k in enumerate(ki):
+        nb = kd.query_ball_point(uv[k], 0.03)
+        du, dx = uv[ki[nb]] - uv[k], K[nb] - K[m]
+        tt = np.linalg.svd(du - du.mean(0))[2][0] if len(nb) > 2 else np.array([1.0, 0.0])
+        T[m] = _unit((np.sign(du @ tt)[:, None] * dx).sum(0))
+        t2[m] = tt
+        r = root[pts[k]]
+        q = np.where((root == r) & (cnet.piece != p))[0]
+        d = np.zeros(3)
+        for v in q:
+            near = np.where((cnet.piece == cnet.piece[v]) & placed[root])[0]
+            near = near[(np.linalg.norm(cnet.uv[near] - cnet.uv[v], axis=1) < 0.03)
+                        & ~np.isin(root[near], list(own))]
+            if len(near):
+                d += (Xn[root[near]] - Xn[r]).mean(0)
+        if not d.any() and away is not None:
+            d = Xn[r] - away
+            d = -d
+        d = d - (d @ T[m]) * T[m]
+        B[m] = _unit(d) * (1.0 if onto else -1.0)
+    n2 = np.c_[-t2[:, 1], t2[:, 0]]
+    n2 *= np.sign(((cen - uv[ki]) * n2).sum(1) + 1e-12)[:, None]
+    fr = np.where(~kn)[0]
+    if len(fr):
+        _, j = kd.query(uv[fr])
+        f = uv[fr] - uv[ki[j]]
+        Y[fr] = K[j] + (f * t2[j]).sum(1)[:, None] * T[j] + (f * n2[j]).sum(1)[:, None] * B[j]
+    return Y
+
+
+def _first(cnet, p, loop, pt, part, body, reads, pulls):
+    """The first piece's taped edge on its tape by its own arc (module doc, 2): (ids, positions)."""
+    from .piece_start import lay_on_tape
+    nm = cnet.names[p]
+    ext = np.array([any(cnet.piece[q] not in part for q in pt.get(int(v), ())) for v in loop])
+    if not ext.any():
+        raise ChainRefused(f"{nm}: its taped edge is sewn to nothing: back to step 4")
+    k0 = int(np.argmin(ext)) if not ext.all() else 0
+    ext_r = np.roll(ext, -k0)
+    s0 = int(np.argmax(ext_r))
+    n = int(np.argmin(ext_r[s0:])) if not ext_r[s0:].all() else len(ext_r) - s0
+    run = np.roll(loop, -k0)[s0:s0 + n]
+    centre = cnet.uv[run, 0].min() < 0 < cnet.uv[run, 0].max()
+    mid = int(np.argmin(np.abs(cnet.uv[run, 0]))) if centre else None
+    su = 1.0
+    if centre:
+        later = [hand_of(cnet.names[cnet.piece[q]]) for v in run[mid + 1:] for q in pt.get(int(v), ())]
+        su = -1.0 if sum(later) < 0 else 1.0
+    Pc, rd = lay_on_tape(SimpleNamespace(net=cnet, body=body, reads=reads), nm, run, mid=mid, su=su)
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(cnet.uv[run], axis=0), axis=1))]
+    sp = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Pc, axis=0), axis=1))]
+    k = mid if mid is not None else 0  # (the lifted line is longer than the tape: re-laid on it by the edge's own arc)
+    Pc = np.column_stack([np.interp(s - s[k] + sp[k], sp, Pc[:, d]) for d in range(3)])
+    pulls.append({"ids": run.copy(), "to": Pc.copy(), "weight": 1.0, "name": f"{nm} edge on {rd['tape']}"})
+    reads[nm] = {"laid": f"edge on tape {rd['tape']} ({rd['edge_mm']} of {rd['tape_mm']} mm)"}
+    return run, Pc
+
+
+def _place(cnet, p, Xn, placed, frame, reads, onto=False, away=None):
+    """Sew piece p onto the placed nodes (module doc, 3)."""
+    root, nm = cnet.root, cnet.names[p]
+    pts = np.where(cnet.piece == p)[0]
+    Ref = np.c_[cnet.uv[pts], np.zeros(len(pts))]
+    kn = placed[root[pts]]
+    if kn.sum() < 2:
+        raise ChainRefused(f"{nm}: sewn to {int(kn.sum())} placed point(s): nothing to sew it on by (back to step 4)")
+    Xr = np.zeros((cnet.n, 3))
+    Xr[pts] = _ruled(cnet, p, Xn, placed, onto, away)
+    Y = Xr.copy()
+    new = pts[~kn]
+    F = cnet.F[cnet.piece[cnet.F[:, 0]] == p]
+    Y[pts] = arap(Ref, Y[pts], kn, cn.edges_of(np.searchsorted(pts, F)), frame)
+    Xn[root[new]] = Y[new]
+    placed[root[new]] = True
+    a, b = cnet.chain_v[cnet.chain_piece == p].T
+    e = np.abs(np.linalg.norm(Y[b] - Y[a], axis=1) / cnet.chain_L[cnet.chain_piece == p] - 1) * 100
+    reads.setdefault(nm, {}).update(sewn_on=int(kn.sum()), links_bent_max_pct=round(float(e.max()), 1))
+
+
+def arap(Ref, Y, kn, e, frame=None, iters: int = ARAP_ITERS, gap: float = GAP):
+    """As-rigid-as-possible bending of a piece (Sorkine and Alexa 2007): its flat Ref (k, 3) on its edges e (lines across
+    and links), its known points kn kept at Y, every other point where each neighbourhood is its flat shape turned
+    (local: the best rotation per point; global: one Laplace solve), pushed GAP out of the frame. Returns Y."""
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import splu
+    Y = np.array(Y, float)
+    fr = np.where(~kn)[0]
+    if not len(fr) or not len(e):
+        return Y
+    k = len(Ref)
+    i, j = e[:, 0], e[:, 1]
+    w = 1.0 / np.maximum(np.linalg.norm(Ref[i] - Ref[j], axis=1), 1e-5)
+    Lm = sp.coo_matrix((np.r_[w, w], (np.r_[i, j], np.r_[j, i])), shape=(k, k)).tocsr()
+    Lm = (sp.diags(np.asarray(Lm.sum(1)).ravel()) - Lm).tocsr()
+    A = splu(Lm[fr][:, fr].tocsc())
+    B = Lm[fr][:, np.where(kn)[0]]
+    dp = Ref[i] - Ref[j]
+    for _ in range(iters):
+        dx = Y[i] - Y[j]
+        S = np.zeros((k, 3, 3))
+        o = w[:, None, None] * dp[:, :, None] * dx[:, None, :]
+        np.add.at(S, i, o)
+        np.add.at(S, j, o)
+        U, _, Vt = np.linalg.svd(S)
+        d = np.sign(np.linalg.det(np.einsum("kij,kjl->kil", np.transpose(Vt, (0, 2, 1)), np.transpose(U, (0, 2, 1)))))
+        Vt[:, 2] *= np.where(d == 0, 1.0, d)[:, None]
+        R = np.einsum("kij,kjl->kil", np.transpose(Vt, (0, 2, 1)), np.transpose(U, (0, 2, 1)))
+        r = 0.5 * w[:, None] * np.einsum("kij,kj->ki", R[i] + R[j], dp)
+        b = np.zeros((k, 3))
+        np.add.at(b, i, r)
+        np.add.at(b, j, -r)
+        rhs = b[fr] - B @ Y[kn]
+        Y[fr] = np.column_stack([A.solve(rhs[:, c]) for c in range(3)])
+        if frame is not None:
+            sd, nr = frame.query(Y[fr])
+            m = sd < gap
+            Y[fr[m]] += nr[m] * (gap - sd[m])[:, None]
+    return Y
 
 
 def _uv_wind(net, piece) -> float:
@@ -420,15 +275,245 @@ def _uv_wind(net, piece) -> float:
     return 1.0 if float((u[:, 0] * w[:, 1] - u[:, 1] * w[:, 0]).sum()) >= 0 else -1.0
 
 
+def _draft_fold(net, f, bid):
+    fd = next((d for d in net.M.get("folds") or [] if d.get("piece") == f["on"] and d.get("name") == f["fold"]), None)
+    if fd is None:
+        raise ChainRefused(f"fold {bid}: the draft has no fold {f['fold']} on {f['on']}: back to step 4")
+    return fd
+
+
+def _fold_side(cnet, loop, row, pts):
+    """The points of pts on the fold row's smaller side: the outline arc between the row's ends that encloses the smaller
+    area with the row, and the points inside it (never by the row's line extended: that cuts the whole piece)."""
+    from .chain_lay_net import _inside
+    uv = cnet.uv
+    i0 = int(np.argmin(np.linalg.norm(uv[loop] - uv[row[0]], axis=1)))
+    i1 = int(np.argmin(np.linalg.norm(uv[loop] - uv[row[-1]], axis=1)))
+    n = len(loop)
+    best = None
+    for arc in (loop[(i0 + np.arange((i1 - i0) % n + 1)) % n], loop[(i1 + np.arange((i0 - i1) % n + 1)) % n][::-1]):
+        P = np.r_[uv[arc], uv[row[::-1][1:-1]]]
+        area = 0.5 * abs(float((P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1]).sum()))
+        if best is None or area < best[0]:
+            best = (area, arc, P)
+    _, arc, P = best
+    m = _inside(P, uv[pts]) | np.isin(pts, arc)
+    return pts[m & ~np.isin(pts, row)]
+
+
+def _turn(cnet, p, Xn, plan, frame, reads, loop, done, placed):
+    """Turn piece p's planned folds (module doc, 3). A node another fold already turned stays as it is; a fold whose
+    turning side carries more than FOLD_THROUGH of a placed piece with no fold row of its own is not turned: that cloth
+    can't fold there (named, back to step 4)."""
+    root, nm = cnet.root, cnet.names[p]
+    pts = np.where(cnet.piece == p)[0]
+    rowed = {d.get("piece") for d in cnet.M.get("folds") or [] if d.get("rows")}
+    for bid, f in sorted((plan.get("folds") or {}).items()):
+        if f["on"] != nm:
+            continue
+        fd = _draft_fold(cnet, f, bid)
+        rows = [np.asarray(r, np.int64) for r in fd.get("rows") or []]
+        way = float(fd.get("sign", 1.0)) * _uv_wind(cnet, nm)
+        side = np.unique(root[_fold_side(cnet, loop, rows[0], pts)]) if rows else np.zeros(0, np.int64)
+        through = []
+        for q in range(len(cnet.names)):
+            qn = np.unique(root[cnet.piece == q])
+            if q != p and cnet.names[q] not in rowed and placed[qn].all():
+                frac = float(np.isin(qn, side).mean())
+                if frac > FOLD_THROUGH:
+                    through.append(f"{cnet.names[q]} ({frac:.0%})")
+        if through:
+            reads.setdefault(nm, {})[f"not turned {bid}"] = (f"its turning side carries {', '.join(through)}, which has "
+                                                            "no fold row there: back to step 4 (a roll row on it)")
+            continue
+        for row in rows:
+            rn = np.unique(root[row])
+            mv = np.setdiff1d(np.unique(root[_fold_side(cnet, loop, row, pts)]), np.r_[rn, list(done)].astype(np.int64))
+            if not len(mv):
+                continue
+            a = Xn[root[row[0]]]
+            ax = _unit(Xn[root[row[-1]]] - a)
+            _, nb = frame.query(Xn[rn].mean(0)[None])
+            sg = 1.0 if np.cross(ax, Xn[mv].mean(0) - a) @ (way * nb[0]) >= 0 else -1.0
+            R = _rot(ax, sg * np.radians(float(f["turn_deg"]) / len(rows)))
+            Xn[mv] = (Xn[mv] - a) @ R.T + a
+        done.update(side.tolist())
+        reads.setdefault(nm, {})[f"turned {bid}"] = float(f["turn_deg"])
+
+
+def node_links(cnet):
+    """(i, j, L, exact) over nodes: every chain link at its cut (a seam's two sides: one link at their mean), then the
+    lines across at their flat length (exact where interfaced at both ends, else at most)."""
+    r = cnet.root
+    a, b = np.sort(r[cnet.chain_v], axis=1).T
+    k = a != b
+    key, inv = np.unique(np.c_[a[k], b[k]], axis=0, return_inverse=True)
+    L = np.bincount(inv.ravel(), cnet.chain_L[k]) / np.bincount(inv.ravel())
+    e = np.sort(r[cnet.edges], axis=1)
+    m = e[:, 0] != e[:, 1]
+    ex = (cnet.stiff[cnet.edges[:, 0]] > 0) & (cnet.stiff[cnet.edges[:, 1]] > 0)
+    return (np.r_[key[:, 0], e[m, 0]], np.r_[key[:, 1], e[m, 1]], np.r_[L, cnet.flat[m]],
+            np.r_[np.ones(len(key), bool), ex[m]])
+
+
+def bend(cnet, Xn, frame, gap=GAP, log=None):
+    """The bends (module doc, 4): (Xn, project's read)."""
+    i, j, L, ex = node_links(cnet)
+    nodes = np.unique(cnet.root)
+    cts = [] if frame is None else [(frame, nodes, gap)]
+    return cn.project(Xn, i, j, L, ex, contacts=cts, iters=BEND_ITERS, log=log)
+
+
+def _fold_turns(cnet, X, plan) -> dict:
+    """Median measured turn (deg) of each planned fold's rows: the angle between the faces either side of each row link."""
+    out = {}
+    for bid, f in sorted((plan.get("folds") or {}).items()):
+        fd = _draft_fold(cnet, f, bid)
+        got = []
+        for row in fd.get("rows") or []:
+            row = np.asarray(row, np.int64)
+            for a, b in zip(row[:-1], row[1:]):
+                fs = cnet.F[(cnet.F == a).any(1) & (cnet.F == b).any(1)]
+                if len(fs) != 2:
+                    continue
+                n = np.cross(X[fs[:, 1]] - X[fs[:, 0]], X[fs[:, 2]] - X[fs[:, 0]])
+                n = n / np.maximum(np.linalg.norm(n, axis=1), 1e-12)[:, None]
+                got.append(np.degrees(np.arccos(np.clip(n[0] @ n[1], -1, 1))))
+        if got:
+            out[bid] = {"planned": float(f["turn_deg"]), "median": round(float(np.median(got)), 1),
+                        "off": round(abs(float(np.median(got)) - float(f["turn_deg"])), 1)}
+    return out
+
+
+def measures(cnet, X, plan=None, contact=None) -> dict:
+    """Links % off cut per piece (per point: each side of a seam at its own cut), the loops that don't close (links past
+    CLOSE_TOL, by piece pair, gap mm), seam gaps (0 by construction: a check), fold turns, points inside."""
+    a, b = cnet.chain_v[:, 0], cnet.chain_v[:, 1]
+    ln = np.linalg.norm(X[b] - X[a], axis=1)
+    e = np.abs(ln / np.maximum(cnet.chain_L, 1e-12) - 1) * 100
+    by: dict = {}
+    for k in np.argsort(-e):
+        by.setdefault(cnet.names[cnet.chain_piece[k]], round(float(e[k]), 3))
+    i, j, L, ex = node_links(cnet)
+    Xr = X  # (X is per point; a node's points coincide, so X at a root is the node's)
+    l2 = np.linalg.norm(Xr[j] - Xr[i], axis=1)
+    bad = ex & (np.abs(l2 / L - 1) * 100 > CLOSE_TOL)
+    loops: dict = {}
+    for u, v, ll, LL in zip(i[bad], j[bad], l2[bad], L[bad]):
+        pp = sorted({cnet.names[q] for q in cnet.piece[(cnet.root == u) | (cnet.root == v)]})
+        key = " ~ ".join(pp)
+        loops[key] = max(loops.get(key, 0.0), round(float(ll - LL) * 1e3, 1))
+    sides: dict = {}  # (a seam's two sides cut to different lengths: each side's own links, summed, mm over its cut)
+    r = cnet.root
+    shared = np.bincount(r, minlength=cnet.n) > 1
+    for p in range(len(cnet.names)):
+        m = (cnet.chain_piece == p) & shared[r[a]] & shared[r[b]]
+        for k in np.where(m)[0]:
+            pp = sorted({cnet.names[q] for q in cnet.piece[(r == r[a[k]]) | (r == r[b[k]])]} - {cnet.names[p]})
+            if len(pp) != 1:
+                continue
+            key = " ~ ".join(sorted((cnet.names[p], pp[0])))
+            d = sides.setdefault(key, {})
+            d[cnet.names[p]] = d.get(cnet.names[p], 0.0) + float(ln[k] - cnet.chain_L[k]) * 1e3
+    sides = {k: {q: round(x, 1) for q, x in v.items()} for k, v in sides.items()
+             if max(abs(x) for x in v.values()) > 1.0}
+    sew = cnet.sew
+    gap = float(np.linalg.norm(X[sew[:, 0]] - X[sew[:, 1]], axis=1).max()) * 1e3 if len(sew) else 0.0
+    out = {"links_max_pct": round(float(e.max()), 3), "links_over_2pct": int((e > 2).sum()), "links": len(e),
+           "links_by_piece_max_pct": by, "loops_open_mm": dict(sorted(loops.items(), key=lambda t: -abs(t[1]))[:12]),
+           "loops_open": len(loops), "seam_gap_mm": round(gap, 3),
+           "sides_differ_mm": sides}
+    if plan:
+        out["folds"] = _fold_turns(cnet, X, plan)
+    if contact is not None:
+        sd, _ = contact.query(X)
+        out["inside"] = int((sd < 0).sum())
+        out["under_gap"] = int((sd < GAP - 1e-4).sum())
+    return out
+
+
+def lay(net, cnet, keep, body, plan: dict | None = None, holds=None, frame=None, log=None) -> dict:
+    """The assembled start and chain_solve's inputs (module doc)."""
+    from . import chain_holds, chain_solve_plies as cp
+    plan = plan or {}
+    frame = body.contact if frame is None else frame
+    h = holds or chain_holds.read(net)
+    follow = {**h.plies, **h.layers, **h.inside}
+    refuse_untaped(cnet, follow)
+    pid = {nm: k for k, nm in enumerate(cnet.names)}
+    part = {pid[p]: {pid[q] for q in pa.pieces} for pa in h.parts for p in pa.pieces}
+    idx = -np.ones(net.n, np.int64)
+    idx[keep] = np.arange(len(keep))
+    edges = (cnet.M.get("starts") or {}).get("edges") or {}
+    taped = [pid[p] for p in cnet.names if p not in follow and (edges.get(p) or (hand_of(p) and edges.get(p[:-2])))]
+    if not taped:
+        raise ChainRefused("step 4 names no edge on a tape: back to step 4 (a piece's edge on the tape it was drafted on)")
+    sh = _shared(cnet, cnet.root)
+    first = max(taped, key=lambda p: (sum(v for k, v in sh.items() if p in k), -p))
+    seq = order(cnet, follow, first)
+    root = cnet.root
+    Xn, placed = np.zeros((cnet.n, 3)), np.zeros(cnet.n, bool)
+    reads: dict = {}
+    pulls: list = []
+    run, Pc = _first(cnet, first, idx[net.loop(cnet.names[first])], partners(cnet), part.get(first, {first}), body,
+                     reads, pulls)
+    Xn[root[run]], placed[root[run]] = Pc, True
+    away = _away(cnet, first, part.get(first, {first}))
+    done: set = set()
+    for p in seq:
+        _place(cnet, p, Xn, placed, frame, reads, onto=cnet.names[p] in follow, away=away if p == first else None)
+        _turn(cnet, p, Xn, plan, frame, reads, idx[net.loop(cnet.names[p])], done, placed)
+    left = [cnet.names[p] for p in range(len(cnet.names)) if p not in seq]
+    if [p for p in left if p not in h.layers]:
+        raise ChainRefused(f"{', '.join(p for p in left if p not in h.layers)}: sewn to nothing placed: back to step 4")
+    before = measures(cnet, Xn[root], plan, frame)
+    Xa = Xn.copy()
+    Xn, rd = bend(cnet, Xn, frame, log=log)
+    sign = {p: _out_sign(cnet, p, Xn[root], frame) for p in cnet.names if p not in left}
+    plies = []
+    k_of = {p: 1 for p in follow}
+    for p, host in h.inside.items():
+        k_of[p] = 1 + sum(1 for hh in h.layers.values() if hh == host)
+    for p in sorted(follow, key=lambda q: follow[q] in follow):
+        b = cp.bind(cnet, {p: follow[p]}, k_of, sign)[0]
+        if p in left:  # (sewn to nothing: seeded on its host, a layer in)
+            X = Xn[root]
+            P = (b["w"][:, :, None] * X[b["tri"]]).sum(1) + b["d"][:, None] * cp.normals(X, b["tri"], b["hostF"])
+            Xn[root[b["ids"]]] = P
+            sign[p] = _out_sign(cnet, p, Xn[root], frame)
+        plies.append(b)
+        reads.setdefault(p, {}).update(follows=follow[p], layers_in=k_of[p])
+    if left:
+        Xn, rd = bend(cnet, Xn, frame, log=log)
+    X0 = Xn[root]
+    mv = np.linalg.norm(Xn[root] - Xa[root], axis=1)[np.isin(cnet.piece, [pid[p] for p in cnet.names if p not in left])]
+    after = measures(cnet, X0, plan, frame)
+    named = "; ".join([f"{k} open by {v} mm" for k, v in after["loops_open_mm"].items()] +
+                      [f"{k}: its sides cut {v} mm apart" for k, v in after["sides_differ_mm"].items()])
+    start = {"before_bends": before, "after_bends": after, "projection": rd, "closed": after["loops_open"] == 0,
+             "named": (f"seams bends cannot close: {named}: back to step 4 (the pattern: those seams' lengths)"
+                       if named else ""),
+             "bend_move_mm": {"median": round(float(np.median(mv)) * 1e3, 1), "max": round(float(mv.max()) * 1e3, 1)}}
+    return {"X0": X0, "pulls": pulls, "folds": fold_rows(cnet, plan, sign), "ties": tie_pairs(cnet, plan),
+            "plies": plies, "reads": reads, "start": start, "order": [cnet.names[p] for p in seq]}
+
+
+def _out_sign(net, piece, X, contact) -> float:
+    """+1 when the piece's F normals point away from the body at the start (area weighted), else -1."""
+    v = net.verts(piece)
+    F = net.F[np.isin(net.F, v).all(1)]
+    c = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    _, nb = getattr(contact, "contact", contact).query(X[F].mean(1))
+    return 1.0 if float((c * nb).sum()) >= 0 else -1.0
+
+
 def fold_rows(net, plan, sign) -> list:
     """chain_solve folds: step 2's turn per planned fold, split over the draft's rows. Which way: the draft's fold sign
     read in the flat's own winding (sign x uv winding: +1 = onto the side the flat's +z faces), then into F's normals
     on the body by the piece's out sign."""
     out = []
     for bid, f in sorted((plan.get("folds") or {}).items()):
-        fd = next((d for d in net.M.get("folds") or [] if d.get("piece") == f["on"] and d.get("name") == f["fold"]), None)
-        if fd is None:
-            raise ChainRefused(f"fold {bid}: the draft has no fold {f['fold']} on {f['on']}: back to step 4")
+        fd = _draft_fold(net, f, bid)
         rows = [np.asarray(r, np.int64) for r in fd.get("rows") or []]
         way = float(fd.get("sign", 1.0)) * _uv_wind(net, f["on"]) * sign.get(f["on"], 1.0)
         for k, r in enumerate(rows):
