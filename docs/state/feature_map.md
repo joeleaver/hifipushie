@@ -1,9 +1,8 @@
 # The feature map (a sculpt read from its reference pictures): STATE 2026-11-12
 Branch `feature-map` (worktree .claude/worktrees/feature-map), from main c3288704. Not pushed, not landed; bin/suite
-NOT run (tests/test_featuremap.py, masslines, toolsets, find_jobs, skill_file pass). Ledger C434, C434b (renumber).
-For Baynard Racing's sculpting-from-references project (`baynard-racing/workspace/scraps/SCULPT_PROJECT.md`): two
-racers were judged on their outline with nothing inside it made. Joe's rulings: reference PICTURES only (no
-generated mesh as input); every trial by a blind Opus 5.5 medium agent with the page alone.
+NOT run (tests/test_featuremap.py, masslines, toolsets, find_jobs, skill_file pass). Ledger C434, b, c (renumber).
+For Baynard Racing's sculpting from references (`baynard-racing/workspace/scraps/SCULPT_PROJECT.md`). Joe's rulings:
+reference PICTURES only (no generated mesh as input); every trial by a blind Opus 5.5 medium agent, page alone.
 
 ## What the tools hold (module docstrings are the spec; the sculptor's page is guide(topic="features"))
 - `read_reference` (refread.py): a sheet cut into views; front / back / side / side_r get a far camera at the
