@@ -1,7 +1,8 @@
 """F4 (piece_start.py, tape_geom.py): every piece starts where its OWN measurements were taken. On a synthetic
 two-legged body: a tube (front + back of one side sewn on two edges, naming girths taken on that side) starts round the
 loops it was measured at, the .R pair round the mirrored ones; an open panel starts between its tapes (its top at the
-top of the length path that spans it); a piece naming nothing starts on the old fallback, said by name. Step 4's
+top of the length path that spans it); a piece with tapes but none its start reads starts on the old fallback, said by
+name (a piece naming no tape at all is refused: tests/test_place_on_tape.py, P2). Step 4's
 per-piece list comes from step 1's seams + the draft parts' own measurements."""
 import numpy as np
 
@@ -77,7 +78,7 @@ def test_a_tube_starts_round_the_loops_it_was_measured_at():
 
 def test_a_panel_starts_between_its_tapes_and_the_fallback_is_named():
     pieces = {"skirt": (-0.25, 0.25, -0.62, 0.0, 6, 8), "apron": (-0.2, 0.2, -0.3, 0.0, 5, 4)}
-    b = _build(pieces, {"skirt": ["waist", "waistToKnee"], "apron": []})
+    b = _build(pieces, {"skirt": ["waist", "waistToKnee"], "apron": ["waist"]})  # (apron: a girth, no length)
     assert b.roles.panels == ["skirt", "apron"]  # (a waist loop holds the centre line: not a tube)
     dz = ps.panel_dz(b, "skirt")
     assert abs((1.45 + 0.0 + dz) - 1.10) < 1e-6  # (its top at the waist: the top of waistToKnee, which spans it)
@@ -86,13 +87,11 @@ def test_a_panel_starts_between_its_tapes_and_the_fallback_is_named():
     assert "top of waistToKnee" in b.reads["starts"]["skirt"]
 
 
-def test_a_tube_naming_no_sided_girth_falls_back_by_name():
+def test_a_piece_sewn_to_itself_naming_no_sided_girth_is_no_tube():
+    """(P2) A dart sewn closed doesn't make a tube: the jacket's fronts were started round the arm's joint axis."""
     pieces = {"sleeve.L": (0.0, 0.3, -0.6, 0.0, 6, 8)}
     b = _build(pieces, {"sleeve.L": ["waist"]}, [("sleeve.L", 0, "sleeve.L", 5)])
-    assert b.roles.tubes == ["sleeve.L"]  # (sewn to itself: a tube, by the old rule)
-    X = b._tube_points("sleeve.L", b.net.verts("sleeve.L"))
-    assert np.isfinite(X).all()
-    assert any(v.startswith("FALLBACK") for v in b.reads["starts"].values())
+    assert b.roles.panels == ["sleeve.L"] and not b.roles.tubes
 
 
 def test_step4_lists_each_pieces_measurements():

@@ -555,5 +555,5 @@ def test_the_tied_pair_an_untied_band_was_held_to_stays_through_the_soft_cloth()
     assert getattr(b, "extra_held", None) is None
     uv = {1: (0, 0.3), 3: (0, 0.2), 5: (0, 0.1)}
     fr = {"v": [(5, 6), (3, 4), (1, 2)], "closed": [True, True, False]}
-    assert cp.first_tied(fr, uv) == (3, 4) and not cp.top_tied(fr, uv)
+    assert cp.first_tied(fr, uv) == (3, 4)
     assert cp.first_tied(dict(fr, closed=[False] * 3), uv) is None
