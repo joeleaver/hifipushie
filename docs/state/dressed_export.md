@@ -56,6 +56,5 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
 - Equal to the garment's files: garment_asset.read(<garment LOD glb>) against garment_asset.read(<character LOD glb>),
   matched on position + uv together (seam vertices share a position).
 
-NEXT: read proof 4 (fault 2). Sleeves clean: one bin/suite on the branch head, then land it (main is merged in,
-ledger row C439 is written), remove the worktree, tell the garment session. Not clean: clear_body's reach / cap
-first. After that docs/state/mcp_rules.md items 5, 6, 10.
+NEXT: read proof 4 (fault 2). Clean: one bin/suite on the branch head, land it (main merged in, ledger C439 written),
+remove the worktree, tell the garment session. Not clean: clear_body's reach / cap first. Then mcp_rules.md 5, 6, 10.
