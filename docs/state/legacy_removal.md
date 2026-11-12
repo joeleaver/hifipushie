@@ -54,7 +54,7 @@ Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. A split: se
 repoint and the proof. Proofs: same_units, same_members, same_comments, same_order, rehomed_all, shadow_check, surface.
 
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
-blender_cards 446 lines, faceext 376, terrain_seams 201, flipfit 137, faceatlas 105, gnm_controls 90, blender_lashes 86.
+faceext 376 lines, terrain_seams 201 of 308 (its measure side), flipfit 137, faceatlas 105, gnm_controls 90. NOT unreachable: blender_cards, blender_lashes (blender_scene imports both inside functions).
 
-Full run of every test after the splits (C430; /mnt/data/hifipushie/full_suite_20261112.log): nothing of the splits fails.
-NEXT: Joe's call: the 35 files of 700-1,000 lines, the five giant functions, or the area-by-area re-review (the clothes files wait for the chain-build cut).
+Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: six reports and their brief in /mnt/data/hifipushie/review_20261112/ (top claims checked against the code).
+NEXT: Joe's call on the review (first move: export_asset takes a chain garment, asset_export.py:421); then the 35 files of 700-1,000 lines or the five giant functions (the clothes files wait for the chain-build cut).
