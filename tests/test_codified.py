@@ -223,6 +223,15 @@ def test_state_pages_at_most_60_lines():
     assert not long, f"STATE pages over 60 lines: {long}"
 
 
+def test_no_merge_marker_is_left_in_the_ledger_or_a_state_page():
+    """Twice on 2026-11-12 a ledger clash resolved by script left a "||||||| <base>" line behind: the three-way
+    conflict style's middle marker, which a pattern written for the two-way style does not see."""
+    marks = ("<<<<<<< ", "||||||| ", ">>>>>>> ")
+    bad = [f"{p.name}:{i}" for p in [ROOT / "docs/notes/codified.md", *sorted((ROOT / "docs/state").glob("*.md"))]
+           for i, line in enumerate(p.read_text().splitlines(), 1) if line.startswith(marks) or line == "======="]
+    assert not bad, bad
+
+
 # -- 12. gate measures carry known-answer self-tests ----------------------------------------------------------------
 def test_gate_measures_are_validated():
     from hifipushie import validated
