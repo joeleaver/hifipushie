@@ -23,7 +23,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     lods: 1-3 mesh LODs at LODS' shares of the budget, each drawn from the same tree (fewer rings, sides and axes;
     fewer, larger cards), + `impostor` ({"image" RGBA, "size" m, "height" m}: two crossed quads) as the last. LOD 0
     is the scene; the others hang on it through MSFT_lod and are listed in extras (and written as files of their own
-    by veg_tools.export, for engines without the extension).
+    by veg_tools_look.export, for engines without the extension).
     Wind: TEXCOORD_1 / TEXCOORD_2 / _WIND on every vertex (WIND_RECIPE). COLOR_0 on foliage = a per-twig tint.
     seasons: KHR_materials_variants over the foliage material (season_atlas; a deciduous winter hides the foliage
     by an alpha cut-off above 1); `wet` adds a "wet" variant (darker, glossier bark and leaves).

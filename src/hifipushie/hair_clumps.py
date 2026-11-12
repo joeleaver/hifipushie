@@ -13,7 +13,7 @@ one flat ribbon, and a generic strand tile on it. Card artists and Epic's Hair C
      Attributes; FiberBake does the same in Blender).
 The part: top cards are clustered PER SIDE of the part (a side key in the clustering), so no card spans it, and every
 card's root fades in over its first millimetres (roots crossing at the part read as a criss-cross). The cap under the
-cards carries the part's own picture (hair_strands.cap_chart).
+cards carries the part's own picture (hair_strands_eval.cap_chart).
 
 Everything is numpy + PIL: `cut` returns card dicts like hair_cards' (P, X, N, hw, u, s, kind, layer, prio, ...) with an
 "island" key, and `bake` draws the islands into one block that hair_cards_atlas.atlas puts under its tiles.

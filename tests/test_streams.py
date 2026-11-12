@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain_mesh as tm, terrain_stream as ts, terrain_style, terrain_swatch
+from hifipushie import terrain_stream_clutter, terrain_stream_water
 from hifipushie import terrain_style_fields
 from hifipushie import terrain_model
 from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs
@@ -124,8 +125,8 @@ def test_bed_shape_only_under_water(T, field, mats):
 
 def test_clutter_rules(T, field, mats):
     S = mats.streams
-    C = ts.clutter(T, mats, field)
-    assert np.array_equal(C, ts.clutter(T, mats, field), equal_nan=True), "not deterministic"
+    C = terrain_stream_clutter.clutter(T, mats, field)
+    assert np.array_equal(C, terrain_stream_clutter.clutter(T, mats, field), equal_nan=True), "not deterministic"
     kinds = list(ts.KINDS)
     n = {k: int((C[:, 3] == i).sum()) for i, k in enumerate(kinds)}
     assert n["river_rock"] > 5 and n["cobbles"] > 20 and n["driftwood"] >= 1, n
@@ -141,7 +142,7 @@ def test_clutter_rules(T, field, mats):
     share = C[rr, 10] / top
     assert (share >= 0).all() and share.max() < 0.5 and 0.15 < (share > 0.2).mean() < 0.5, (share.max(), (share > 0.2).mean())
     assert (C[C[:, 3] == kinds.index("reeds"), 10] == 0).all()
-    man = ts.manifest(S, C)
+    man = terrain_stream_clutter.manifest(S, C)
     assert man["columns"] == ts.CSV_COLUMNS and man["csv_version"] == 3
     fp = man["kinds"]["river_rock"]["footprint"]
     assert fp["shape"] == "ellipsoid" and len(fp["plan"]) == 2 and 0.3 < fp["height"] < 0.6
@@ -152,7 +153,7 @@ def test_clutter_rules(T, field, mats):
         assert np.median(C[wet, 4][riffle > 0.6]) > np.median(C[wet, 4][pool > 0.6])
     # a block of the level holds the same rows as the whole level does there
     box = [[64.0, 64.0], [192.0, 192.0]]
-    Cb = ts.clutter(T, mats, field, box=box)
+    Cb = terrain_stream_clutter.clutter(T, mats, field, box=box)
     ins = (C[:, 0] >= 64) & (C[:, 0] < 192) & (C[:, 1] >= 64) & (C[:, 1] < 192)
     grid_kinds = np.isin(C[:, 3], [kinds.index(k) for k in ("cobbles", "reeds", "litter")])  # (no thinning, no logs
     # caught on rocks: those look at neighbours across the box's edge)
@@ -179,7 +180,7 @@ def test_clutter_rules(T, field, mats):
     g = S.sample(rk[:, :2])
     inw = rk[:, 7] == 1
     assert np.all((g["level"] - rk[:, 2])[inw] > 0)
-    lines = ts.summary(S, C)
+    lines = terrain_stream_clutter.summary(S, C)
     assert any("brook" in ln and "river_rock" in ln for ln in lines), lines
     return n
 
@@ -190,7 +191,7 @@ def test_energy_sets_the_character(T, n_calm):
     T.spec["rivers"]["brook"]["bed"] = {"energy": 0.9}
     try:
         field, mats = _mats(T)
-        C = ts.clutter(T, mats, field)
+        C = terrain_stream_clutter.clutter(T, mats, field)
         kinds = list(ts.KINDS)
         rocks = int((C[:, 3] == kinds.index("river_rock")).sum())
         reeds = int((C[:, 3] == kinds.index("reeds")).sum())
@@ -251,7 +252,7 @@ def test_lake_shore_and_beach():
     assert far_in.sum() > 20 and np.median(lw("silt")[far_in]) > 0.8  # silt out in the lake, gravel by its shore
     foot = (h > lk["level"] + 0.05) & (h < lk["level"] + 0.3) & (g["sd"] < 2)
     assert foot.sum() > 5 and np.median(lw("bank")[foot]) > 0.3
-    C = ts.all_clutter(T, mats, field)
+    C = terrain_stream_clutter.all_clutter(T, mats, field)
     kinds = list(ts.KINDS)
     n = lambda k, sel=C: int((sel[:, 3] == kinds.index(k)).sum())
     lake = C[C[:, 8] == 0]
@@ -262,13 +263,13 @@ def test_lake_shore_and_beach():
     assert np.all(beach[:, 7] == ts.PLACES.index("shore")) and np.all(beach[:, 2] > 0.1)
     wr = beach[beach[:, 3] == kinds.index("wrack")]
     assert 0.6 < np.median(wr[:, 2]) < 2.0, np.median(wr[:, 2])  # along the high water mark
-    lines = ts.summary(S, C)
+    lines = terrain_stream_clutter.summary(S, C)
     assert any("sea beaches" in ln for ln in lines) and any("lake pond" in ln for ln in lines), lines
     return {k: n(k) for k in kinds if n(k)}
 
 
 def test_swatches_and_styles():
-    for fn in (ts.cobble_swatch, ts.silt_swatch):
+    for fn in (terrain_stream_water.cobble_swatch, terrain_stream_water.silt_swatch):
         S = fn()
         a = np.round(np.clip(0.5 * S["albedo"], 0, 1) * 255).astype(np.uint8)
         assert max(terrain_swatch.tileability(a)) < 1.5, (fn.__name__, terrain_swatch.tileability(a))

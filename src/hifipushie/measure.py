@@ -410,7 +410,7 @@ def doorways(spec: dict, min_height: float = 1.6) -> list[dict]:
     """Door openings: box cuts with targets (subtract), taller than `min_height`, whose bottom is within 0.3 m of
     the floor through them. [{"name", "at" (floor centre), "across" (unit, horizontal, through the wall), "width",
     "height"}]."""
-    from .assemble import expand
+    from .assemble_expand import expand
     from .spec import euler_matrix
     s = expand_mirror(expand(spec))
     out = []
@@ -484,7 +484,7 @@ def prop_clashes(spec: dict, voxel: float = 0.015, tol: float = 0.008) -> list[s
     Contact isn't a clash: things set down "on" a support, or touching, stay under tol. A prefab made to sit into
     things (a window or door frame in its wall: prefabs.<p>.embed = true) isn't checked, and parts that give
     (parts.<p>.soft = true: rugs, bedding, cushions) aren't clashed into."""
-    from .assemble import placements
+    from .assemble_expand import placements
     from .sdf import SDF
     prims = compile_prims(spec)
     pls = placements(spec)

@@ -21,6 +21,7 @@ from hifipushie import hair_groom, hair_head, hair_seat
 from hifipushie import hair_cards as hc  # noqa: E402
 from hifipushie import hair_cards_mass
 from hifipushie import hair_strands as hs  # noqa: E402
+from hifipushie import hair_strands_guides
 
 
 def _ball_head(step=0.01):
@@ -410,7 +411,7 @@ def test_curl_never_folds():
     ph = hs.physical(S, free=True)
     assert ph["wave"] <= 0.35 * 0.012 + 1e-9, ph["wave"]
     lk = _lock("l0", [[0, 0.1, 0], [0, 0.1, -0.05], [0, 0.1, -0.1]])
-    G = hs.lock_guides([lk], np.zeros(3), S)["free"]
+    G = hair_strands_guides.lock_guides([lk], np.zeros(3), S)["free"]
     assert G["counts"][0] >= 8 * 0.1 / 0.012 - 1, G["counts"]
     off = np.linalg.norm(G["pts"][:, [0, 1]] - np.array([0, 0.1]), axis=1)
     assert off.max() < 0.3 * 0.012 * 2.3, off.max()

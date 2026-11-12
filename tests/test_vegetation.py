@@ -330,31 +330,32 @@ def test_tools_and_export(tmp=None):
     import struct
     import tempfile
     from hifipushie import store, veg_tools as vt
+    from hifipushie import veg_tools_look, veg_tools_report, veg_tools_scene
     old = store.HOME
     with tempfile.TemporaryDirectory() as d:
         store.HOME = __import__("pathlib").Path(d)
         try:
             assert vt.save("t1", {"species": "birch", "age": 20}) == 1
-            r = vt.report("t1")
+            r = veg_tools_report.report("t1")
             assert "form (in leaf" in r and "limbs:" in r and "foliage:" in r
             n0 = vt.grown("t1")["stats"]["nodes"]
-            v2 = vt.edit("t1", [{"op": "guide", "name": "low", "path": [[0, 0, 3], [2, 0, 4], [4.5, 0, 4.4]], "from_year": 5,
+            v2 = veg_tools_scene.edit("t1", [{"op": "guide", "name": "low", "path": [[0, 0, 3], [2, 0, 4], [4.5, 0, 4.4]], "from_year": 5,
                                  "until_year": 15},
                                 {"op": "prune", "above": 8.0}, {"op": "set", "path": "habit.jitter.1", "value": 0.4},
                                 {"op": "set", "path": "seed", "value": 3}])
             assert v2 == 2 and vt.load("t1")["habit"]["jitter"][1] == 0.4 and vt.load("t1")["seed"] == 3
-            r = vt.report("t1")
+            r = veg_tools_report.report("t1")
             assert "guide low: order 1" in r and "drawn to its end" in r
             assert vt.grown("t1")["pos"][:, 2].max() < 8.0 + 1.0 and vt.grown("t1")["stats"]["nodes"] != n0
             for bad in ([{"op": "guide", "name": "x"}], [{"op": "nonsense"}], [{"op": "remove_guide", "name": "nope"}],
                         [{"op": "set", "path": "habit.wibble", "value": 1}]):
                 try:
-                    vt.edit("t1", bad)
+                    veg_tools_scene.edit("t1", bad)
                     raise AssertionError(f"accepted {bad}")
                 except ValueError:
                     pass
             assert len(vt.history("t1")) == 2 and vt.revert("t1", 1) == 3 and "guides" not in vt.load("t1")
-            c = vt.export("t1")
+            c = veg_tools_look.export("t1")
             raw = open(c["path"], "rb").read()
             magic, ver, total = struct.unpack("<4sII", raw[:12])
             assert magic == b"glTF" and ver == 2 and total == len(raw)
@@ -432,6 +433,7 @@ def test_budget_is_what_is_written():
 def test_named_limbs_take_and_sets():
     import tempfile
     from hifipushie import store, veg_tools as vt
+    from hifipushie import veg_tools_look, veg_tools_report, veg_tools_scene
     old = store.HOME
     with tempfile.TemporaryDirectory() as tmp:
         store.HOME = __import__("pathlib").Path(tmp)
@@ -441,7 +443,7 @@ def test_named_limbs_take_and_sets():
             lb = vegetation_tree.limbs(T)
             assert len(lb) >= 3 and len({L["name"] for L in lb}) == len(lb)
             L = max(lb, key=lambda q: q["diameter"])
-            vt.edit("o", [{"op": "take_limb", "limb": L["name"], "name": "mine"}])
+            veg_tools_scene.edit("o", [{"op": "take_limb", "limb": L["name"], "name": "mine"}])
             T2 = vt.grown("o")
             g = vt.load("o")["guides"]["mine"]
             ai = T2["guides"]["mine"]
@@ -449,13 +451,13 @@ def test_named_limbs_take_and_sets():
             assert np.linalg.norm(T2["pos"][nodes[-1]] - np.array(g["path"][-1])) < 0.3  # same end as the grown limb's
             assert np.linalg.norm(np.array(g["path"][-1]) - np.array(L["end"])) < 0.05
             assert not (T2["key"] == np.uint64(int(L["key"]))).any()  # the shoot it replaces is not grown beside it
-            assert "mine (drawn)" in vt.report("o")
+            assert "mine (drawn)" in veg_tools_report.report("o")
             # a set: deterministic, different plants, the hero's guide dropped, one file
             vt.save("o", patch={"set": {"count": 3}})
             a, b = vt.load("o#1"), vt.load("o#3")
             assert a["seed"] != b["seed"] and a["age"] < b["age"] and "guides" not in a and vt.load("o#1") == a
             assert vt.grown("o#1")["height"] < vt.grown("o#3")["height"]
-            c = vt.export_set("o", triangles=3000)
+            c = veg_tools_look.export_set("o", triangles=3000)
             assert len(c["plants"]) == 3 and all(q["wood_triangles"] + q["foliage_triangles"] <= 3000 for q in c["plants"])
             try:
                 vt.save("o#1", patch={"age": 3})
@@ -472,6 +474,7 @@ def test_blender_round_trip():
     import subprocess
     import tempfile
     from hifipushie import render, store, veg_tools as vt
+    from hifipushie import veg_tools_scene
     os_ = __import__("os")
     old, nl = store.HOME, os_.environ.get("HIFIPUSHIE_NO_LIVE")
     os_.environ["HIFIPUSHIE_NO_LIVE"] = "1"
@@ -479,7 +482,7 @@ def test_blender_round_trip():
         store.HOME = __import__("pathlib").Path(tmp)
         try:
             vt.save("r", {"species": "birch", "age": 22, "guides": {"g": {"path": [[0, 0, 3], [1.5, 0, 4], [3, 0, 4.5]], "from_year": 6}}}, note="t")
-            r = vt.sync("r")
+            r = veg_tools_scene.sync("r")
             assert r["pulled"] == [] and r["guides"] == 1 and r["limbs"] >= 1
             code = ("import bpy\nfrom mathutils import Vector\n"
                     "g = bpy.data.collections['guides']; l = bpy.data.collections['limbs']\n"
@@ -490,13 +493,13 @@ def test_blender_round_trip():
                     "g.objects.link(bpy.data.objects.new('new one', cu))\nbpy.ops.wm.save_mainfile()\n")
             q = subprocess.run([render.BLENDER, "-b", r["blend"], "--python-expr", code], capture_output=True, text=True)
             assert q.returncode == 0, q.stderr[-500:]
-            came = vt.pull("r")
+            came = veg_tools_scene.pull("r")
             assert len(came) == 3, came
             sp = vt.load("r")
             assert abs(sp["guides"]["g"]["path"][-1][2] - 6.0) < 1e-3 and "new_one" in sp["guides"]
             assert any(k.startswith("limb_") and gd.get("replaces") for k, gd in sp["guides"].items())
-            assert vt.pull("r") == []  # (not yet re-synced: still nothing twice)
-            assert vt.sync("r")["pulled"] == [] and vt.pull("r") == []
+            assert veg_tools_scene.pull("r") == []  # (not yet re-synced: still nothing twice)
+            assert veg_tools_scene.sync("r")["pulled"] == [] and veg_tools_scene.pull("r") == []
         finally:
             store.HOME = old
             vt._GROWN.clear()
@@ -570,6 +573,7 @@ def test_budget_keeps_marked_wood_and_cards_on_wood():
 def test_limb_ids_last_and_report_says():
     import tempfile
     from hifipushie import store, veg_tools as vt
+    from hifipushie import veg_tools_report, veg_tools_scene
     old = store.HOME
     with tempfile.TemporaryDirectory() as tmp:
         store.HOME = __import__("pathlib").Path(tmp)
@@ -582,15 +586,15 @@ def test_limb_ids_last_and_report_says():
             assert sp["dead"][0]["limb"] == L["id"] and L["id"].startswith("L")  # stored by its lasting id
             D = vt.grown("d")
             p0 = D["pos"][D["axes"][vegetation_tree.find_limb(D, L["id"])]["node"]]
-            vt.edit("d", [{"op": "set", "path": "habit.jitter", "value": [0.05, 0.3, 0.3, 0.2]}])
+            veg_tools_scene.edit("d", [{"op": "set", "path": "habit.jitter", "value": [0.05, 0.3, 0.3, 0.2]}])
             D2 = vt.grown("d")
             ai = vegetation_tree.find_limb(D2, L["id"])
             assert ai is not None and np.linalg.norm(D2["pos"][D2["axes"][ai]["node"]] - p0) < 1.0  # the same bud's limb
             assert D2["dead"][D2["axes"][ai]["node"]]
-            r = vt.report("d")
+            r = veg_tools_report.report("d")
             assert "dead wood (limb " + L["id"] in r and "lowest wood:" in r and "(id L" in r
             vt.save("d", patch={"dead": [{"limb": "Lzzzz"}]})
-            assert "is not on this tree any more" in vt.report("d")
+            assert "is not on this tree any more" in veg_tools_report.report("d")
             # a fat trunk under ordinary limbs
             a = vegetation_grow.grow({**base, "trunk_diameter": 1.2})
             b = vegetation_grow.grow({**base, "trunk_diameter": 1.2, "limb_diameter": 0.2})

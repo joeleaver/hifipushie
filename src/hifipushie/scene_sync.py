@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from . import assemble, render, sdf, store
+from . import assemble_expand
 from . import asset_split
 from .spec import SpecError
 from . import scene
@@ -52,7 +53,7 @@ def pull(name: str, log: list | None = None) -> dict:
             store.save(name, spec, "from the Blender scene: " + ", ".join(changes))
         _restamp_hair(name, hair_changed, log)
         return changes
-    pls = assemble.placements(spec)
+    pls = assemble_expand.placements(spec)
     for inst, m in moved.items():
         d = (spec.get("instances") or {}).get(inst)
         fw = (pls.get(inst) or {}).get("from_wall")
@@ -88,7 +89,7 @@ def pull(name: str, log: list | None = None) -> dict:
             off = abs(float(M[2, 3]) - float(pls[inst]["at"][2])) > 0.01
             if not off:
                 try:
-                    assemble.expand(spec)
+                    assemble_expand.expand(spec)
                 except SpecError:
                     off = True
             if off:

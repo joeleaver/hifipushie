@@ -2,14 +2,14 @@
 (terrain_stream; pushieworld note 110's last line: "same question for the lake shore and the beach (driftwood,
 pebbles, wrack line)").
 
-- Lakes (not the sea): `still_waters` gives each lake's wet cells and level; terrain_stream.Streams adds them to its
+- Lakes (not the sea): `still_waters` gives each lake's wet cells and level; terrain_stream_streams.Streams adds them to its
   grids as still water (energy 0, no pools / riffles / bars / cut banks, no bed shape): the shallows' bed is gravel
   near the water's edge and silt further in, the shore's foot damp; clutter: reeds and sedge along the margin,
   cobble patches at the water line, a few rounded rocks, a little driftwood and litter.
 - Sea beaches: `beach_clutter`: where the tiles paint sand above the water near the coast: `pebbles` (a patch of
   beach pebbles: on the shingle patches up the beach and thinly lower down), `wrack` (a strip of weed and drift lying
   along the high water mark, where terrain_ground.tint paints the wrack line), `driftwood` (logs above the wrack
-  line, lying along the shore). Rows as terrain_stream.clutter's, place "shore"."""
+  line, lying along the shore). Rows as terrain_stream_clutter.clutter's, place "shore"."""
 
 from __future__ import annotations
 

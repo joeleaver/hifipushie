@@ -456,7 +456,7 @@ def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, 
     `lods` mesh LODs + an impostor), the floor's meshes (brash and stumps as OBJ, the fern as a GLB) and layout.json
     (every tree's and floor thing's place, the LOD distances). A heavy job: one at a time on the machine."""
     from pathlib import Path
-    from . import resources, veg_tools
+    from . import resources
     from . import veg_export_glb
     s = st["spec"]
     out = Path(out_dir)
@@ -491,7 +491,7 @@ def export(st: dict, out_dir: str, triangles: int | None = None, lods: int = 3, 
 
 
 def _impostor(tree: dict, path) -> dict:
-    """A tree's picture for its last LOD (transparent, from the side), as veg_tools.impostor makes a stored plant's."""
+    """A tree's picture for its last LOD (transparent, from the side), as veg_tools_look.impostor makes a stored plant's."""
     from PIL import Image
     from . import veg_look
     H = float(tree["height"])

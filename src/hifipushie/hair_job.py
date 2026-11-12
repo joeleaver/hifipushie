@@ -95,12 +95,12 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
         out["cards"] = hair_cards_job.cards_job(sc, g, spec, locks, tmp, V, F, budget=budget, cap_step=cap_step, col=colc,
                                  clear_col=body)
     if h.get("style") == "strands" and stage != "mass":
-        from . import hair_strands
+        from . import hair_strands_job
         col = None
         if g.get("loose") or needs_body(g):
             from . import hair_loose
             col = hair_loose.collider(name, spec, sc)
-        out["strands"] = hair_strands.job(sc, g, spec, locks, tmp, count=count, col=col)
+        out["strands"] = hair_strands_job.job(sc, g, spec, locks, tmp, count=count, col=col)
     return out
 
 

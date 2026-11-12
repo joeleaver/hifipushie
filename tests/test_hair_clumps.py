@@ -10,7 +10,7 @@ from hifipushie import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_
 
 def _groom(n_per=60, waves=True, seed=0):
     """Two locks of wavy strands lying side by side over a 'scalp' (z = 0), combed along -y, roots either side of a
-    part at x = 0; plus a few single hairs. D like hair_strands.strands_of_model's."""
+    part at x = 0; plus a few single hairs. D like hair_strands_eval.strands_of_model's."""
     rng = np.random.default_rng(seed)
     pts, counts, lock, sub, rand, obj = [], [], [], [], [], []
     for li, x0 in enumerate((-0.02, 0.02)):

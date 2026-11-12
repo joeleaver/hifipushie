@@ -497,9 +497,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
             C = terrain_ground.clutter(T, mats, base, ks, box=cb)
             # (a stream's rocks, cobbles, driftwood, reeds, a lake's margin, a beach's pebbles and wrack:
-            # terrain_stream.all_clutter)
+            # terrain_stream_clutter.all_clutter)
             from . import terrain_stream
-            SC = terrain_stream.all_clutter(T, mats, base, box=cb) if terrain_stream.config(T) is not None else None
+            from . import terrain_stream_clutter, terrain_stream_water
+            SC = terrain_stream_clutter.all_clutter(T, mats, base, box=cb) if terrain_stream.config(T) is not None else None
             if SC is not None and not len(SC) and mats.streams is None:
                 SC = None
             with open(out / "clutter.csv", "w") as f:
@@ -523,12 +524,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                                  "breaking through near cliff lips)"}},
                            "columns": terrain_stream.CSV_COLUMNS, "csv_version": terrain_stream.CSV_VERSION}
             if SC is not None:
-                sm = terrain_stream.manifest(mats.streams, SC)
+                sm = terrain_stream_clutter.manifest(mats.streams, SC)
                 clutter_sec = {**sm, "kinds": {**clutter_sec["kinds"], **sm["kinds"]}, "columns": clutter_sec["columns"],
                                "csv_version": clutter_sec["csv_version"]}
                 if mats.streams is not None:
                     notes.extend(mats.streams.report())
-                notes.extend(terrain_stream.summary(mats.streams, SC, cb))
+                notes.extend(terrain_stream_clutter.summary(mats.streams, SC, cb))
 
     # ---- 5. trees and the manifest
     _st = prof.stage("trees + layer textures (parent)")
@@ -695,7 +696,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if getattr(T, "falls", None):  # (waterfalls: for the engine's falling sheet and spray; terrain_falls)
         from . import terrain_falls
         from . import terrain_stream
-        wr = terrain_stream.wet_design(T)["pools"] or [None] * len(T.falls)
+        from . import terrain_stream_clutter, terrain_stream_water
+        wr = terrain_stream_water.wet_design(T)["pools"] or [None] * len(T.falls)
         manifest["falls"] = {"falls": [{**f, "pool": {**f["pool"], "wet_radius": r}} if f.get("pool") and r is not None
                                        else f for f, r in zip(T.falls, wr)], "note": terrain_falls.META_NOTE}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",

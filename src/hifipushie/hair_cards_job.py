@@ -77,13 +77,13 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         shell_n = int((shell_o.get("tiers") or {}).get(tier_name or "", hair.SHELL_TIERS.get(tier_name or "hero", 2)))
     shell_maps, shell_key = None, ""
     if S.get("source", "groom") == "groom":  # the pictures are the groom's own strands (hair_strands.py)
-        from . import hair_strands as hs
+        from . import hair_strands_eval, hair_strands_job
         import re as _re
-        sd = hs.job(sc, g, spec, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])], tmp, col=col)
-        D, e_chart = hs.strands_of_model(sd), sd["e0"]
+        sd = hair_strands_job.job(sc, g, spec, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])], tmp, col=col)
+        D, e_chart = hair_strands_eval.strands_of_model(sd), sd["e0"]
         if short or (short_len and hair.EVEN_SHORT_CAP):  # the cap's picture is BAKED from the strands: colour, depth, normal, flow, grey (hair_cap.py)
             from . import hair_cap
-            ck = (hs.key(sd), int(S["atlas"]), hair_cap.VERSION, hair_cap.BASE_IN, hair_cap.BASE_RAMP, hair_cap.KEEP_SOFT, hair_cap.THIN_SOFT, lk.get("grey_locks"), lk.get("grey_amount"), lk.get("card_grey"), float(S["soft"]))
+            ck = (hair_strands_job.key(sd), int(S["atlas"]), hair_cap.VERSION, hair_cap.BASE_IN, hair_cap.BASE_RAMP, hair_cap.KEEP_SOFT, hair_cap.THIN_SOFT, lk.get("grey_locks"), lk.get("grey_amount"), lk.get("card_grey"), float(S["soft"]))
             if ck not in hair._CHARTS:
                 hair._CHARTS.clear()
                 hair._CHARTS[ck] = hair_cap.chart(sc, g, hairline(sc, g), S, D, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])],
@@ -115,11 +115,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                     shell_key += "_trim" + hashlib.sha1(json.dumps([fade_o["trim"], fade_o.get("trim_soft_mm"), fade_o.get("trim_breakup_mm"), fade_o.get("seed")]).encode()).hexdigest()[:8]
                     print(f"hair fade: cap / shells trimmed below {fade_o['trim']}", flush=True)
         else:
-            chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
-        akey_ = hs.key(sd) + (f"short{hair_cap.VERSION}_{hair_cap.BASE_IN}_{hair_cap.BASE_RAMP}_{hair_cap.KEEP_SOFT}_{hair_cap.THIN_SOFT}" if short or (short_len and hair.EVEN_SHORT_CAP) else "")
+            chart = hair_strands_eval.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
+        akey_ = hair_strands_job.key(sd) + (f"short{hair_cap.VERSION}_{hair_cap.BASE_IN}_{hair_cap.BASE_RAMP}_{hair_cap.KEEP_SOFT}_{hair_cap.THIN_SOFT}" if short or (short_len and hair.EVEN_SHORT_CAP) else "")
 
         def make_atlas(bake=None):
-            return hair_cards_atlas.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=akey_ + shell_key, bake=bake, shells=shell_maps or None)
+            return hair_cards_atlas.atlas(S, lk, lines=hair_strands_eval.tile_lines(S), cap=chart, key=akey_ + shell_key, bake=bake, shells=shell_maps or None)
         at = make_atlas()
     else:
         at = hair_cards_atlas.atlas(S, lk)

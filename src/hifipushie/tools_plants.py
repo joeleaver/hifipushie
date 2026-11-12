@@ -18,11 +18,12 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     copy_from starts from another plant. name only: the stored report; "" lists plants and species. Details:
     guide(topic="grow_plant")."""
     from . import veg_tools as vt
+    from . import veg_tools_report
     from . import vegetation
     if not name:
         return json.dumps({"plants": vt.list_plants(), "species": {k: vegetation.preset(k).get("about", "") for k in vegetation.species()}}, indent=1)
     if spec is None and patch is None and not copy_from:
-        return vt.report(name)
+        return veg_tools_report.report(name)
     exists = (vt._dir(name) / "plant.json").exists()
     prev = vt.load(name) if exists else None
     stats = vt.grown(name)["stats"] if exists else None
@@ -32,10 +33,10 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     else:
         new = _spec_arg(spec) if spec is not None else vt.merge(prev or {}, _spec_arg(patch))
     if prev is not None and prev == new:
-        return f"plant {name}: nothing changed (still v{len(vt.history(name))})\n" + vt.report(name)
+        return f"plant {name}: nothing changed (still v{len(vt.history(name))})\n" + veg_tools_report.report(name)
     v = vt.save(name, new, note=note or (f"copy of {copy_from}" if copy_from else "grow_plant" if spec is not None else "patch"))
     ch = vt.change_note(name, prev if not copy_from else vt.load(copy_from), stats)
-    return f"saved plant {name} v{v}" + (f" (a copy of {copy_from})" if copy_from else "") + "\n" + (ch + "\n" if ch else "") + vt.report(name)
+    return f"saved plant {name} v{v}" + (f" (a copy of {copy_from})" if copy_from else "") + "\n" + (ch + "\n" if ch else "") + veg_tools_report.report(name)
 
 
 @mcp.tool(structured_output=False)
@@ -44,9 +45,10 @@ def edit_plant(name: str, ops: list[dict], note: str = "") -> str:
     remove_prune / clear_prunes, cut (pollard, coppice), dead / clear_dead, envelope, force / clear_forces, set
     {path, value}. Details: guide(topic="edit_plant")."""
     from . import veg_tools as vt
+    from . import veg_tools_report, veg_tools_scene
     before, prev = vt.grown(name)["stats"], vt.load(name)
-    v = vt.edit(name, ops, note)
-    return f"plant {name} v{v}\n" + vt.change_note(name, prev, before) + "\n" + vt.report(name)
+    v = veg_tools_scene.edit(name, ops, note)
+    return f"plant {name} v{v}\n" + vt.change_note(name, prev, before) + "\n" + veg_tools_report.report(name)
 
 
 @mcp.tool(structured_output=False)
@@ -56,12 +58,13 @@ def look_plant(name: str, views: list | None = None, azimuth: float = 0.0, size:
     size, foliage "cards"|"mesh", triangles (as exported), sheet=True (reference sheet). Details:
     guide(topic="look_plant")."""
     from . import veg_tools as vt
-    got = vt.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet, triangles)
+    from . import veg_tools_look, veg_tools_report
+    got = veg_tools_look.look(name, tuple(views or ("clay", "leaf", "far")), azimuth, size, foliage, sheet, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
-    rep = vt.report(name)
+    rep = veg_tools_report.report(name)
     T = vt.grown(name)
     if triangles and not T.get("clump") and not sheet:  # the budgeted plant's own cards against the ground
-        g_, w_ = vt.ground_lines(T, triangles)
+        g_, w_ = veg_tools_report.ground_lines(T, triangles)
         rep += "\n" + "\n".join(g_ + w_)
     out.append(rep + "\n" + "\n".join(f"{k}: {p}" for k, p in got))
     return out
@@ -72,9 +75,9 @@ def look_plants(names: list[str], at: list | None = None, spacing: float | None 
                 azimuth: float = 0.0, size: int = 640, foliage: str | None = None, triangles: int | None = None):
     """Several plants together in one picture: names (or "set#*"), at [[x,y]] or spacing, views, azimuth, size,
     foliage, triangles. Details: guide(topic="look_plants")."""
-    from . import veg_tools as vt
-    names = [m for n in names for m in (vt.set_names(n[:-2]) if n.endswith("#*") else [n])]
-    got = vt.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage, triangles)
+    from . import veg_tools_look, veg_tools_report
+    names = [m for n in names for m in (veg_tools_report.set_names(n[:-2]) if n.endswith("#*") else [n])]
+    got = veg_tools_look.look_group(names, at, spacing, tuple(views or ("far",)), azimuth, size, foliage, triangles)
     out = [_out(PILImage.open(p), None) for _, p in got]
     out.append("\n".join(f"{k}: {p}" for k, p in got))
     return out
@@ -97,7 +100,6 @@ def look_stand(name: str, views: list | None = None, size: int = 720, max_full: 
     """Pictures of a stand (2-8 min): views inside, aisle, edge, above, canopy or a camera; size, max_full (trees at
     full detail). Details: guide(topic="look_stand")."""
     from . import veg_stand
-    from . import veg_tools as vt
     st = veg_stand.grow(veg_stand.load(name))
     stem = str(veg_stand.home() / name / "look")
     r = veg_stand.look(st, tuple(views or ("inside",)), stem, size=size, max_full=max_full)
@@ -178,11 +180,12 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
     outline against it; fit {habit path: [lo, hi]} searches habit numbers (fit_iters). credit. Details:
     guide(topic="plant_reference")."""
     from . import veg_tools as vt
+    from . import veg_tools_report
     from . import vegetation_fit, vegetation_measures
     mask = {"polygon": polygon} if polygon else {"crop": crop, "foot": foot, "tol": tol, "horizon": horizon}
     if not polygon and (crop is None or foot is None):
         raise ValueError("give polygon (a traced outline), or crop [x0, y0, x1, y1] + foot (the trunk's x)")
-    ref = vt.set_reference(name, image_path, mask, bare, credit)
+    ref = veg_tools_report.set_reference(name, image_path, mask, bare, credit)
     msg = ""
     if fit:
         R = vegetation_measures.reference_mask(ref["image"], **ref["mask"])
@@ -190,7 +193,7 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
         r = vegetation_fit.fit_habit(vt.load(name), R, fit, bare=bare, iters=int(fit_iters), directions=dirs)
         v = vt.save(name, patch={"habit": r["habit"]}, note="fit to reference")
         msg = f"fitted v{v}: outline IoU {r['iou']} with habit {json.dumps(r['habit'])}\n"
-    return msg + vt.report(name)
+    return msg + veg_tools_report.report(name)
 
 
 @mcp.tool(structured_output=False)
@@ -201,31 +204,32 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     impostor (octahedral | "cross"), seasons, wet, lod_files, set (one file for a set), grade "groundcover"; swards
     export as tiles. Details: guide(topic="export_plant")."""
     from . import veg_tools as vt
+    from . import veg_tools_look
     from . import veg_export as _ve
     vt_contract = lambda: _ve.CONTRACT
     if set:
-        c = vt.export_set(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet)
+        c = veg_tools_look.export_set(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet)
         return (f"exported {c['path']} ({c['bytes'] / 1e6:.1f} MB): {len(c['plants'])} plants, {c['total']} triangles in all (LOD 0), "
                 f"one bark + one foliage material\n" + "\n".join(
                     f"  {q['name']}: {q['height_m']} m, " + "; ".join(f"LOD{l_['lod']} {l_['triangles']}" for l_ in q["lods"]) + " triangles"
                     + (f", {q['floating']:.0%} of the cards floating" if q.get("floating", 0) > 0.2 else "")
                     for q in c["plants"]))
     if vt.grown(name).get("sward"):
-        c = vt.export(name, out_dir, seasons=tuple(seasons or ()))
+        c = veg_tools_look.export(name, out_dir, seasons=tuple(seasons or ()))
         return (f"exported the sward {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
                 + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['triangles_per_m2']:.0f} per m2, {l_['blades']} blades)" for l_ in c["lods"])
                 + f"\na {c['sward']['tile_m']:g} m TILE: lay tiles edge to edge, quarter turns; fade into the terrain's grass texture "
                   f"{c['sward']['fade']['start']}-{c['sward']['fade']['end']} m (recipe + root / tip colours in the seasons json `sward`)\n"
                 + "files: " + ", ".join(Path(f).name for f in c["files"]))
     if grade == "groundcover":
-        c = vt.export(name, out_dir, seasons=tuple(seasons or ()), grade="groundcover")
+        c = veg_tools_look.export(name, out_dir, seasons=tuple(seasons or ()), grade="groundcover")
         return (f"exported the groundcover grade of {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
                 + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['planes']} cards)" for l_ in c["lods"])
                 + f"; clump {c['H']:.2f} m tall, {2 * c['R']:.2f} m across; atlas {c['atlas'][0]} x {c['atlas'][1]} per season\n"
                 + "files: " + ", ".join(Path(f).name for f in c["files"])
                 + "\nENGINE: import the PNGs without mipmaps, or with them + the mip-scaled alpha (material extras.alpha_mips); "
                   "turn mesh LOD generation off for these files")
-    c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
+    c = veg_tools_look.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
                   lod_files=lod_files)
     gl = []
     for mesh, g_ in (c.get("ground") or {}).items():
@@ -298,8 +302,8 @@ def wind_plant(name: str, triangles: int | None = 20000, seconds: float = 4.0, s
                wind_from: float = 270.0, azimuth: float = 0.0):
     """Sway the exported plant from its own wind channels as a game would: a six-frame strip + mp4. triangles, seconds,
     strength (0.3 breeze .. 2 gale), wind_from (bearing), azimuth. Details: guide(topic="wind_plant")."""
-    from . import veg_tools as vt
-    r = vt.wind(name, triangles, seconds, 12, strength, wind_from, azimuth)
+    from . import veg_tools_look
+    r = veg_tools_look.wind(name, triangles, seconds, 12, strength, wind_from, azimuth)
     imp = [o for o in r["import"]["objects"] if o.get("type") == "MESH"]
     txt = (f"wind: {r['n']} frames at 12 fps -> {r.get('mp4', '(no ffmpeg: frames in ' + r['frames'] + ')')}\nstrip: {r['strip']}\n"
            f"{r['moved_share']:.0%} of the picture changes against frame 0 (mean over the clip)\n"
@@ -316,17 +320,18 @@ def sync_plant(name: str, pull_only: bool = False) -> str:
     """Round-trip the plant through plant.blend: guide/limb curve edits come back into the spec, then the file is
     rewritten (pull_only skips that). Details: guide(topic="sync_plant")."""
     from . import veg_tools as vt
+    from . import veg_tools_report, veg_tools_scene
     before, prev = vt.grown(name)["stats"], vt.load(name)
     if pull_only:
-        came, head = vt.pull(name), ""
+        came, head = veg_tools_scene.pull(name), ""
     else:
-        r = vt.sync(name)
+        r = veg_tools_scene.sync(name)
         came = r["pulled"]
         head = (f"wrote {r['blend']} ({r['guides']} guide curves, {r['limbs']} limb curves"
                 + (", the running Blender reloaded it" if r["live"] else "") + ")\n")
     if not came:
         return head + "nothing was changed in Blender since the last sync"
-    return head + "from Blender:\n" + "\n".join(f"  {c}" for c in came) + "\n" + vt.change_note(name, prev, before) + "\n" + vt.report(name)
+    return head + "from Blender:\n" + "\n".join(f"  {c}" for c in came) + "\n" + vt.change_note(name, prev, before) + "\n" + veg_tools_report.report(name)
 
 
 @mcp.tool(structured_output=False)
@@ -334,7 +339,8 @@ def plant_history(name: str, revert_to: int | None = None) -> str:
     """List a plant's versions, or restore one (revert_to; saved as a new version). Details:
     guide(topic="plant_history")."""
     from . import veg_tools as vt
+    from . import veg_tools_report
     if revert_to is not None:
         v = vt.revert(name, revert_to)
-        return f"plant {name} v{v} = v{revert_to}\n" + vt.report(name)
+        return f"plant {name} v{v} = v{revert_to}\n" + veg_tools_report.report(name)
     return "\n".join(f"v{h['version']}  {h['note']}" for h in vt.history(name))

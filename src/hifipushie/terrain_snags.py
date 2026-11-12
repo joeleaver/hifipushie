@@ -112,7 +112,8 @@ def snags(S, field, rocks, trees_xy, zone_box, seed=19, dens=1.0):
     """Snag and limb rows (terrain_stream's 11 columns) and their capsules (n, CAP_COLS), for the box
     [x0, x1, y0, y1] of the stream zone. rocks: the river_rock rows placed (the boulders limbs catch on, and must
     not pass through); trees_xy: tree positions (wooded reaches), or None."""
-    from .terrain_stream import KINDS as SK, PLACES, _thin
+    from .terrain_stream import KINDS as SK, PLACES
+    from .terrain_stream_clutter import _thin
     kinds = list(SK)
     zx0, zx1, zy0, zy1 = zone_box
     rows, caps = [], []

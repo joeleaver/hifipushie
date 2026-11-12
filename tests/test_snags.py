@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain_mesh as tm, terrain_snags, terrain_stream
+from hifipushie import terrain_stream_clutter
 from hifipushie import terrain_model
 from hifipushie import terrain_materials, terrain_tile_jobs
 
@@ -31,7 +32,7 @@ def test_snags(T):
     cfg = dict(tm.DEFAULTS)
     base, vols, notes, caves = terrain_tile_jobs.build_field(T, cfg)
     mats = terrain_materials.Materials(T, base)
-    C = terrain_stream.all_clutter(T, mats, base)
+    C = terrain_stream_clutter.all_clutter(T, mats, base)
     kinds = list(terrain_stream.KINDS)
     assert C.shape[1] == terrain_stream.COLS == 18
     cap = np.isin(C[:, 3], [kinds.index("snag"), kinds.index("limb")])
@@ -67,7 +68,7 @@ def test_snags(T):
     yaw = np.degrees(np.arctan2(p1[:, 1] - p0[:, 1], p1[:, 0] - p0[:, 0])) % 360
     assert np.abs((S[:, 5] - yaw + 180) % 360 - 180).max() < 1e-6
     # the manifest says what they are and how to stamp them
-    m = terrain_stream.manifest(mats.streams, C)
+    m = terrain_stream_clutter.manifest(mats.streams, C)
     assert m["csv_version"] == 3 and m["columns"].endswith("x0,y0,z0,x1,y1,z1,diameter")
     assert m["kinds"]["snag"]["footprint"]["shape"] == "capsule" and "capsule" in m["how"]
     return n_snag, n_limb

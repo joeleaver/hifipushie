@@ -143,7 +143,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         cols.append(_tile(kind, w, H, S, rng, lines=(lines or {}).get(len(cols)), short=bool(S.get("short"))))
         tiles.append({"kind": kind, "u0": (x + 2.0) / size, "u1": (x + w - 2.0) / size})
         x += w
-    if cap is not None:  # the scalp's own chart beside the tiles (hair_strands.cap_chart): the atlas is 2 : 1
+    if cap is not None:  # the scalp's own chart beside the tiles (hair_strands_eval.cap_chart): the atlas is 2 : 1
         from PIL import Image
         rs = lambda m: np.asarray(Image.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(  # noqa: E731
             (size, H), Image.BILINEAR), np.float32) / 255

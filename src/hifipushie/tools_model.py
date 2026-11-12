@@ -251,10 +251,10 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
                               keep)
         imgs = [im if "eye" in f else render.draw_strokes(im, f, paths) for im, f in zip(imgs, frames)]
     if instances:
-        from . import assemble
+        from . import assemble_expand
         marks = []
-        for inst, pl in assemble.placements(store.load(name)).items():
-            M = assemble.world_of(pl)
+        for inst, pl in assemble_expand.placements(store.load(name)).items():
+            M = assemble_expand.world_of(pl)
             fr = M[:3, :3] @ [0.0, -1.0, 0.0]
             marks.append({"label": inst, "at": M[:3, 3], "front": fr / (np.linalg.norm(fr) or 1)})
         imgs = [im if "eye" in f else render.draw_instances(im, f, marks) for im, f in zip(imgs, frames)]
@@ -425,7 +425,8 @@ def check(name: str, resolution: int = 160, save: str | None = None, only_parts:
     if spec.get("scatter"):
         import hashlib
         from . import assemble
-        assemble.expand(spec)
+        from . import assemble_expand
+        assemble_expand.expand(spec)
         notes = assemble.NOTES.get(hashlib.sha1(json.dumps(spec, sort_keys=True, default=float).encode()).hexdigest())
         if notes:
             realism_txt += "\n\nSCATTER:\n" + "\n".join(f"- {n}" for n in notes)

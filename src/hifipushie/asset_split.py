@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 
 from . import asset
-from . import assemble, sdf, store, surface
+from . import sdf, store, surface
+from . import assemble_expand
 from .spec import compile_prims
 from .asset_hidden import _deep_hidden
 
@@ -49,7 +50,7 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
     prims = compile_prims(spec)
     full = {ps[0].part: ps for ps in sdf.streams(prims)}
     lo, voxel, shape = sdf.frame(prims, resolution)
-    pls = assemble.placements(spec) if instancing else {}
+    pls = assemble_expand.placements(spec) if instancing else {}
     by_pf: dict[str, list] = {}
     for inst, pl in pls.items():
         by_pf.setdefault(pl["use"], []).append(inst)
@@ -63,7 +64,7 @@ def split(spec: dict, resolution: int, instancing: bool, log: list, min_share: i
                        + (" (export: unique)" if mode == "unique" else ""))
             continue
         bake = next((i for i in insts if not pls[i]["mirror"]), insts[0])
-        shared[pf] = {"bake": bake, "instances": {i: assemble.world_of(pls[i]) for i in insts}, "parts": []}
+        shared[pf] = {"bake": bake, "instances": {i: assemble_expand.world_of(pls[i]) for i in insts}, "parts": []}
     owner = {inst: pf for pf, d in shared.items() for inst in d["instances"]}
     xs, origin = {}, {}
     for pn, ps in full.items():

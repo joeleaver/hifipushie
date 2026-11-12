@@ -234,7 +234,7 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
     rep["maps"] = {k: str(v) for k, v in files0.items()}
     rep["log"] = log
     if groom and h.get("style") == "strands":
-        from . import hair_strands as hs
+        from . import hair_strands_eval, hair_strands_job
         import re
         sc = hair_head.scalp(name, spec)
         g = groom_params(spec)
@@ -244,9 +244,9 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
         if g.get("loose"):
             from . import hair_loose
             colg = hair_loose.collider(name, spec, sc)
-        sd = hs.job(sc, g, spec, locks, tmp, count=int((h.get("export") or {}).get("strands", 0)) or None, col=colg)
+        sd = hair_strands_job.job(sc, g, spec, locks, tmp, count=int((h.get("export") or {}).get("strands", 0)) or None, col=colg)
         abc, usd = out_dir / f"{name}_groom.abc", out_dir / f"{name}_groom.usdc"  # (binary: the .usda was 33 MB)
-        r = hs.evaluate(sd, abc=str(abc), usd=str(usd))
+        r = hair_strands_eval.evaluate(sd, abc=str(abc), usd=str(usd))
         got = next((json.loads(ln[8:]) for ln in r.splitlines() if ln.startswith("@@groom")), {})
         rep["groom"] = {**{k: v for k, v in got.items() if k not in ("abc", "usd")}, "alembic": str(abc), "usd": str(usd),
                         "bytes": {"alembic": abc.stat().st_size if abc.exists() else 0,

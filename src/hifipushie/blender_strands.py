@@ -1074,7 +1074,7 @@ def clear():
 
 
 def show(sd: dict):
-    """Apply a strands job (hair_strands.job): the scalp, the guide objects with their stacks."""
+    """Apply a strands job (hair_strands_job.job): the scalp, the guide objects with their stacks."""
     clear()
     mat = material(sd.get("look") or {})
     lk = sd.get("look") or {}
