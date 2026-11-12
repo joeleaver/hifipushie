@@ -20,7 +20,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
   - 281 functions and constants, fold_checks whole; their tests. Source 207.5k -> 202.4k lines; 1,792 tests collect.
 - Proof for each cut (parent tree vs branch, fresh homes): cf_shirt and wf_simon builds bit-identical in X; flat_check
   on the s4-19 jacket and s4-14 hussar identical.
-- The split (tags archive/before-split-*; 1-5 landed):
+- The split (tags archive/before-split-*; all landed):
   1 server.py (3,913 lines; C413) -> mcp_app, tool_common, tools_find, one tools_<domain>.py each; tool surface identical.
   2 terrain_mesh.py (5,680; C414) -> 15 modules (terrain_mesh.MODULES), pure moves; the tile state hashes them all.
   3 hair.py (5,694; C415) -> 15 modules (hair.MODULES); 28 functions import a later module themselves; rebound names late.
@@ -28,7 +28,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     GnmFace (1,788 lines) keeps its name, its methods in five mixins.
   5 skin_read.py, blockin.py, likeness.py (7.1k; C419) -> 8, 9, 10 modules; blockin_models._refs read late. Its check
     for names left behind found a live bug (blockin.ruler); tests/test_undefined_names.py guards all modules.
-  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424; branch split-terrain-clutter-2) -> 8, 8, 6 modules, none over
+  6 terrain.py, clutter.py, hair_clumps.py (6.7k; C424) -> 8, 8, 6 modules, none over
     500 lines; class Terrain (1,726 lines) in terrain_model with five mixins; terrain.MODULES in the terrain cache's hash.
 - CONSTANTS STAY (C422, landed 2026-11-11): export scripts outside the repo set module.NAME (assembly/exp.py
   HP_FS_SET, assembly_garrett/s15/sh4t.py, haircards/t47/r47.sh). Splits 2-5 had moved constants; for hair and faceshapes
