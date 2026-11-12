@@ -236,3 +236,46 @@ def test_the_character_export_never_decimates_a_chain_garment_that_has_its_own_l
     j = src.index("garment_asset.take_lods(own_, parts, lp, lr, rep_l")
     assert i < src.index("if pn not in pf_of and pn not in own_}", i) < j < src.index("write_glb(lg, aname, lp", j)
     assert "chain_lods = garment_asset.parts(name, chain, out_dir, log.append)" in src
+
+
+def _sheet(nx, x0, x1, z, up=True):
+    xs, ys = np.linspace(x0, x1, nx), np.linspace(0.0, 0.2, 5)
+    V = np.array([[x, y, z] for y in ys for x in xs])
+    q = np.arange(len(V)).reshape(len(ys), nx)
+    a, b, c, d = q[:-1, :-1].ravel(), q[:-1, 1:].ravel(), q[1:, 1:].ravel(), q[1:, :-1].ravel()
+    T = np.concatenate([np.stack([a, b, c], 1), np.stack([a, c, d], 1)])
+    return ga.part_of(V, T if up else T[:, ::-1], V[:, :2] * 2.0, np.tile([0.0, 0.0, 1.0 if up else -1.0], (len(V), 1)))
+
+
+def test_skin_through_a_garments_own_lod_cloth_is_cut_where_it_was_covered_at_lod0():
+    """Skin (z = 0, facing up) under a LOD's cloth that has sunk to 3 cm UNDER it between x = 0.2 and 0.4 (a coarse
+    face's chord), and lies over it elsewhere. Covered at LOD0 for x < 0.6 only: the skin sticking through there is
+    cut; the same skin where it was never covered (a wrist past the cuff) stays; covered skin under the cloth stays."""
+    skin = _sheet(41, 0.0, 0.8, 0.0)
+    V = np.asarray(skin["verts"], float)
+    low = np.asarray(_sheet(9, 0.2, 0.4, -0.03)["verts"], float)
+    cloth = np.vstack([np.asarray(_sheet(9, 0.0, 0.2, 0.01)["verts"], float), low,
+                       np.asarray(_sheet(9, 0.4, 0.6, 0.01)["verts"], float), np.asarray(_sheet(9, 0.6, 0.8, -0.03)["verts"], float)])
+    T1 = np.asarray(_sheet(9, 0.0, 0.2, 0.0)["corner_vert"]).reshape(-1, 3)
+    cover = ga.part_of(cloth, np.vstack([T1 + 45 * i for i in range(4)]), cloth[:, :2], np.tile([0.0, 0.0, 1.0], (len(cloth), 1)))
+    keep = ga.skin_through(skin, [cover], V, V[:, 0] < 0.6)
+    c = V[np.asarray(skin["corner_vert"]).reshape(-1, 3)].mean(1)[:, 0]
+    assert not keep[(c > 0.23) & (c < 0.37)].any()      # through the cloth, covered at LOD0: cut
+    assert keep[(c < 0.17) | ((c > 0.43) & (c < 0.57))].all()  # under the cloth: kept
+    assert keep[c > 0.63].all()                          # through it too, but never covered at LOD0: kept
+    assert ga.skin_through(skin, [], V, V[:, 0] < 0.6).all() and ga.skin_through(skin, [cover], V, np.zeros(len(V), bool)).all()
+
+
+def test_covered_at_lod0_reads_a_loose_sleeve_as_cover_and_keeps_what_a_pose_uncovers():
+    """Cloth 4 cm off the skin (a loose sleeve) over x < 0.4: covered, though lods_under's 2 cm mask says not; the
+    points a clip frame uncovers (in the mask's [4], not in its [5]) are not counted."""
+    from hifipushie import lods_under
+    skin = _sheet(41, 0.0, 0.8, 0.0)
+    cover = _sheet(21, 0.0, 0.4, 0.04)
+    P2, near = lods_under.under_at_lod0(skin, [cover])
+    assert not near.any()  # (2 cm: the sleeve is out of reach)
+    P0, under0 = ga.covered_at_lod0(skin, [cover], (P2, near, 0.0, None, near))
+    assert np.array_equal(P0, P2) and under0[P0[:, 0] < 0.38].all() and not under0[P0[:, 0] > 0.42].any()
+    un = P0[:, 0] < 0.4
+    _, kept = ga.covered_at_lod0(skin, [cover], (P0, un, 0.0, None, un, un & (P0[:, 0] > 0.2)))  # x <= 0.2 shows in a pose
+    assert not kept[P0[:, 0] < 0.18].any() and kept[(P0[:, 0] > 0.22) & (P0[:, 0] < 0.38)].all()
