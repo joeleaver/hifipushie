@@ -24,7 +24,8 @@ Call the hifipushie `guide` tool first and follow it: it is the full playbook. T
 0. **Realistic humans start from `spec["base"]`** (MakeHuman body + GNM head, shaped by parameters: guide 4d),
    never from blobs and kits. The blob/kit route below is for creatures, cartoons and props. **A person from
    pictures: the artist block-in is the default** (`guide(topic="block_in")`; its tools run through `call_tool`):
-   `human_reference` for the cameras, `block_in_start`, then rounds of look -> name the biggest mass / plane
+   `check_references` on the pictures, `block_in_start` (it takes them directly: no `human` or `human_reference`
+   first), then rounds of look -> name the biggest mass / plane
    difference -> ONE small `block_in_step` -> keep only if the whole face reads closer and no target went out; lids
    by `lid_read`.
 

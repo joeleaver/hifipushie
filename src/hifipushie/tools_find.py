@@ -152,6 +152,9 @@ def _purpose(name: str) -> set[str]:
     return _words(first[:220])
 
 
+_MAKING = re.compile(r"\s*(?:please\s+)?(?:make|build|model|sculpt|create|design)\s+(?:me\s+)?(?:a|an|some|one|two)\s+\w", re.I)
+
+
 def _verb(query: str) -> str:
     """The job's first word that says something: its verb in "look at the garment"."""
     return next((_stem(w) for w in re.findall(r"[a-z0-9]+", query.lower()) if w not in _STOP and len(w) > 1), "")
@@ -227,7 +230,7 @@ def _tool_fields(name: str) -> list[tuple[float, set[str]]]:
                          (2.0, _words(inspect.cleandoc(_FUNCS[name].__doc__ or ""))),
                          (1.0, _words(g + " " + TOOL_GROUPS.get(g, {}).get("about", ""))),
                          (1.0, _words(_section_text(name))),
-                         (4.0, _words(head_route.KEYWORDS.get(name, "")
+                         (4.0, _words(head_route.KEYWORDS.get(name, "") + " " + find_route.KEYWORDS.get(name, "")
                                       + (" " + " ".join(_guide_topics()) if name == "guide" else ""))),
                          (4.0, _purpose(name))]
     return _FIELDS[name]
@@ -275,7 +278,8 @@ def find_tool(query: str = "", limit: int = 5) -> str:
     # order (the process, not a shortcut), outside one the word matches stand as they are (find_route.py, C400).
     g, order, note = find_route.route(q, _verb(query), scores, raw, TOOL_GROUPS, _group_of,
                                       lambda t: _tool_fields(t)[0][1],
-                                      lambda t: set().union(*(ws for wt, ws in _tool_fields(t) if wt >= 4)), _words)
+                                      lambda t: set().union(*(ws for wt, ws in _tool_fields(t) if wt >= 4)), _words,
+                                      making=bool(_MAKING.match(query)))
     named = query.strip().lower().replace(" ", "_")  # a query that IS a tool's name gets that tool first
     if named in _TOOLS and named != "find_tool":
         order = [named] + [t for t in order if t != named]

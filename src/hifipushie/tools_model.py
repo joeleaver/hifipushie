@@ -85,6 +85,13 @@ def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
     return f"saved {name} v{v}\n" + extra + warn + summarize(spec)
 
 
+def _next_save(name: str, spec: dict) -> str:
+    """The reply's last line after a save of a creature or a prop (next_steps.after_save)."""
+    from . import next_steps
+    nxt = next_steps.after_save(name, spec)
+    return "\n" + nxt if nxt else ""
+
+
 @mcp.tool(structured_output=False)
 def put_model(name: str, spec: dict, note: str = "", joins: list[str] | None = None) -> str:
     """Make a creature, a character or a prop as a spec of joints, bones and blobs, or replace a model's whole spec
@@ -104,7 +111,7 @@ def put_model(name: str, spec: dict, note: str = "", joins: list[str] | None = N
     elif full["plan"] is None:
         del full["plan"]
     v = store.save(name, full, note or "put_model")
-    return _saved(name, v, full, kept) + _join_lines(name, joins)
+    return _saved(name, v, full, kept) + _join_lines(name, joins) + _next_save(name, full)
 
 
 @mcp.tool(structured_output=False)
@@ -117,7 +124,7 @@ def edit_model(name: str, ops: list[dict], note: str = "", joins: list[str] | No
     put_model. Details: guide(topic="edit_model")."""
     spec = store.edit(store.load(name), ops)  # errors name the op: "op 3 (set blobs tooth.L): ..."
     v = store.save(name, spec, note or f"{len(ops)} ops")
-    return _saved(name, v, spec) + _join_lines(name, joins)
+    return _saved(name, v, spec) + _join_lines(name, joins) + _next_save(name, spec)
 
 
 @mcp.tool(structured_output=False)
@@ -275,6 +282,9 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         from . import next_steps
         nxt = "\n" + next_steps.after_look("head / character" if sp_.get("base") else "model",
                                            _has_reference(name, sp_))
+    else:  # a creature or a prop: the same rule in its own tools' names (the server says every tool ends with next:)
+        from . import next_steps
+        nxt = "\n" + next_steps.after_model_look(name, _has_reference(name, sp_))
     return [_out(sheet, save), info + shown + painted + (f" | saved {save}" if save else "") + nxt]
 
 

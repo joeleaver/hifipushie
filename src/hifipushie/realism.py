@@ -71,15 +71,30 @@ def summary(spec: dict) -> str:
     return "story: " + "; ".join(b for b in bits if b)
 
 
+def upright(joints: dict) -> bool:
+    """The head stands over the hips (higher above them than it is in front of or beside them). A quadruped has a head,
+    shoulders, hips and a spine too: the fox example was told it was a human without a base on every check."""
+    def at(*ws):
+        for n, j in (joints or {}).items():
+            if any(w in n.lower() for w in ws) and isinstance(j, dict) and j.get("pos") is not None:
+                return np.asarray(j["pos"], float)
+        return None
+    h, p = at("head"), at("pelvis", "hips", "hip")
+    if h is None or p is None or len(h) != 3 or len(p) != 3:
+        return True
+    d = h - p
+    return bool(d[2] > float(np.hypot(d[0], d[1])))
+
+
 def looks_humanoid(spec: dict) -> bool:
-    """A biped with a head, arms and legs (by joint names), or a face kit plus a hand kit."""
+    """An upright biped with a head, arms and legs (by joint names and `upright`), or a face kit plus a hand kit."""
     kits = {k.get("type") for k in (spec.get("kits") or {}).values() if isinstance(k, dict)}
     if {"face", "hand"} <= kits:
         return True
     names = " ".join(spec.get("joints") or {}).lower()
     has = lambda *ws: any(w in names for w in ws)  # noqa: E731
     return has("head") and has("shoulder", "clavicle", "upperarm", "arm") and has("hip", "thigh", "knee") and \
-        has("pelvis", "hips", "spine", "chest")
+        has("pelvis", "hips", "spine", "chest") and upright(spec.get("joints"))
 
 
 def audit(spec: dict) -> list[str]:
