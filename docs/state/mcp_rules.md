@@ -29,8 +29,8 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 5. DONE for joints, bones and blobs (C442: spec_keys.py, refused in store.validate with the nearest key and the
    list). Still open: the elements inside prefabs; terrain ignores unknown keys outside rivers; hair ignores
    solid-lock keys once loose or tie is set.
-6. The one-picture route (fit_concept_camera, look_matched, feature_tiles) is in no guide*.md; feature_tiles answers
-   with a shell command on a machine path where an agent has review_view (matched.py:329).
+6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
+   review_view call per region. Not run end to end by a blind agent yet.
 7. Old head route still handed over: likeness_guide.md:94-121 teaches fit_likeness, which refuses block-in models.
 8. No worked example a tool returns (kit_reference is 49k characters; examples/fox.json is 2.3k and unnamed).
 9. guide(topic="traps") and "gates" serve developer notes from docs/notes (Garrett's collars, the machine).
@@ -49,4 +49,5 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: item 6 (the one-picture route in the playbook), then item 10 (the GPU lock), then what is left of item 5.
+NEXT: item 10 (the GPU lock: resources.heavy(..., gpu=True) in terrain_views, veg_look, clutter_kit), then what is
+left of item 5. A tool-description change runs tests/test_toolsets.py with -m "" (a slow-tier rule the suite skips).
