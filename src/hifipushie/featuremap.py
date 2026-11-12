@@ -31,6 +31,7 @@ from PIL import Image, ImageDraw
 from . import refread
 
 KINDS = ("mass", "form", "paint")
+UNMARKED = 0.02  # a view owes its unmarked pixels above this share of the figure
 FIELDS = ("kind", "on", "join", "separate", "authority", "inferred", "says", "elements")
 SHAPES = ("patches", "box", "ellipse", "polygon", "line")
 PALETTE = [(230, 25, 75), (60, 180, 75), (0, 130, 200), (245, 130, 48), (145, 30, 180), (0, 160, 160), (240, 50, 230),
@@ -176,6 +177,10 @@ def mark(name: str, features: dict, remove: list[str] | None = None, notes: str 
         for view, m in (spec.get("marks") or {}).items():
             if view not in fm["views"]:
                 raise ValueError(f"feature {fname!r}: no view {view!r} (have {sorted(fm['views'])})")
+            if m is None:  # null: this view's mark goes
+                if cur["marks"].pop(view, None) is not None:
+                    mask_path(name, fname, view).unlink(missing_ok=True)
+                continue
             rec = fm["views"][view]
             try:
                 mk = mark_mask(name, view, rec, m)
@@ -202,6 +207,8 @@ def mark(name: str, features: dict, remove: list[str] | None = None, notes: str 
             for n2, c2, m2 in todo:
                 Image.fromarray(np.where(m2, 255, 0).astype(np.uint8)).save(mask_path(name, n2, view))
                 c2["marks"][view] = {"mark": {k: v for k, v in m.items() if k != "mirror"}, **_geometry(rec, m2)}
+                if not set(m) & (set(SHAPES) - {"line"}):
+                    c2["marks"][view]["line"] = True  # no width of its own: measured by where it runs, not its size
     if notes is not None:
         fm["notes"] = notes
     save(name, fm)
@@ -232,14 +239,22 @@ def checks(name: str, fm: dict) -> list[str]:
                 cover |= mask(name, f, view)
         free = fig & ~cover
         share = free.sum() / max(fig.sum(), 1)
-        if share > 0.02:
+        if share > UNMARKED:
+            from scipy import ndimage
             lab = refread.patches(name, view)
             ids, n = np.unique(lab[free], return_counts=True)
             tot = {int(i): int((lab == i).sum()) for i in ids}
             big = [(int(i), int(c)) for i, c in zip(ids, n) if i and c > 0.5 * tot[int(i)] and c > 0.003 * fig.sum()]
             big.sort(key=lambda t: -t[1])
-            notes.append(f"UNMARKED {view}: {share:.0%} of the figure belongs to no feature"
-                         + (f"; patches {[i for i, _ in big[:14]]}" if big else "") + " (mark them, or widen a mass)")
+            cc, k = ndimage.label(free)
+            sizes = ndimage.sum(free, cc, range(1, k + 1))
+            found = ndimage.find_objects(cc)
+            boxes = [found[i] for i in np.argsort(sizes)[::-1][:3]]
+            where = "; ".join(f"x {b[1].start}-{b[1].stop} y {b[0].start}-{b[0].stop}" for b in boxes)
+            notes.append(f"UNMARKED {view}: {share:.0%} of the figure belongs to no feature (owed above {UNMARKED:.0%}; "
+                         f"hatched pink in the picture). Biggest pieces, view px: {where}"
+                         + (f"; whole patches {[i for i, _ in big[:14]]}" if big else "")
+                         + ". Mark them, or draw the mass they belong to wider: a mark may overrun the outline")
     for f, c in feats.items():
         ortho = {v: g["world"] for v, g in c["marks"].items() if "world" in g}
         if len(ortho) >= 2 and not c.get("authority"):
@@ -284,37 +299,61 @@ def table(fm: dict) -> str:
 
 
 def draw(name: str, view: str, fm: dict, focus=None, width: int = 900) -> Image.Image:
-    """The view with every feature marked in it outlined and named (masses thick, forms thin, paint dashed grey)."""
+    """The view with every feature marked in it outlined and named (masses thick, forms thin, paint dashed grey);
+    what belongs to no feature is hatched pink."""
     from scipy import ndimage
     rec = fm["views"][view]
     rgba = np.asarray(Image.open(rec["image"]).convert("RGBA"))
+    fig = rgba[..., 3] > 127
     fg = rgba[..., 3:4] / 255.0
     pic = (rgba[..., :3] * fg + 255 * (1 - fg)) * 0.55 + 255 * 0.45
     H, W = pic.shape[:2]
-    x0, y0, x1, y1 = (int(v) for v in (focus or (0, 0, W, H)))
-    s = width / (x1 - x0)
-    im = Image.fromarray(pic.astype(np.uint8)).crop((x0, y0, x1, y1)).resize((width, int((y1 - y0) * s)), Image.LANCZOS)
-    d = ImageDraw.Draw(im)
+    x0, y0, x1, y1 = (max(int(v), 0) for v in (focus or (0, 0, W, H)))
+    x1, y1 = min(x1, W), min(y1, H)
+    s = width / max(x1 - x0, 1)
+    up = max(1, int(round(s)))  # outlines are drawn on a whole-number enlargement, then fitted to `width`
+    big = np.repeat(np.repeat(pic[y0:y1, x0:x1], up, 0), up, 1).astype(np.uint8)
     names = [f for f, c in fm["features"].items() if view in c["marks"]]
     order = sorted(names, key=lambda f: -fm["features"][f]["marks"][view]["area_px"])
+    cover = np.zeros((H, W), bool)
     labels = []
     for n, f in enumerate(order):
         c = fm["features"][f]
         col = (110, 110, 110) if c["kind"] == "paint" else PALETTE[n % len(PALETTE)]
-        mk = np.asarray(Image.fromarray(mask(name, f, view)).crop((x0, y0, x1, y1)).resize(im.size, Image.NEAREST))
+        full = mask(name, f, view)
+        cover |= full
+        mk = np.repeat(np.repeat(full[y0:y1, x0:x1], up, 0), up, 1)
         if not mk.any():
             continue
-        edge = mk & ~ndimage.binary_erosion(mk, iterations=3 if c["kind"] == "mass" else 1)
+        edge = mk & ~ndimage.binary_erosion(mk, iterations=max(1, (3 if c["kind"] == "mass" else 1) * up // 3))
         if c["kind"] == "paint":
             yy, xx = np.indices(mk.shape)
             edge &= ((xx + yy) // 4) % 2 == 0
-        a = np.asarray(im).copy()
-        a[edge] = col
-        im = Image.fromarray(a)
-        dist = ndimage.distance_transform_edt(mk)
+        big[edge] = col
+        sub = full[y0:y1, x0:x1]
+        dist = ndimage.distance_transform_edt(sub)
         cy, cx = np.unravel_index(dist.argmax(), dist.shape)
-        labels.append((cx, cy, f, col))
+        labels.append(((cx + 0.5) * s, (cy + 0.5) * s, f, col))
+    free = np.repeat(np.repeat((fig & ~cover)[y0:y1, x0:x1], up, 0), up, 1)
+    yy, xx = np.indices(free.shape)
+    big[free & (((xx - yy) // 3) % 2 == 0)] = (255, 60, 200)
+    im = Image.fromarray(big).resize((width, int(round((y1 - y0) * s))), Image.LANCZOS)
     d = ImageDraw.Draw(im)
     for cx, cy, f, col in labels:
         d.text((cx, cy), f, fill=col, font=refread._font(13), anchor="mm", stroke_width=2, stroke_fill=(255, 255, 255))
     return refread._ruler(im, (x0, y0, x1, y1), s, refread.nice_step(x1 - x0))
+
+
+def draw_all(name: str, fm: dict, height: int = 760) -> Image.Image:
+    """Every view's map side by side (for one look at the whole map; `draw` one view for the rulers' detail)."""
+    tiles = []
+    for v, rec in fm["views"].items():
+        w = max(160, int(height * rec["size"][0] / rec["size"][1]))
+        tiles.append((v, draw(name, v, fm, width=w)))
+    out = Image.new("RGB", (sum(t.width for _, t in tiles) + 10 * len(tiles), max(t.height for _, t in tiles) + 22), (255, 255, 255))
+    d, x = ImageDraw.Draw(out), 0
+    for v, t in tiles:
+        d.text((x + 36, 3), v, fill=(0, 0, 0), font=refread._font(14))
+        out.paste(t, (x, 22))
+        x += t.width + 10
+    return out

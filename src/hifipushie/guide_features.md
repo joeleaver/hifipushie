@@ -7,11 +7,14 @@ so the sculpt is built from them and measured against each one. Make it BEFORE a
 ## The three calls
 
 1. `read_reference(name, image, views, height)`: cuts a sheet into its views (one name per figure, left to right)
-   and gives each a camera. `"front"`, `"back"`, `"side"` (the figure faces the picture's left), `"side_r"` are
-   flat views to scale; any other name is a picture in perspective (its camera comes later, from
-   fit_concept_camera, once there is a model). `height` is feet to top, in metres, of the first flat view.
-   It returns, per view: the picture | its PATCHES, numbered | its FORM LINES, with pixel rulers.
+   and gives each a camera. Flat views to scale: `"front"`, `"back"`, `"side"` (the figure faces the picture's
+   left: you see its LEFT side) and `"side_r"` (it faces the picture's right: its right side). Any other name is
+   a picture in perspective; read it too, in a call of its own (its camera comes later, from fit_concept_camera,
+   once there is a model). `height` is feet to top, in metres, of the first flat view.
+   It returns, per view: the picture | its PATCHES, numbered | its FORM LINES, with pixel rulers. Check each
+   cut-out is the whole figure: a part the colour of the background can be lost (pass `mask=`).
    `read_reference(name, view=..., focus=[x0, y0, x1, y1])` looks closer; `detail="fine"` cuts smaller patches.
+   Read EVERY picture before marking, and mark each feature in every picture that shows it.
 2. `mark_features(name, features)`: you name what you see. It returns the map drawn on the picture, each
    feature's place and size, and what the map STILL OWES.
 3. `feature_report(name, elements)`: once there is a model, says for every feature whether it is made, and how
@@ -52,9 +55,14 @@ Marks are in each view's own pixels: read them off the rulers. Every mark is cli
 - `{"patches": [12, 13]}`: the numbered patches. The quick way when the patches follow the feature.
 - `{"box": [x0, y0, x1, y1]}`, `{"ellipse": [cx, cy, rx, ry]}`, `{"polygon": [[x, y], ...]}`: when they don't
   (a mass that takes in many patches: draw round it).
-- `{"line": [[x, y], ...], "width": 3}`: a crease or a thin edge.
-- Keys add up; `"minus": {...}` takes away; `"mirror": true` on a front or back view marks the `.L` / `.R` twin
-  too, by reflection. Use it only where the picture really is the same on both sides.
+- `{"line": [[x, y], ...], "width": 3}`: a crease or a groove: something with no width of its own. It is
+  measured by whether the model has form along it. A form that has height (a band, a rim, a cuff) is marked by its
+  whole extent, never by a line along one edge.
+- Keys add up; `"minus": {...}` takes away. A mark may overrun the figure's outline: only what is on the figure
+  counts, so draw a mass's outer edge generously.
+- `"mirror": true` on a front or back view also marks the `.L` / `.R` twin IN THAT VIEW, by reflection. Use it
+  only where the picture really is the same on both sides; other views still need their own marks.
+- A call replaces a feature's mark only in the views it names. `"side": null` clears that view's mark.
 
 Names ending `.L` are the creature's left. In a front view its left is at the picture's RIGHT.
 Mark every feature in every view that shows it: one view gives no depth.
@@ -75,7 +83,8 @@ Example (a made-up subject):
 
 `mark_features` lists it every time. Clear every line, or answer it in the feature's own fields:
 
-- UNMARKED: part of the figure belongs to no feature. Mark it, or widen the mass it is part of.
+- UNMARKED: more than 2 % of a view's figure belongs to no feature. The pieces are hatched pink in the picture and
+  their boxes are listed. Mark them, or widen the mass they are part of.
 - DISAGREE: two flat views put a feature at different heights. Check your marks; if the pictures themselves
   disagree, set `authority`.
 - SIDE: a `.L` marked on the creature's right, or the other way round.
@@ -84,9 +93,16 @@ Example (a made-up subject):
 
 ## Reading the report
 
+`elements` names the model's own elements as `get_model` lists them: blobs, bones, strokes, kits (their generated
+pieces come with them), `.R` for a `.L`'s mirrored twin, patterns like `"tuft*"`, or `"part:<part>"`. Every name
+is checked before anything is measured. Give a feature no elements when nothing makes it. A form with no element
+of its own because the mass's own shape makes it (a bulge that is part of the mass's outline) gets `["="]`: it is
+then not measured, only judged by eye on its tile. Use `["="]` when you can SEE the form in the model, never to
+pass one that isn't there.
+
 `feature_report` rows, for masses and forms (paint is colour: a later stage): NOT MADE (no element makes it),
 HIDDEN (made, but nothing of it shows from that view), OFF (with how far, how big, how much of the mark it
-covers), right. A form's elements count as part of the mass it is on. Fix NOT MADE first, biggest feature first; an
+covers), right, IN ITS MASS (`["="]`). A form's elements count as part of the mass it is on. Fix NOT MADE first, biggest feature first; an
 OFF feature is fixed at the element that makes it. The numbers place and size a feature; whether its SHAPE reads
 right is judged by eye, on same-view tiles beside the picture (`feature_tiles(name, ..., label=<view>)` works
 from every view read here) and by the blind review. A table with nothing wrong is where that look starts.

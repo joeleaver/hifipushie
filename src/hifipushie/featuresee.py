@@ -16,8 +16,10 @@ Paint has no shape and is not measured here.
 Per feature and view (rows where the map has a mark and the view has a camera):
   NOT MADE  no model element is named for it        HIDDEN   made, but not seen from this view
   right     centre within `off` (mm, or a share of the mark's smaller side), both sizes within `size`, overlap
-            (IoU of footprint and mark) at least `iou`
+            (IoU of footprint and mark) at least `iou`; a mark that is only a LINE has no size: right when the
+            model has form along most of it
   OFF       otherwise, with the worst number first
+  IN ITS MASS  elements ["="]: the sculptor says the mass's own shape makes this form. Not measured: its tile is.
 Elements are named as the model has them (get_model): a blob's, bone's, stroke's or kit's own name (a stroke's or
 kit's generated pieces come with it; ".R" is the mirrored twin of ".L"), a shell-style pattern ("fr*", "bib?.L"),
 or "part:<part>" for every element of a part. They are taken out of the SPEC, so a cut that is folded into the
@@ -35,7 +37,8 @@ from . import featuremap, matched, sdf, store
 from .spec import compile_prims
 
 CHUNK = 2500
-TOL = {"off_mm": 5.0, "off_share": 0.2, "size": (0.75, 1.33), "iou": 0.5}
+TOL = {"off_mm": 5.0, "off_share": 0.2, "size": (0.75, 1.33), "iou": 0.5, "line_mm": 6.0, "line_along": 0.6}
+IN_MASS = "="  # elements ["="]: the form is made by the shape of the mass it is on, with no element of its own
 
 
 def rays(cam: dict, xy: np.ndarray):
@@ -220,10 +223,22 @@ def footprints(spec: dict, fm: dict, elements: dict, views: list[str], cams: dic
     return {"masks": out, "depth": deep, "voxel": whole.voxel, "notes": notes}
 
 
-def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict) -> dict:
+def _line_row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict) -> dict:
+    """A mark that is a line has no size of its own: is there model form along it?"""
+    reach = max(tol["line_mm"] / 1000 / m_per_px, 3.0)
+    near = ndimage.distance_transform_edt(~mod) <= reach
+    along = float((ref & near).sum() / max(ref.sum(), 1))
+    ok = along >= tol["line_along"]
+    return {"feature": f, "view": v, "status": "right" if ok else "OFF", "along": round(along, 2), "iou": round(along, 2),
+            "why": "" if ok else f"the model's form runs along {along:.0%} of the line (within {tol['line_mm']:.0f} mm)"}
+
+
+def _row(f: str, v: str, ref: np.ndarray, mod: np.ndarray, m_per_px: float, tol: dict, line: bool = False) -> dict:
     ry, rx = np.where(ref)
     if not mod.any():
         return {"feature": f, "view": v, "status": "HIDDEN", "why": "made, but nothing of it is seen from this view"}
+    if line:
+        return _line_row(f, v, ref, mod, m_per_px, tol)
     my, mx = np.where(mod)
     dx = (mx.mean() - rx.mean()) * m_per_px * 1000
     dy = (ry.mean() - my.mean()) * m_per_px * 1000   # up is +
@@ -266,14 +281,14 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
     spec = store.load(name)
     made = {f: (c.get("elements") or []) if c["kind"] != "paint" else [] for f, c in fm["features"].items()}
     ex = expanded(spec)
-    bad = {f: resolve(ex, pats, tuple(spec.get("kits") or ()))[1] for f, pats in made.items() if pats}
+    bad = {f: resolve(ex, pats, tuple(spec.get("kits") or ()))[1] for f, pats in made.items() if pats and pats != [IN_MASS]}
     bad = {f: b for f, b in bad.items() if b}
     if bad:  # every wrong name at once, before anything slow
         raise ValueError("no model element matches, for " + "; ".join(f"{f}: {', '.join(b)}" for f, b in bad.items())
                          + ". Names are the model's own (get_model): blobs, bones, strokes, kits, or part:<part>")
     if elements:  # remembered only once every name is good
         featuremap.save(name, fm)
-    fp = footprints(spec, fm, made, list(cams), cams, resolution, ex)
+    fp = footprints(spec, fm, {f: p for f, p in made.items() if p != [IN_MASS]}, list(cams), cams, resolution, ex)
     rows = []
     for f, c in fm["features"].items():
         for v in cams:
@@ -287,12 +302,16 @@ def report(name: str, elements: dict | None = None, views: list[str] | None = No
             ref = seen_mark(name, fm, f, v)
             if not ref.any():  # nothing of it shows past the masses on it: nothing to measure in this view
                 continue
-            row = _row(f, v, ref, fp["masks"][(f, v)], k, tol)
+            if made[f] == [IN_MASS]:
+                rows.append({"feature": f, "view": v, "status": "IN ITS MASS",
+                             "why": "made by the shape of the mass it is on: not measured, judge it on its tile"})
+                continue
+            row = _row(f, v, ref, fp["masks"][(f, v)], k, tol, bool(c["marks"][v].get("line")))
             if f in fp["notes"]:
                 row.update(status="HIDDEN", why=fp["notes"][f])
             rows.append(row)
     worst = {}
-    rank = {"NOT MADE": 3, "OFF": 2, "HIDDEN": 1, "right": 0}
+    rank = {"NOT MADE": 4, "OFF": 3, "HIDDEN": 2, "IN ITS MASS": 1, "right": 0}
     for r in rows:
         if rank[r["status"]] >= rank.get(worst.get(r["feature"]), -1):
             worst[r["feature"]] = r["status"]

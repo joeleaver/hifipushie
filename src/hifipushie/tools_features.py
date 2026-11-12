@@ -29,8 +29,10 @@ def read_reference(name: str, image: str | None = None, views: list[str] | None 
                    f"px {r['centre_px']:.0f}, ground at px {r['ground_px']})" if r.get("m_per_px")
                    else f"in perspective: no camera until fit_concept_camera(name, {r['image']!r}, label={v!r})")
             lines.append(f"  {v}: {r['size'][0]} x {r['size'][1]} px, {r['patches']} patches, {cam}")
-        lines.append('In a "front" view the creature\'s LEFT (.L) is at the picture\'s RIGHT. Marks are written in each '
-                     "view's own pixels (the rulers). Next: read_reference(name, view=...) per view, then mark_features.")
+        lines.append('In a "front" view the creature\'s LEFT (.L) is at the picture\'s RIGHT; "side" shows its LEFT side, '
+                     '"side_r" its right. Marks are written in each view\'s own pixels (the rulers). CHECK each cut-out '
+                     "below is the whole figure (a part the colour of the background can be lost: pass mask=). "
+                     "Next: read_reference(name, view=...) per view, then mark_features.")
         view = view or views[0]
     else:
         fm = featuremap.load(name)
@@ -69,22 +71,23 @@ def mark_features(name: str, features: dict | None = None, remove: list[str] | N
     """Name what a reference shows, as marks on its pictures: the feature map a sculpt is built from and measured
     against. features: {name: {"kind": "mass" | "form" | "paint", "on": feature, "join": words, "separate": bool,
     "authority": view, "inferred": words, "marks": {view: {"patches": [ids] | "box" | "ellipse" | "polygon" |
-    "line" (view px), "minus": {...}, "mirror": bool}}}}. A call adds to the map (a feature's marks are replaced
-    per view named). Returns the map drawn on `view`, every feature's place and size, and what the map still owes
-    (unmarked patches, views that disagree, left / right slips). Details: guide(topic="features")."""
+    "line" (view px), "minus": {...}, "mirror": bool} | null}}}. A call adds to the map (marks are replaced per
+    view named; null clears one). Returns the map on every view (or one `view`, with rulers and focus), each
+    feature's place and size, and what the map still owes. Details: guide(topic="features")."""
     from . import featuremap
     fm = featuremap.mark(name, features or {}, remove, notes) if (features or remove or notes is not None) \
         else featuremap.load(name)
     if not fm["views"]:
         raise ValueError(f"{name} has no reference views yet: read_reference first")
-    view = view or next(iter(fm["views"]))
     owes = featuremap.checks(name, fm)
     kinds = [c["kind"] for c in fm["features"].values()]
     text = [f"{name}: {len(kinds)} features ({kinds.count('mass')} masses, {kinds.count('form')} forms, "
             f"{kinds.count('paint')} paint) over views {sorted(fm['views'])}", featuremap.table(fm),
             (f"STILL OWED ({len(owes)}):\n  " + "\n  ".join(owes)) if owes else
             "Nothing owed: every patch belongs to a feature and the views agree."]
-    return [_out(featuremap.draw(name, view, fm, focus), save), "\n".join(text)]
+    if view and view not in fm["views"]:
+        raise ValueError(f"no view {view!r} (have {sorted(fm['views'])})")
+    return [_out(featuremap.draw(name, view, fm, focus) if view else featuremap.draw_all(name, fm), save), "\n".join(text)]
 
 
 @mcp.tool(structured_output=False)
@@ -98,9 +101,10 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
     from . import featuresee
     rep = featuresee.report(name, elements, views, resolution)
     by = rep["by_feature"]
-    count = {s: sum(1 for v in by.values() if v == s) for s in ("right", "OFF", "HIDDEN", "NOT MADE")}
-    lines = [f"{name}: {len(by)} features measured: {count['right']} right, {count['OFF']} off, "
-             f"{count['HIDDEN']} hidden, {count['NOT MADE']} NOT MADE"]
+    count = {s: sum(1 for v in by.values() if v == s) for s in ("right", "OFF", "HIDDEN", "NOT MADE", "IN ITS MASS")}
+    lines = [f"{name}: {len(by)} features: {count['right']} right, {count['OFF']} off, {count['HIDDEN']} hidden, "
+             f"{count['NOT MADE']} NOT MADE" + (f", {count['IN ITS MASS']} said to be in their mass (not measured)"
+                                                if count["IN ITS MASS"] else "")]
     if rep["skipped_views"]:
         lines.append(f"  views with no camera yet (fit_concept_camera): {rep['skipped_views']}")
     not_made = sorted(f for f, s in by.items() if s == "NOT MADE")

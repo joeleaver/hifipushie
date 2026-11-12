@@ -148,6 +148,11 @@ def test_the_map_says_what_it_owes(fig):
     fm = featuremap.mark("fig", {"eye.L": {"marks": {"front": fig["marks"]["eye.L"]["front"]}},
                                  "snout": {"marks": {"side": {"box": [box[0], box[1] + 40, box[2], box[3] + 40]}}}})
     assert any(o.startswith("DISAGREE snout") for o in featuremap.checks("fig", fm))
+    # null clears one view's mark; a malformed mark is refused with how it is written
+    fm = featuremap.mark("fig", {"snout": {"marks": {"side": None}}})
+    assert "side" not in fm["features"]["snout"]["marks"] and "front" in fm["features"]["snout"]["marks"]
+    with pytest.raises(ValueError, match="four numbers"):
+        featuremap.mark("fig", {"snout": {"marks": {"side": {"box": [[1, 2], [3, 4]]}}}})
     with pytest.raises(ValueError, match="kind is one of"):
         featuremap.mark("fig", {"thing": {"marks": {"front": {"box": [10, 10, 30, 30]}}}})
     with pytest.raises(ValueError, match="no patch"):
@@ -180,6 +185,16 @@ def test_the_true_model_is_right_and_planted_faults_are_found(fig):
     store.save("fig", _spec(eye=(0.06, -0.06, 0.67)), "eye buried")
     assert _status(featuresee.report("fig", resolution=128))[("eye.L", "front")]["status"] == "HIDDEN"
     store.save("fig", _spec(), "back")
+    # a line mark has no size: right where the model has form along it, off where it has none
+    box = featuremap.load("fig")["features"]["snout"]["marks"]["front"]["box"]
+    y = (box[1] + box[3]) // 2
+    featuremap.mark("fig", {"snout_line": {"kind": "form", "on": "head", "marks": {"front": {"line": [[box[0], y], [box[2], y]]}}},
+                            "no_line": {"kind": "form", "on": "body", "marks": {"front": {"line": [[60, 250], [100, 250]]}}},
+                            "bulge": {"kind": "form", "on": "head", "marks": {"front": {"box": [box[0], box[1], box[2], y]}}}})
+    rep = featuresee.report("fig", {"snout_line": ["snout"], "no_line": ["snout"], "bulge": ["="]}, resolution=128)
+    assert rep["by_feature"]["snout_line"] == "right" and rep["by_feature"]["no_line"] == "OFF"
+    assert rep["by_feature"]["bulge"] == "IN ITS MASS"
+    featuremap.mark("fig", {}, remove=["snout_line", "no_line", "bulge"])
     with pytest.raises(ValueError, match="no model element matches"):
         featuresee.report("fig", {"snout": ["snoot"]}, resolution=128)
     featuresee.report("fig", {"snout": ["sn*"]}, resolution=128)  # a pattern picks it
@@ -192,6 +207,7 @@ def test_the_tools_return_a_picture_and_the_table(fig):
     assert "patches" in text and len(im.data) > 1000
     im, text = server.mark_features("fig")
     assert "7 features" in text and "masses" in text
+    im, text = server.mark_features("fig", view="side")
     im, text = server.feature_report("fig", {n: [n] for n in fig["marks"]}, view="front", resolution=128)
     assert "0 NOT MADE" in text and "right" in text
 
