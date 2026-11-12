@@ -83,18 +83,22 @@ class Panels:
             for g in sig:
                 m = ((S == g) | (S == 0)).all(1)
                 pan[tuple(g)] = self._add(nm, ids[m])
-            for k, (r, turn, way, bid) in enumerate(rows):
-                for g in sig:
-                    if g[k] != 1:
+            # (a hinge between two panels of the piece sharing a line of points: the rows between them turn together,
+            # e.g. a hem's two rows with no cloth point between them)
+            for g in sig:
+                for g1 in sig:
+                    D = np.where(g != g1)[0]
+                    if not len(D) or (g1[D] != 1).any() or (g[D] != -1).any():
                         continue
-                    g0 = g.copy()
-                    g0[k] = -1
-                    if tuple(g0) not in pan:
+                    a, b = pan[tuple(g)], pan[tuple(g1)]
+                    sh = np.intersect1d(self.panels[a]["ids"], self.panels[b]["ids"])
+                    if len(sh) < 2:
                         continue
-                    a, b = pan[tuple(g0)], pan[tuple(g)]
-                    on = r[np.isin(r, self.panels[a]["ids"]) & np.isin(r, self.panels[b]["ids"])]
-                    if len(on) < 2:
-                        continue
+                    k = int(D[0])
+                    r = rows[k][0]
+                    turn = float(sum(rows[q][1] for q in D))
+                    way, bid = rows[k][2], rows[k][3]
+                    on = r[np.isin(r, sh)] if np.isin(r, sh).sum() >= 2 else sh
                     d = cnet.uv[on[-1]] - cnet.uv[on[0]]
                     m2 = np.array([-d[1], d[0]]) / max(np.linalg.norm(d), 1e-12)
                     tp = self.panels[b]["ids"]

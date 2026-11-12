@@ -76,7 +76,7 @@ with resources.heavy("n2d panels jacket", gb=3, kind="chain_build", log=log):
     log(json.dumps({"assemble": {k: rd[k] for k in ("cost", "seconds", "seam_gaps_mm", "hinges")}}, default=str)[:3000])
     t2 = time.time()
     pulls = chain_settle.girth_pulls(cnet, np.nan_to_num(Xa, nan=1e3))
-    TH2, rd2 = ca.dress(pan, TH, body.contact, pulls, ties, log=log, sub=2)
+    TH2, rd2 = ca.dress(pan, TH, body.contact, pulls, ties, log=log)
     rep["dress"] = rd2
     Xd = followers_on(cnet, pan.positions(TH2), follow, skip, body.contact)
     rep["dress"]["links"] = ca.links_pct(cnet, Xd)

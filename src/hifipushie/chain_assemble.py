@@ -171,15 +171,15 @@ def nodes_of(pan, TH):
     return Xn[c.root], n[c.root] > 0
 
 
-def assemble(pan, TH0, keep, ties=(), iters=80, log=None):
+def assemble(pan, TH0, keep, ties=(), iters=40, log=None, sub=3):
     """(TH, read): the panels assembled off their start (module doc)."""
-    f = Fit(pan, ties, TH0=TH0, keep=keep)
+    f = Fit(pan, ties, TH0=TH0, keep=keep, sub=sub)
     TH, rd = f.solve(TH0, iters, log)
     rd.update(unknowns=pan.n * NP, residuals=f.m, **reads(pan, TH))
     return TH, rd
 
 
-def dress(pan, TH, contact, pulls, ties=(), iters=60, log=None, sub=1):
+def dress(pan, TH, contact, pulls, ties=(), iters=25, log=None, sub=3):
     """(TH, read): the same numbers refitted on the body (module doc)."""
     f = Fit(pan, ties, contact=contact, pulls=pulls, sub=sub)
     TH, rd = f.solve(TH, iters, log)
