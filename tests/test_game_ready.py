@@ -1332,8 +1332,11 @@ def test_stack_lid_layers_follow_the_export_head():
     spec = {"base": {"head": {"identity": [0.1]}}, "skin": {"stack": {"head": "other", "occlusion": "o", "occlusion_lid": "ol",
                                                                        "crease": "c", "crease_strength": 1.6, "layers": []}}}
     at = {"shape": (4, 4), "ii": np.arange(4), "jj": np.arange(4)}
-    with mock.patch.object(sl.sp, "atlas", return_value=at), mock.patch.object(sl.sp, "image", side_effect=lambda at_, v, *a: np.zeros((4, 4) + np.shape(v)[1:], np.uint8)), \
-            mock.patch.object(sl.sp, "_bleed", side_effect=lambda a, v: a), mock.patch.object(sl, "occlusion", return_value=np.ones((4, 3))), \
+    blank = lambda at_, v, *a: np.zeros((4, 4) + np.shape(v)[1:], np.uint8)  # noqa: E731
+    with mock.patch.object(sl.skin_project_atlas, "atlas", return_value=at), \
+            mock.patch.object(sl.skin_project_atlas, "image", side_effect=blank), \
+            mock.patch.object(sl.skin_project_detail, "_bleed", side_effect=lambda a, v: a), \
+            mock.patch.object(sl, "occlusion", return_value=np.ones((4, 3))), \
             mock.patch.object(sl, "crease_map", return_value=np.zeros(4)), mock.patch("hifipushie.images.ingest", return_value="new"):
         log = []
         out = sl.stack_on_head(spec, log)
