@@ -13,7 +13,8 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
   tests/test_find_jobs.py; its four misses carry their reasons). FRESH is a regression list now: measure next on new words.
 - next lines: heads, clothes and skin from their route modules; creatures and props from next_steps.after_save /
   after_model_look (put_model, edit_model, look). Terrain, plants, clutter, hair export: none yet.
-- Refusals that name the fix: unknown blob shape (spec.BLOB_SHAPES), kits, materials, paint, walls, plan keys.
+- Refusals that name the fix: unknown blob shape (spec.BLOB_SHAPES), unknown key on a joint / bone / blob
+  (spec_keys), kits, materials, paint, walls, plan keys.
 - A dressed character: export_asset takes a chain garment's step-10 file (docs/state/dressed_export.md, C434).
 
 ## Open, by what it costs an agent (from the area re-review: /mnt/data/hifipushie/review_20261112/<area>.md)
@@ -25,8 +26,9 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 3. review_view, the only independent look, is worded for clothes (DETAIL_WORDS, the look_chain refusal, the "hang"
    checklist: tools_model.py:528-564). Garment trials call it: change with the garment thread.
 4. No pose while modelling (store ops: set, delete, rename, move, scale_r): "turn the head" has no tool.
-5. Joints, bones and blobs accept any key (paint, walls, style refuse unknown ones); terrain ignores unknown keys
-   outside rivers; hair ignores solid-lock keys once loose or tie is set.
+5. DONE for joints, bones and blobs (C442: spec_keys.py, refused in store.validate with the nearest key and the
+   list). Still open: the elements inside prefabs; terrain ignores unknown keys outside rivers; hair ignores
+   solid-lock keys once loose or tie is set.
 6. The one-picture route (fit_concept_camera, look_matched, feature_tiles) is in no guide*.md; feature_tiles answers
    with a shell command on a machine path where an agent has review_view (matched.py:329).
 7. Old head route still handed over: likeness_guide.md:94-121 teaches fit_likeness, which refuses block-in models.
@@ -39,11 +41,12 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - The domain is read from subject words, never from a word match; nothing is read off scores (C400).
 - A keyword is added only for a measured miss, and kept specific: it makes its tool "for the job".
 - Next lines are built from the result or the spec's state, never fixed boilerplate.
-- An unknown blob shape is refused at compile (none in 6,211 saved specs on 2026-11-12).
+- An unknown blob shape is refused at compile (none in 6,211 saved specs on 2026-11-12); an unknown key on a joint,
+  bone or blob before the spec is saved (none in 21,751 saved specs and histories, same day).
 
 ## Commands
 - `bin/slot uv run pytest tests/test_find_jobs.py tests/test_front_door.py tests/test_skill_file.py`
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: items 5 and 6 (unknown keys refused; the one-picture route in the playbook), then item 10 (the GPU lock).
+NEXT: item 6 (the one-picture route in the playbook), then item 10 (the GPU lock), then what is left of item 5.
