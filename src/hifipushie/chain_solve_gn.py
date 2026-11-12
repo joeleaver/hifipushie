@@ -13,6 +13,7 @@ import scipy.sparse as sp
 from sksparse.cholmod import CholeskyFactor
 from threadpoolctl import threadpool_limits
 
+from . import chain_solve_plies as pl
 from . import chain_solve_terms as terms
 
 W_CONTACT = 1e3  # weight of a point nearer the body than its gap (rows / REF)
@@ -121,6 +122,10 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
             _rows(R, C, V, r, tb[k], g)
             _rows(R, C, V, r, ta[k], -g)
         m += len(k)
+    for b in t.get("plies") or ():  # (N2: plies / layers on their host, chain_solve_plies)
+        rp, k = pl.residual_rows(Xn, b, w["ply"], w["ref"], m, R, C, V, jac)
+        rs.append(rp)
+        m += k
     if ct is not None:
         sdist, nrm = ct.query(Xn)
         sh = np.where(sdist < gap)[0]
