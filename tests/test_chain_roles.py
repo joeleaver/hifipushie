@@ -60,10 +60,11 @@ def test_a_two_piece_sleeve_is_one_tube_and_half_backs_are_panels():
     assert set(R.panels) == {"front.L", "front.R", "back.L", "back.R"}
 
 
-def test_a_self_sewn_sleeve_stays_a_tube_of_its_own():
+def test_sewn_to_itself_alone_is_no_tube():  # (C423: a tube is closed round girths measured on its side,
+    # test_piece_start covers that; the jacket's fronts, sewn to themselves at the dart, were started round the arm)
     net, _ = _pattern(["front.L", "sleeve.L"], sew=[("sleeve.L", 0, "sleeve.L", 4), ("sleeve.L", 2, "front.L", 7)])
     R = cg.read_roles(net)
-    assert R.tubes == ["sleeve.L"] and R.tube_groups == {} and R.panels == ["front.L"]
+    assert R.tubes == [] and set(R.panels) == {"front.L", "sleeve.L"}
 
 
 def test_a_zip_meets_edge_to_edge():
