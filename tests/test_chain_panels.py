@@ -119,3 +119,26 @@ def test_sparse_seam_resampled_into_one_chain():
     s = J["sew"]
     assert np.abs(J["uv"][s[:, 0], 1] - J["uv"][s[:, 1], 1]).max() < 1e-9
     assert net.chain_report(np.c_[J["uv"], np.zeros(len(J["uv"]))])["links"] > 0
+
+
+def test_seam_along_two_pieces_is_one_chain_through_the_junction():
+    """An armhole-like seam: a's long edge (0.3 m) sewn sparsely to b (0.12 m) then c (0.18 m), b and c sewn at their
+    meeting corner: every point along all three edges sewn, matched by arc fraction through the junction."""
+    ua, Fa = grid(4, 13, 0.05, 0.3)
+    ub, Fb = grid(3, 5, 0.05, 0.12)
+    uc, Fc = grid(3, 7, 0.05, 0.18)
+    M, off = pattern([("a", ua, Fa), ("b", ub, Fb), ("c", uc, Fc)])
+    a0, b0, c0 = off
+    # (a's x = 0 edge: j = 0..12 at height 0.025 j; b's x = 0 edge j = 0..4 at 0.03 j; c's x = 0 edge at 0.03 j)
+    M["sew"] = np.array([(a0 + 0, b0 + 0), (a0 + 12, c0 + 6), (b0 + 4, c0 + 0)])
+    J, _, _, nw = join_seams(M)
+    sew = J["sew"]
+    U, P = J["uv"], J["piece"]
+    for p in range(3):
+        ids = np.where((P == p) & (np.abs(U[:, 0]) < 1e-9))[0]
+        assert np.isin(ids, sew.ravel()).all(), (p, ids[~np.isin(ids, sew.ravel())])
+    # (a's point at 0.12 sewn to both junction corners)
+    j = np.where((P == 0) & (np.abs(U[:, 0]) < 1e-9) & (np.abs(U[:, 1] - 0.12) < 1e-9))[0]
+    assert len(j) == 1
+    partners = {int(b) if a == j[0] else int(a) for a, b in sew if j[0] in (a, b)}
+    assert {b0 + 4, c0 + 0} <= partners
