@@ -30,8 +30,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - CONSTANTS STAY (C422): scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET, assembly_garrett/s15/
   sh4t.py, haircards/t47/r47.sh). A family's base holds every constant and alone runs code at import (rule test).
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
-  says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script. Rule
-  tests from the splits: test_undefined_names.py (source AND tests), test_constants_address.py, test_moved.py.
+  says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script; the repo's
+  own spikes/ and examples/ are repointed (C428). Rule tests: test_undefined_names, test_constants_address, test_moved.
 - Still over 500 lines because one function is: asset_export 956 (_export 888), terrain_tiles 928 (_export_tiles 799),
   vegetation_grow 750 (grow 733), veg_export_glb 601 (write_glb 578), hair_cards_job 600 (cards_job 570): refactoring.
 - NOT split, and why: blender_* (Blender runs them by path); fieldjit (numba kernels cached beside the file); artist
