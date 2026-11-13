@@ -40,7 +40,7 @@ from . import relief
 
 MAPS = ("front", "back", "foot", "cf", "cb")
 ROUND = 0.006       # m: the radius of the edge where skins and outlines meet
-NEAR = (0.006, 0.03)   # m under a skin: the outline as drawn holds down to the first, the smoothed one from the second
+NEAR = (0.004, 0.014)   # m under a skin: the outline as drawn holds down to the first, the smoothed one from the second
 AWAY = 0.06         # m: how far the side skin stands away where the front or the back skin rules
 SLACK = 0.012       # m: how far the side outline stands back where a skin rules
 
@@ -54,7 +54,8 @@ def put(frame: dict, maps: dict, side: dict | None = None) -> str:
     for k in ("o", "U", "V", "F"):
         arrs[k] = np.asarray(frame[k], np.float64)
     arrs["px"] = np.float64(frame["px"])
-    for k in ("wall", "foot_b", "front_s", "back_s"):
+    arrs["rule"] = np.array([NEAR[0], NEAR[1], AWAY, SLACK, ROUND], np.float64)   # a solid is its data: the measures
+    for k in ("wall", "foot_b", "front_s", "back_s"):                               # it was made with travel with it
         if maps.get(k) is not None:
             arrs[k] = np.asarray(maps[k], np.float32)
     if side is not None:
@@ -98,13 +99,14 @@ def sd_twoskin(p: np.ndarray, pr: dict) -> np.ndarray:
     q = p.reshape(-1, 3).astype(np.float64)
     at, off = _sample(q, pr["o"], pr["U"], pr["V"], pr["px"], pr["front"].shape)
     t = (q - pr["o"]) @ pr["F"]
-    both = lambda x, y: -smin(-x, -y, ROUND)        # an intersection with a rounded edge
+    near0, near1, away, slack, rnd = pr.get("rule", (NEAR[0], NEAR[1], AWAY, SLACK, ROUND))
+    both = lambda x, y: -smin(-x, -y, rnd)          # an intersection with a rounded edge
     tf, tb = at(pr["front"]), at(pr["back"])
     d = both((t - tf) * at(pr["cf"]), (-tb - t) * at(pr["cb"]))
     foot = at(pr["foot"])
     deep = np.ones(len(q))
     if "wall" in pr:       # how far under each skin: its own picture's outline near it, the agreed one deeper
-        ease = lambda x: (lambda s: s * s * (3 - 2 * s))(np.clip((x - NEAR[0]) / (NEAR[1] - NEAR[0]), 0.0, 1.0))
+        ease = lambda x: (lambda s: s * s * (3 - 2 * s))(np.clip((x - near0) / (near1 - near0), 0.0, 1.0))
         # (the depth is taken under the skins' broad lie, `front_s` / `back_s`: under the skin itself, every tuft and
         # every noisy pixel at its edge would shift where the outlines change over, and rib the wall)
         nf = ease((at(pr["front_s"]) if "front_s" in pr else tf) - t)
@@ -115,9 +117,9 @@ def sd_twoskin(p: np.ndarray, pr: dict) -> np.ndarray:
     d = both(d, foot + off)
     if "side_foot" in pr:
         ats, offs = _sample(q, pr["so"], pr["sU"], pr["sV"], pr["spx"], pr["side_foot"].shape)
-        d = both(d, ats(pr["side_foot"]) + offs - SLACK * (1 - deep))
+        d = both(d, ats(pr["side_foot"]) + offs - slack * (1 - deep))
         if "side_top" in pr:    # the side picture's own surface, from both sides
-            d = both(d, (np.abs((q - pr["so"]) @ pr["sF"]) - ats(pr["side_top"]) - AWAY * (1 - deep)) * ats(pr["side_cos"]))
+            d = both(d, (np.abs((q - pr["so"]) @ pr["sF"]) - ats(pr["side_top"]) - away * (1 - deep)) * ats(pr["side_cos"]))
     return (d * (0.5 if "wall" in pr else 1.0)).reshape(shp)     # the mix steepens the field: halved, a lower bound
 
 
@@ -137,6 +139,8 @@ def prim(name: str, bl: dict, k: float):
         pr.update(side_foot=m["side_foot"], so=m["so"] * sx, sU=m["sU"] * sx, sV=m["sV"] * sx, spx=float(m["spx"]))
         if "side_top" in m:
             pr.update(side_top=m["side_top"], side_cos=m["side_cos"], sF=m["sF"] * sx)
+    if "rule" in m:
+        pr["rule"] = tuple(float(v) for v in m["rule"])
     for key in ("wall", "foot_b", "front_s", "back_s"):
         if key in m:
             pr[key] = m[key]
