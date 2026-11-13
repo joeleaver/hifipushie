@@ -95,7 +95,7 @@ MEMBRANE = 0.05     # the weight of "no slope" where the read doesn't count, aga
 
 
 def height(n: np.ndarray, mask: np.ndarray, px: float, steep: float = 0.2, pin: np.ndarray | None = None,
-           pin_w: float = 1.0, data: np.ndarray | None = None, gain: tuple | None = None):
+           pin_w: float = 1.0, data: np.ndarray | None = None, gain: tuple | None = None, parts: bool = False):
     """The relief inside `mask` whose slopes are the read ones: metres towards the viewer per pixel (0 outside).
     `px` = metres per pixel; a normal facing less than `steep` towards the viewer counts as that steep (a grazing
     normal's slope is unbounded).
@@ -104,7 +104,10 @@ def height(n: np.ndarray, mask: np.ndarray, px: float, steep: float = 0.2, pin: 
     data   where the read counts (default: all of `mask`); the rest of the mask is carried through smoothly (a
            membrane): the surface under a part that stands in front.
     gain   (lowest, highest): a read mutes or exaggerates depth as a whole. With pins in two places that differ in
-           depth, the one scale of the slopes that agrees best with them is solved too; returns (relief, gain)."""
+           depth, the one scale of the slopes that agrees best with them is solved too; returns (relief, gain).
+    parts  returns (what the pins alone make, what the slopes alone make): the relief is the first plus any gain
+           times the second, for a caller who has its own measure of the gain.
+    The pins' weights are per pixel: on a finer grid the same hold needs them smaller, as the pixel's area."""
     import scipy.sparse as sp
     import scipy.sparse.linalg as spl
     from scipy import ndimage
@@ -146,6 +149,10 @@ def height(n: np.ndarray, mask: np.ndarray, px: float, steep: float = 0.2, pin: 
     b_g, b_p = np.r_[bg, np.zeros(len(bp))], np.r_[np.zeros(len(bg)), bp]
     zg = solve(A.T @ b_g)                            # the slopes alone (pins at zero)
     zp = solve(A.T @ b_p) if len(bp) else np.zeros_like(zg)   # the pins alone (no slopes)
+    if parts:
+        a, b = np.zeros(mask.shape, np.float32), np.zeros(mask.shape, np.float32)
+        a[mask], b[mask] = zp * px, zg * px
+        return a, b
     g1 = 1.0
     if gain and len(bp):                             # the energy is quadratic in the gain: its best value in one step
         r0, r1 = A @ zp - b_p, A @ zg - b_g

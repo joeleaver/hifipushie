@@ -125,15 +125,17 @@ def _one_run(row: np.ndarray) -> bool:
     return len(xs) > 0 and xs[-1] - xs[0] + 1 <= 1.1 * len(xs)
 
 
-def closeup(rec: dict, reg: np.ndarray):
-    """The close-up of a region the reader is shown: (picture RGB, box in view pixels, zoom)."""
+def closeup(rec: dict, reg: np.ndarray, lim: tuple | None = None):
+    """The close-up of a region the reader is shown: (picture RGB, box in view pixels, zoom). lim = (long side
+    in read pixels, the most a view pixel is blown up), default ZOOM."""
+    lim = lim or ZOOM
     ys, xs = np.where(reg)
     x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
     long = max(x1 - x0, y1 - y0)
     m = int(max(0.3 * long, (200 - long) / 2, 8))
     H, W = reg.shape
     box = (int(max(0, x0 - m)), int(max(0, y0 - m)), int(min(W, x1 + m)), int(min(H, y1 + m)))
-    zoom = min(ZOOM[1], ZOOM[0] / max(box[2] - box[0], box[3] - box[1]))
+    zoom = min(lim[1], lim[0] / max(box[2] - box[0], box[3] - box[1]))
     im = Image.open(rec["image"]).convert("RGBA").crop(box)
     size = (max(16, round(im.width * zoom)), max(16, round(im.height * zoom)))
     bg = Image.new("RGBA", im.size, (245, 245, 245, 255))
