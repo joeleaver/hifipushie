@@ -446,6 +446,14 @@ def _sd_twoskin(p, pr):  # twoskin.py (imported late, as relief.py is)
 SDF["twoskin"] = _sd_twoskin
 
 
+def _mod_nudge(cur, p, pr):  # meshclay.py (imported late, as relief.py is)
+    from .meshclay import mod_nudge
+    return mod_nudge(cur, p, pr)
+
+
+MODS["nudge"] = _mod_nudge
+
+
 def _mod_relief(cur, p, pr):  # relief.py (imported late: it needs the store, which needs this module)
     from .relief import mod_relief
     return mod_relief(cur, p, pr)
