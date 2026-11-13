@@ -254,7 +254,9 @@ def _detail(name, fm, feature, view, leave, across, nm, mk, fig, hit, B, wf, px,
         sc = scale / px
         dd = np.where(mk & hit, top - B, 0.0)
         low = ndimage.gaussian_filter(dd, sc) / np.maximum(ndimage.gaussian_filter((mk & hit).astype(float), sc), 1e-3)
-        top = np.where(mk, B + DEEPEN * ((top - B) - low), top)     # (a read mutes small relief)
+        # (a read mutes small relief; and relief narrower than `scale` is never deeper than half of it: what is, is
+        # the placed read standing off the clay at the relief's border, and it cuts shelves: seen on Scraps's horns)
+        top = np.where(mk, B + DEEPEN * np.clip((top - B) - low, -0.5 * scale / DEEPEN, 0.5 * scale / DEEPEN), top)
     return top, gain, placed
 
 
