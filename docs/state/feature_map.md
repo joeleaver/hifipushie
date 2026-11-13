@@ -57,5 +57,4 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (this worktree's src; freeze a copy per
   trial: `git archive HEAD src | tar -x -C frozenN`). scraps5/rebuild.py, scraps5/lines.py: trial 4 rebuilt, lines drawn.
 - `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py tests/test_masslines.py`
-NEXT: the likeness loop (tiles + blind review each round, more rounds) on the third block-in, and the painting's
-camera from the map. Then Puddles.
+NEXT: the likeness loop (tiles + blind review each round) on the third block-in; the painting's camera. Then Puddles.
