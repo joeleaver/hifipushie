@@ -20,10 +20,13 @@ The side outline is a smoothed one too, and stands back from the skins by the sa
 
 THE SIDES ARE A SKIN TOO (`side` with "top"): a head's sides are a third of its surface and only the side picture
 shows them. Its read surface, a height map over the side view's plane, bounds the solid from both sides (a middle
-part: the one picture serves left and right). WHO RULES WHERE: the front and the back picture each rule the layer
-under their own skin (down to NEAR), the side picture rules what lies between; in that layer the side skin stands
-AWAY. (Left to cut everywhere, the side skin carved the face into a wedge along the middle line: there it sees the
-face edge-on and its read is wrong. Making every skin stand back where it is steep wrecked the face instead.)
+part: the one picture serves left and right). WHO RULES WHERE: a picture rules what it sees squarely. The side
+skin stands AWAY (bounds nothing) in two places: near its OWN outline (IN_SIDE: the profile, where it sees the face
+edge-on and its read is wrong: left to cut there it carved the face into a wedge along the middle line), and in the
+layer under the front or the back skin (down to NEAR) where that skin is well inside its own outline (IN_FRONT).
+Everywhere else it rules, right up to the surface: so the rim of the face, where the front picture sees the surface
+turning away, is the side picture's to shape, and the face does not overhang the side like the edge of a mask.
+(Making every skin stand back where it is steep wrecked the face: tried.)
 
 The arrays live with the reliefs' (<HOME>/_reliefs/<sha>.npz) and a blob names them:
     {"shape": "twoskin", "skins": "<sha>"}        ("flip": true = mirrored left-right)
@@ -41,6 +44,14 @@ from . import relief
 MAPS = ("front", "back", "foot", "cf", "cb")
 ROUND = 0.006       # m: the radius of the edge where skins and outlines meet
 NEAR = (0.004, 0.014)   # m under a skin: the outline as drawn holds down to the first, the smoothed one from the second
+FRINGE = (0.0, 0.002)      # m under a skin: its picture's outline AS DRAWN holds down to the first, the agreed
+#                            smoothed one from the second (a fringe is as deep as fur tips, not a rib through the head)
+IN_SIDE = (0.004, 0.015)   # m inside the side outline: the side skin stands away nearer than the first, rules from the second
+IN_FRONT = (0.005, 0.015)  # m inside the AGREED outline: a front / back skin's layer is its own from the second on
+#                            (inside its own outline as drawn is not enough: a mark drawn as a wide box let the back
+#                            skin spread out to it as an overhanging shell)
+SIDE_ROUND = 0.015  # m: the side skin meets the front and back layers over this much (two pictures' versions of
+#                     one eye surround never end at the same place: a sharp meeting leaves a lip)
 AWAY = 0.06         # m: how far the side skin stands away where the front or the back skin rules
 SLACK = 0.012       # m: how far the side outline stands back where a skin rules
 
@@ -54,7 +65,7 @@ def put(frame: dict, maps: dict, side: dict | None = None) -> str:
     for k in ("o", "U", "V", "F"):
         arrs[k] = np.asarray(frame[k], np.float64)
     arrs["px"] = np.float64(frame["px"])
-    arrs["rule"] = np.array([NEAR[0], NEAR[1], AWAY, SLACK, ROUND], np.float64)   # a solid is its data: the measures
+    arrs["rule"] = np.array([NEAR[0], NEAR[1], AWAY, SLACK, ROUND, *IN_FRONT, *IN_SIDE, *FRINGE, SIDE_ROUND], np.float64)   # a solid is its data: the measures
     for k in ("wall", "foot_b", "front_s", "back_s"):                               # it was made with travel with it
         if maps.get(k) is not None:
             arrs[k] = np.asarray(maps[k], np.float32)
@@ -99,12 +110,15 @@ def sd_twoskin(p: np.ndarray, pr: dict) -> np.ndarray:
     q = p.reshape(-1, 3).astype(np.float64)
     at, off = _sample(q, pr["o"], pr["U"], pr["V"], pr["px"], pr["front"].shape)
     t = (q - pr["o"]) @ pr["F"]
-    near0, near1, away, slack, rnd = pr.get("rule", (NEAR[0], NEAR[1], AWAY, SLACK, ROUND))
+    rule = tuple(pr.get("rule", ())) + (NEAR[0], NEAR[1], AWAY, SLACK, ROUND, *IN_FRONT, *IN_SIDE, *FRINGE, SIDE_ROUND)[len(pr.get("rule", ())):]
+    near0, near1, away, slack, rnd, f0, f1, s0, s1, g0, g1, srnd = rule
+    ramp = lambda x, a, b: (lambda s: s * s * (3 - 2 * s))(np.clip((x - a) / (b - a), 0.0, 1.0))
     both = lambda x, y: -smin(-x, -y, rnd)          # an intersection with a rounded edge
     tf, tb = at(pr["front"]), at(pr["back"])
     d = both((t - tf) * at(pr["cf"]), (-tb - t) * at(pr["cb"]))
     foot = at(pr["foot"])
     deep = np.ones(len(q))
+    mine = np.zeros(len(q))        # how much this place is the front or the back skin's own
     if "wall" in pr:       # how far under each skin: its own picture's outline near it, the agreed one deeper
         ease = lambda x: (lambda s: s * s * (3 - 2 * s))(np.clip((x - near0) / (near1 - near0), 0.0, 1.0))
         # (the depth is taken under the skins' broad lie, `front_s` / `back_s`: under the skin itself, every tuft and
@@ -112,14 +126,20 @@ def sd_twoskin(p: np.ndarray, pr: dict) -> np.ndarray:
         nf = ease((at(pr["front_s"]) if "front_s" in pr else tf) - t)
         nb = ease(t + (at(pr["back_s"]) if "back_s" in pr else tb))
         wall = at(pr["wall"])
-        foot = wall + (foot - wall) * (1 - nf) + ((at(pr["foot_b"]) if "foot_b" in pr else foot) - wall) * (1 - nb)
+        fb = at(pr["foot_b"]) if "foot_b" in pr else foot
+        mine = np.maximum(1 - nf, 1 - nb) * ramp(-wall, f0, f1)
+        df = (at(pr["front_s"]) if "front_s" in pr else tf) - t
+        db = t + (at(pr["back_s"]) if "back_s" in pr else tb)
+        foot = wall + (foot - wall) * (1 - ramp(df, g0, g1)) + (fb - wall) * (1 - ramp(db, g0, g1))
         deep = np.minimum(nf, nb)
     d = both(d, foot + off)
     if "side_foot" in pr:
         ats, offs = _sample(q, pr["so"], pr["sU"], pr["sV"], pr["spx"], pr["side_foot"].shape)
-        d = both(d, ats(pr["side_foot"]) + offs - slack * (1 - deep))
-        if "side_top" in pr:    # the side picture's own surface, from both sides
-            d = both(d, (np.abs((q - pr["so"]) @ pr["sF"]) - ats(pr["side_top"]) - away * (1 - deep)) * ats(pr["side_cos"]))
+        sfoot = ats(pr["side_foot"]) + offs
+        d = both(d, sfoot - slack * (1 - deep))
+        if "side_top" in pr:    # the side picture's own surface, from both sides, where it rules
+            out = np.maximum(mine, 1 - ramp(-sfoot, s0, s1))
+            d = -smin(-d, -(np.abs((q - pr["so"]) @ pr["sF"]) - ats(pr["side_top"]) - away * out) * ats(pr["side_cos"]), srnd)
     return (d * (0.5 if "wall" in pr else 1.0)).reshape(shp)     # the mix steepens the field: halved, a lower bound
 
 

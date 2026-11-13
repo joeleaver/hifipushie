@@ -749,7 +749,7 @@ def _set_reach(prims: list[Prim]) -> None:
     # touches must give real distances all through its box (past their own box they would answer "far", and a
     # half-weighted relief standing proud of them would be cut off at the box)
     for r in prims:
-        if r.kind != "relief":
+        if r.kind not in ("relief", "nudge"):       # (a nudge moves a surface outwards too: the same holds for it)
             continue
         for q in prims:
             if q.op == "add" and np.all(q.lo - 0.02 <= r.hi) and np.all(r.lo <= q.hi + 0.02):

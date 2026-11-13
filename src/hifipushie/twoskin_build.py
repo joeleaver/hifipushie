@@ -42,6 +42,7 @@ FINE, DETAIL = 0.01, 1.7   # relief smaller than FINE (m) is deepened DETAIL tim
 PIN_PER = 0.00127  # m: the pixel the pins' weights below were found at
 PIN_OUTLINE, PIN_MIDDLE, PIN_SEAT = 1.0, 0.05, 0.02   # hold "pins": at the edge, along the middle band, at a seat
 BROAD = 0.006      # m: a skin's broad lie (what "how deep under it" is measured from) is the skin eased by this
+NOTCH = 0.025      # m: a notch this narrow in the side outline is another part standing on the group: closed
 PLAIN = 0.008      # m: a wall follows the outline smoothed by a disc of this radius
 TRIM = 0.004       # m: hold "rows": a skin's last stretch before the outline is not the read's (seen edge-on)
 ROWS = 0.008       # m: hold "rows": the shift is eased over this much height
@@ -52,6 +53,7 @@ OUTLINE_W, MIDDLE_W, SEAT_W = 30.0, 3.0, 0.05   # how hard the bend is held at t
 EDGE_IN = 0.008    # m: the read's normals are led over to "turned away" across this much, in from the solid's edge
 EDGE_Z = 0.12      # what facing the viewer is left at the very edge (a slope of 8: the solver's limit)
 MIDDLE = 0.006     # m: the middle line is a band this wide either side
+JOIN = 0.006       # m: how softly the solid meets its neighbours (a full blend would swallow an ear's root)
 THIN = 0.004       # m: the two skins are never closer than this inside the outline
 SPECK = 0.0001     # m2: a loose piece of the outline smaller than this is dropped, a hole smaller is filled
 
@@ -281,6 +283,14 @@ def _rows(T0, zrow, prof, rec_other: dict, px: float, full: np.ndarray, B: np.nd
     return np.full(H, float(np.median((B - T0)[sel])) if sel.any() else 0.0), 0
 
 
+def _closed(mask: np.ndarray, px: float, r: float) -> np.ndarray:
+    """A mask with its notches narrower than about 2 r closed (nothing taken away: its points stay as sharp)."""
+    r = max(2, int(round(r / px)))
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    pad = np.pad(mask, r + 1)
+    return ndimage.binary_closing(pad, xx * xx + yy * yy <= r * r)[r + 1:-r - 1, r + 1:-r - 1]
+
+
 def _plain(mask: np.ndarray, px: float, r: float | None = None) -> np.ndarray:
     """An outline without its fringe: tufts and notches narrower than about 2 r smoothed away. What a wall follows:
     pushed straight through a solid, every tuft of the outline as drawn would run through it as a rib."""
@@ -427,7 +437,8 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     cut = None
     if side and any(side in fm["features"][g]["marks"] for g in group):
         sr = _read(name, fm, group, main, side, ())
-        sf = _plain(ndimage.binary_fill_holes(sr["full"]), sr["px"])
+        # (a part standing on the group, an ear on the side of a head, notches the group's own mark: closed first)
+        sf = _plain(ndimage.binary_fill_holes(_closed(sr["full"], sr["px"], NOTCH)), sr["px"])
         so = sr["U"] * sr["u0"] + np.array([0.0, 0.0, sr["z0"]])
         cut = {"foot": (ndimage.distance_transform_edt(~sf) - ndimage.distance_transform_edt(sf)) * sr["px"],
                "o": so + 0.5 * sr["px"] * sr["U"] + 0.5 * sr["px"] * sr["za"] * V, "U": sr["U"], "V": V / sr["za"], "px": sr["px"]}
@@ -461,8 +472,9 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     gone |= {featuremap.twin(e) for e in list(gone) if featuremap.twin(e)}
     new = {**spec, "bones": {k: v for k, v in spec.get("bones", {}).items() if k not in gone},
            "blobs": {k: v for k, v in spec.get("blobs", {}).items() if k not in gone}}
-    bname = f"{main}_skins"
-    new["blobs"][bname] = {"shape": "twoskin", "skins": sha}
+    base_, side_ = (main[:-2], main[-2:]) if main[-2:] in (".L", ".R") else (main, "")
+    bname = f"{base_}_skins{side_}"       # a part of one side keeps its side in its name: it is mirrored with it
+    new["blobs"][bname] = {"shape": "twoskin", "skins": sha, "blend": JOIN}
     thick = (Tf + Tb)[full]
     about = {"blob": bname, "skins": sha, "group": group, "map": [int(W), int(H)], "px_mm": round(px * 1e3, 2),
              "front": abouts["front"], "back": abouts["back"], "side": abouts.get("side"), "edge_gap_mm": abouts["edge_gap_mm"],

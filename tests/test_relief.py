@@ -156,3 +156,75 @@ def test_two_skins_make_the_solid_between_them(home):
     assert np.ptp(verts[:, 0]) == pytest.approx(2 * R, abs=0.008)     # the outline's width
     with pytest.raises(Exception, match="twoskin"):
         compile_prims({**spec, "blobs": {"egg": {"shape": "twoskin"}}})
+
+
+def test_a_side_outline_and_a_side_skin_bound_the_two_skins(home):
+    xs, X, Zd = _grid()
+    flat = np.full_like(X, 0.08)                                   # a block 16 cm deep between two flat skins
+    square = (np.abs(X) < 0.1) & (np.abs(Zd) < 0.1)
+    side_disc = np.sqrt(X ** 2 + Zd ** 2) < 0.06                    # the side picture shows a disc (y across, z up)
+    side = {"foot": _signed(side_disc), "o": [0.0, xs[0], ZC + (N // 2) * PX], "U": [0, 1, 0], "V": [0, 0, -1],
+            "px": PX, "top": np.full_like(X, 0.05), "cos": np.ones_like(X), "F": [1, 0, 0]}
+    sha = twoskin.put(_frame(xs), {"front": flat, "back": flat, "foot": _signed(square), "cf": np.ones_like(X),
+                                   "cb": np.ones_like(X)}, side)
+    assert len(relief.get(sha)["rule"]) == 12                     # the measures it was made with travel with it
+    prims = compile_prims({"symmetry": False, "blend": 0.0, "joints": {}, "bones": {},
+                           "blobs": {"b": {"shape": "twoskin", "skins": sha}}})
+    f = lambda *p: float(sdf.field_at(prims, np.array([p]))[0])
+    assert f(0.0, 0.0, ZC) < 0
+    assert f(0.045, 0.0, ZC) < 0 < f(0.056, 0.0, ZC)               # the side skin, from this side
+    assert f(-0.045, 0.0, ZC) < 0 < f(-0.056, 0.0, ZC)             # and from the other
+    assert f(0.0, 0.0, ZC + 0.05) < 0 < f(0.0, 0.0, ZC + 0.066)    # the side outline's disc, not the square's 10 cm
+    assert f(0.0, -0.055, ZC) < 0 < f(0.0, -0.066, ZC)             # and in front, before the skin at 8 cm
+
+
+def _ball_mesh(ripple=0.0):
+    from hifipushie import surfacefuse
+    spec = {"symmetry": False, "blend": 0.0, "joints": {}, "bones": {}, "blobs": {"ball": {"at": [0, 0, ZC], "size": [R, R, R]}}}
+    V, F = sdf.mesh(sdf.evaluate(compile_prims(spec), resolution=80), smooth=2)
+    V = V.astype(np.float64)
+    n = surfacefuse.vertex_normals(V, F)
+    return V + n * (ripple * np.sin(V[:, 2:3] * 2 * np.pi / 0.02)), F
+
+
+def _ball_view(U, F, mirror=False):
+    half, px = 0.13, 0.001
+    g = np.arange(-half, half, px) + px / 2
+    A, B = np.meshgrid(g, g)                                        # across the picture, and down it
+    nx, ny = A / R, -B / R
+    ok = nx ** 2 + ny ** 2 < 0.97
+    nz = np.sqrt(np.clip(1 - nx ** 2 - ny ** 2, 0, None))
+    return {"normals": np.stack([nx, ny, nz], -1).astype(np.float32), "mask": ok, "U": U, "F": F, "u0": -half,
+            "z0": ZC + half, "px": px, "za": 1.0, "mirror": mirror}
+
+
+def test_every_view_shapes_one_surface_and_the_big_shape_stays():
+    from hifipushie import surfacefuse
+    V, F = _ball_mesh(ripple=0.002)                                 # 2 mm ripples, 2 cm apart: wrong in the small
+    views = [_ball_view([1, 0, 0], [0, -1, 0]), _ball_view([-1, 0, 0], [0, 1, 0]), _ball_view([0, 1, 0], [1, 0, 0]),
+             _ball_view([0, 1, 0], [1, 0, 0], mirror=True)]
+    rad = lambda P: np.linalg.norm(P - np.array([0, 0, ZC]), axis=1)
+    side = np.abs(V[:, 2] - ZC) < 0.06                              # the band every side view sees (not top and bottom)
+    V2 = surfacefuse.refine(V, F, views, scale=0.01, iters=3)
+    assert rad(V2)[side].std() < 0.45 * rad(V)[side].std()          # the ripples go: the views say "a ball"
+    assert abs(rad(V2)[side].mean() - R) < 0.0015                   # the ball stays the ball it was
+    eased = surfacefuse.eased(rad(V) - R, F, rounds=4)
+    assert np.abs(eased).max() < np.abs(rad(V) - R).max()
+
+
+def test_a_nudge_moves_the_surface_it_was_taken_from_and_no_other(home):
+    from hifipushie import meshclay
+    k = np.arange(20000) + 0.5
+    phi, th = np.arccos(1 - 2 * k / 20000), np.pi * (1 + 5 ** 0.5) * k
+    pts = np.array([0, 0, ZC]) + R * np.stack([np.cos(th) * np.sin(phi), np.sin(th) * np.sin(phi), np.cos(phi)], 1)
+    sha = meshclay.put(pts, np.full(len(pts), 0.004))               # the ball's surface, moved out 4 mm
+    spec = {"symmetry": False, "blend": 0.0, "joints": {}, "bones": {},
+            "blobs": {"ball": {"at": [0, 0, ZC], "size": [R, R, R]}, "near": {"at": [0.215, 0, ZC], "size": [R, R, R]},
+                      "moved": {"shape": "nudge", "nudge": sha, "layer": 60}}}
+    prims = compile_prims(spec)
+    assert [p.kind for p in prims][-1] == "nudge"
+    f = lambda *p: float(sdf.field_at(prims, np.array([p]))[0])
+    assert f(0, -(R + 0.003), ZC) < 0 < f(0, -(R + 0.005), ZC)      # the ball is 4 mm bigger
+    assert f(0.215, -(R - 0.001), ZC) < 0 < f(0.215, -(R + 0.001), ZC)   # its neighbour, 1.5 cm away, is not
+    with pytest.raises(ValueError):
+        meshclay.put(pts, np.zeros(3))

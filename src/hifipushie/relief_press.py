@@ -34,6 +34,7 @@ FACING = (0.35, 0.6)   # how much the read surface faces the viewer (its nz): no
 BORDER = 0.004     # m: the facing is judged over this much of the surface
 INSET = 0.002      # m: the cut stays this far in from the region's border (a neighbour standing there isn't shaved)
 GATE = 0.02        # m: the relief reaches this deep under the surface, at most (and never past the part's middle)
+DEEPEN = 1.7       # what a relief brings is made this much deeper: a read mutes small relief
 SCALE = 0.04       # m: a relief brings what is smaller than this; the larger lie of a part is its marks' (the clay's)
 EDGE = 0.01        # m: a detail relief has no hold at the figure's outline, and full hold this far in from it
 STEEP = (0.5, 0.75)   # the relief's own lie (cosine to the view): no hold below, full hold above
@@ -253,7 +254,7 @@ def _detail(name, fm, feature, view, leave, across, nm, mk, fig, hit, B, wf, px,
         sc = scale / px
         dd = np.where(mk & hit, top - B, 0.0)
         low = ndimage.gaussian_filter(dd, sc) / np.maximum(ndimage.gaussian_filter((mk & hit).astype(float), sc), 1e-3)
-        top = np.where(mk, B + (top - B) - low, top)
+        top = np.where(mk, B + DEEPEN * ((top - B) - low), top)     # (a read mutes small relief)
     return top, gain, placed
 
 
