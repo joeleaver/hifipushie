@@ -60,10 +60,11 @@ def _seen(V: np.ndarray, N: np.ndarray, view: dict):
     r = (view["z0"] - P[:, 2]) / (view["px"] * view["za"]) - 0.5
     inside = (c >= 0) & (c <= w - 1) & (r >= 0) & (r <= h - 1)
     at = [np.clip(r, 0, h - 1), np.clip(c, 0, w - 1)]
-    n = np.stack([ndimage.map_coordinates(view["normals"][..., k], at, order=1, mode="nearest") for k in range(3)], 1)
+    src = view.get("_soft", view["normals"])        # the read at the mesh's own fineness (refine() makes it)
+    n = np.stack([ndimage.map_coordinates(src[..., k], at, order=1, mode="nearest") for k in range(3)], 1)
     m = ndimage.map_coordinates(view["mask"].astype(np.float32), at, order=1, mode="nearest")
     world = (n[:, :1] * U[None] + n[:, 1:2] * np.array([0.0, 0.0, 1.0])[None] + n[:, 2:3] * Fv[None]) * flip
-    wgt = visible * inside * m * _smooth((facing - FACING[0]) / (FACING[1] - FACING[0])) * np.clip(facing, 0, 1)
+    wgt = visible * inside * m * _smooth((facing - FACING[0]) / (FACING[1] - FACING[0])) * np.clip(facing, 0, 1) ** 3
     return world, wgt
 
 
@@ -81,10 +82,13 @@ def targets(V: np.ndarray, N: np.ndarray, views) -> tuple[np.ndarray, np.ndarray
     return m / np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-12), say
 
 
-def refine(V: np.ndarray, F: np.ndarray, views, scale: float = 0.01, iters: int = 3, hold: float = 3.0, log=None) -> np.ndarray:
+def refine(V: np.ndarray, F: np.ndarray, views, scale: float = 0.01, iters: int = 3, hold: float = 3.0, log=None,
+           stiff: np.ndarray | None = None) -> np.ndarray:
     """The mesh's vertices moved along their normals so that the surface faces the way the pictures say, keeping
     the mesh's own shape for everything broader than about 6 x `scale` (a bump of wavelength 2 pi `scale` is shared
-    evenly between the two). Linear least squares per round (the mesh's normals and what each view sees are taken
+    evenly between the two). `stiff` (per vertex, default 1) holds a vertex that much harder to where it is: a
+    surface that is already a read at full detail (a skin facing its own picture) needs no second opinion, the
+    walls between the skins need it all. Linear least squares per round (the mesh's normals and what each view sees are taken
     afresh each round)."""
     import scipy.sparse as sp
     import scipy.sparse.linalg as spl
@@ -92,9 +96,21 @@ def refine(V: np.ndarray, F: np.ndarray, views, scale: float = 0.01, iters: int 
     E = edges(F)
     i, j = E[:, 0], E[:, 1]
     n = len(V)
+    spacing = float(np.median(np.linalg.norm(V[j] - V[i], axis=1)))
+    views = [dict(v) for v in views]
+    for v in views:     # a read finer than the mesh, sampled once per vertex, would alias into grain: ease it first
+        sg = 0.6 * spacing / v["px"]
+        if sg > 0.5:
+            soft = np.stack([ndimage.gaussian_filter(v["normals"][..., k].astype(np.float32), sg) for k in range(3)], -1)
+            v["_soft"] = soft / np.maximum(np.linalg.norm(soft, axis=-1, keepdims=True), 1e-6)
+    adj = sp.csr_matrix((np.ones(2 * len(E)), (np.r_[i, j], np.r_[j, i])), shape=(n, n))
+    deg = np.maximum(np.asarray(adj.sum(1)).ravel(), 1.0)[:, None]
     for it in range(iters):
         N = vertex_normals(V, F)
         M, say = targets(V, N, views)
+        for _ in range(2):          # what two views say differently hair by hair is not shape
+            M = 0.5 * M + 0.5 * (adj @ M) / deg
+        M /= np.maximum(np.linalg.norm(M, axis=1, keepdims=True), 1e-12)
         me = M[i] + M[j]
         me /= np.maximum(np.linalg.norm(me, axis=1, keepdims=True), 1e-12)
         e = V[j] - V[i]
@@ -104,7 +120,7 @@ def refine(V: np.ndarray, F: np.ndarray, views, scale: float = 0.01, iters: int 
         rhs = -(me * e).sum(1) / ln
         k = len(E)
         A = sp.csr_matrix((np.r_[aj, ai], (np.r_[np.arange(k), np.arange(k)], np.r_[j, i])), shape=(k, n))
-        H = (A.T @ A + sp.identity(n) * (hold / scale ** 2)).tocsr()
+        H = (A.T @ A + sp.diags((hold / scale ** 2) * (np.ones(n) if stiff is None else np.asarray(stiff, float)))).tocsr()
         b = A.T @ rhs
         pre = sp.diags(1.0 / H.diagonal())
         d, info = spl.cg(H, b, M=pre, rtol=1e-5, maxiter=400)

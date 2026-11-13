@@ -13,10 +13,11 @@ relief: what is smaller than FINE is deepened by DETAIL.
 
 Both skins are solved on the FRONT picture's grid (its outline is the solid's; the back picture's read is laid
 onto it mirrored, world place for world place). Each is the read's slopes (surfaceread.py) added up over the
-group's whole outline, AS READ: a read gets the shape of an eye or a muzzle about right and flattens the head as a
-whole (measured on Scraps: one gain for everything stretched the head into an anteater's, holds pinned into the
-solve folded the face). So the surface is kept, and a smooth BEND (the stiffest sheet that does it, bend()) carries
-it to where the other pictures say it is:
+group's whole outline, AS READ (hold "rows", the default): the free surface is what the picture shows best (the
+face of picture 17), and every hold tried inside or on top of it has cost it something (one gain for everything
+stretched the head, pins folded and ridged the face, an edge held to the block-in's depth dragged the eyes back).
+So each skin is only SET IN DEPTH, row by row, by the profile the side view shows; the skins need not meet, and the
+solid is closed by its outlines in the front AND the side picture. The older holds are kept (hold "pins", "bend"):
   the outline       where it is an edge of the solid, both skins to ONE depth, the block-in clay's mid-depth there:
                     front and back meet in an edge, as a closed surface does where it turns away
   seated parts      (`seat`: ears, whatever stands off to one side) softly to the block-in clay's own surface: the
@@ -40,6 +41,11 @@ FEATHER = 0.008    # m: a tighter close-up takes over from a wider one across th
 FINE, DETAIL = 0.01, 1.7   # relief smaller than FINE (m) is deepened DETAIL times: a read mutes it
 PIN_PER = 0.00127  # m: the pixel the pins' weights below were found at
 PIN_OUTLINE, PIN_MIDDLE, PIN_SEAT = 1.0, 0.05, 0.02   # hold "pins": at the edge, along the middle band, at a seat
+BROAD = 0.006      # m: a skin's broad lie (what "how deep under it" is measured from) is the skin eased by this
+PLAIN = 0.008      # m: a wall follows the outline smoothed by a disc of this radius
+TRIM = 0.004       # m: hold "rows": a skin's last stretch before the outline is not the read's (seen edge-on)
+ROWS = 0.008       # m: hold "rows": the shift is eased over this much height
+INSET = 0.001      # m: and keeps the skin this far inside the profile
 READ = 1.2         # the read's slopes are taken this much deeper as a whole (it mutes even local shape a little)
 CELL = 0.003       # m: the bend is solved on cells this size (it has nothing finer in it)
 OUTLINE_W, MIDDLE_W, SEAT_W = 30.0, 3.0, 0.05   # how hard the bend is held at the edge, the middle line, a seat
@@ -162,7 +168,8 @@ def _onto(b: dict, f: dict) -> dict:
     nm[..., 0] *= -1.0                                                      # its right is the front's left
     nm /= np.maximum(np.linalg.norm(nm, axis=-1, keepdims=True), 1e-6)
     pick = lambda m: (ndimage.map_coordinates(m.astype(np.float32), at, order=0, mode="constant") > 0.5) & ok
-    return {"normals": nm, "seen": pick(b["seen"]) & f["full"], "seats": pick(b["seats"]) & f["full"]}
+    return {"normals": nm, "seen": pick(b["seen"]) & f["full"], "seats": pick(b["seats"]) & f["full"],
+            "full": pick(b["full"]), "seen_all": pick(b["seen"])}
 
 
 def bend(full: np.ndarray, px: float, holds, holds2=None, meet=None, stiff: float = 1.0, cell: float = CELL):
@@ -256,6 +263,35 @@ def _middle(T0, zrow, prof, rec_other: dict, c0: float, px: float, full: np.ndar
     return mask, val
 
 
+def _rows(T0, zrow, prof, rec_other: dict, px: float, full: np.ndarray, B: np.ndarray, hit: np.ndarray):
+    """How far each row of a free skin is shifted in depth: so that its forward-most point lies INSET inside the
+    profile (the side outline then never shaves the face), smoothly from row to row, carried on past the heights
+    the side outline covers. With no profile to go by, one shift that seats the skin on the block-in's surface.
+    (shift per row, rows the profile placed)."""
+    H = len(zrow)
+    if prof is not None:
+        seen = np.abs(zrow[:, None] - prof[0][None, :]).min(1) < 1.5 * rec_other["m_per_px"]
+        e_t = np.interp(zrow, prof[0], prof[1])
+        rows = np.array([v for v in np.flatnonzero(seen) if full[v].sum() >= 8], int)
+        if len(rows) >= 12:
+            top = np.array([np.percentile(T0[v][full[v]], 99) for v in rows])
+            d = np.interp(np.arange(H), rows, e_t[rows] - top - INSET)
+            return ndimage.gaussian_filter1d(d, ROWS / px, mode="nearest"), len(rows)
+    sel = full & hit
+    return np.full(H, float(np.median((B - T0)[sel])) if sel.any() else 0.0), 0
+
+
+def _plain(mask: np.ndarray, px: float, r: float | None = None) -> np.ndarray:
+    """An outline without its fringe: tufts and notches narrower than about 2 r smoothed away. What a wall follows:
+    pushed straight through a solid, every tuft of the outline as drawn would run through it as a rib."""
+    r = max(2, int(round((r or PLAIN) / px)))
+    yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+    disk = xx * xx + yy * yy <= r * r
+    pad = np.pad(mask, r + 1)
+    out = ndimage.binary_opening(ndimage.binary_closing(pad, disk), disk)
+    return out[r + 1:-r - 1, r + 1:-r - 1]
+
+
 def deepen(T: np.ndarray, full: np.ndarray, px: float, fine: float = FINE, detail: float = DETAIL) -> np.ndarray:
     """Relief smaller than `fine` made `detail` times as deep (a read mutes small relief)."""
     s = fine / px
@@ -264,7 +300,7 @@ def deepen(T: np.ndarray, full: np.ndarray, px: float, fine: float = FINE, detai
 
 
 def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=(), front: str | None = None,
-          back: str | None = None, detail: float = DETAIL, hold: str = "pins") -> tuple[dict, dict]:
+          back: str | None = None, detail: float = DETAIL, hold: str = "rows", side: str | None = None) -> tuple[dict, dict]:
     """The spec with the group built as one two-skin solid in place of its block-in clay, and what was done."""
     group = list(group)
     main = main or group[0]
@@ -311,8 +347,30 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
         edge = np.where(rim, edge, np.nan)
     c0 = (f["rec"]["centre_px"] - f["box"][0]) * f["G"] - 0.5
     sides = (("front", f["normals"], f["seen"], f["seats"], Bf, front), ("back", b["normals"], b["seen"], b["seats"], Bb, back))
+    lab, nl = ndimage.label(full | b["full"])       # what either picture shows of the group, on the front's grid:
+    if nl > 1:                                      # one piece (a stray bit of the back's outline is no part of it)
+        b["full"] = b["full"] & (lab == 1 + int(np.argmax(ndimage.sum(full, lab, range(1, nl + 1)))))
+    both = full | b["full"]
     T0, holds, abouts, out = {}, {}, {}, {}
     per = (px / PIN_PER) ** 2          # a pin's weight is per pixel: the same hold on a finer grid is that much less
+    for key, nm, seen, seats, B, view in sides if hold == "rows" else ():
+        # THE WAY THAT KEEPS THE READ: each skin is the read's slopes added up, free (the face the front picture
+        # gives, picture 17's), and only set in depth: every row is shifted so that its forward-most point lies
+        # on the profile the side view shows at that height. No hold at the outline: the skins need not meet, the
+        # outlines (front and side) close the solid, and the views then shape those walls together (surfacefuse).
+        # each skin is solved over what EITHER picture shows of the group (carried through smoothly where its own
+        # picture shows none of it), and trimmed and placed by its own picture's outline
+        own = full if key == "front" else b["full"]
+        seen = seen if key == "front" else b["seen_all"]
+        T0 = READ * surfaceread.height(nm, both, px, data=seen & own).astype(np.float64)
+        prof = rp.profile(name, fm, main, view, (), [g for g in group if g != main])
+        shift, n_rows = _rows(T0, zrow, prof, fm["views"][prof[2]] if prof else {}, px, own, B, hit)
+        T = deepen(T0 + shift[:, None], both, px, detail=detail)
+        # at the very outline a read is seen edge-on and its last pixels drop by noisy centimetres: from TRIM
+        # inside its own outline the skin carries on level
+        out[key] = rp._fill(np.where(ndimage.distance_transform_edt(own) * px >= TRIM, T, np.nan))
+        abouts[key] = {"view": view, "profile_rows": n_rows, "shift_mm": [round(float(shift.min()) * 1e3, 1), round(float(shift.max()) * 1e3, 1)],
+                       "hidden": round(float((own & ~seen).sum() / max(own.sum(), 1)), 2)}
     for key, nm, seen, seats, B, view in sides if hold == "pins" else ():
         # the holds inside the solve, as soft pins, with one depth gain for the read (the arrangement that has held
         # together best so far; its faults: a slight ridge along the middle line, and local shape scaled by the gain)
@@ -348,10 +406,12 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
         for key, L in (("front", Lf), ("back", Lb)):
             out[key] = rp._fill(np.where(full, deepen(T0[key] + L, full, px, detail=detail), np.nan))
             abouts[key]["bent_mm"] = [round(float(np.percentile((L - np.median(L[full]))[full], q)) * 1e3, 1) for q in (2, 98)]
-    abouts["edge_gap_mm"] = round(float(np.abs((out["front"] + out["back"])[rim]).mean()) * 1e3, 1)
+    abouts["edge_gap_mm"] = round(float(np.abs((out["front"] + out["back"])[rim]).mean()) * 1e3, 1) if rim.any() else None
     abouts["front"]["close_ups"], abouts["back"]["close_ups"] = f["zooms"], braw["zooms"]
     Tf, Tb = out["front"], out["back"]
     inner = ndimage.distance_transform_edt(full) * px
+    if hold == "rows":
+        inner = ndimage.distance_transform_edt(both) * px
     short = np.clip(np.minimum(THIN, inner) - (Tf + Tb), 0, None) / 2       # the skins may not cross inside
     Tf, Tb = Tf + short, Tb + short
 
@@ -362,8 +422,40 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     foot = (ndimage.distance_transform_edt(~full) - ndimage.distance_transform_edt(full)) * px
     # map pixel (c, r) sits at o + (c + 0.5, r + 0.5): the frame's origin is half a pixel back
     o_map = o + 0.5 * px * U + 0.5 * px * za * V
+    # the side picture's outline of the group cuts the solid too: its profile and its crown are that picture's
+    side = side or views.get("side") or views.get("side_r")
+    cut = None
+    if side and any(side in fm["features"][g]["marks"] for g in group):
+        sr = _read(name, fm, group, main, side, ())
+        sf = _plain(ndimage.binary_fill_holes(sr["full"]), sr["px"])
+        so = sr["U"] * sr["u0"] + np.array([0.0, 0.0, sr["z0"]])
+        cut = {"foot": (ndimage.distance_transform_edt(~sf) - ndimage.distance_transform_edt(sf)) * sr["px"],
+               "o": so + 0.5 * sr["px"] * sr["U"] + 0.5 * sr["px"] * sr["za"] * V, "U": sr["U"], "V": V / sr["za"], "px": sr["px"]}
+        if hold == "rows" and main[-2:] not in (".L", ".R"):
+            # the sides are a skin too: the side picture's read, free, each row set so that its outermost point
+            # lies on the front picture's outline at that height
+            spx, sfull = sr["px"], sr["full"]
+            S0 = READ * surfaceread.height(sr["normals"], sfull, spx, data=sr["seen"]).astype(np.float64)
+            zs = sr["z0"] - (np.arange(sfull.shape[0]) + 0.5) * spx * sr["za"]
+            sprof = rp.profile(name, fm, main, side, (), [g for g in group if g != main])
+            sshift, s_rows = _rows(S0, zs, sprof, fm["views"][sprof[2]] if sprof else {}, spx, sfull,
+                                   np.zeros(sfull.shape), np.zeros(sfull.shape, bool))
+            if s_rows:
+                S = deepen(S0 + sshift[:, None], sfull, spx, detail=detail)
+                S = rp._fill(np.where(ndimage.distance_transform_edt(sfull) * spx >= TRIM, S, np.nan))
+                gy, gx = np.gradient(S, spx * sr["za"], spx)
+                cut.update(top=S, cos=np.clip(1.0 / np.sqrt(1.0 + gx ** 2 + gy ** 2), 0.25, 1.0), F=sr["F"])
+                abouts["side"] = {"view": side, "profile_rows": s_rows,
+                                  "shift_mm": [round(float(sshift.min()) * 1e3, 1), round(float(sshift.max()) * 1e3, 1)]}
+    signed = lambda a: (ndimage.distance_transform_edt(~a) - ndimage.distance_transform_edt(a)) * px
+    wall = foot_b = None
+    if hold == "rows":      # between the skins the solid is what BOTH pictures show of it, without the fringe
+        wall, foot_b = signed(_plain(full & b["full"], px)), signed(b["full"])
+    broad = lambda t: ndimage.gaussian_filter(t, BROAD / px) if hold == "rows" else None
+    fs, bs = broad(Tf), broad(Tb)
     sha = twoskin.put({"o": o_map, "U": U, "V": V / za, "F": Ff, "px": px},
-                      {"front": Tf, "back": Tb, "foot": foot, "cf": cos(Tf), "cb": cos(Tb)})
+                      {"front": Tf, "back": Tb, "foot": foot, "cf": cos(Tf), "cb": cos(Tb), "wall": wall, "foot_b": foot_b,
+                       "front_s": fs, "back_s": bs}, cut)
     # the block-in under the group was scaffolding: out of the clay (its joints stay: other parts hang on them)
     gone = {e for g in group for e in (fm["features"][g].get("built") or [])}
     gone |= {featuremap.twin(e) for e in list(gone) if featuremap.twin(e)}
@@ -373,7 +465,7 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     new["blobs"][bname] = {"shape": "twoskin", "skins": sha}
     thick = (Tf + Tb)[full]
     about = {"blob": bname, "skins": sha, "group": group, "map": [int(W), int(H)], "px_mm": round(px * 1e3, 2),
-             "front": abouts["front"], "back": abouts["back"], "edge_gap_mm": abouts["edge_gap_mm"],
+             "front": abouts["front"], "back": abouts["back"], "side": abouts.get("side"), "edge_gap_mm": abouts["edge_gap_mm"],
              "thick_mm": [round(float(np.percentile(thick, q)) * 1e3, 1) for q in (2, 50, 98)],
              "taken_out": sorted(e for e in gone if e in spec.get("bones", {}) or e in spec.get("blobs", {}))}
     return new, {"about": about, "front": {"normals": f["normals"], "full": full, "T": Tf},
