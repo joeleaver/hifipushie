@@ -14,6 +14,9 @@ A form is built `as`:
   "sink"   the same, pressed in: a hollow for an area, a groove or crease for a line.
   "rim"    a raised ring: round a mark with a hole in it (the ring itself was marked) along the ring's middle;
            round a filled mark just inside its edge (`width`: half the rim's breadth).
+  "band"   a ring ALL THE WAY ROUND a limb, horn or tail (a mass built as a tube): one stroke round the tube's
+           bone at the place the mark shows, as broad along the limb as the mark is (a cuff, a growth ring, a
+           collar). A mark in several pieces is a band per piece. A negative `depth` presses it in.
 `depth` (metres): how far out or in. Left out, it is 0.4 of the form's half breadth (0.8 for a rim, half for a
 line): a guess the pictures don't hold from one view, so look at it from the side and set it.
 `profile`: "soft" (melts in), "round" (a dome with an edge), "flat" (a plateau), "sharp" (a cusp: creases).
@@ -31,7 +34,7 @@ from . import featuremap, masslines, refread, store
 from . import strokes as strokes_mod
 from .spec import SpecError, compile_prims
 
-KINDS = ("raise", "sink", "rim")
+KINDS = ("raise", "sink", "rim", "band")
 # A stroke fades to nothing AT its width, and a path's section is narrower still than a dab's (each place sums the
 # dabs along it): what can be SEEN of it (an eighth of its depth or more) ends inside its width. A mark's edge is
 # where the form is seen to end, so an area's stroke is this much wider than the mark (measured: sdf.PROFILES)
@@ -110,6 +113,35 @@ def _ring(mask: np.ndarray, rec: dict, width: float | None):
     return np.vstack([path, path[:1]]), (float(width) if width else half)
 
 
+def band(spec: dict, bones: list[str], pts: np.ndarray, vk: str) -> dict:
+    """A stroke round the bone nearest a mark piece (pts: its (sideways, up) cloud in a view of kind vk): the bone,
+    how far along it, and the piece's half breadth along it."""
+    ax = 0 if vk in ("front", "back") else 1
+    mid, best = pts.mean(0), None
+    for b in bones:
+        ja, jb = spec["joints"].get(spec["bones"][b]["a"], {}), spec["joints"].get(spec["bones"][b]["b"], {})
+        if "pos" not in ja or "pos" not in jb:
+            continue
+        a3, b3 = np.array(ja["pos"], float), np.array(jb["pos"], float)
+        a, d = a3[[ax, 2]], (b3 - a3)[[ax, 2]]
+        t = float(np.clip((mid - a) @ d / max(float(d @ d), 1e-12), 0.0, 1.0))
+        off = float(np.hypot(*(mid - (a + t * d))))
+        if best is None or off < best[0]:
+            best = (off, b, t, d / max(float(np.hypot(*d)), 1e-9), b3 - a3)
+    if best is None:
+        raise ValueError("the mass it is on has no bones with places of their own (a band goes round a tube)")
+    _, b, t, along, axis3 = best
+    half = float(np.ptp((pts - mid) @ along)) / 2
+    axis3 = np.abs(axis3) / max(float(np.linalg.norm(axis3)), 1e-9)
+    side = [0.0, 0.0, 0.0]
+    side[int(np.argmin(axis3))] = 1.0  # a world direction squarely across the bone to start the turn from
+    path = [{"bone": b, "t": round(float(np.clip(t, 0.03, 0.97)), 3), "side": side, "around": 0}]
+    # a stroke eases in and out at its ends: once round and 30 degrees on closes the seam evenly (measured: a ring
+    # ending at 360 stood half as high there, one ending at 405 half as high again)
+    path += [{"around": float(a_)} for a_ in range(30, 391, 30)]
+    return {"path": path, "half": half}
+
+
 def _lines(mark: dict) -> list:
     ln = mark.get("line")
     if not ln:
@@ -137,7 +169,7 @@ def build(name: str, how: dict) -> dict:
         kind = (h or {}).get("as")
         if kind not in KINDS:
             raise ValueError(f"{feature}: as is one of {KINDS} (raise: it stands out of the mass; sink: it is pressed "
-                             f"in; rim: a raised ring round its mark)")
+                             f"in; rim: a raised ring round its mark; band: a ring all the way round a limb)")
         tw = featuremap.twin(feature)
         if sym and feature.endswith(".R") and tw in how:
             continue  # its .L twin is laid and mirrored
@@ -219,7 +251,40 @@ def build(name: str, how: dict) -> dict:
                     return
                 strokes[sname] = st
 
-            if kind == "rim":
+            if kind == "band":
+                from scipy import ndimage
+                bones = [n for n in ((featuremap.twin(e) or e) if flip else e for e in on["elements"]) if n in spec["bones"]]
+                if not bones:
+                    raise ValueError(f"{feature}: a band goes round a mass built as a tube, and {host!r} is not one: "
+                                     f"lay it as a raise from every view that shows it (\"view\": \"all\")")
+                lab, n_lab = ndimage.label(mask, structure=np.ones((3, 3)))
+                sizes = ndimage.sum(mask, lab, range(1, n_lab + 1))
+                keep = [i + 1 for i, a in enumerate(sizes) if a >= max(6, 0.08 * sizes.max())]
+                for j, i in enumerate(keep):
+                    ys, xs = np.where(lab == i)
+                    cloud = _world(rec, xs + 0.5, ys + 0.5)
+                    if flip:
+                        cloud = cloud * np.array([-1.0 if vk in ("front", "back") else 1.0, 1.0])
+                    try:
+                        bd = band(spec, bones, cloud, vk)
+                    except ValueError as e:
+                        raise ValueError(f"{feature}: {e}") from None
+                    half = float(h.get("width", max(bd["half"], 1.5 * k)))
+                    depth = float(h.get("depth", 0.35 * half))
+                    st = {"op": "crease" if depth < 0 else "clay", "path": bd["path"], "width": round(half, 4),
+                          "depth": round(abs(depth), 4), "profile": h.get("profile", "round")}
+                    if part:
+                        st["part"] = part
+                    sname = f"{base}{vtag}{'' if len(keep) == 1 else f'_{j + 1}'}{sfx}"
+                    try:
+                        compile_prims({**spec, "strokes": {sname: st}})
+                    except SpecError as e:
+                        notes.append(f"{feature}: a band could not be laid round {bd['path'][0]['bone']} and was LEFT OUT ({e})")
+                        continue
+                    strokes[sname] = st
+                if len(keep) > 1:
+                    notes.append(f"{feature}: its mark is {len(keep)} separate pieces: one band each")
+            elif kind == "rim":
                 try:
                     path, half = _ring(mask, rec, h.get("width"))
                 except ValueError as e:

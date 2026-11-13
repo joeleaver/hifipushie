@@ -174,7 +174,7 @@ def build_masses(name: str, how: dict, symmetry: bool = True, view: str | None =
 def build_forms(name: str, how: dict, view: str | None = None, save: str | None = None):
     """Lay forms of the feature map on the built masses as strokes, their paths read off the marks: no surface
     address typed. how: {feature: {"as": "raise" (it stands out of the mass) | "sink" (pressed in: a hollow, a
-    groove) | "rim" (a raised ring round its mark), "depth": metres out or in, "width": metres (half across, for
+    groove) | "rim" (a raised ring round its mark) | "band" (a ring round a limb), "depth": metres out or in, "width": metres (half across, for
     a line or a rim), "profile": "soft" | "round" | "flat" | "sharp", "view": the flat view to lay it from}}.
     A form laid again replaces what was laid for it. Returns what was laid, what had to be assumed, and the
     feature report for the forms with a picture. Details: guide(topic="build_forms"); the page: guide(topic="features")."""

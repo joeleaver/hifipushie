@@ -197,15 +197,18 @@ say what it is, `"as"`:
 - `"sink"`: it is pressed in: a hollow, a nostril; a `line` mark is a groove or a crease.
 - `"rim"`: a raised ring. Mark the ring itself (an ellipse `minus` a smaller one) and it runs along the ring's
   middle; on a filled mark it runs just inside the edge (`"width"`: half its breadth).
+- `"band"`: a ring ALL THE WAY ROUND a limb, a horn or a tail (a mass you built as a tube): a cuff, a growth
+  ring, a collar. Mark it in one view as a strip across the limb: it is laid round the limb there, as broad
+  along the limb as the strip. Several strips are several bands. A negative `"depth"` presses it in.
 
 `"depth"`: metres, how far out or in. ONE VIEW CAN'T SHOW IT: left out, it is guessed from the form's breadth and
 listed as ASSUMED. Look at the form from the side, in the picture and in the clay, and set it. A thick, puffy
 form wants more than the guess; a shallow one less. `"profile"`: `"soft"` melts in, `"round"` is a dome with an
 edge, `"flat"` a plateau, `"sharp"` a cusp (a crease). `"view"`: the flat view it is laid from: the one that
 looks most squarely at it (by default the one where its mark is largest). A form on a mass's side is laid from
-the side view; laid from the front it would smear along the mass's edge. A band that goes ROUND a thing (a
-cuff, a ring, a collar) shows a face to every view: mark it in each and give `"view": "all"` (or a list), and it
-is laid from each. A form at a mass's very edge, seen edge-on from every view (a fringe hanging under a jaw),
+the side view; laid from the front it would smear along the mass's edge. A thing that goes ROUND a mass that
+is not a tube (ribs round a drum) shows a face to every view: mark it in each and give `"view": "all"` (or a
+list), and it is laid from each. A form at a mass's very edge, seen edge-on from every view (a fringe hanging under a jaw),
 can't be laid well: clay pushed out there points along the edge. Locks that hang free are masses.
 
     build_forms("jug", {"rim": {"as": "raise", "depth": 0.004}, "spout_groove": {"as": "sink", "width": 0.003},

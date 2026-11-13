@@ -5,7 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hifipushie import featuremap, masses, masslines
+from hifipushie import featuremap, forms, masses, masslines, sdf
+from hifipushie.spec import compile_prims
 
 K = 0.00167  # metres per pixel
 
@@ -138,3 +139,18 @@ def test_a_mass_in_several_pieces_is_one_lump_per_piece():
     assert all(abs(b["size"][0] - 0.012) < 0.003 and abs(b["size"][2] - 0.03) < 0.004 and abs(b["at"][1] - 0.20) < 0.004 for b in out.values()), out
     assert any("3 separate pieces" in n for n in notes)
     assert list(masses._ball("knob", {"xz": drops[:400], "yz": band, "px": K}, {}, [])["blobs"]) == ["knob"]
+
+
+def test_a_band_goes_all_the_way_round_a_limb():
+    """A cuff marked as a strip across a limb in one view is one stroke round the limb's bone there (laid from the
+    view it only covered the half that view sees)."""
+    spec = {"symmetry": False, "blend": 0.02, "blobs": {}, "joints": {"a": {"pos": [0, 0, 0.4], "r": 0.03}, "b": {"pos": [0, 0, 0.1], "r": 0.03}},
+            "bones": {"limb": {"a": "a", "b": "b"}}}
+    strip = _cloud(lambda x, y: (np.abs(x - 0.05) < 0.04) & (np.abs(y - 0.19) < 0.012)) - np.array([0.05, 0.0])
+    bd = forms.band(spec, ["limb"], strip, "front")
+    assert bd["path"][0]["bone"] == "limb" and abs(bd["path"][0]["t"] - 0.7) < 0.03 and abs(bd["half"] - 0.012) < 0.003, bd
+    st = {"op": "clay", "path": bd["path"], "width": 0.014, "depth": 0.008, "profile": "round"}
+    prims = compile_prims({**spec, "strokes": {"cuff": st}})
+    ring = np.array([[0.034, 0, 0.19], [-0.034, 0, 0.19], [0, 0.034, 0.19], [0, -0.034, 0.19], [0.024, 0.024, 0.19]])
+    assert np.all(sdf.field_at(prims, ring) < 0), sdf.field_at(prims, ring)            # proud all the way round
+    assert np.all(sdf.field_at(prims, ring + np.array([0, 0, 0.1])) > 0)                 # and only there

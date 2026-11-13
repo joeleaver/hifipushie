@@ -323,7 +323,8 @@ onto the part of the mass the form is `on` (a mass of another part in front is n
 along the mark's own middle line, as wide at each place as the mark is there (a round mark: one dab; a `line`
 mark: a ridge, "width" metres half across); "sink": the same pressed in (a hollow; a line: a groove or crease);
 "rim": a raised ring, along the middle of a mark with a hole in it, or just inside the edge of a filled mark
-("width": half its breadth). A mark in separate pieces (a row of rings, two bumps) is one stroke per piece.
+("width": half its breadth). "band": a ring all the way round a mass built as a tube (a stroke round the bone
+nearest the mark, at the mark's place along it, as broad as the mark is along the limb; negative depth: pressed in). A mark in separate pieces (a row of rings, two bumps) is one stroke per piece.
 "depth": metres out or in; left out it is guessed from the breadth and listed as ASSUMED (one view can't show it:
 look from the side). "profile": "soft" | "round" | "flat" | "sharp". "view": the flat view to lay it from (default:
 where its mark is largest). Places of a mark that miss the mass from that view are left out and said. A ".L" is

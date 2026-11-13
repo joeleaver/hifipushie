@@ -19,7 +19,8 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
   flap, trunk, tube. A tube follows its mark's own MIDDLE LINE with its thickness read across it; an end cut from
   another mass runs on under it. The built elements are linked in the map; the model lives in the map's frame.
 - `build_forms` (forms.py): a marked form becomes a stroke on the mass it is on, laid from the view it was marked
-  in: raise / sink along the mark's middle line, rim round a ring, a line as a ridge or groove; "view": "all".
+  in: raise / sink along the mark's middle line, rim round a ring, a line as a ridge or groove; "view": "all";
+  band: one stroke round the bone of the tube it is on.
 - guide.md: stage 0 = the map; blockout gate = every mass made and right; stage 3 = every form made. Every save
   of a model with a map prints how much of it no element makes.
 
@@ -39,9 +40,9 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
    working rounds on blind build 3's masses; "a cartoon goat holding a can, not Scraps": the HEAD MASS is the
    fault (one trunk = a box; small eyes in oversized sockets; a muzzle marked as a form). The map's masses want
    a head in several masses (skull, muzzle), and a trunk can't be narrower in front than behind.
-2. Forms can't hang free (a beard, a nape fringe, locks): those are masses, and a mass marked in several pieces
-   is not yet built piece by piece. A band round a limb is laid per view ("view": "all"); a ring round a bone
-   (strokes' bone address) is not built. A form's depth is a guess from one view.
+2. Since that trial (2c15150b ..): the page says a big part is several masses and a bulging thing stands
+   proud; a mass in several pieces is a lump per piece (hanging locks); a "band" form goes round a tube's bone.
+   NONE of it proven in blind hands yet (trial 7 running: scraps9/out). A form's depth is a guess from one view.
 3. A perspective picture's camera comes from fit_concept_camera (the MODEL's outline): circular on a rough
    model. Solve it from the map's own features. Not built. feature_tiles was not in the trials' tool list.
 4. Shell parts are owned whole (a buckle = the whole belt); a garment over two legs has no kind. Notches are
@@ -56,5 +57,4 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (this worktree's src; freeze a copy per
   trial: `git archive HEAD src | tar -x -C frozenN`). scraps5/rebuild.py, scraps5/lines.py: trial 4 rebuilt, lines drawn.
 - `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py tests/test_masslines.py`
-NEXT: the page on splitting a head into masses + a blind re-map of Scraps's masses; masses in several pieces
-(hanging locks); a ring round a bone. Then masses + forms again, blind, and the same on Puddles.
+NEXT: judge trial 7's masses; a blind forms pass on them (bands, locks); that picture to Joe; then Puddles.
