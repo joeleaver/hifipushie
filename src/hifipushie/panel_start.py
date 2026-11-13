@@ -134,7 +134,7 @@ def _edge(cnet, nm, ids, em, T, body, idx, Xs=None):
         E, s = lp[k[o]], s[o]
         U = cnet.uv[E]
         d = s if abs(U[0, 0]) <= abs(U[-1, 0]) else s[-1] - s
-    else:  # (a centre piece: each half goes to the side of the started pieces it is sewn to (C443: a winding rule put
+    else:  # (a centre piece: each half goes to the side of the started pieces it is sewn to (C444: a winding rule put
         # both halves on the wrong side, crossing every seam); sewn to none started: the half whose cloth outside (flat
         # +z x winding) faces out with its flat +x at -X, seen from behind with the grain up, is the worn -X half)
         xs = np.flatnonzero(np.sign(U[:, 0]) != np.sign(np.roll(U[:, 0], -1)))  # (outline crossings of x = 0)

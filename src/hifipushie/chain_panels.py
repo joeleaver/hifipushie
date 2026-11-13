@@ -264,13 +264,13 @@ class Panels:
                 X[m] = self.place(TH[k], k, self.cnet.uv[m])
         return X
 
-    def hinge_read(self, TH, h, eps=1e-3):
-        """(turned panel's direction across the row, target direction, measured turn deg) at the row's middle."""
-        a, b, mid, m = h["base"], h["turned"], h["mid"][None], h["across"][None]
-        pa0, pa1 = self.place(TH[a], a, mid), self.place(TH[a], a, mid + eps * m)
-        pb1 = self.place(TH[b], b, mid + eps * m)
-        wa = (pa1 - pa0)[0] / eps
-        wb = (pb1 - self.place(TH[b], b, mid))[0] / eps
+    def hinge_read(self, TH, h):
+        """(turned panel's direction across the row, target direction, measured turn deg) at the row's middle (the
+        maps' own central differences: a 1 mm step on a narrow strip rolled tight read a ruled turn 13 deg off)."""
+        a, b, mid, m = h["base"], h["turned"], h["mid"], h["across"]
+        wa = self._frame(TH[a], a, mid, m)[2]
+        wb = self._frame(TH[b], b, mid, m)[2]
+        mid = mid[None]
         n = self.normal(TH[a], a, mid)[0] * h["way"]
         th = np.radians(h["turn_deg"])
         tgt = np.cos(th) * wa + np.sin(th) * n

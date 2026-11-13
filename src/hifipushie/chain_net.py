@@ -214,7 +214,7 @@ class Network:
     def loop(self, name: str) -> np.ndarray:
         """A piece's outline as one ordered loop of its vertices (the longest loop when a piece has several), walked as one
         circuit of its boundary edges: an outline that touches itself at a vertex (a pinch at a pointed tip) is walked
-        whole, that vertex twice (a greedy walk cut a collar's outline short there, C443); a chains-only network gives
+        whole, that vertex twice (a greedy walk cut a collar's outline short there, C444); a chains-only network gives
         its pattern's outline (chain_lay_net.chain_network)."""
         if getattr(self, "outlines", None) is not None:
             return self.outlines[name]

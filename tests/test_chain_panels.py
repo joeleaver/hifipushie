@@ -103,7 +103,7 @@ def test_hinge_turns_to_its_planned_angle():
 
 
 def test_outline_walked_whole_through_a_pinch():
-    """(N2f, C443) An outline touching itself at one vertex (a sliver triangle on a corner, as at a collar's tip) is
+    """(N2f, C444) An outline touching itself at one vertex (a sliver triangle on a corner, as at a collar's tip) is
     walked whole: every boundary edge once (a greedy walk cut it short and lost a collar's neck edge); a chains-only
     network gives the pattern's outline."""
     u, F = grid(5, 4, 0.2, 0.1)
