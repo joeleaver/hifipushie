@@ -350,8 +350,10 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
     job = out_dir / "job.json"
     job.write_text(json.dumps({"mesh": str(mesh), "views": jobs, "size": size, "samples": samples}))
     script = Path(__file__).with_name("blender_terrain.py")
-    r = subprocess.run(["blender", "-b", "--factory-startup", "--python", str(script), "--", str(job)],
-                       capture_output=True, text=True)
+    from . import resources
+    with resources.heavy(f"terrain views {Path(out_dir).name}", gb=6, gpu=True):  # (C444: one GPU render at a time)
+        r = subprocess.run(["blender", "-b", "--factory-startup", "--python", str(script), "--", str(job)],
+                           capture_output=True, text=True)
     if r.returncode or "Traceback" in r.stdout + r.stderr:  # Blender exits 0 after a Python error
         raise RuntimeError(r.stderr[-2000:] + r.stdout[-3000:])
     return [j["out"] for j in jobs]
