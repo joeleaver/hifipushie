@@ -31,22 +31,22 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
 - MAP, blind: Scraps 46 features in 8 rounds (Joe: "it looks pretty good to me"); the troll 58 in 7. MEASURE,
   blind, the troll told to be the true model (2de593ca): 7 -> 31 right of 37 in six report rounds.
 - BUILD, blind: the troll (d77063f9) 8 rounds, outlines 93-95 %, volume overlap with the true troll 0.80, surface
-  median 9 mm off (troll3/score.py). Scraps three times: (08024656) typed polygons, a lumpy toy; (4e634f13) pieces
-  cut by notches, 14 of 19 right, a slab head, fat arms, lump horns (baynard picture 10; the tube's fault, C434b);
-  (76bc7660) 7 rounds, 28 calls, 16 of 19 right, outlines 89 / 92 / 87 %: the right proportions, a box head.
+  median 9 mm off (troll3/score.py). Scraps: (08024656) typed polygons, a lumpy toy; (4e634f13) pieces cut by
+  notches, fat arms (the tube's fault, C434b); (76bc7660) 7 rounds, 16 of 19 right, outlines 89 / 92 / 87 %.
 
 ## Open faults, worst first
-1. NO GATE PICTURE YET. Blind forms trial (8011f62b, scraps8/out, baynard picture 11): 21 forms laid in 5
-   working rounds on blind build 3's masses; "a cartoon goat holding a can, not Scraps": the HEAD MASS is the
-   fault (one trunk = a box; small eyes in oversized sockets; a muzzle marked as a form). The map's masses want
-   a head in several masses (skull, muzzle), and a trunk can't be narrower in front than behind.
-2. Since that trial (2c15150b ..): the page says a big part is several masses and a bulging thing stands
-   proud; a mass in several pieces is a lump per piece (hanging locks); a "band" form goes round a tube's bone.
-   NONE of it proven in blind hands yet (trial 7 running: scraps9/out). A form's depth is a guess from one view.
-3. A perspective picture's camera comes from fit_concept_camera (the MODEL's outline): circular on a rough
-   model. Solve it from the map's own features. Not built. feature_tiles was not in the trials' tool list.
-4. Shell parts are owned whole (a buckle = the whole belt); a garment over two legs has no kind. Notches are
-   sparse where a join has no pinch (those cuts are ruler pixels); featuresee.py is ~690 lines.
+1. NO LIKENESS YET, and no gate picture. Four blind Scraps block-ins gave four different heads (baynard pictures
+   9-12): one trunk is a box; split into skull, face, muzzle, jaw (trial 7, 2c15150b, scraps9/out) it is a
+   long-nosed tapir, and the split body got a shoulder shelf. Parts land in the right place and size in 8 rounds;
+   the SHAPE of what the flat views hide (a head behind its horns, ears, eyes) does not converge in one pass.
+   Missing: the loop after the first pass (same-view tiles per feature + a blind reviewer naming the worst fault,
+   each round: feature_tiles and bin/review exist, the trials did not offer them), and the perspective picture.
+2. A perspective picture's camera comes from fit_concept_camera (the MODEL's outline): circular on a rough
+   model. Solve it from the map's own features. Not built: the 3/4 painting has never constrained anything.
+3. From trial 7: a cut end of a trunk or flap should run on under its neighbour as a tube's does (stacked trunks
+   groove; a flap floats); a flap can't be turned about the upright; a horn has no taper or curl handle. Bands,
+   lumps per piece and the forms fixes after trial 6 are tested but not yet used by a blind agent. Shell parts
+   are owned whole; notches are sparse where a join has no pinch; featuresee.py is ~690 lines (split it).
 
 ## Decisions in force, and dead ends
 - Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches;
@@ -57,4 +57,5 @@ reference PICTURES only (no generated mesh as input); every trial by a blind Opu
 - Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (this worktree's src; freeze a copy per
   trial: `git archive HEAD src | tar -x -C frozenN`). scraps5/rebuild.py, scraps5/lines.py: trial 4 rebuilt, lines drawn.
 - `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py tests/test_masslines.py`
-NEXT: judge trial 7's masses; a blind forms pass on them (bands, locks); that picture to Joe; then Puddles.
+NEXT: the likeness loop (tiles + blind review each round, more rounds) on the third block-in, and the painting's
+camera from the map. Then Puddles.
