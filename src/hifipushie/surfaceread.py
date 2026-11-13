@@ -91,49 +91,71 @@ def normals(images: list) -> list[np.ndarray]:
     return [np.load(_cache_dir() / f"moge2_{k}.npy").astype(np.float32) for k in keys]
 
 
+MEMBRANE = 0.05     # the weight of "no slope" where the read doesn't count, against one read slope
+
+
 def height(n: np.ndarray, mask: np.ndarray, px: float, steep: float = 0.2, pin: np.ndarray | None = None,
-           pin_w: float = 1.0) -> np.ndarray:
+           pin_w: float = 1.0, data: np.ndarray | None = None, gain: tuple | None = None):
     """The relief inside `mask` whose slopes are the read ones: metres towards the viewer per pixel (0 outside).
     `px` = metres per pixel; a normal facing less than `steep` towards the viewer counts as that steep (a grazing
-    normal's slope is unbounded). `pin` (metres, NaN where free) holds the relief to known heights there, softly
-    (weight `pin_w` against one slope): a piece with pins takes its depth from them, a piece without is zero-mean."""
+    normal's slope is unbounded).
+    pin    metres, NaN where free: holds the relief to known heights there, softly (weight `pin_w` against one
+           slope). A piece with pins takes its depth from them, a piece without is zero-mean.
+    data   where the read counts (default: all of `mask`); the rest of the mask is carried through smoothly (a
+           membrane): the surface under a part that stands in front.
+    gain   (lowest, highest): a read mutes or exaggerates depth as a whole. With pins in two places that differ in
+           depth, the one scale of the slopes that agrees best with them is solved too; returns (relief, gain)."""
     import scipy.sparse as sp
     import scipy.sparse.linalg as spl
+    from scipy import ndimage
     mask = np.asarray(mask, bool)
+    data = mask if data is None else (np.asarray(data, bool) & mask)
     nz = np.clip(n[..., 2], steep, None)
     p, q = -n[..., 0] / nz, n[..., 1] / nz          # dz/dx (to the right), dz/drow (downwards: y up = -row)
     idx = -np.ones(mask.shape, int)
     idx[mask] = np.arange(int(mask.sum()))
     rows, cols, vals, rhs, k = [], [], [], [], 0
+    H, W = mask.shape
     for dy, dx, g in ((0, 1, p), (1, 0, q)):
-        a = mask[: mask.shape[0] - dy, : mask.shape[1] - dx] & mask[dy:, dx:]
-        ia, ib = idx[: mask.shape[0] - dy, : mask.shape[1] - dx][a], idx[dy:, dx:][a]
+        a = mask[: H - dy, : W - dx] & mask[dy:, dx:]
+        ia, ib = idx[: H - dy, : W - dx][a], idx[dy:, dx:][a]
+        both = (data[: H - dy, : W - dx] & data[dy:, dx:])[a]
+        wt = np.where(both, 1.0, np.sqrt(MEMBRANE))
         m = len(ia)
         rows += [np.arange(k, k + m)] * 2
         cols += [ib, ia]
-        vals += [np.ones(m), -np.ones(m)]
-        rhs.append(0.5 * (g[: mask.shape[0] - dy, : mask.shape[1] - dx][a] + g[dy:, dx:][a]))
+        vals += [wt, -wt]
+        rhs.append(np.where(both, 0.5 * (g[: H - dy, : W - dx][a] + g[dy:, dx:][a]), 0.0))
         k += m
     out = np.zeros(mask.shape, np.float32)
     if not k:
-        return out
+        return (out, 1.0) if gain else out
+    bg = np.concatenate(rhs)
     pinned = np.zeros(mask.shape, bool) if pin is None else (mask & np.isfinite(pin))
+    bp = np.zeros(0)
     if pinned.any():
         ip = idx[pinned]
         rows.append(np.arange(k, k + len(ip)))
         cols.append(ip)
-        vals.append(np.full(len(ip), np.sqrt(pin_w)))
-        rhs.append(np.sqrt(pin_w) * pin[pinned] / px)
+        pw = np.sqrt(np.broadcast_to(np.asarray(pin_w, float), mask.shape)[pinned])   # one weight, or one per pixel
+        vals.append(pw)
+        bp = pw * pin[pinned] / px
         k += len(ip)
     A = sp.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(k, int(mask.sum())))
-    z = spl.spsolve((A.T @ A + 1e-6 * sp.identity(A.shape[1])).tocsc(), A.T @ np.concatenate(rhs))
-    out[mask] = z * px
-    from scipy import ndimage
+    solve = spl.factorized((A.T @ A + 1e-6 * sp.identity(A.shape[1])).tocsc())
+    b_g, b_p = np.r_[bg, np.zeros(len(bp))], np.r_[np.zeros(len(bg)), bp]
+    zg = solve(A.T @ b_g)                            # the slopes alone (pins at zero)
+    zp = solve(A.T @ b_p) if len(bp) else np.zeros_like(zg)   # the pins alone (no slopes)
+    g1 = 1.0
+    if gain and len(bp):                             # the energy is quadratic in the gain: its best value in one step
+        r0, r1 = A @ zp - b_p, A @ zg - b_g
+        g1 = float(np.clip(-(r0 @ r1) / max(r1 @ r1, 1e-12), *gain))
+    out[mask] = (zp + g1 * zg) * px
     lab, m = ndimage.label(mask)
     for i in range(1, m + 1):
         if not pinned[lab == i].any():
             out[lab == i] -= out[lab == i].mean()
-    return out
+    return (out, g1) if gain else out
 
 
 def clay(n: np.ndarray, mask: np.ndarray | None = None, light=LIGHT, bg=(236, 236, 232)):

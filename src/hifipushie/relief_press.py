@@ -38,6 +38,7 @@ SCALE = 0.04       # m: a relief brings what is smaller than this; the larger li
 STEEP = (0.5, 0.75)   # the relief's own lie (cosine to the view): no hold below, full hold above
 REACH = 0.01       # m: a form counts as part of its mass's surface this far past the mass's own mark
 RIM = 0.004        # m: this close to the figure's outline, the clay's own edge says how deep the surface is
+RIM_W = 0.05       # how hard a whole press is held there (against 1 for the profile along the middle line)
 GAIN = (0.7, 2.5)  # a read's depth as a whole may be muted or exaggerated by this much, no more
 ZOOM = (768, 4.0)  # a close-up's long side in read pixels, and the most a view pixel is blown up
 
@@ -61,7 +62,7 @@ def region(name: str, fm: dict, feature: str, view: str, leave=(), across=()) ->
             mk |= featuremap.mask(name, f, view) & near
     for f in desc:
         if feats[f].get("kind") == "mass" and view in feats[f]["marks"]:
-            if f in across:
+            if across == "*" or f in across:
                 mk |= featuremap.mask(name, f, view) & near
             else:
                 mk &= ~featuremap.mask(name, f, view)
@@ -190,68 +191,13 @@ def _plane(d: np.ndarray, wgt: np.ndarray, lab: np.ndarray, m: int) -> np.ndarra
     return out
 
 
-def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE,
-         across=()) -> dict:
-    """The relief of one mass from one flat view: {"frame", "maps", "lip", "about", "look"} (module docstring)."""
-    rec = fm["views"][view]
-    if rec.get("kind") not in FRAMES:
-        raise ValueError(f"view {view!r} is not a flat view (front, back, side): a relief is pressed from one")
-    reg = region(name, fm, feature, view, leave, across)
-    if reg.sum() < 40:
-        raise ValueError(f"{feature!r} shows too little of itself in {view!r} to press (its mark less the masses on it)")
-    img, box, zoom = closeup(rec, reg)
-    n = surfaceread.normals([img])[0]
-    h, w = n.shape[:2]
-    H2, W2 = h // SUB, w // SUB
-
-    def pooled(a, how):
-        a = np.asarray(Image.fromarray(a[box[1]:box[3], box[0]:box[2]].astype(np.uint8) * 255).resize((w, h), Image.NEAREST)) > 127
-        return getattr(a[:H2 * SUB, :W2 * SUB].reshape(H2, SUB, W2, SUB), how)((1, 3))
-
-    mk = pooled(reg, "all")
-    mk = ndimage.gaussian_filter(mk.astype(float), 1.5) > 0.5   # a mark's pixel steps are not the part's edge
-    fig = np.asarray(Image.open(rec["image"]).convert("RGBA").crop(box).getchannel("A").resize((w, h), Image.NEAREST)) > 127
-    fig = fig[:H2 * SUB, :W2 * SUB].reshape(H2, SUB, W2, SUB).any((1, 3))
-    nm = n[:H2 * SUB, :W2 * SUB].reshape(H2, SUB, W2, SUB, 3).mean((1, 3))
-    nm /= np.maximum(np.linalg.norm(nm, axis=-1, keepdims=True), 1e-6)
-    k = rec["m_per_px"]
-    px = k * SUB / zoom
-    za, zb = _zfit(name, fm, feature, view)
-    # the frame: map pixel (c, r) -> world
-    F, U = (np.array(v) for v in FRAMES[rec["kind"]])
-    V = np.array([0.0, 0.0, -1.0])
-    z0 = za * (rec["ground_px"] - box[1]) * k + zb     # world height of row 0
-    o = U * (box[0] - rec["centre_px"]) * k + np.array([0.0, 0.0, z0])
-    # the clay as it stands without reliefs, along the same rays (every 3rd pixel, filled in between)
-    bare = {**spec, "blobs": {b: v for b, v in spec.get("blobs", {}).items() if v.get("shape") != "relief"}}
-    prims = compile_prims(bare)
-    adds = [p for p in prims if p.op == "add"]
-    ts = sorted(float(c @ F) for c in (np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)))
-    st = 3
-    rr, cc = np.mgrid[0:H2:st, 0:W2:st]
-    P0 = o[None] + cc.reshape(-1, 1) * px * U[None] + rr.reshape(-1, 1) * px * za * V[None]
-    near, far = _hits(prims, P0, F, ts[1] + 0.02, ts[0] - 0.02)
-    zoomf = (H2 / rr.shape[0], W2 / rr.shape[1])
-
-    def up(a):
-        return ndimage.zoom(_fill(a.reshape(rr.shape)), zoomf, order=1, mode="nearest")[:H2, :W2]
-
-    hit = ndimage.zoom((~np.isnan(near)).reshape(rr.shape).astype(np.float32), zoomf, order=1, mode="nearest")[:H2, :W2] > 0.5
-    B, Fh = up(near), up(far)
-    # how much the read surface faces the viewer (the lie of the surface, not its creases): the relief's weight.
-    # Its footprint is the region where that is anything at all; the cut stays a little in from the border
-    sg = BORDER / px
-    nzs = ndimage.gaussian_filter(np.where(mk, nm[..., 2], 0.0), sg) / np.maximum(ndimage.gaussian_filter(mk.astype(float), sg), 1e-3)
-    wf = _fill(np.where(mk, _smooth((nzs - FACING[0]) / (FACING[1] - FACING[0])), np.nan))
-
-    def signed(a):
-        return (ndimage.distance_transform_edt(~a) - ndimage.distance_transform_edt(a)) * px
-
+def _detail(name, fm, feature, view, leave, across, nm, mk, fig, hit, B, wf, px, za, zrow, scale):
+    """A relief that brings what is smaller than `scale`: (top, gain, how it was placed)."""
+    H2 = mk.shape[0]
     # place: slopes from the picture; the profile from the view at right angles; else a plane on the clay
     lab, m = ndimage.label(mk)
     r = surfaceread.height(nm, mk, px).astype(np.float64)
     main = lab == (1 + int(np.argmax(ndimage.sum(mk, lab, range(1, m + 1)))))
-    zrow = z0 - np.arange(H2) * px * za
     prof = profile(name, fm, feature, view, leave, across)
     s_row, gain, placed = None, 1.0, "the clay under it (a plane)"
     if prof is not None:
@@ -305,7 +251,103 @@ def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), sca
         dd = np.where(mk & hit, top - B, 0.0)
         low = ndimage.gaussian_filter(dd, sc) / np.maximum(ndimage.gaussian_filter((mk & hit).astype(float), sc), 1e-3)
         top = np.where(mk, B + (top - B) - low, top)
-    top = _fill(np.where(mk, top, np.nan))              # past the region's border the relief just carries on:
+    return top, gain, placed
+
+
+def _whole(name, fm, feature, view, leave, rec, box, zoom, nm, mk, mk_full, fig, hit, mid, px, zrow):
+    """The part's whole surface on this side, solved over its full mark (what stands in front of it is carried
+    through smoothly), held in two places: at the part's own outline to the clay's mid-depth there, and along the
+    middle line to the profile the view at right angles shows. The read's depth gain comes out of those two."""
+    pin = np.full(mk_full.shape, np.nan)
+    pw = np.zeros(mk_full.shape)
+    rim = mk_full & hit & (ndimage.distance_transform_edt(fig) * px < RIM)
+    pin[rim], pw[rim] = mid[rim], RIM_W
+    prof = profile(name, fm, feature, view, leave, "*")
+    n_mid = 0
+    if prof is not None and feature[-2:] not in (".L", ".R"):
+        step = 1.5 * fm["views"][prof[2]]["m_per_px"]
+        seen = np.abs(zrow[:, None] - prof[0][None, :]).min(1) < step     # heights the outline really covers
+        e_t = np.interp(zrow, prof[0], prof[1])
+        c0 = (rec["centre_px"] - box[0]) * zoom / SUB
+        for v in np.flatnonzero(seen):
+            for c in {int(np.floor(c0)), int(np.ceil(c0))}:
+                if 0 <= c < mk_full.shape[1] and mk_full[v, c]:
+                    pin[v, c], pw[v, c] = e_t[v], 1.0
+                    n_mid += 1
+    r, gain = surfaceread.height(nm, mk_full, px, pin=pin, pin_w=pw, data=mk, gain=GAIN)
+    placed = (f"its own outline ({int(rim.sum())} points, at the clay's mid-depth)"
+              + (f" and the {prof[2]} view's profile along the middle line ({n_mid} points)" if n_mid else "")
+              + f"; depth gain {gain:.2f}")
+    return r.astype(np.float64), gain, placed
+
+
+def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE,
+         across=(), whole: bool = False) -> dict:
+    """The relief of one mass from one flat view: {"frame", "maps", "lip", "about", "look"} (module docstring)."""
+    rec = fm["views"][view]
+    if rec.get("kind") not in FRAMES:
+        raise ValueError(f"view {view!r} is not a flat view (front, back, side): a relief is pressed from one")
+    reg = region(name, fm, feature, view, leave, across)
+    if reg.sum() < 40:
+        raise ValueError(f"{feature!r} shows too little of itself in {view!r} to press (its mark less the masses on it)")
+    full = region(name, fm, feature, view, leave, "*") if whole else reg   # with what stands in front of it
+    img, box, zoom = closeup(rec, full)
+    n = surfaceread.normals([img])[0]
+    h, w = n.shape[:2]
+    H2, W2 = h // SUB, w // SUB
+
+    def pooled(a, how):
+        a = np.asarray(Image.fromarray(a[box[1]:box[3], box[0]:box[2]].astype(np.uint8) * 255).resize((w, h), Image.NEAREST)) > 127
+        return getattr(a[:H2 * SUB, :W2 * SUB].reshape(H2, SUB, W2, SUB), how)((1, 3))
+
+    mk = pooled(reg, "all")
+    mk = ndimage.gaussian_filter(mk.astype(float), 1.5) > 0.5   # a mark's pixel steps are not the part's edge
+    mk_full = ((ndimage.gaussian_filter(pooled(full, "all").astype(float), 1.5) > 0.5) | mk) if whole else mk
+    fig = np.asarray(Image.open(rec["image"]).convert("RGBA").crop(box).getchannel("A").resize((w, h), Image.NEAREST)) > 127
+    fig = fig[:H2 * SUB, :W2 * SUB].reshape(H2, SUB, W2, SUB).any((1, 3))
+    nm = n[:H2 * SUB, :W2 * SUB].reshape(H2, SUB, W2, SUB, 3).mean((1, 3))
+    nm /= np.maximum(np.linalg.norm(nm, axis=-1, keepdims=True), 1e-6)
+    k = rec["m_per_px"]
+    px = k * SUB / zoom
+    za, zb = _zfit(name, fm, feature, view)
+    # the frame: map pixel (c, r) -> world
+    F, U = (np.array(v) for v in FRAMES[rec["kind"]])
+    V = np.array([0.0, 0.0, -1.0])
+    z0 = za * (rec["ground_px"] - box[1]) * k + zb     # world height of row 0
+    o = U * (box[0] - rec["centre_px"]) * k + np.array([0.0, 0.0, z0])
+    # the clay as it stands without reliefs, along the same rays (every 3rd pixel, filled in between)
+    bare = {**spec, "blobs": {b: v for b, v in spec.get("blobs", {}).items() if v.get("shape") != "relief"}}
+    prims = compile_prims(bare)
+    adds = [p for p in prims if p.op == "add"]
+    ts = sorted(float(c @ F) for c in (np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)))
+    st = 3
+    rr, cc = np.mgrid[0:H2:st, 0:W2:st]
+    P0 = o[None] + cc.reshape(-1, 1) * px * U[None] + rr.reshape(-1, 1) * px * za * V[None]
+    near, far = _hits(prims, P0, F, ts[1] + 0.02, ts[0] - 0.02)
+    zoomf = (H2 / rr.shape[0], W2 / rr.shape[1])
+
+    def up(a):
+        return ndimage.zoom(_fill(a.reshape(rr.shape)), zoomf, order=1, mode="nearest")[:H2, :W2]
+
+    hit = ndimage.zoom((~np.isnan(near)).reshape(rr.shape).astype(np.float32), zoomf, order=1, mode="nearest")[:H2, :W2] > 0.5
+    B, Fh = up(near), up(far)
+    # how much the read surface faces the viewer (the lie of the surface, not its creases): the relief's weight.
+    # Its footprint is the region where that is anything at all; the cut stays a little in from the border
+    sg = BORDER / px
+    nzs = ndimage.gaussian_filter(np.where(mk, nm[..., 2], 0.0), sg) / np.maximum(ndimage.gaussian_filter(mk.astype(float), sg), 1e-3)
+    wf = _fill(np.where(mk, _smooth((nzs - FACING[0]) / (FACING[1] - FACING[0])), np.nan))
+
+    def signed(a):
+        return (ndimage.distance_transform_edt(~a) - ndimage.distance_transform_edt(a)) * px
+
+    zrow = z0 - np.arange(H2) * px * za
+    if whole:
+        top, gain, placed = _whole(name, fm, feature, view, leave, rec, box, zoom, nm, mk, mk_full, fig, hit,
+                                   0.5 * (B + Fh), px, zrow)
+        wf = np.ones_like(wf)
+    else:
+        top, gain, placed = _detail(name, fm, feature, view, leave, across, nm, mk, fig, hit, B, wf, px, za, zrow, scale)
+    top = _fill(np.where(mk_full, top, np.nan))         # past the region's border the relief just carries on:
     mid = 0.5 * (B + Fh)                                 # its edge is the footprint's, not a jump in the map
     top = np.where(hit, np.maximum(top, mid + 0.003), top)   # a relief can't cut past the middle of its part
     lo = np.maximum(mid, np.minimum(top, B) - GATE)      # where no clay stood, its neighbours' floor (B is filled)
@@ -313,10 +355,11 @@ def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), sca
     cos = np.clip(1.0 / np.sqrt(1.0 + gx ** 2 + gy ** 2), 0.25, 1.0)
     # a read is biased towards the viewer: it calls surfaces facing that it sees almost edge-on. Where the relief
     # as placed stands steep, this view does not rule either (judged over the same stretch of surface)
-    sy, sx = np.gradient(ndimage.gaussian_filter(top, sg), px * za, px)
-    wf = wf * _smooth((1.0 / np.sqrt(1.0 + sx ** 2 + sy ** 2) - STEEP[0]) / (STEEP[1] - STEEP[0]))
-    facing = mk & (wf > 0.02)
-    inner = facing & (ndimage.distance_transform_edt(mk) * px > INSET)
+    if not whole:
+        sy, sx = np.gradient(ndimage.gaussian_filter(top, sg), px * za, px)
+        wf = wf * _smooth((1.0 / np.sqrt(1.0 + sx ** 2 + sy ** 2) - STEEP[0]) / (STEEP[1] - STEEP[0]))
+    facing = mk_full & (wf > 0.02)     # a whole press adds under what stands in front too, but cuts only what it sees
+    inner = mk & (wf > 0.02) & (ndimage.distance_transform_edt(mk) * px > INSET)
     moved = (top - B)[mk & (wf > 0.5) & hit]
     about = {"feature": feature, "view": view, "region_px": int(reg.sum()), "zoom": round(float(zoom), 2),
              "map": [int(W2), int(H2)], "px_mm": round(px * 1e3, 2),
@@ -339,14 +382,14 @@ def blob_name(feature: str, view_kind: str) -> str:
 
 
 def press(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE,
-          across=()) -> tuple[dict, dict]:
+          across=(), whole: bool = False) -> tuple[dict, dict]:
     """The spec with the relief pressed in (a blob; pressing again replaces it), and what was done."""
     c = fm["features"].get(feature)
     if c is None or c.get("kind") != "mass":
         raise ValueError(f"{feature!r} is not a mass of the map: a relief is pressed into a mass (its forms come with it)")
     if not c.get("built"):
         raise ValueError(f"{feature!r} has no clay yet: build_masses first, a relief is pressed into what stands there")
-    got = maps(name, spec, fm, feature, view, leave, scale, across)
+    got = maps(name, spec, fm, feature, view, leave, scale, across, whole)
     sha = relief.put(got["frame"], got["maps"], got["lip"])
     bname = blob_name(feature, fm["views"][view]["kind"])
     blobs = dict(spec.get("blobs", {}))
