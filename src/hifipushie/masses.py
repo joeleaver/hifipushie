@@ -9,6 +9,7 @@ A mass is built `as`:
   "ball"   one rounded lump: its middle and three half sizes from the marks' boxes (an eye, a nose, a hoof, a head
            that is nearly a ball). `round`: 2 = an ellipsoid, higher = squarer (a soft block). `socket`: true (or
            metres): it is set INTO the mass it is `on`, which is hollowed round it so that it shows (an eyeball).
+           A mark in several separate pieces (a row of hanging locks) is one lump per piece.
   "drum"   a made, straight-sided thing: a cylinder along its long axis (a can, a wheel, a post), its radii and
            length from the marks' boxes. `along` x / y / z if the axis it picks is wrong; `edge`: metres its rims
            are rounded by.
@@ -144,7 +145,52 @@ def _need(f: dict, feature: str, key: str):
     return f[key]
 
 
+def _split(f: dict) -> list[dict]:
+    """A mark in several separate pieces (a row of hanging locks, a pair of knobs) as one set of marks per piece:
+    the pieces of the view that shows most of them, each with what the other view shows at its heights."""
+    from scipy import ndimage
+    px = float(f.get("px") or 0.002)
+    best = None
+    for key in ("xz", "yz"):
+        pts = f.get(key)
+        if pts is None or len(pts) < 12:
+            continue
+        lo = pts.min(0) - 2 * px
+        ij = np.floor((pts - lo) / px).astype(int)
+        m = np.zeros(tuple(ij.max(0) + 3), bool)
+        m[ij[:, 0], ij[:, 1]] = True
+        lab, n = ndimage.label(ndimage.binary_closing(m, iterations=1) | m, structure=np.ones((3, 3)))
+        size = ndimage.sum(m, lab, range(1, n + 1))
+        keep = [i + 1 for i, a in enumerate(size) if a >= max(6, 0.08 * size.max())]
+        if len(keep) > 1 and (best is None or len(keep) > len(best[1])):
+            best = (key, keep, lab[ij[:, 0], ij[:, 1]])
+    if best is None:
+        return [f]
+    key, keep, of = best
+    okey = "yz" if key == "xz" else "xz"
+    out = []
+    for i in sorted(keep, key=lambda i: float(f[key][of == i][:, 0].mean())):
+        mine = f[key][of == i]
+        g = {key: mine, "px": px}
+        other = f.get(okey)
+        if other is not None:
+            near = other[(other[:, 1] >= mine[:, 1].min() - px) & (other[:, 1] <= mine[:, 1].max() + px)]
+            g[okey] = near if len(near) >= 3 else other
+        out.append(g)
+    return out
+
+
 def _ball(feature: str, f: dict, how: dict, notes: list) -> dict:
+    pieces = _split(f)
+    if len(pieces) > 1:  # one lump per piece: <name>_1 ..., left to right (front to back in a side view)
+        side = feature[-2:] if feature[-2:] in (".L", ".R") else ""
+        base = feature[:len(feature) - len(side)]
+        blobs = {}
+        for i, g in enumerate(pieces, 1):
+            one = _ball(f"{base}_{i}{side}", g, {k: v for k, v in how.items() if k != "socket"}, notes)
+            blobs.update(one["blobs"])
+        notes.append(f"{feature}: its mark is {len(pieces)} separate pieces: one lump each ({base}_1{side} ..)")
+        return {"blobs": blobs}
     xz = f.get("xz")
     yz = f.get("yz")
     if xz is None and yz is None:

@@ -124,3 +124,17 @@ def test_a_foreshortened_view_still_gives_the_lean():
     xs, zs = np.array([p[0] for p in j]), np.array([p[2] for p in j])
     assert np.all(np.diff(xs) > 0) and np.allclose(xs, 0.06 + 0.35 * (zs - 0.05), atol=0.008), (xs, zs)
     assert any("foreshortened" in n for n in notes), notes
+
+
+def test_a_mass_in_several_pieces_is_one_lump_per_piece():
+    """Hanging locks marked as a row of drops are a row of lumps, each with what the other view shows at its
+    heights (one ball over the whole row's box was a bar)."""
+    drops = np.vstack([_cloud(lambda x, y, c=c: ((x - c) / 0.012) ** 2 + ((y - 0.10) / 0.03) ** 2 < 1) for c in (0.05, 0.09, 0.13)])
+    band = _cloud(lambda x, y: (np.abs(x - 0.20) < 0.015) & (y > 0.06) & (y < 0.14))
+    notes: list = []
+    out = masses._ball("fringe", {"xz": drops, "yz": band, "px": K}, {"as": "ball"}, notes)["blobs"]
+    assert sorted(out) == ["fringe_1", "fringe_2", "fringe_3"], sorted(out)
+    assert [round(out[n]["at"][0], 2) for n in sorted(out)] == [0.05, 0.09, 0.13]
+    assert all(abs(b["size"][0] - 0.012) < 0.003 and abs(b["size"][2] - 0.03) < 0.004 and abs(b["at"][1] - 0.20) < 0.004 for b in out.values()), out
+    assert any("3 separate pieces" in n for n in notes)
+    assert list(masses._ball("knob", {"xz": drops[:400], "yz": band, "px": K}, {}, [])["blobs"]) == ["knob"]

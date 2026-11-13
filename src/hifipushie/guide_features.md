@@ -41,6 +41,15 @@ A form line in the picture is the edge of a form OR the edge of paint. The code 
 the light falls on each side of the line: a step in shape has a lit side and a shaded side, a change of colour
 doesn't. When you can't tell, mark it as a form and say so in `inferred`.
 
+A mass is ONE simple solid: something a ball, a drum, a flat flap, an upright trunk or a tube can make. A big
+part of a subject is nearly always several of them melted together, and it is built as a box if you mark it as
+one. A head is a skull and a muzzle or a jaw, and cheeks or a brow if they bulge; a body is a chest and a belly
+or hips. Look at the part from the front AND the side: where it is narrower at one end in one of them (a snout
+narrower than the skull behind it), where its outline steps or has a waist, it is two masses. Whatever hangs
+free or stands out past the outline with a thickness of its own (locks of a beard or a fringe, a tuft on a
+crown, teeth) is a mass too, or a row of masses: mark each lock, as one feature in several pieces.
+Masses overlap freely: mark each one's whole extent, also where it lies in front of or inside its neighbour.
+
 Work big to small: the masses first (every one, down to the small ones), then the forms on each, then the paint.
 A subject's character usually lives in its forms, so be thorough there. Small is not the same as unimportant.
 
@@ -124,9 +133,11 @@ Build once the map owes nothing. For every mass say what it is, `"as"`:
 
 - `"ball"`: one rounded lump. Its middle and its three half sizes come from the boxes of its marks. It fills its
   box, so it suits what is nearly round; a mass that is wider at one end (a pear, a wedge) is a trunk.
-  `"socket": true` for a thing set INTO the mass it is `on` (an eyeball): that mass is hollowed round it, so it
-  shows. A number instead of true is the clearance round it, metres (0.02 opens the hollow wider). Build the
-  mass it sits in first.
+  A mark in several separate pieces (a row of hanging locks, a pair of knobs) is built as one lump per piece.
+  `"socket": true` for a thing the picture shows SUNK below the surface round it: the mass it is `on` is
+  hollowed round it. A number instead of true is the clearance round it, metres. Build the mass it sits in
+  first. A thing that BULGES from the surface (a round eye in a rim) needs no socket: it stands proud. If it
+  comes back HIDDEN, the mass under it is too full there, and that mass is what to fix (it is probably two).
 - `"drum"`: a made, straight-sided thing: a cylinder along its long axis (`"along"` if it picks the wrong one),
   its rims rounded by `"edge"` metres.
 - `"flap"`: a thin thing seen broad from one side (an ear, a fin, a leaf, a flat tail): one thick sheet along the
@@ -167,8 +178,9 @@ That is the picture's doing; say so and move on.
                          "knob": {"as": "ball"}})
 
 A small mass that sits ON a bigger one must stand proud of it to be seen. If it comes back HIDDEN, the mass
-under it is too full there: set it in a `"socket"`, or pull the big mass's corners in (`"round"` nearer 2), or
-make a mass that is narrower in front than behind out of two.
+under it is too full there: make a mass that is narrower in front than behind out of two, or pull its corners
+in (`"round"` nearer 2). A `"socket"` is for a thing that really is sunk; cut round a thing that should bulge,
+it leaves a small ball in a wide hole.
 
 It answers with the feature report for the masses and a picture. A mass that is OFF is fixed in its MARK (redraw
 it, in the view that is wrong) or in what you said it is, then built again: building a feature again replaces
