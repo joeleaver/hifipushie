@@ -47,9 +47,10 @@ def _smooth(s):
     return s * s * (3 - 2 * s)
 
 
-def region(name: str, fm: dict, feature: str, view: str, leave=()) -> np.ndarray:
+def region(name: str, fm: dict, feature: str, view: str, leave=(), across=()) -> np.ndarray:
     """What `view` shows of the mass itself (view pixels): its mark and its forms' marks, less the masses on it
-    and less every feature named in `leave` (taken from another view)."""
+    and less every feature named in `leave` (taken from another view). A mass named in `across` is NOT taken out:
+    it lies in this surface (an eye in its socket), and the relief runs across it."""
     feats = fm["features"]
     desc = featuremap.children(fm, feature)
     mk = featuremap.mask(name, feature, view).copy()
@@ -60,7 +61,10 @@ def region(name: str, fm: dict, feature: str, view: str, leave=()) -> np.ndarray
             mk |= featuremap.mask(name, f, view) & near
     for f in desc:
         if feats[f].get("kind") == "mass" and view in feats[f]["marks"]:
-            mk &= ~featuremap.mask(name, f, view)
+            if f in across:
+                mk |= featuremap.mask(name, f, view) & near
+            else:
+                mk &= ~featuremap.mask(name, f, view)
     for f in leave:
         if f in feats and view in feats[f]["marks"]:
             mk &= ~featuremap.mask(name, f, view)
@@ -86,7 +90,7 @@ def _zfit(name: str, fm: dict, feature: str, view: str) -> tuple[float, float]:
     return float(a), float(a_lo - a * b_lo)
 
 
-def profile(name: str, fm: dict, feature: str, view: str, leave=()):
+def profile(name: str, fm: dict, feature: str, view: str, leave=(), across=()):
     """How far the mass stands towards `view`'s viewer at each height, from its outline in the view at right
     angles: (heights ascending, metres towards the viewer, that view's name), only where that edge of the mass is
     the figure's own outline there (not where another part stands in front of it). None if no such view."""
@@ -95,7 +99,7 @@ def profile(name: str, fm: dict, feature: str, view: str, leave=()):
     if other is None or other not in fm["features"][feature]["marks"]:
         return None
     rec = fm["views"][other]
-    reg = ndimage.binary_opening(region(name, fm, feature, other, leave), iterations=2)   # no slivers left by a
+    reg = ndimage.binary_opening(region(name, fm, feature, other, leave, across), iterations=2)   # no slivers left by a
     fig = np.asarray(Image.open(rec["image"]).convert("RGBA").getchannel("A")) > 127       # mass taken out of it
     za, zb = _zfit(name, fm, feature, other)
     zs, ts = [], []
@@ -186,12 +190,13 @@ def _plane(d: np.ndarray, wgt: np.ndarray, lab: np.ndarray, m: int) -> np.ndarra
     return out
 
 
-def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE) -> dict:
+def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE,
+         across=()) -> dict:
     """The relief of one mass from one flat view: {"frame", "maps", "lip", "about", "look"} (module docstring)."""
     rec = fm["views"][view]
     if rec.get("kind") not in FRAMES:
         raise ValueError(f"view {view!r} is not a flat view (front, back, side): a relief is pressed from one")
-    reg = region(name, fm, feature, view, leave)
+    reg = region(name, fm, feature, view, leave, across)
     if reg.sum() < 40:
         raise ValueError(f"{feature!r} shows too little of itself in {view!r} to press (its mark less the masses on it)")
     img, box, zoom = closeup(rec, reg)
@@ -247,7 +252,7 @@ def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), sca
     r = surfaceread.height(nm, mk, px).astype(np.float64)
     main = lab == (1 + int(np.argmax(ndimage.sum(mk, lab, range(1, m + 1)))))
     zrow = z0 - np.arange(H2) * px * za
-    prof = profile(name, fm, feature, view, leave)
+    prof = profile(name, fm, feature, view, leave, across)
     s_row, gain, placed = None, 1.0, "the clay under it (a plane)"
     if prof is not None:
         e_t = np.interp(zrow, prof[0], prof[1], left=np.nan, right=np.nan)
@@ -333,14 +338,15 @@ def blob_name(feature: str, view_kind: str) -> str:
     return f"{base}_relief_{view_kind}{side}"
 
 
-def press(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE) -> tuple[dict, dict]:
+def press(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), scale: float | None = SCALE,
+          across=()) -> tuple[dict, dict]:
     """The spec with the relief pressed in (a blob; pressing again replaces it), and what was done."""
     c = fm["features"].get(feature)
     if c is None or c.get("kind") != "mass":
         raise ValueError(f"{feature!r} is not a mass of the map: a relief is pressed into a mass (its forms come with it)")
     if not c.get("built"):
         raise ValueError(f"{feature!r} has no clay yet: build_masses first, a relief is pressed into what stands there")
-    got = maps(name, spec, fm, feature, view, leave, scale)
+    got = maps(name, spec, fm, feature, view, leave, scale, across)
     sha = relief.put(got["frame"], got["maps"], got["lip"])
     bname = blob_name(feature, fm["views"][view]["kind"])
     blobs = dict(spec.get("blobs", {}))
