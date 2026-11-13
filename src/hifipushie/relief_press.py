@@ -35,6 +35,7 @@ BORDER = 0.004     # m: the facing is judged over this much of the surface
 INSET = 0.002      # m: the cut stays this far in from the region's border (a neighbour standing there isn't shaved)
 GATE = 0.02        # m: the relief reaches this deep under the surface, at most (and never past the part's middle)
 SCALE = 0.04       # m: a relief brings what is smaller than this; the larger lie of a part is its marks' (the clay's)
+EDGE = 0.01        # m: a detail relief has no hold at the figure's outline, and full hold this far in from it
 STEEP = (0.5, 0.75)   # the relief's own lie (cosine to the view): no hold below, full hold above
 REACH = 0.01       # m: a form counts as part of its mass's surface this far past the mass's own mark
 RIM = 0.004        # m: this close to the figure's outline, the clay's own edge says how deep the surface is
@@ -358,6 +359,8 @@ def maps(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), sca
     if not whole:
         sy, sx = np.gradient(ndimage.gaussian_filter(top, sg), px * za, px)
         wf = wf * _smooth((1.0 / np.sqrt(1.0 + sx ** 2 + sy ** 2) - STEEP[0]) / (STEEP[1] - STEEP[0]))
+        wf = wf * _smooth(ndimage.distance_transform_edt(fig) * px / EDGE)   # at the figure's outline a view sees
+        #                                                                      the surface edge-on, by definition
     facing = mk_full & (wf > 0.02)     # a whole press adds under what stands in front too, but cuts only what it sees
     inner = mk & (wf > 0.02) & (ndimage.distance_transform_edt(mk) * px > INSET)
     moved = (top - B)[mk & (wf > 0.5) & hit]

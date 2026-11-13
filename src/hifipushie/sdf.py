@@ -438,6 +438,14 @@ def mod_tissue(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
 MODS = {"displace": mod_displace, "flatten": mod_flatten, "fold": mod_fold, "tissue": mod_tissue}  # op "modify": reshape what's been combined so far
 
 
+def _sd_twoskin(p, pr):  # twoskin.py (imported late, as relief.py is)
+    from .twoskin import sd_twoskin
+    return sd_twoskin(p, pr)
+
+
+SDF["twoskin"] = _sd_twoskin
+
+
 def _mod_relief(cur, p, pr):  # relief.py (imported late: it needs the store, which needs this module)
     from .relief import mod_relief
     return mod_relief(cur, p, pr)

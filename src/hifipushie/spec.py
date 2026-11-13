@@ -159,7 +159,7 @@ def expand_mirror(spec: dict) -> dict:
             if "width_axis" in bl:
                 nb["width_axis"] = _mirror_vec(bl["width_axis"])
             nb["hand"] = -float(bl.get("hand", 1.0))
-        if bl.get("shape") == "relief":  # its frame lives with its maps: the copy is the same relief, flipped
+        if bl.get("shape") in ("relief", "twoskin"):  # its frame lives with its maps: the copy is the same, flipped
             nb["flip"] = not bl.get("flip", False)
         if bl.get("group"):
             nb["group"] = _mname(bl["group"])
@@ -286,6 +286,10 @@ def _compile(spec: dict) -> list[Prim]:
         k = float(bl["blend"]) if bl.get("blend") is not None else k_default
         if bl.get("shape", "ellipsoid") == "lids":
             prims.append(_lids(name, bl, c, rot, k))
+            continue
+        if bl.get("shape") == "twoskin":  # a solid of a front and a back skin read from the pictures (twoskin.py)
+            from . import twoskin
+            prims.append(twoskin.prim(name, bl, k))
             continue
         if bl.get("shape") == "relief":  # a picture's read surface pressed in (relief.py)
             from . import relief
