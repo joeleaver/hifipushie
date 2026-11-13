@@ -107,7 +107,7 @@ def look_matched(name: str, label: str = "concept", resolution: int = 192, sampl
                  only_parts: list[str] | None = None, hide_parts: list[str] | None = None, save: str | None = None):
     """Render the model from a fitted concept camera (fit_concept_camera) at the image's own size, in form-revealing
     clay (soft area light, no hard shadows), pixel-aligned with the concept: returns concept | render. The THE
-    standard view for comparing a character sculpt with its concept; review it by feature_tiles + bin/review, never
+    standard view for comparing a character sculpt with its concept; review it by feature_tiles + review_view, never
     by eye from a camera you picked. Details: guide(topic="look_matched")."""
     from . import matched
     import time
@@ -115,7 +115,7 @@ def look_matched(name: str, label: str = "concept", resolution: int = 192, sampl
     path = matched.render(name, label, resolution, samples, only_parts=only_parts, hide_parts=hide_parts)
     im = matched.pair(name, label)
     return [_out(im, save), f"{name}: matched render {label!r} in {time.time() - t:.0f}s -> {path} | next: "
-            "feature_tiles(name, {region: [parts or elements]}) and bin/review on its pairs"
+            "feature_tiles(name, {region: [parts or elements]}) and review_view on each pair"
             + (f" | saved {save}" if save else "")]
 
 
@@ -125,12 +125,13 @@ def feature_tiles(name: str, features: dict, label: str = "concept", out_dir: st
     """Cut named, same-box feature tiles from the concept and its matched render (look_matched first), one pair per
     region, for the blind review: features {region: [element or part names] | [x0, y0, x1, y1] pixels}, e.g.
     {"left ear": ["ear.L", "earroot.L"], "tail": ["tailb0", "tailb3"]}. Region names are what the reviewer reads:
-    plain words, no numbers. Returns the tile paths and the bin/review command. Details: guide(topic="feature_tiles")."""
+    plain words, no numbers. Returns the tiles and a review_view call per region. Details: guide(topic="feature_tiles")."""
     from . import matched
     r = matched.tiles(name, features, label, out_dir, min_px, pad)
     rows = [f"{k}: box {v[2]} -> {v[0]} | {v[1]}" for k, v in r["tiles"].items()]
-    return "\n".join([f"{len(rows)} tile pairs in {r['dir']}", *rows, "review (one region per pair, blind):",
-                       r["review"]])
+    return "\n".join([f"{len(rows)} tile pairs in {r['dir']}", *rows,
+                       "next: the blind review, ONE region per call (fill in the context; fix the worst MAJOR, then "
+                       "look_matched and these tiles again):", *r["review"]])
 
 
 @mcp.tool(structured_output=False)

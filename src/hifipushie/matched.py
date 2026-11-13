@@ -16,7 +16,7 @@ once the concept's own camera was fitted and named feature tiles went to the bli
   lights, no hard shadows): pixel-aligned with the image, so the same box crops the same feature from both.
 - `tiles(name, label, features)`: named, same-box feature tiles from the image and the matched render, each
   feature boxed from its parts' / elements' bounds through the camera (or a pixel box), squared, padded and
-  scaled up to >= `min_px`: ready for bin/review, one region per pair.
+  scaled up to >= `min_px`: ready for review_view, one region per call.
 - `look_camera(cam)`: the fitted camera as a `look` camera ({"eye", "target", "fov", "up"}).
 """
 from __future__ import annotations
@@ -306,7 +306,8 @@ def tiles(name: str, features: dict, label: str = "concept", out_dir: str | None
           pad: float = 0.2) -> dict:
     """Named, same-box tiles from the image and the matched render (module docstring). features: {region name:
     element / part names or a pixel box}. Region names are what the reviewer reads: plain words, no numbers.
-    Returns {"dir", "tiles": {region: [ref, ours, box]}, "review": the bin/review command}."""
+    Returns {"dir", "tiles": {region: [ref, ours, box]}, "review": [the review_view call for each region]}: the tool
+    an agent has (it answered with a shell command on a machine path, which only the coordinator can run)."""
     cam = load_camera(name, label)
     rpath = cam_path(name, label).with_name(f"{label}_render.png")
     if not rpath.exists():
@@ -316,7 +317,7 @@ def tiles(name: str, features: dict, label: str = "concept", out_dir: str | None
         raise ValueError(f"the render ({ours.size}) is not the image's size ({ref.size}): render it again")
     d = Path(out_dir).expanduser() if out_dir else cam_path(name, label).parent / f"{label}_tiles"
     d.mkdir(parents=True, exist_ok=True)
-    out, args = {}, []
+    out, calls = {}, []
     for region, what in features.items():
         box = feature_box(name, cam, what, pad)
         side = max(min_px, box[2] - box[0])
@@ -325,7 +326,6 @@ def tiles(name: str, features: dict, label: str = "concept", out_dir: str | None
         ref.crop(box).resize((side, side), Image.LANCZOS).save(pa)
         ours.crop(box).resize((side, side), Image.LANCZOS).save(pb)
         out[region] = [str(pa), str(pb), box]
-        args.append(f'"{region}={pa}:{pb}"')
-    cmd = (f"/mnt/data/hifipushie/bin/review {d / 'review'} " + " ".join(args)
-           + ' --context "<one neutral line: what kind of thing this is>"')
-    return {"dir": str(d), "tiles": out, "review": cmd}
+        calls.append(f'review_view(region="{region}", reference="{pa}", result="{pb}", '
+                     'context="<one neutral line: what kind of thing this is>")')
+    return {"dir": str(d), "tiles": out, "review": calls}

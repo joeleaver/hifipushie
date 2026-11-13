@@ -132,7 +132,10 @@ def test_tiles_share_boxes_and_pass_the_review_gate():
     assert ax0 < cx[0] < ax1 and ay0 < cx[1] < ay1 and ax1 - ax0 < 240, "the arm's box is round the arm, and tight"
     paths = [p for a, b, _ in r["tiles"].values() for p in (a, b)]
     reviewgate.refuse_inputs(paths, list(r["tiles"]), "a test figure")  # no caption, no sheet: accepted
-    assert "bin/review" in r["review"] and '"arm=' in r["review"]
+    # the answer is the tool an agent has, one call per region, on that region's own pair (never a shell command)
+    assert len(r["review"]) == len(r["tiles"]) and not any("bin/review" in c or "/mnt/" in c.split("reference=")[0] for c in r["review"])
+    arm = next(c for c in r["review"] if c.startswith('review_view(region="arm"'))
+    assert f'reference="{r["tiles"]["arm"][0]}"' in arm and f'result="{r["tiles"]["arm"][1]}"' in arm and "context=" in arm
 
 
 def _eared(name: str, stalk: bool) -> None:
