@@ -160,6 +160,7 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
             + f"; kept {len(r['kept'])} hand/edited locks" + (f" ({', '.join(r['kept'][:12])}{'...' if len(r['kept']) > 12 else ''})" if r["kept"] else "")
             + (f"; {len(r['not_regrown'])} names not regrown (deleted in Blender: hair.removed; replace=True "
                f"forgets them)" if r["not_regrown"] else "")
+            + "".join(f"\nWARNING {u}" for u in r["unread"])
             + f"\n{_hair_counts(spec)}; style {(spec.get('hair') or {}).get('style', 'locks')}; "
               f"stage {(spec.get('hair') or {}).get('stage', 'locks')}\n" + hair_route.groom_next(name, spec))
 
