@@ -62,8 +62,8 @@ class Terrain(_TerrainSkeleton, _TerrainBase, _TerrainFeatures, _TerrainLandform
             self._fixed_river |= m
         self.H0 = self.H.copy()
         self._texture()
-        from . import terrain_sea
-        terrain_sea.apply(self)  # the sea and its coast: before lakes, sites and routes, which use its shores
+        from . import terrain_sea_apply
+        terrain_sea_apply.apply(self)  # the sea and its coast: before lakes, sites and routes, which use its shores
         self._landforms()
         self._fill_lakes()  # lake shores are addresses sites use
         # rugged after the water exists (zones near the sea or a lake were empty before it), never under it
@@ -119,7 +119,7 @@ class Terrain(_TerrainSkeleton, _TerrainBase, _TerrainFeatures, _TerrainLandform
             return xy, self.height(xy), np.array(inward, float)
         if ref == "cliff_foot" or ref.startswith("cliff_foot:"):  # the sea cliffs' foot nearest an address (or the
             # frame's middle): direction into the rock (for caves and notches set against the face)
-            from .terrain_sea import cliff_feet
+            from .terrain_sea_report import cliff_feet
             feet = cliff_feet(self, spacing=max(3 * self.cell, 5.0))
             if not feet:
                 raise ValueError(f"{ref!r}: there are no sea cliffs (sea.cliffs) to stand at the foot of")

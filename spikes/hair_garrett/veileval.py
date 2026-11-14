@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import hair, hair_loose, hair_strands as hs, store
+from hifipushie import hair_loose_body
 from hifipushie import hair_groom, hair_head, hair_spec, hair_strands_eval, hair_strands_job
 
 name = sys.argv[1]
@@ -14,7 +15,7 @@ count = int(sys.argv[2]) if len(sys.argv) > 2 else 60000
 spec = store.load(name)
 sc = hair_head.scalp(name, spec)
 g = hair_groom.groom_params(spec)
-col = hair_loose.collider(name, spec, sc)
+col = hair_loose_body.collider(name, spec, sc)
 tmp = Path(tempfile.mkdtemp(dir="/mnt/data/hifipushie/hair_garrett/tmp"))
 locks = hair_spec.resolve(spec, sc)
 sd = hair_strands_job.job(sc, g, spec, [k for k in locks if not k["name"].endswith("band")], tmp, count=count, col=col)

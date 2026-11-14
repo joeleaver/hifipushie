@@ -43,6 +43,7 @@ class Field:
         for c in cuts or ():  # (a sea arch's neck: the bays either side of it)
             self.H = cut_neck(T, self.H, c)
         from . import terrain_ground
+        from . import terrain_ground_model
         gcfg = terrain_ground.config(T)
         if gcfg is None:  # (no ground character: sand traps dug into the grid, as 2-cell blurs)
             for m, depth, *_ in bunkers or ():
@@ -108,7 +109,7 @@ class Field:
                 self.fall = terrain_blocks.fall_zone(self.H, self.c, self.steep) * float(rock["blocks"]["fallen"])
                 for s in self.styles:  # (a style's share of fallen blocks: blobby none)
                     self.fall = self.fall * (1 - s["w"] * (1 - float(s["rock"].get("fallen", 1.0))))
-        # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
+        # ground edits finer than the grid, per point in `column` (terrain_ground_model.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
         self.streams = None  # (terrain_stream: the rivers' beds; None without running water)
         if gcfg is not None and (getattr(T, "river_water_lines", None) or
@@ -119,7 +120,7 @@ class Field:
             if scfg is not None:
                 st_ = terrain_stream_streams.Streams(T, scfg)
                 self.streams = st_ if st_.any else None
-        self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg, self.streams) if gcfg is not None else None
+        self.edits = terrain_ground_model.Edits(T, self.H, bunkers or (), gcfg, self.streams) if gcfg is not None else None
         if self.edits is not None and any("lip" in s["rock"] for s in getattr(self, "styles", [])):
             # (a style's share of the turf's step at cliff lips: blobby's pillowed ground had crumbs at every lip)
             ls = np.ones(self.H.shape)

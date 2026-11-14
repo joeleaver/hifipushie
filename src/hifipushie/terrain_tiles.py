@@ -490,13 +490,14 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     # ---- 4b. ground clutter (bushes on the scrub, boulders on the shore): placements an engine's detail scatter can use
     if T.spec.get("ground_character", True) is not False and mats.ground is not None:
         from . import terrain_ground
+        from . import terrain_ground_clutter, terrain_ground_grass
         with prof.stage("clutter (parent)"):
             ks = ("bush", "boulder")
             cb = None
             if cfg.get("only"):  # (a block of tiles: only its ground)
                 (i0, j0), (i1, j1) = cfg["only"]
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
-            C = terrain_ground.clutter(T, mats, base, ks, box=cb)
+            C = terrain_ground_clutter.clutter(T, mats, base, ks, box=cb)
             # (a stream's rocks, cobbles, driftwood, reeds, a lake's margin, a beach's pebbles and wrack:
             # terrain_stream_clutter.all_clutter)
             from . import terrain_stream
@@ -561,6 +562,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             n_lip = 0
             if getattr(base, "edits", None) is not None and len(inst):
                 from . import terrain_ground
+                from . import terrain_ground_clutter, terrain_ground_grass
                 Pq = np.c_[inst[:, :2], zs]
                 bare_, d_, edge_, top_ = base.edits.bare(Pq)
                 kinds_ = [layers.get(int(li), ("", ""))[1] for li in inst[:, 3]]
@@ -703,8 +705,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                        else f for f, r in zip(T.falls, wr)], "note": terrain_falls.META_NOTE}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
-        from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)
-        ge = terrain_ground.write_grass(out, mats.layers)
+        from . import terrain_ground  # (the turf's tiling detail: terrain_ground_grass.grass_swatch, one per kind)
+        from . import terrain_ground_clutter, terrain_ground_grass
+        ge = terrain_ground_grass.write_grass(out, mats.layers)
         wl = lambda lay: [[f"_WEIGHTS{mats.layers.index(nm) // 4}", mats.layers.index(nm) % 4] for nm in lay
                           if nm in mats.layers]
         for sw in ge["swatches"]:

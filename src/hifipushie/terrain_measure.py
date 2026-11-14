@@ -108,8 +108,8 @@ class _TerrainMeasure:
             out.append(f"ribs (automatic): {self.rib_count} spurs off the ridges")
         for (a, b), length, top in self.divides:
             out.append(f"divide (automatic) between {a} and {b}: {length:.0f} m of crest, up to {top:.0f} m")
-        from . import terrain_sea
-        out += terrain_sea.report(self)
+        from . import terrain_sea_report
+        out += terrain_sea_report.report(self)
         from . import terrain_volcano, terrain_rock
         out += terrain_volcano.report(self)
         from . import terrain_lines
@@ -396,7 +396,7 @@ class _TerrainMeasure:
             rivers[nm] = river
         falls = [{**f, "pool": {**f["pool"], "wet_radius": r}} if f.get("pool") and r is not None else f
                  for f, r in zip(getattr(self, "falls", None) or [], wet["pools"] or [None] * len(self.falls or []))]
-        from .terrain_sea import cliff_feet
+        from .terrain_sea_report import cliff_feet
         from . import terrain_lines
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
                 "north_up": True, "pixel_0_0": "north-west corner",

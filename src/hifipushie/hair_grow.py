@@ -11,7 +11,7 @@ from .hair_head import Scalp
 from .hair_seat import fit_to_head
 
 def grow(sc: Scalp, g: dict, col=None) -> dict:
-    """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose.collider) for
+    """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose_body.collider) for
     hair that falls off the head."""
     from . import hair_drawn, hair_spec
     g = fit_to_head(g, sc)
@@ -25,8 +25,8 @@ def grow(sc: Scalp, g: dict, col=None) -> dict:
     if g.get("drawn"):  # the top drawn by hand (clumps on the top view), the rest grown round it
         locks.update(hair_drawn.drawn(sc, g, g["drawn"]))
     if g.get("loose"):  # loose hair is the whole groom too (with drawn clumps and any tie: half up)
-        from . import hair_loose
-        locks.update(hair_loose.grow(sc, g, line, rng, col))
+        from . import hair_loose_grow
+        locks.update(hair_loose_grow.grow(sc, g, line, rng, col))
     if g.get("tie"):  # tied hair makes the whole groom (with any drawn clumps): no generated tiers under it
         from . import hair_tied
         locks.update(hair_tied.grow(sc, g, line, rng, col))
