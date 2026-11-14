@@ -139,14 +139,21 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     _record(home)
     assert set(gr.reads("tm", "g", "4")) == {"1", "2", "3"}  # (C392: step 2 too, for the planned folds)
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
-    sheet, txt = dot.run("tm", "g", RECT, DECL)
-    assert "draft_pattern: PASS" in txt and Path(sheet).exists()
+    # (G1: the girths row needs a length tape to place the waist on each panel, and panels round the body + its gap)
+    gr.write("tm", "g", "3", "done", output={"measurements": STEP3["measurements"] + [
+        {"name": "len", "mm": 600.0, "kind": "length", "path": [[0.05, -0.1, 1.15], [0.05, -0.1, 0.55]]}]})
+    decl = dict(DECL, tapes={"panel.L": ["waist", "len"], "panel.R": ["waist", "len"]})
+    rect = RECT.replace("measurements.waist / 4", "measurements.waist * 0.53")
+    sheet, txt = dot.run("tm", "g", RECT, decl)
+    assert "draft_pattern: FAIL" in txt and "girths" in txt and "can't be worn" in txt, txt  # (400 round on 800)
+    sheet, txt = dot.run("tm", "g", rect, decl)
+    assert "draft_pattern: PASS" in txt and Path(sheet).exists(), txt
     assert "pieces (" in txt and "seams (" in txt and " ease " in txt and "SHAPES" in txt  # (C288: numbers in text)
     st = gr.load("tm", "g")["steps"]["4"]
     assert st["status"] == "done" and st["gate"]["verdict"] == "PASS" and st["look"]
     assert saved["tm"]["cloth"]["g"]["pattern"]["from"] == "own"
     assert "pattern_check (own draft, the flat gate): PASS" in dot.check_text("tm", "g")
-    _, txt = dot.run("tm", "g", RECT, dict(DECL, seams=DECL["seams"][:1]))
+    _, txt = dot.run("tm", "g", rect, dict(decl, seams=DECL["seams"][:1]))
     assert "REFUSED" in txt and "panel.L:back <-> panel.R:back is not sewn" in txt
 
 
@@ -792,7 +799,7 @@ def test_g1_a_closures_lap_comes_off_and_an_open_front_is_cloth_only():
     B, s3 = _tube({"fl": 0.24, "bk": 0.44, "fr": 0.24}, tp, closure=[])
     B["seams"] = B["seams"][:2]
     r = dg.rows(B, s3, {})[0]
-    assert "open: no closure across it" in r["value"], r
+    assert "OPEN: no closure or seam closes it" in r["value"], r
 
 
 def test_s4_15_a_span_ratio_doesnt_crash_and_a_reversed_seam_carries_the_level():  # (t s4-15; C385)

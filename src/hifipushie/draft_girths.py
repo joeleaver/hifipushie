@@ -37,6 +37,8 @@ import numpy as np
 
 TOL_MM = 15.0  # mm: the level is placed to ~1 cm on a shaped piece where the round changes ~4 mm per cm (C383), and
 # step 0's girth is read off a picture to ~5 mm: 15 mm is what placement + reading can't promise better than
+REACH = 0.02  # m: a length tape ending this close short of a girth's plane still places it (run on straight)
+CENTRE = 0.01  # m: a tape's top end this close to the centre line starts at the piece's centre-line top (a cbNeck)
 TOL_FRAC = 0.15  # x the planned ease: a loose plan (200 mm of ease) is read off a picture less exactly than a close one
 
 
@@ -90,21 +92,39 @@ def drop(path: np.ndarray, loop: np.ndarray) -> float | None:
         if d[i] * d[i + 1] < 0:
             return s + seg * d[i] / (d[i] - d[i + 1])
         s += seg
-    return s if d[-1] == 0 else None
+    if d[-1] == 0:
+        return s
+    seg = P[-1] - P[-2]  # (a path meant to END at the girth (an hps-to-waist) stops a few mm short of its loop)
+    k = float(seg @ n)
+    t = -d[-1] / k if abs(k) > 1e-9 else np.inf
+    return s + t * float(np.linalg.norm(seg)) if 0 < t * float(np.linalg.norm(seg)) <= REACH else None
 
 
 def _seam_pairs(B: dict) -> list:
-    """[(piece, arc, other piece, other arc)] of every single-edge seam between two pieces, both ways (a seam of a
-    piece to itself, a one-piece tube, too)."""
+    """[(piece, arcs, other piece, other arcs)] of every seam whose each side lies on one piece (a chain of edges, in
+    order, read as one line: a side seam drafted as hem>waist + waist>armpit), both ways (a piece sewn to itself too)."""
     from .draft_shape import _sides
     out = []
     for s in B.get("seams") or []:
-        A, Bs = _sides(s[0]), _sides(s[1])
-        if len(A) == len(Bs) == 1:
-            (pa, ea), (pb, eb) = A[0].split(":", 1), Bs[0].split(":", 1)
-            if pa in B["pieces"] and pb in B["pieces"]:
-                out += [(pa, ea, pb, eb), (pb, eb, pa, ea)]
+        A, Bs = [[e.split(":", 1) for e in _sides(x)] for x in s[:2]]
+        pa, pb = {e[0] for e in A}, {e[0] for e in Bs}
+        if len(pa) == len(pb) == 1 and pa <= set(B["pieces"]) and pb <= set(B["pieces"]):
+            ea, eb = tuple(e[1] for e in A), tuple(e[1] for e in Bs)
+            out += [(A[0][0], ea, Bs[0][0], eb), (Bs[0][0], eb, A[0][0], ea)]
     return out
+
+
+def _edge(pcs: dict, p: str, arcs) -> np.ndarray:
+    """The outline points of piece p along arc "a>b", or along a chain of arcs joined end to end."""
+    from . import pattern
+    P = np.asarray(pcs[p]["P"], float)
+    out = []
+    for a in ([arcs] if isinstance(arcs, str) else arcs):
+        Q = P[pattern.arc_indices(pcs[p], a)]
+        if out and np.linalg.norm(out[-1][-1] - Q[0]) > np.linalg.norm(out[-1][-1] - Q[-1]):
+            Q = Q[::-1]
+        out.append(Q)
+    return np.concatenate(out)
 
 
 def _part(pc: dict) -> str:
@@ -115,7 +135,7 @@ def place(B: dict, loop: np.ndarray, T: dict, decl: dict) -> tuple[dict, list, l
     """({piece: (q, u)} level lines, [pieces lowered to the underarm], [pieces with an own length tape there])."""
     from . import draft_tapes, pattern
     pcs = B["pieces"]
-    edge = lambda p, a: np.asarray(pcs[p]["P"], float)[pattern.arc_indices(pcs[p], a)]
+    edge = lambda p, a: _edge(pcs, p, a)
     holes = {}
     for pa, ea, pb, eb in _seam_pairs(B):
         if _part(pcs[pa]) != _part(pcs[pb]):
@@ -137,13 +157,18 @@ def place(B: dict, loop: np.ndarray, T: dict, decl: dict) -> tuple[dict, list, l
                 continue
             path = np.asarray(T[n]["path"], float)
             d = drop(path, loop)
-            top = max(path[0, 2] - abs(path[0, 0]), path[-1, 2] - abs(path[-1, 0]))
-            if d is not None and (best is None or top > best[0]):
-                best = (top, d)
+            hi = path[0] if (path[0, 2] - abs(path[0, 0])) >= (path[-1, 2] - abs(path[-1, 0])) else path[-1]
+            score = (abs(hi[0]) >= CENTRE, hi[2] - abs(hi[0]))  # (a side-neck top first: the flat's own top)
+            if d is not None and (best is None or score > best[0]):
+                best = (score, d)
         if best is None:
             continue
         P = np.asarray(pc["P"], float)
-        y = float(P[:, 1].max()) - best[1]
+        if best[0][0]:
+            y = float(P[:, 1].max()) - best[1]
+        else:  # (a centre-line tape: from the top of the piece's edge nearest the centre line)
+            x0 = P[np.argmin(np.abs(P[:, 0])), 0]
+            y = float(P[np.abs(P[:, 0] - x0) < CENTRE, 1].max()) - best[1]
         low = [float(edge(p, a)[:, 1].min()) for a in holes.get(p, [])]
         if low and y > min(low):
             y = min(low) - 1e-4
@@ -171,16 +196,23 @@ def place(B: dict, loop: np.ndarray, T: dict, decl: dict) -> tuple[dict, list, l
     return lines, under, own
 
 
-def rings(B: dict, lines: dict) -> tuple[list, bool]:
+def rings(B: dict, lines: dict, named: set | None = None) -> tuple[list, bool]:
     """([sets of pieces round the body], open): the level's links pruned to rings; with none, the open chain."""
     from . import pattern
     pcs = B["pieces"]
-    edge = lambda p, a: np.asarray(pcs[p]["P"], float)[pattern.arc_indices(pcs[p], a)]
+    edge = lambda p, a: _edge(pcs, p, a)
     crosses = lambda p, a: p in lines and bool(_cross(edge(p, a), *lines[p], closed=False))
-    links = []
+    links, elinks = [], []
     for pa, ea, pb, eb in _seam_pairs(B):
         if crosses(pa, ea) and crosses(pb, eb):
             links.append((pa, pb))
+            elinks.append((pa, pb, eb))  # (eb: the edge of pb it is sewn along)
+    cedge = {}
+    for c in B.get("closures") or []:
+        for k in ("over", "under"):
+            e = (c.get("edge") or {}).get(k)
+            if c.get(k) and isinstance(e, str):
+                cedge.setdefault(c[k], set()).add((e,))
     for c in B.get("closures") or []:
         o, un = c.get("over"), c.get("under")
         if o in lines and un in lines and o != un:
@@ -194,11 +226,15 @@ def rings(B: dict, lines: dict) -> tuple[list, bool]:
             break
         alive -= drop_
     is_open = False
-    if not alive:  # (no ring: an open front with no closure; a layer is a dead end on a piece of 3+ links)
+    if not alive:  # (no ring: open at a vent or an open front: the cloth across the level is one or more lines of
+        # pieces; a dead end LYING ON a piece is pruned: one sewn along that piece's closure edge (a facing), or one
+        # whose tapes don't name the girth, on a piece of 3+ links; a dead end that names it (a side panel at a vent) stays)
+        on_edge = {(p, q) for p, q, ea in elinks if ea in cedge.get(q, set())}
         alive = {a for a, _ in links}
         while True:
             dg = deg(alive)
-            lay = {p for p, k in dg.items() if k == 1 and any(a == p and dg.get(b, 0) >= 3 for a, b in links)}
+            lay = {p for p, k in dg.items() if k == 1 and any(a == p and b in alive and dg.get(b, 0) >= 3 and
+                   ((p, b) in on_edge or p not in (named or {p})) for a, b in links)}
             if not lay:
                 break
             alive -= lay
@@ -279,7 +315,10 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
         loop = np.asarray(T[g]["loop"], float)
         body = float(T[g].get("mm") or 1000 * np.linalg.norm(np.diff(np.r_[loop, loop[:1]], axis=0), axis=1).sum())
         lines, under, own = place(B, loop, T, decl)
-        comps, is_open = rings(B, lines)
+        comps, is_open = rings(B, lines, decl_by)
+        if is_open and any(c & decl_by for c in comps):  # (open at a vent or the front: all the cloth across it)
+            parts = {_part(B["pieces"][p]) for p in decl_by}  # (a sleeve crossing a torso girth's plane isn't in it)
+            comps = [set().union(*[c for c in comps if {_part(B["pieces"][p]) for p in c} <= parts])]
         comps = [c for c in comps if c & decl_by]
         if not comps:
             fails.append(f"{g}: its level doesn't go round the body (placed on {', '.join(sorted(lines)) or 'no piece'}"
@@ -312,7 +351,7 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
                         + f" [{', '.join(f'{p} {1000 * v:.0f}' for p, v in w.items())}"
                         + (f"; lap -{1000 * lap:.0f}" if lap else "") + "]"
                         + (f"; OPEN at the front (edges {1000 * gap:.0f} mm short of the centre line)" if gap > 1e-3 else
-                           "; open: no closure across it" if is_open else "")
+                           "; OPEN: no closure or seam closes it there (a vent, an open front)" if is_open else "")
                         + ("; taken at the underarm" if under and any(p in ring for p in under) else ""))
             undecl = sorted(p for p in ring if p not in decl_by)
             if undecl:
