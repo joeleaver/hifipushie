@@ -1,51 +1,50 @@
-# STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2h: SMOOTH CHAINS)
+# STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2i: ONE FOLD RULE, MERIT FINAL STEP)
 
 Step 5 lays out the CHAINS (boundary + fold rows + lines across), lengths given, only bends chosen, nothing held.
-Step 6 fills surfaces between them. Runs N1 -> N2 -> N2b -> N2c -> N2d -> N2e -> N2f -> N2g -> N2h (this).
+Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2h -> N2i (this).
 
 ## Current code
-- `panel_start.starts`: each piece placed from its own tapes (girth roll / edge on its tape). NEW `_ways`: a girth piece
-  rolls the way its SEAMS say (one flat cuts a pair, so a flat may show either face: the jacket's front flat shows its
-  inside). Settled before edge-taped pieces read their sides. Test: test_girth_piece_rolls_the_way_its_seams_say.
-- `chain_panels.Panels` + `fit_start`: rolled panels fitted to that start. Its ruled hinges turn the WRONG way on the
-  jacket (way read off the flat: collar fall up into a funnel). The N2g driver sets every hinge's turn to 0 (start
-  unturned) and leaves turning to the solve's fold terms.
-- `chain_assemble` (rigid assembly / dress / close): KEPT. N2g did not pass, so the brief's deletion did not apply.
-- N2h: chain_solve bending is CLOTH (`cloth_bend`: CLOTH_B / CLOTH_ES x link weight / h^2, x BEND_KIND), plus
-  second differences along chains (`chain_solve_terms.chain_bend_rows`); the last word is `chain_solve_final.step`
-  (constrained Gauss-Newton: soft terms minimised, links / edges / ties / contact linearised equalities, restoring by a
-  damped GN step). `chain_solve_terms.smoothness`: zigzag = a chain point turning against both neighbours.
-  `chain_solve_terms.EXACT_INTERFACED` (knob): the jacket proof sets it False (exact Delaunay rulings = a board).
-- Proof: `spikes/n2h_jacket.py <out> <loaded.pkl> [measure] [bindall]`: start, then chain_solve on the unsewn network
-  with seam pairs pulled to their midpoints (SEAM_W 0.1, 1, 10), then the sewn network. Render `spikes/n2c_render.py <run>
-  <pkl> <ref> X_start.npy|X.npy quick`. ws /mnt/data/hifipushie/n2h (loaded.pkl in /mnt/data/hifipushie/n2/mine).
+- `panel_start.starts`: each piece placed from its own tapes; `_ways`: a girth piece rolls the way its seams say.
+- `chain_lay.outside(net, X, contact)`: which side of F is each piece's outside (away from the body), read at the START.
+  `chain_lay.fold_way(fd, out)`: THE fold-direction rule (N2i, C456): the draft's turn (+ onto the outside, - under) x
+  out. The draft's flap sign never enters. Used by `fold_rows` (solve folds), `Panels(cnet, plan, skip, out)` hinges
+  (x the flat's winding) and `measures(..., out)` (each fold's measured way vs the plan's way).
+- `chain_panels.Panels` + `fit_start`: rolled panels; the driver still starts every hinge unturned (turn 0).
+- chain_solve: cloth bending (N2h); lines across AT MOST their flat length for every piece, plus a SOFT cost on a line
+  shorter than flat x its ends' interfacing (W_SHORT, chain_solve_gn "short"): EXACT_INTERFACED is gone.
+- `chain_solve_final.step`: restore, then a TRUST REGION on one merit (soft energy + NU x |violation|^2, radius by
+  actual / predicted drop, up to 50 mm), stop at a relative drop < 1e-4, restore once. Report: `final_converged` (merit
+  settled) and `final_hard` (per round: worst link fraction, ties, depth, holds at TOL 1e-4) apart.
+- Proof: `spikes/n2i_jacket.py <out> <loaded.pkl>` (was n2h_jacket); render `spikes/n2c_render.py <run> <pkl> <ref>
+  X.npy quick`. ws /mnt/data/hifipushie/n2i (loaded.pkl in /mnt/data/hifipushie/n2/mine).
 
-## Numbers (jacket, n2h/run2; 4,326 points, 3,023 sewn links; load 63-76; X_quick_sheet.png)
-- Links: every SEWN link within 0.03 % of its cut (0 over 2 %; N2g median 5.1 %, max 1233 %, 2960 over). Per side
-  (each side vs its own cut): 260 over 2 %, max 20 %: the seam truing / cap ease (132 links whose sides differ > 2 %).
-- Smoothness (turn minus flat turn per chain point): median 2.3 deg, p99 49, zigzags 54 (N2g, same measure: 13.2 /
-  164 / 1,075). Most left: sleeve_top.R 10, fronts 7-8.
-- Folds at plan within 0.2-4 deg (collar fall 89 / 90, lapels 83-85 / 85, hems 87-94 / 90; N2g lapels 11-31).
-- Inside 0, under gap 0. Tapes 44 mm mean off, max 101. Seams moved to meet up to 158 mm (sleeve seams, shoulders
-  149); merge jump up to 108 mm (facing ~ front).
-- Final step: hard terms hold, but every solve ran to its 200-pass cap (the SOFT phase does not settle: radius stays
-  5 mm). Wall 773 s (stages 146-157, sewn 271; final step 227 s of the sewn solve). Run1 (rulings exact): links stuck
-  27-43 % off on collar / undercollar / canvas.
-- Beside the reference: torso wraps the body, chains smooth. Collar: a small tight ring at the neck base, no visible
-  roll or fall over the back. Lapels: no V opening; front edges run up the centre front to the neck and cross there.
-  Sleeves: thin bundles down the arms, the cap seams not reading as round armholes; small loops at the wrists. Hem:
-  roughly level, slightly scalloped at the fronts.
+## Numbers (jacket, n2i/run1; load 142 -> 47; X_quick_sheet.png, crops crop_n2i.png vs crop_n2h.png)
+- Sewn links max 0.078 % (0 over 2 %). Per side 260 over 2 %, max 20 % (seam truing / cap ease, as N2h).
+- Smoothness: median 3.25 deg, p99 60, zigzags 73 (N2h 54).
+- Folds, all 7 turned OUTWARD as the draft asks (angle 0 = onto the outside): collar fall 183 / 180, lapels 168 and
+  168 / 170, sleeve hems 177-182 / 180. N2h: lapel R and one hem per sleeve turned inward.
+- The V: roll lines run from the break at the centre front (z 1.19 m) to neck ends 77 mm (L) and 68 mm (R) off the
+  centre line (N2h 52 / 34): the opening between the turned lapels is ~145 mm at the neck, closing at the break.
+- Inside 0. Tapes: front chest 37 mm mean / 67 max (as N2h).
+- Final step: passes 200+109 (stage 0), 93+90, 84+84, 84+84 (sewn): only stage 0's first round hit the cap. The hard
+  terms did NOT hold to 1e-4 after the last restore (that run reported converged False for every solve; the split
+  report was added after it). Wall 505 s (N2h 773; sewn 58 s, N2h 271).
+- Beside the reference (quick line drawing, see-through): torso wraps, lapel lines splay from the neck towards a point
+  at the break, but it does not yet read as an open jacket; the facing chains still wander across the centre front.
+  Collar: still a small ring at the neck base, no fall over the back. Sleeves: thin, caps not round, wrist loops.
 
 ## Open faults (ranked)
-1. Final step's soft phase hits its cap (200): needs a proper trust region / merit (or fewer, cheaper passes).
-2. Front edges / lapels closed at the centre front; collar a ring: the shapes, not the chains, are now wrong.
-3. Hinge way convention (chain_panels vs chain_lay.fold_rows: Panels multiplies by the row's handedness, fold_rows
-   does not): not done. Shoulder seams start 200-280 mm apart: not done. Collar ply across its fall: not done.
-4. Synthetic arch / ease tests (tests/test_chain_smooth.py) pass on main's solver too: the jacket's zigzags came from
-   competing terms + the projection, which the tests don't reproduce.
+1. Collar fall: the plan / draft give the roll line ONLY on the collar (collar_roll, 180); the undercollar (sewn to it
+   along its outer edges, and the collar's host) has no roll row, so it stays flat-ish and holds the collar to a ring.
+   The fall needs the same roll line drafted on the undercollar (step 4) or the undercollar bent by the collar's.
+2. Hard terms short of 1e-4 after the final restore (sewn links max 7.8e-4): RESTORE passes run out near contact.
+3. Sleeves thin / caps not round; sleeve hems drafted angle 0 (cuffs turned back onto the outside), a jacket's are
+   usually 360 (under): step 4's call, check against the reference.
+4. Facing chains cross the centre front above the break (merge jump facing ~ front up to 119 mm).
+5. Not judged on Blender tubes (the quick drawing only).
 
-Run: `uv run pytest -q tests/test_chain_smooth.py tests/test_chain_solve.py tests/test_chain_panels.py tests/test_chain_lay.py`.
-Ledger C426-C433, C435, C438, C440, C444, C446, C448.
+Run: `uv run pytest -q tests/test_chain_smooth.py tests/test_chain_solve.py tests/test_chain_panels.py tests/test_chain_lay.py tests/test_chain_plies.py`.
+Ledger C426-C433, C435, C438, C440, C444, C446, C448, C456.
 
-NEXT: N2h2: final step converges (trust region on a merit); then lapels open and collar fall from the start (hinge
-way convention on a mirrored pair), judge X beside the reference.
+NEXT: N2j: the undercollar's roll line (step 4 draft) so the collar falls; the final restore reaching 1e-4; render
+Blender tubes and judge the V and collar beside the reference.

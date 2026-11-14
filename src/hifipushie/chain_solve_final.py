@@ -225,7 +225,6 @@ def step(Xn, t, w, ct, gap, iters: int = ITERS, log=None):
                 conv = True  # (no step of any size lowers the merit: a minimum of it)
                 break
     Xn, rd = restore(Xn, H)  # (the hard terms made to hold where the merit settled)
-    if not _holds(rd):
-        conv = False
-    rd = {k: round(float(v), 6) for k, v in rd.items()}
+    holds = _holds(rd)  # (converged = the merit settled; whether every hard term then holds at TOL is said apart)
+    rd = {**{k: round(float(v), 6) for k, v in rd.items()}, "holds": bool(holds)}
     return Xn, n_kkt, conv, rd

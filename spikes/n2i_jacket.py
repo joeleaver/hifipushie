@@ -139,7 +139,7 @@ with resources.heavy("n2i chain solve jacket", gb=3, kind="chain_build", log=log
             sr = numbers(cnet, Xk, pulls, f"stage {k} (seam w {w})")
             sr.update(seconds=round(time.time() - t1, 1), solve={kk: rk.get(kk) for kk in
                                                                 ("links", "folds", "contact", "ties", "plies",
-                                                                 "final_passes", "final_converged", "timing")})
+                                                                 "final_passes", "final_converged", "final_hard", "timing")})
             rep["stages"].append(sr)
         t1 = time.time()
         Xf, rf = cs.solve(cnet, Xk, body, ties, folds, pulls, plies=plies, log=None)
@@ -148,7 +148,7 @@ with resources.heavy("n2i chain solve jacket", gb=3, kind="chain_build", log=log
         rep["solved"]["seam_moved_mm"] = seam_read(cnet, Xf, X)
         rep["solved"]["merge_moved_mm"] = seam_read(cnet, Xf, Xk)
         rep["solved"]["solve"] = {kk: rf.get(kk) for kk in ("links", "folds", "contact", "ties", "plies", "pulls",
-                                                            "timing", "lm_passes", "final_passes", "final_converged",
+                                                            "timing", "lm_passes", "final_passes", "final_converged", "final_hard",
                                                             "chains")}
         rep["seconds"]["stages"] = [s_["seconds"] for s_ in rep["stages"]]
         rep["seconds"]["sewn"] = round(time.time() - t1, 1)

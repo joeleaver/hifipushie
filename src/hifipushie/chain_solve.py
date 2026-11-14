@@ -308,7 +308,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     pd = _PD(t)
     pd.finish(net)
     Xn = _push_out(t["Xn"], near, gap)
-    passes, lm, nfac, convs = [], [], [], []
+    passes, lm, nfac, convs, hards = [], [], [], [], []
     tm = {"setup": time.time() - t0}
     t1 = time.time()
     for npd in range(pd_iters):
@@ -338,6 +338,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
         nfac.append(nf)
         passes.append(np_)
         convs.append(conv)
+        hards.append(frd)
         if log:
             log(f"round {rnd}: lm passes {k} ({nf} factors, E {E:.4g}), final passes {np_} (converged {conv})")
         Ep = float(np.sum(gn.residuals(Xn, t, W_GN, near, gap, jac=False)[0] ** 2))
@@ -351,6 +352,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     rep["points"] = int(net.n)
     rep["final_passes"] = passes
     rep["final_converged"] = convs
+    rep["final_hard"] = hards
     rep["chains"] = terms.smoothness(net, X)
     rep["lm_passes"] = lm
     rep["lm_factors"] = nfac
