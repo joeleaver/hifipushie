@@ -41,14 +41,14 @@ and of fitting the block-in: "Doing it parts means we got... parts, not a solid,
 
 ## Where things are
 - Tools: tools_features.py, featuremap.py, featuresee.py, masses.py, masslines.py, forms.py, refread.py,
-  guide_features.md. Reader: surfaceread.py. The closed route: relief.py, relief_press.py, twoskin.py,
-  twoskin_build.py, twoskin_agree.py, surfacefuse.py, meshclay.py (each docstring lists what failed).
-  Tests: test_featuremap.py, test_masslines.py, test_relief.py (9). Full bin/suite NOT run on this branch.
+  guide_features.md. Reader: surfaceread.py. Tests: test_featuremap.py, test_masslines.py, test_surfaceread.py.
+- The closed route is NOT on main: tag `archive/feature-map-closed-route` (relief.py, relief_press.py, twoskin.py,
+  twoskin_build.py, twoskin_agree.py, surfacefuse.py, meshclay.py, tests/test_relief.py; each docstring lists what
+  failed). The record's models with relief / twoskin blobs (scraps_r*, scraps_s*) build only from that tag.
 - Record (durable): /mnt/data/hifipushie/featuremap/record/ = SCULPT_PROJECT.md (the whole history, sections 1-25)
   and pictures 10-21, seam_s17.png, horn_marks.png. Models: featuremap/home (scraps_five = the best blind block-in,
   scraps_s23 = where it ended). Reader: /mnt/data/hifipushie/measuremodels/surface (venv + weights, 6 GB).
 - Ledger rows C434, C434b-f (renumber on landing; main was at C445).
 
-NEXT: nothing queued. To land: the feature map, the measure and the reader as seeing / placing tools (suite first;
-featuresee.py is over 500 lines); the closed route's modules go to an archive tag, not to main. Reopen only with a
+NEXT: nothing queued. Open housekeeping: featuresee.py is 678 lines (split the footprints out). Reopen only with a
 way to make a character's surface WHOLE, as one thing: not from parts, and not by joining pictures.

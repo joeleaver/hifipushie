@@ -9,9 +9,11 @@ picture of anything (a creature, a prop), and the relief those slopes add up to 
 The reader: MoGe-2 ViT-L normal (Microsoft, MIT; weights Ruicheng/moge-2-vitl-normal, 1.3 GB) on the CPU in its own
 venv (HIFIPUSHIE_SURFACE, default /mnt/data/hifipushie/measuremodels/surface: venv/ with torch CPU + moge, hf/ = its
 weights), one subprocess for all the pictures asked for (~10 s to load, ~16 s a picture, ~5 GB), cached by each
-picture's bytes. Only the SLOPES are used, added up inside one part at a time: a single picture's depth warps over a
-whole figure (docs/notes/measuremodels.md: monocular depth as evidence is a dead end), and a part's depth and tilt
-are set by its marks in the other views (relief_press.py).
+picture's bytes. Only the SLOPES are used, added up inside one continuous region at a time: a single picture's depth
+warps over a whole figure (docs/notes/measuremodels.md: monocular depth as evidence is a dead end). One picture read as
+one surface is a clean, real relief; several pictures' reads do not join into one solid, and a read pressed in part
+by part tears at every part border (docs/state/feature_map.md: tried, closed 2026-11-14; that code is at the tag
+archive/feature-map-closed-route). Use it to SEE: a grey-clay target beside a sculpt.
 """
 from __future__ import annotations
 

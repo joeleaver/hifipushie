@@ -438,30 +438,6 @@ def mod_tissue(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
 MODS = {"displace": mod_displace, "flatten": mod_flatten, "fold": mod_fold, "tissue": mod_tissue}  # op "modify": reshape what's been combined so far
 
 
-def _sd_twoskin(p, pr):  # twoskin.py (imported late, as relief.py is)
-    from .twoskin import sd_twoskin
-    return sd_twoskin(p, pr)
-
-
-SDF["twoskin"] = _sd_twoskin
-
-
-def _mod_nudge(cur, p, pr):  # meshclay.py (imported late, as relief.py is)
-    from .meshclay import mod_nudge
-    return mod_nudge(cur, p, pr)
-
-
-MODS["nudge"] = _mod_nudge
-
-
-def _mod_relief(cur, p, pr):  # relief.py (imported late: it needs the store, which needs this module)
-    from .relief import mod_relief
-    return mod_relief(cur, p, pr)
-
-
-MODS["relief"] = _mod_relief
-
-
 @dataclass
 class Grid:
     field: np.ndarray  # (nx, ny, nz)
@@ -517,8 +493,8 @@ def streams(prims: list[Prim]) -> list[list[Prim]]:
 
 def frame(prims: list[Prim], resolution: int = 160, pad: float = 0.02, box=None):
     """Grid placement (lo, voxel, shape) covering every part's additive primitives, optionally cut to box."""
-    adds = [p for p in prims if p.op == "add" or p.kind == "relief"]  # a relief can stand proud of every solid
-    if not any(p.op == "add" for p in adds):
+    adds = [p for p in prims if p.op == "add"]
+    if not adds:
         raise ValueError("nothing to build: no additive primitives")
     lo = np.min([p.lo for p in adds], axis=0) - pad
     hi = np.max([p.hi for p in adds], axis=0) + pad

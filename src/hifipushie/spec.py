@@ -159,8 +159,6 @@ def expand_mirror(spec: dict) -> dict:
             if "width_axis" in bl:
                 nb["width_axis"] = _mirror_vec(bl["width_axis"])
             nb["hand"] = -float(bl.get("hand", 1.0))
-        if bl.get("shape") in ("relief", "twoskin", "nudge"):  # its frame lives with its maps: the copy is the same, flipped
-            nb["flip"] = not bl.get("flip", False)
         if bl.get("group"):
             nb["group"] = _mname(bl["group"])
         if bl.get("targets"):
@@ -286,18 +284,6 @@ def _compile(spec: dict) -> list[Prim]:
         k = float(bl["blend"]) if bl.get("blend") is not None else k_default
         if bl.get("shape", "ellipsoid") == "lids":
             prims.append(_lids(name, bl, c, rot, k))
-            continue
-        if bl.get("shape") == "nudge":  # a surface refined on a mesh, carried back as small moves (meshclay.py)
-            from . import meshclay
-            prims.append(meshclay.prim(name, bl))
-            continue
-        if bl.get("shape") == "twoskin":  # a solid of a front and a back skin read from the pictures (twoskin.py)
-            from . import twoskin
-            prims.append(twoskin.prim(name, bl, k))
-            continue
-        if bl.get("shape") == "relief":  # a picture's read surface pressed in (relief.py)
-            from . import relief
-            prims.append(relief.prim(name, bl))
             continue
         if bl.get("shape") in ("displace", "flatten"):
             prims.append(_modifier(name, bl, c))
@@ -745,17 +731,6 @@ def _set_reach(prims: list[Prim]) -> None:
                     and np.all(q.lo - q.reach <= p.hi + scale[i] * q.blend * 1.25):
                 k = q.blend * 1.25
         p.reach, p.inert = scale[i] * k, k
-    # A relief blends its height map with the clay that is there, wherever it has part of the say: the solids it
-    # touches must give real distances all through its box (past their own box they would answer "far", and a
-    # half-weighted relief standing proud of them would be cut off at the box)
-    for r in prims:
-        if r.kind not in ("relief", "nudge"):       # (a nudge moves a surface outwards too: the same holds for it)
-            continue
-        for q in prims:
-            if q.op == "add" and np.all(q.lo - 0.02 <= r.hi) and np.all(r.lo <= q.hi + 0.02):
-                need = float(np.max(np.maximum(np.maximum(r.hi - q.hi, q.lo - r.lo), 0.0)))
-                if need > 0:
-                    q.reach, q.inert = np.maximum(q.reach, need), max(float(q.inert), need)
 
 
 def summarize(spec: dict) -> str:
