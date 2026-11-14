@@ -94,6 +94,8 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
         lines.append("They are not one above the other, so there is no waist to measure: judge the join in the look.")
     if said:
         lines.append(said)
+    lines.append("The fuse is in the spec as \"fuse\" and \"fill\" on both masses: a put_model of a whole new spec drops it "
+                 "unless those keys are carried over.")
     lines.append("next: look at this beside the reference from the front and the side. The waist's width is the one "
                  "number the reference's outline gives you there: fuse again with that width (or another fill) to "
                  "change it; fill=0 parts them. A mass whose own outline is off is a job for grab.")
@@ -138,7 +140,8 @@ def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], 
     compile_prims(spec)
     v = store.save(name, spec, note or what)
     lines = [f"{name} v{v}: {what}",
-             f"Grabs on this model: {', '.join(grabs) or 'none'}.",
+             f"Grabs on this model: {', '.join(grabs) or 'none'}. They are in its spec under \"grabs\": a put_model of a "
+             "whole new spec drops them unless it carries that key over (get_model shows it).",
              "next: look at the outline you moved beside the reference in the same view. Off by a little: the same "
              "label again with another `to` or radius. A different place: another grab. The whole mass in the wrong "
              "place or the wrong size: that is the mass's own joint or size, not a grab."]
