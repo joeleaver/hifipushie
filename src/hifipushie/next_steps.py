@@ -23,6 +23,11 @@ def after_save(name: str, spec: dict) -> str:
     model with a base, clothes, skin or hair adds nothing here.)"""
     if spec.get("base") or spec.get("cloth") or spec.get("skin") or spec.get("hair"):
         return ""
+    from . import store
+    if any((store._dir(name) / "cameras" / f"{v}.json").exists() for v in ("front", "side", "side_r", "back")):
+        return (f'next: look_beside("{name}"): the model beside each reference view, the biggest differences first, each '
+                "with the grab that would fix it (seconds; after every change). Then look from three_quarter: what the "
+                "flat views can't show.")
     plan = "" if spec.get("plan") else " No plan yet: set_plan (the blockout that check measures against) before detail."
     return f'next: look("{name}") from front, side and three_quarter before the next change.{plan}'
 

@@ -325,6 +325,30 @@ and look(camera={"fitted": view}) work from it). height: metres, feet to top of 
 view as picture | numbered patches | form lines with pixel rulers, and the patch table. Without image: shows `view`
 again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="features").
 
+### `look_beside`
+
+`look_beside(name, views=None, ignore=None, resolution=176, save=None)`
+
+The model beside its reference, view by view: the comparison a modeller makes all the time. For each flat
+reference view (front, side, side_r, back: `read_reference` cuts them and gives each its camera) the model is seen
+from that view's own camera at the picture's own pixels, straight from the field: seconds, no render. One picture
+per view, three panels: the reference | the model with the reference's outline AND the lines inside it in red |
+the difference (red = only the reference has clay there: add; blue = only the model: take away), its worst places
+numbered. Look at each picture: an outline can match round the wrong figure (a bean where the reference has a head
+on a body), and the red lines inside it are what show that.
+The text lists, per view, the numbered places biggest first: how far the outline is off, where (in the view's own
+axes: front and back x, z; side y, z), on which mass, and the `grab` call that would move that outline to the
+reference's (a mirrored model is off the same way on both sides: it is said once, for the ".L" mass). Then the
+reference's inside lines that the model has no line near: one mass standing in front of another, a crease, an
+opening; some are paint (an eye, a patch of colour).
+What to do with it: fix the BIGGEST difference on the whole figure first. A mass in the wrong place or of the
+wrong size is its own joint or size; an outline off on a mass that is otherwise right is the grab given; two
+masses that should be one form are a `fuse`; a red line with nothing under it is form still to make.
+ignore: masses left out of the model (a limb held away from the body for the rig, which the picture shows
+hanging); the reference's own limb still shows where the picture has it. views: which of the flat views (default
+all). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one
+number among these, never the verdict.
+
 ### `mark_features`
 
 `mark_features(name, features=None, remove=None, notes=None, view=None, focus=None, save=None)`

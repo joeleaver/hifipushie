@@ -18,7 +18,7 @@ from .tools_export import (  # noqa: F401
     export, export_asset, heavy_queue, heavy_status, judge_asset, pull, rig, sync,
 )
 from .tools_features import (  # noqa: F401
-    build_forms, build_masses, feature_report, mark_features, read_reference,
+    build_forms, build_masses, feature_report, look_beside, mark_features, read_reference,
 )
 from .tools_find import (  # noqa: F401
     call_tool, find_tool, guide,
