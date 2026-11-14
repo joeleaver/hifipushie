@@ -115,11 +115,27 @@ def hair_budget(rb: dict, report: dict) -> dict | None:
             "default": int(b["default"]) if "default" in b else None, "max": int(rng[1]) if rng[1] is not None else None}
 
 
+def notes_of(glb: Path) -> tuple[Path, dict]:
+    """(the asset json a GLB is drawn with, the job keys that point blender_game.py at it). A GLB's own <stem>.json
+    when it has one. A character's LOD (<asset>_LOD<k>.glb) has none: the export writes one json and one shading file
+    for the asset, and its LODs share the parts, the bounds and the materials, so the LOD is drawn with LOD0's
+    (asset_export.preview refused a LOD: "No such file ... _LOD1.json"; the LOD sheets copied the files by hand)."""
+    import re
+    glb = Path(glb)
+    own = glb.with_suffix(".json")
+    m = re.fullmatch(r"(.+)_LOD\d+", glb.stem)
+    if own.exists() or not m or not glb.with_name(m.group(1) + ".json").exists():
+        return own, {}
+    base = glb.with_name(m.group(1) + ".json")
+    return base, {"json": str(base), "shading": str(glb.with_name(m.group(1) + "_shading.json"))}
+
+
 def game(glb: Path, timeout: float = 900, **job) -> str:
     """The game-like EEVEE render of an exported GLB (blender_game.py): job keys frames / poses / size / hide
     (asset_export.preview) or shots / anim / out (the engine-stage checks). Returns Blender's log."""
     with tempfile.TemporaryDirectory(prefix="hifipushie-game-") as tmp:
         p = Path(tmp) / "job.json"
+        job = {**notes_of(glb)[1], **job}  # (a LOD's notes are its asset's, unless the caller names others)
         p.write_text(json.dumps({"glb": str(glb), **{k: v for k, v in job.items() if v is not None}}))
         from . import resources
         r = resources.run([render.BLENDER, "-b", *render._threads(), "--factory-startup", "--python-exit-code", "1",

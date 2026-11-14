@@ -985,7 +985,8 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
     perspective panels as look takes them (model coordinates, Z up), for close-ups of the textures.
     poses: [{shape name: weight}] (face shapes, the GLB's morph targets): one Blender run renders the views once per
     pose and a list of contact sheets comes back, one per pose."""
-    bounds = np.array(json.loads(glb.with_suffix(".json").read_text())["bounds_blender"])
+    from .asset_budget import notes_of
+    bounds = np.array(json.loads(notes_of(glb)[0].read_text())["bounds_blender"])  # (a LOD: its asset's json)
     with tempfile.TemporaryDirectory(prefix="hifipushie-prev-") as tmp:
         frames = (render.view_frames(bounds, views, focus, zoom) if views else []) + [
             render.camera_frame(c, i) for i, c in enumerate(cameras or [])]  # perspective: {"eye", "target", "fov"}
