@@ -42,6 +42,9 @@ model, with a tolerance; mark what no reference shows as inferred. At least:
 3. **Big masses and their structure**: how the main forms join, where they bend, which way they lean.
 4. **Secondary forms and details** that identify it (and which ones matter at the distance it's seen from).
 5. **Materials, colour, history**: surfaces, wear, age, what has happened to it.
+With reference PICTURES of the subject (concept art, a turnaround, photos) the description is a FEATURE MAP: every
+mass, form and patch of paint named as a mark on the pictures themselves (`read_reference`, then `mark_features`;
+guide(topic="features")). Make it before any shape; every later gate is measured against it (`feature_report`).
 Then pick the starting point from the description and say which item justifies it. A clean result that doesn't
 match the description is wrong, however good its numbers.
 
@@ -50,8 +53,8 @@ match the description is wrong, however good its numbers.
 | # | Stage | Tools | Gate |
 |---|---|---|---|
 | 1 | Plan | `set_plan` (front / side outlines, landmark heights, 3-4 sections), `set_reference` | Proportions match the description: fix them here, where it costs one edit |
-| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check` | Silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
-| 3 | Secondary forms | strokes (`look(strokes=True)`, `shading="raking"`) | Masses read; the silhouette barely moved |
+| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report` | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
+| 3 | Secondary forms | strokes (`look(strokes=True)`, `shading="raking"`), `feature_report` | Every FORM of the feature map made; masses read; the silhouette barely moved |
 | 4 | Detail | strokes with repeat / scatter, in close-ups | Details at the right scale, judged in close-ups |
 | 5 | Parts | parts (eyes, teeth, clothing shells), seated joints | Each part its own mesh, nothing cutting into another |
 | 6 | History | `spec["story"]`, weather ops, lumpy, chips | `check`'s realism audit: nothing reads pristine (restraint for realism) |
@@ -118,6 +121,7 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 | Realistic humans built from blobs and kits | `spec["base"]` + the block-in |
 | Speculative fixes stacked on a defect | Isolate it first |
 | Heavy-handed weathering | Restraint: a shift of tone, centimetres of sag |
+| Calling a blockout done on its outline | `feature_report`: nothing NOT MADE (an outline can match round a box) |
 | Calling it done on numbers | The self-review beside the reference |
 
 ## 4d. Realistic humans start from a base, not blobs

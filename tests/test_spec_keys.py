@@ -29,7 +29,8 @@ def test_joints_and_bones_too_and_every_unknown_key_is_counted():
     s["joints"]["hip"]["radius"] = 0.2
     s["bones"]["spine"]["r_c"] = 0.1
     s["blobs"]["belly"]["offest"] = [0, 0, 0.1]
-    assert spec_keys.unknown(s) == [("joints", "hip", "radius"), ("bones", "spine", "r_c"), ("blobs", "belly", "offest")]
+    assert spec_keys.unknown(s) == [("joints", "hip", "radius", None), ("bones", "spine", "r_c", None),
+                                    ("blobs", "belly", "offest", None)]
     with pytest.raises(specmod.SpecError, match=r"joint 'hip': unknown key 'radius' \(2 more unknown key\(s\): spine.r_c, belly.offest\)\. A joint takes: pos, r, on, lift, shift"):
         spec_keys.check(s)
     del s["joints"]["hip"]["radius"]
@@ -53,3 +54,33 @@ def test_the_shape_names_and_the_lists_are_strings_the_code_reads():
     for _, known in spec_keys.KEYS.values():
         missing = [k for k in known if f'"{k}"' not in src]
         assert not missing, missing
+
+
+def test_a_hollow_or_chipped_bone_is_a_bone():
+    """C442's bone list missed "hollow" and "chips" (element-level solids, on bones as on blobs): a hollow log was refused."""
+    s = _spec()
+    s["bones"]["spine"].update(hollow=0.01, chips={"depth": 0.004}, lumpy=0.003, ends="flat")
+    store.validate(s)
+    assert set(spec_keys.GENERIC) <= set(spec_keys.BONE_KEYS) and set(spec_keys.GENERIC) <= set(spec_keys.BLOB_KEYS)
+
+
+def test_every_key_the_compile_reads_off_any_element_is_in_both_lists():
+    """spec.py reads these off `el` whatever the element is (bone or blob): a key missing from either list refuses a
+    spec the compile would have built. (The lists were first read off the saved specs: no saved bone was hollow.)"""
+    import re
+    src = (ROOT / "src/hifipushie/spec.py").read_text()
+    keys = set(re.findall(r'\bel\.get\("(\w+)"', src)) | set(re.findall(r'\bel\["(\w+)"\]', src))
+    assert {"hollow", "chips", "lumpy", "targets", "local"} <= keys
+    assert keys <= set(spec_keys.BONE_KEYS) and keys <= set(spec_keys.BLOB_KEYS), keys - set(spec_keys.BONE_KEYS) & set(spec_keys.BLOB_KEYS)
+
+
+def test_the_elements_inside_a_prefab_are_checked_and_named_with_it():
+    s = _spec()
+    s["prefabs"] = {"chair": {"joints": {"a": {"pos": [0, 0, 0], "r": 0.02}, "b": {"pos": [0, 0, 0.4], "r": 0.02}},
+                              "bones": {"leg": {"a": "a", "b": "b", "hollow": 0.004}},
+                              "blobs": {"seat": {"at": "b", "size": [0.2, 0.2, 0.02], "shape": "box"}}}}
+    assert spec_keys.unknown(s) == []
+    s["prefabs"]["chair"]["blobs"]["seat"]["sizes"] = [0.3, 0.3, 0.02]
+    assert spec_keys.unknown(s) == [("blobs", "seat", "sizes", "chair")]
+    with pytest.raises(specmod.SpecError, match=r"^prefab 'chair': blob 'seat': unknown key 'sizes' \(did you mean 'size'\?\)"):
+        store.validate(s)

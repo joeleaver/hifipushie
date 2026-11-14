@@ -10,17 +10,37 @@ from .hair_groom import _line_at, _part, _part_x, _poisson, _region, envelope, f
 from .hair_head import Scalp
 from .hair_seat import fit_to_head
 
-def grow(sc: Scalp, g: dict, col=None) -> dict:
+class Read(dict):
+    """A groom that remembers which of its keys were read (into `seen`): grow's `reads`. A copy of it is a plain
+    dict and remembers nothing, so it is put on after fit_to_head's copy."""
+
+    def __init__(self, d: dict, seen: set):
+        super().__init__(d)
+        self.seen = seen
+
+    def __getitem__(self, k):
+        self.seen.add(k)
+        return super().__getitem__(k)
+
+    def get(self, k, default=None):
+        self.seen.add(k)
+        return super().get(k, default)
+
+
+def grow(sc: Scalp, g: dict, col=None, reads: set | None = None) -> dict:
     """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose_body.collider) for
-    hair that falls off the head."""
+    hair that falls off the head. `reads`: a set that takes every groom key this grow read (hair_spec.unread says
+    which written keys it never did: loose or tied hair is the whole groom, and the solid locks' keys beside it were
+    ignored without a word)."""
     from . import hair_drawn, hair_spec
     g = fit_to_head(g, sc)
+    if reads is not None:
+        g = Read(g, reads)
     rng = np.random.default_rng(int(g.get("seed", 0)))
     noise = float(g.get("noise", 0.3))
     line = hairline(sc, g)
     xp = _part_x(g)
     locks = {}
-    tiers = g["tiers"]
     names = {"big": "b", "crown": "c", "fill": "f", "edge": "e", "gap": "g", "clumps": "k"}
     if g.get("drawn"):  # the top drawn by hand (clumps on the top view), the rest grown round it
         locks.update(hair_drawn.drawn(sc, g, g["drawn"]))
@@ -33,6 +53,7 @@ def grow(sc: Scalp, g: dict, col=None) -> dict:
         return locks
     if g.get("loose"):
         return locks
+    tiers = g["tiers"]  # (read here, after the loose / tied returns: beside them the tiers are never grown)
     if tiers.get("strip"):
         locks.update(_strips(sc, g, line, tiers["strip"], rng))
     designed = bool((tiers.get("clumps") or {}).get("list")) or bool(g.get("drawn"))

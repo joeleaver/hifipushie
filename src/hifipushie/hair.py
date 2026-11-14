@@ -79,6 +79,11 @@ TIP_STEP = 0.25  # how far a top lock's tip lifts off the lock under it, x its t
 SIDE_NARROW = 0.35  # and how much narrower it gets there
 FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks under it
 REGIONS = ("front", "top", "sides", "back", "nape")
+# the solid locks' groom keys, and where their job is done once `loose` or a tie makes the whole groom (hair_spec.unread)
+SOLID_KEYS = {"tiers": "the generated tiers are not grown beside loose or tied hair (nothing takes its place)",
+              "length": "use loose.length (a number, or per region)",
+              "flow": "use loose.flow (per region, a world direction)",
+              "volume": "use loose.lift and loose.body (loose hair), tied.volume or tie.gather.volume (a tie)"}
 GROOM = {
     "fit": None,  # head_ref() of the head this groom was made on: lengths / volumes in metres scale with the head
     "hairline": {"front": 0.85, "temples": 0.008, "sideburns": None, "nape": 0.0, "ear": None, "ear_from": "mesh"},

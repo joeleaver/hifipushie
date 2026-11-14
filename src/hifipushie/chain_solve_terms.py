@@ -3,7 +3,10 @@ lists; and the residual report. Nothing here moves a point; chain_solve.py is th
 
 - NODES: one per sewn group (Network.root); a vertex's position is its node's.
 - LINKS: Network's links (every boundary edge and fold row at its cut; a seam's two sides one link).
-- EDGES: every other mesh edge of the pattern, interfaced at both ends: exact; else at most its flat length.
+- EDGES: every other mesh edge of the pattern: exact where interfaced at both ends (EXACT_INTERFACED), else at most
+  its flat length. N2h: on the chains-only network the lines across are long Delaunay rulings, and exact ones made each
+  interfaced piece a flat board that could not wrap the neck (the jacket's collar: links stuck 27-43 % off; at most,
+  0.3 %), so the jacket driver sets EXACT_INTERFACED False; on a fine grid exact edges still bend along their lines.
 - BEND STENCILS: per vertex, the affine weights of its flat neighbours that reproduce its flat position (sum w = 1,
   sum w uv_j = uv_i, least norm). X_i - sum w_j X_j is zero for ANY rigid (indeed affine) placement of a flat
   neighbourhood and grows with the bend: a linear, rotation-free bending row (so the solve's matrix is constant).
@@ -17,6 +20,8 @@ import numpy as np
 import scipy.sparse as sp
 
 from . import chain_net as cn
+
+EXACT_INTERFACED = True  # (EDGES above; a knob: the chains-only proof sets it False)
 
 
 def nodes_of(net: cn.Network):
@@ -38,7 +43,7 @@ def edges(net, nid, li, lj):
     a, b = nid[e[:, 0]], nid[e[:, 1]]
     ok = a != b
     a, b, L = a[ok], b[ok], net.flat[ok]
-    ex = (net.stiff[e[ok, 0]] > 0.5) & (net.stiff[e[ok, 1]] > 0.5)
+    ex = (net.stiff[e[ok, 0]] > 0.5) & (net.stiff[e[ok, 1]] > 0.5) & EXACT_INTERFACED
     lo, hi = np.minimum(a, b), np.maximum(a, b)
     nn = int(max(nid.max() + 1, 1))
     key = lo * nn + hi
@@ -204,3 +209,81 @@ def report(net, X, rep: dict, cts, tol_pct: float) -> dict:
     out["hard_ok"] = bool(out["links"]["over_tol"] == 0 and out["edges"]["over_tol"] == 0 and t <= 1.0
                           and out.get("contact", {}).get("inside", 0) == 0)
     return out
+
+
+# ---- chains as curves (N2h): consecutive link pairs, for the chain bending rows and the smoothness report
+def chain_triples(net):
+    """(p, v, q, a, b, flat_turn): every point v with exactly two chain links of one kind (boundary / fold row) in its
+    piece, p and q its neighbours along that chain, a = |uv_v - uv_p|, b = |uv_q - uv_v| and the chain's turn at v in
+    the flat (radians). A corner (two chains meeting) is a triple too: flat_turn says how sharp it is cut."""
+    cv = np.asarray(net.chain_v, np.int64)
+    kind = np.asarray(net.chain_kind)
+    inc: dict = {}
+    for k, (i, j) in enumerate(cv):
+        inc.setdefault((int(i), int(kind[k])), []).append(int(j))
+        inc.setdefault((int(j), int(kind[k])), []).append(int(i))
+    T = sorted((v, nb[0], nb[1]) for (v, _), nb in inc.items() if len(nb) == 2)
+    if not T:
+        z = np.zeros(0, np.int64)
+        return z, z, z, np.zeros(0), np.zeros(0), np.zeros(0)
+    v, p, q = (np.array(c, np.int64) for c in zip(*T))
+    uv = net.uv
+    d1, d2 = uv[v] - uv[p], uv[q] - uv[v]
+    ft = np.arctan2(np.abs(d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0]), (d1 * d2).sum(1))
+    return p, v, q, np.linalg.norm(d1, axis=1), np.linalg.norm(d2, axis=1), ft
+
+
+def chain_bend_rows(net, nid, nn, weight, max_flat_deg: float, skip=()):
+    """Second differences ALONG chains: at each chain point v (neighbours p, q along its chain, flat arcs a, b) the row
+    X_v - (b X_p + a X_q) / (a + b) with weight / ((a + b) / 2)^2: a point off its neighbours' chord by delta costs
+    weight (2 delta / h)^2 ~ weight x turn^2, the chain's discrete curvature (rest: straight). Only where the flat
+    chain turns less than max_flat_deg (a cut corner keeps its angle; a gently curved cut is a small rest it drifts
+    towards, held by its links and lines across). skip: points with no row (a fold row's points: the fold turns the
+    chains crossing it there, its turn is the fold term's). Returns rows (sparse, rows x nodes), weights."""
+    p, v, q, a, b, ft = chain_triples(net)
+    m = (np.degrees(ft) < max_flat_deg) & (a + b > 1e-12) & (nid[p] != nid[v]) & (nid[q] != nid[v])
+    m &= ~np.isin(v, np.asarray(list(skip), np.int64))
+    p, v, q, a, b = p[m], v[m], q[m], a[m], b[m]
+    r = np.arange(len(v))
+    S = sp.coo_matrix((np.r_[np.ones(len(v)), -b / (a + b), -a / (a + b)],
+                       (np.r_[r, r, r], np.r_[nid[v], nid[p], nid[q]])), shape=(len(v), nn)).tocsr()
+    w = np.maximum.reduce([weight[v], weight[p], weight[q]]) / ((a + b) / 2) ** 2
+    return S, w
+
+
+def smoothness(net, X, min_deg: float = 2.0) -> dict:
+    """The chains as curves at X (per vertex): per chain point the 3D turn MINUS its flat turn (degrees: what was bent
+    in), median / p99 / max; and ZIGZAGS: chain points turning the opposite way round to BOTH their neighbours along the
+    chain (binormals (v - p) x (q - v) pointing apart), all three turning more than min_deg. A smooth bump's inflection
+    flips once and is no zigzag; a zigzag flips at every point. Per piece and in all."""
+    p, v, q, _, _, ft = chain_triples(net)
+    X = np.asarray(X, float)
+    d1, d2 = X[v] - X[p], X[q] - X[v]
+    t3 = np.arctan2(np.linalg.norm(np.cross(d1, d2), axis=1), (d1 * d2).sum(1))
+    bend = np.degrees(np.abs(t3 - ft))
+    B = cn.unit(np.cross(d1, d2))
+    at: dict = {}
+    for k, x in enumerate(v):
+        at.setdefault(int(x), []).append(k)
+    big = np.degrees(t3) > min_deg
+
+    def flip(k, nb):
+        for kq in at.get(int(nb), []):
+            if p[kq] == v[k] or q[kq] == v[k]:
+                s_ = 1.0 if p[kq] == v[k] else -1.0  # (walking the chain the other way reverses its binormal)
+                if nb == p[k]:
+                    s_ = -s_
+                return big[kq] and s_ * (B[k] * B[kq]).sum() < 0
+        return False
+    flips: dict = {}
+    for k in np.where(big)[0]:
+        if flip(k, q[k]) and flip(k, p[k]):
+            nm = net.names[int(net.piece[int(v[k])])]
+            flips[nm] = flips.get(nm, 0) + 1
+    ok = np.isfinite(bend)
+    if not ok.any():
+        return {"turn_deg": {}, "zigzags": 0, "zigzags_by_piece": {}}
+    return {"turn_deg": {"median": round(float(np.median(bend[ok])), 2),
+                         "p99": round(float(np.percentile(bend[ok], 99)), 2), "max": round(float(bend[ok].max()), 2),
+                         "n": int(ok.sum())},
+            "zigzags": int(sum(flips.values())), "zigzags_by_piece": dict(sorted(flips.items(), key=lambda t: -t[1]))}

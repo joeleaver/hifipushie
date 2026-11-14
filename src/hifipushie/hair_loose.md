@@ -13,7 +13,7 @@ body's own signed distance, so it lies on the shoulders and down the back, and o
 | length | m of hair from the root; or per region `{front, top, sides, back, nape}` (a layered cut, a short back and sides) | 0.3 shoulder, 0.5 mid-back, 0.04 a crop |
 | level | every lock is cut where it crosses this height, m from the head centre (about the brows): a one-length cut | -0.105 jaw (a bob), -0.17 shoulders |
 | spacing | m between lock roots (lock width follows) | 0.02 long hair, 0.015 short |
-| body, lift | m the mass builds up as locks come down over each other; m of root volume (lift may be per region: the stand-off of a short cut; groom.volume does not reach loose hair) | 0.02, 0.006; curls 0.035, 0.012 |
+| body, lift | m the mass builds up as locks come down over each other; m of root volume (lift may be per region: the stand-off of a short cut; groom.volume does not reach loose hair: groom_hair's answer WARNS about every solid-lock key, volume / length / flow / tiers, it did not read) | 0.02, 0.006; curls 0.035, 0.012 |
 | stiff | 0 hangs at once .. 1 keeps the direction it left the scalp in | 0.2-0.3 long, 0.6 short, 1 an afro |
 | out | 0 combed along the scalp .. 1 straight out of it | 0; tousled 0.3; an afro 1 |
 | back, messy, uneven | combed back over the crown; root directions turned at random; lengths differ | |
