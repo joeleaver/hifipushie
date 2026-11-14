@@ -26,8 +26,8 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 3. review_view, the only independent look, is worded for clothes (DETAIL_WORDS, the look_chain refusal, the "hang"
    checklist: tools_model.py:528-564). Garment trials call it: change with the garment thread.
 4. No pose while modelling (store ops: set, delete, rename, move, scale_r): "turn the head" has no tool.
-5. DONE for joints, bones, blobs and the elements inside prefabs (C442, C446: spec_keys.py; C442 wrongly refused
-   "hollow" and "chips" on a bone, fixed) and for hair's solid-lock keys beside loose / tied hair (C446: groom_hair
+5. DONE for joints, bones, blobs and the elements inside prefabs (C442, C447: spec_keys.py; C442 wrongly refused
+   "hollow" and "chips" on a bone, fixed) and for hair's solid-lock keys beside loose / tied hair (C447: groom_hair
    WARNS about each written key the grow did not read; a refusal would have stopped 301 current models).
    Still open: terrain ignores unknown keys outside rivers.
 6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
