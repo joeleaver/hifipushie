@@ -274,6 +274,73 @@ camera, squared, padded by pad and scaled to >= min_px. Region names are what th
 words, no numbers ("left ear", "right arm, elbow"). Returns the paths and one review_view call per region, one pair per
 region.
 
+### `read_reference`
+
+`read_reference(name, image=None, views=None, height=None, mask=None, boxes=None, detail='medium', view=None, focus=None, save=None)`
+
+Reads a reference picture for a sculpt. With image + views (one name per figure, left to right; boxes {view: [x0,
+y0, x1, y1]} when the figures touch) it cuts the sheet, saves each view's crop and, for "front" / "back" / "side" /
+"side_r", a camera in fit_concept_camera's format (label = the view's name: look_matched, feature_tiles, fit_matched
+and look(camera={"fitted": view}) work from it). height: metres, feet to top of the first flat view. Returns the
+view as picture | numbered patches | form lines with pixel rulers, and the patch table. Without image: shows `view`
+again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="features").
+
+### `mark_features`
+
+`mark_features(name, features=None, remove=None, notes=None, view=None, focus=None, save=None)`
+
+Adds named features to the model's feature map (kind, on, join, separate, authority, inferred, says, marks per
+view) and returns the map drawn on `view`, the table and what the map still owes. With no features it only shows
+the map. Marks and fields: guide(topic="features").
+
+### `build_masses`
+
+`build_masses(name, how, symmetry=True, view=None, save=None)`
+
+Builds masses of the feature map into the model from their marks (masses.py): how {feature: {"as": "ball" |
+"drum" | "trunk" | "tube", ...}}. A ball is a super blob from the marks' boxes (a drum: a cylinder along the
+longest; a flap: a sheet along its broadest mark's long axis); a trunk is a loft with a section per height
+(width from the front or back mark, depth and lean from the side mark); a tube is a chain of bones along the
+mark's own middle line, its thickness read across that line, "joints" stations; an end cut from another mass
+runs on under it. A ".L" is built and mirrored. What no mark
+shows is listed as ASSUMED. The built elements are written into the map, and the feature report follows.
+Per feature: "as" (required); "round" 2 = round in section .. 12 = square (ball 2, trunk 2.3 by default); "sections"
+(trunk, 7); "joints" (tube 4, flap 4: stations along it); "along" "x" | "y" | "z" (drum, flap: the axis, when
+the longest extent is not it); "edge" (drum: metres its rims are rounded); "thick", "cup", "puff" (flap: metres
+thick, metres its edges lift, 0 = a slab .. 1 = a lens); "socket" true | metres (ball: hollow the mass it is on
+round it); "part" (any name: its own piece); "blend" (metres: 0.003 crisp .. 0.02 the default .. 0.04 no line);
+"depth", "depth_ratio", "x", "y" (what a missing view would have given). There is no way to tilt a ball or drum:
+a slanted thing is a tube or a flap. The sculptor's page: guide(topic="features").
+
+
+### `build_forms`
+
+`build_forms(name, how, view=None, save=None)`
+
+Lays FORMS of the feature map on the built masses as strokes (forms.py): how = {feature: {"as": "raise" | "sink"
+| "rim", ...}}. The stroke's path is read off the form's mark in ONE flat view, every point a ray from that view
+onto the part of the mass the form is `on` (a mass of another part in front is not in the way). "raise": clay
+along the mark's own middle line, as wide at each place as the mark is there (a round mark: one dab; a `line`
+mark: a ridge, "width" metres half across); "sink": the same pressed in (a hollow; a line: a groove or crease);
+"rim": a raised ring, along the middle of a mark with a hole in it, or just inside the edge of a filled mark
+("width": half its breadth). "band": a ring all the way round a mass built as a tube (a stroke round the bone
+nearest the mark, at the mark's place along it, as broad as the mark is along the limb; negative depth: pressed in). A mark in separate pieces (a row of rings, two bumps) is one stroke per piece.
+"depth": metres out or in; left out it is guessed from the breadth and listed as ASSUMED (one view can't show it:
+look from the side). "profile": "soft" | "round" | "flat" | "sharp". "view": the flat view to lay it from (default:
+where its mark is largest). Places of a mark that miss the mass from that view are left out and said. A ".L" is
+laid and mirrored. Laying a form again replaces its strokes. Returns the forms' rows of the feature report and a
+picture (a stroke's footprint is what changes when it is taken out). The sculptor's page: guide(topic="features").
+
+### `feature_report`
+
+`feature_report(name, elements=None, views=None, view=None, resolution=144, save=None)`
+
+A model measured against its feature map from each reference view's camera. elements {feature: [element names,
+patterns like "tuft*", or "part:<part>"]} is remembered in the map; a feature with none is NOT MADE. A feature's
+footprint is the pixels its elements (and those of everything on it) change when taken out of the model, where
+nothing stands in front. Returns the rows and, for `view`, the picture with its marks beside the model with its
+footprints (green right, red off, blue outline = not made). Reading it: guide(topic="features").
+
 ### `join_report`
 
 `join_report(name, parts, side='L', sections=False)`
