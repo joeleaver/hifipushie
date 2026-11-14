@@ -16,8 +16,8 @@ from .tool_common import REPO
 def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
     "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
-    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference), "traps" (symptom -> real
-    cause), "gates" (describe, measure, look, approve), "tailoring"; or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
+    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference), "example" (two whole specs:
+    a fox, a chair), "traps" (symptom -> real cause), "gates" (describe, measure, look, approve), "tailoring"; or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
     if t.startswith("tool:"):  # always a tool's section, even where a topic has the tool's name (skin, human, likeness)
         return _tool_section(topic.strip()[5:].strip())
@@ -73,6 +73,7 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "features": "guide_fe
                 "strokes": "guide_blockout.md", "parts": "guide_blockout.md", "props": "guide_props.md",
                 "style": "guide_style.md", "story": "guide_story.md", "paint": "guide_paint.md",
                 "game_export": "guide_export.md", "rigging": "guide_rigging.md",
+                "example": "guide_example.md", "examples": "guide_example.md",
                 "human_shape": "human_shape.md", "human_tools": "human_tools.md",
                 "likeness_reading": "likeness_reading.md", "likeness_profile": "likeness_profile.md",
                 "likeness_references": "likeness_references.md", "likeness_tools": "likeness_tools.md",
