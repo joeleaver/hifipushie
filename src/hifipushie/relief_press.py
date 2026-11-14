@@ -402,5 +402,11 @@ def press(name: str, spec: dict, fm: dict, feature: str, view: str, leave=(), sc
     bname = blob_name(feature, fm["views"][view]["kind"])
     blobs = dict(spec.get("blobs", {}))
     blobs[bname] = {"shape": "relief", "relief": sha, "layer": relief.LAYER}
+    # a relief reshapes the clay of the part its mass is of (left in the body's, a can's ribs were pressed into
+    # nothing, and stood on the can as flecks of body clay)
+    part = next((spec[k][e]["part"] for e in c["built"] for k in ("blobs", "bones")
+                 if e in spec.get(k, {}) and spec[k][e].get("part")), None)
+    if part:
+        blobs[bname]["part"] = part
     got["about"].update(blob=bname, relief=sha)
     return {**spec, "blobs": blobs}, got
