@@ -1,7 +1,7 @@
 # STATE: the character export as stages (asset_export._export) -- 2026-11-14
 
 Joe (2026-11-14, to "restructure the 930-line character export function into stages?"): "Yes you should".
-Goal: `_export` readable and under the 500-line rule, with not one statement changed. Ledger C461.
+Goal: `_export` readable and under the 500-line rule, with not one statement changed. Ledger C465.
 
 ## Current best
 - `asset_export._export` keeps its signature and docstring and is: the context (`Export`, made from its arguments),
