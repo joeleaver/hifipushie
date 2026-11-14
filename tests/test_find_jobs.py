@@ -31,6 +31,9 @@ JOBS = [
     ("draw a blockout plan first", {"set_plan"}),
     ("match the silhouette to the reference automatically", {"fit"}),
     ("render from the concept art's camera", {"fit_concept_camera", "look_matched"}),
+    ("name the features in a character turnaround", {"read_reference", "mark_features"}),
+    ("which features of the reference has my sculpt not made", {"feature_report"}),
+    ("lay the brows and sockets of the reference on my block-in", {"build_forms"}),
     # export, rig, review
     ("export a GLB for a game engine", {"export_asset"}),
     ("pose the character with an arm raised", {"rig"}),

@@ -17,6 +17,9 @@ from .tools_clutter import (  # noqa: F401
 from .tools_export import (  # noqa: F401
     export, export_asset, heavy_queue, heavy_status, judge_asset, pull, rig, sync,
 )
+from .tools_features import (  # noqa: F401
+    build_forms, build_masses, feature_report, mark_features, read_reference,
+)
 from .tools_find import (  # noqa: F401
     call_tool, find_tool, guide,
 )
@@ -51,7 +54,7 @@ from .tools_terrain import (  # noqa: F401
 
 # A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
 __getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
-                                      "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
+                                      "tools_features", "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
                                       "tools_terrain", "tools_plants", "tools_clutter"))
 
 _register_core()
