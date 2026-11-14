@@ -136,7 +136,7 @@ TOOL_GROUPS: dict[str, dict] = {
     "plan": {"about": "plans, reference images, compare, silhouette fit, clearance, style check",
              "tools": ["set_plan", "set_reference", "compare", "fit", "clearance", "style_check"]},
     "concept": {"about": "match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles "
-                         "for bin/review, how parts join the body (stalk or base)",
+                         "for review_view, how parts join the body (stalk or base)",
                 "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report", "fit_matched"]},
     "features": {"about": "sculpt from reference pictures: read a picture's views, patches and form lines, name its "
                           "features as marks on it (the feature map), build the masses from their marks, measure a "

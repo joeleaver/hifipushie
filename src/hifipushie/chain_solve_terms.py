@@ -3,10 +3,10 @@ lists; and the residual report. Nothing here moves a point; chain_solve.py is th
 
 - NODES: one per sewn group (Network.root); a vertex's position is its node's.
 - LINKS: Network's links (every boundary edge and fold row at its cut; a seam's two sides one link).
-- EDGES: every other mesh edge of the pattern: AT MOST its flat length, interfaced or not (N2i, one behaviour: on the
-  chains-only network the lines across are long Delaunay rulings, and exact ones made each interfaced piece a flat
-  board that could not wrap the neck: the jacket's collar links stuck 27-43 % off; at most, 0.3 %). A stiff piece keeps
-  its shape by its BENDING stiffness (cloth_bend x the piece's bend), never by exact lines across.
+- LINES ACROSS are links too (N2j: chain_lines, chains of ~30 mm exact links that bend: a piece curves, never squashes;
+  N2i's at-most Delaunay rulings let every conflict narrow the pieces, the wobble; N2h's exact long rulings made a
+  collar a board).
+- EDGES: every other mesh edge (the faces between the chains) AT MOST its flat length: cloth doesn't stretch.
 - BEND STENCILS: per vertex, the affine weights of its flat neighbours that reproduce its flat position (sum w = 1,
   sum w uv_j = uv_i, least norm). X_i - sum w_j X_j is zero for ANY rigid (indeed affine) placement of a flat
   neighbourhood and grows with the bend: a linear, rotation-free bending row (so the solve's matrix is constant).
