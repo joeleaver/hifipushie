@@ -130,6 +130,11 @@ FRESH = [
     ("make the tree sway in the wind", {"wind_plant"}),
     ("a mossy boulder", {"make_clutter"}),
     ("grass and ferns on the forest floor", {"grow_plant", "grow_stand", "make_clutter"}),
+    # the head route, measured 2026-11-14 (the likeness guide sent a block-in head to the old staged fit)
+    ("make this head from the references", {"block_in_start"}),
+    ("fit the nose and mouth of my block-in head to the photos", {"block_in_step", "face_ruler"}),
+    ("move the nose of my block-in head", {"block_in_step", "face_ruler"}),
+    ("start a block-in of a person from photos", {"block_in_start"}),
 ]
 
 FRESH_MISSES: dict[str, str] = {

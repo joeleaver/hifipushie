@@ -22,14 +22,21 @@ KEYWORDS = {
 
 
 _PERSON = set("person people head face portrait character man woman someone likeness actor".split())
-_PICTURE = set("photo photos photograph photographs picture pictures image images".split())
+_PICTURE = set("photo photos photograph photographs picture pictures image images reference references refs".split())
 _ELSEWHERE = set("hair skin texture cloth clothes garment dress shirt jacket plant tree terrain".split())
+_FEATURE = set("nose mouth chin jaw brow brows lip lips eye eyes ear ears cheek cheeks forehead feature features".split())
 
 
 def pin_block_in(query: str, scores: dict) -> dict:
     """A person + a picture, and no other domain named: the block-in leads. Pinned, not weighted: on word weights
-    "a tree from a photo" came back to the head too."""
+    "a tree from a photo" came back to the head too. A FEATURE of a head that is already a block-in ("the nose of my
+    block-in head") is a hand step, not a start: block_in_step leads, then face_ruler, which lists each gap with its
+    move (the start led, and the old staged fit, which refuses a block-in model, was in the list)."""
     w = set(re.findall(r"[a-z]+", query.lower()))
+    if ({"block", "in"} <= w or "blockin" in w) and w & _FEATURE and w & _PERSON and not w & _ELSEWHERE:
+        # (a person word too: "my block-in" alone is any model's block-out, and its features are build_forms' job)
+        top = 1.01 * max(scores.values()) + 1.0
+        return {**scores, "block_in_step": top + 0.1, "face_ruler": top}
     if w & _PERSON and w & _PICTURE and not w & _ELSEWHERE:
         return {**scores, "block_in_start": 1.01 * max(scores.values()) + 1.0}
     return scores
