@@ -40,7 +40,7 @@ Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2i -> N2j (this; st
 2. Collar fall (undercollar has no roll row: step 4), sleeves thin, facing crossing CF (from N2i, unchanged).
 
 Run: `uv run pytest -q tests/test_chain_lines.py tests/test_chain_solve.py tests/test_chain_lay.py tests/test_chain_panels.py`.
-Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457, N2j's row.
+Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457, C461.
 
 NEXT: N2j-b: finish the jacket proof with exact lines: diagnose why the unsewn stages leave links 36 % off (lk.py on
 n2j/run1/X_stage2.npy), get the sewn solve to TOL, then measure squash + wave (meas.py) vs N2i and render.
