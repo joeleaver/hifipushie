@@ -9,7 +9,8 @@ feature, and write down what each one is. This guide is that list for our models
   top misses and for the items that can only be judged by eye. Measures only.
 - `likeness(name, targets=True)`: the target sheet (the references measured once: value, view, tolerance, confidence
   or "unmeasurable") and the stage plan.
-- `fit_likeness(name, stage)`: one stage of the fit, big to small, each through an existing guarded control.
+- `fit_likeness(name, stage)`: one stage of the fit, big to small, each through an existing guarded control. For a
+  `human` model fitted by parameters; REFUSED on a block-in model (there the features are `block_in_step` moves).
 - `likeness_points(name, image, points, lines)`: hand-placed points and traced lines on a reference, for what no
   detector finds (the jaw's corner, the ear lobe, the neck's line).
 - `reference_brief(kind, subject)` / `check_references(images, name)`: the shots to ask for, and what a given set of
@@ -18,8 +19,10 @@ feature, and write down what each one is. This guide is that list for our models
 The checklist itself is data: `src/hifipushie/likeness.json` (items, stages; add items there).
 
 ORDER: the artist block-in (guide(topic="block_in"): base of the right kind, whole-face steps judged by eye and by a
-target table drawn from this checklist) comes FIRST and gets the masses, planes and proportions right; the staged
-fitting below is for features after it.
+target table drawn from this checklist) comes FIRST and gets the masses, planes and proportions right. The features
+after it are moved on the SAME model: `face_ruler` lists each gap with its move, and
+`block_in_step(name, {"mm:<measure>": mm}, seen=..., why=...)` makes it; `likeness(name)` still measures and shows
+the panels. The staged fitting below (`fit_likeness`) is NOT a step of that route: it refuses a block-in model.
 Sub-topics (guide(topic=...)): `likeness_reading` (where the list comes from: FISWG, artists, anthropometry; how
 each item is read, shape items, the jaw's L, profile items, judge items, coverage), `likeness_profile` (a profile
 from a turned view: contour traces), `likeness_references` (handed references vs references we ask for),
@@ -89,9 +92,10 @@ and older); keep the summary sentence and read the sheet by eye too.
    the traced items), chin shape, neck, lines and folds (judge).
 9. **Ears**: height and length, protrusion (judge: no control yet).
 
-## Staged fitting from the sheet
+## Staged fitting from the sheet (a `human` model without the block-in)
 
-The same list drives the first fit, not only the check. `likeness(name, targets=True)` measures the references once
+NOT on a block-in model: `fit_likeness` refuses it and names `block_in_step` (see ORDER above). On a `human` model
+fitted by parameters alone, the same list drives the first fit, not only the check. `likeness(name, targets=True)` measures the references once
 (the target sheet) and prints the plan; `fit_likeness(name, stage)` runs ONE stage:
 
 | stage | controls (wired) | items they move | gaps (no control) |
@@ -116,8 +120,8 @@ stage on its panels before the next (big to small, approved stages).
 What the staged fit is and isn't: it gets a seed head's measured items inside tolerance in a couple of minutes a
 stage, and with the structure stage it no longer leaves a soft head (hollow, planes and jaw corner are set from the
 photo's shading). It does not make a likeness by itself: the shading levers are coarse (one light, albedo in the
-way), the jaw's L and the fold have no control that draws them, and a face is more than its list. Use it for the
-first pass, then judge the panels and the whole head.
+way), the jaw's L and the fold have no control that draws them, and a face is more than its list. On such a model
+use it for the first pass, then judge the panels and the whole head.
 
 ## Self-review loop (every stage)
 

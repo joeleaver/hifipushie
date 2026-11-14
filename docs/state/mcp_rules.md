@@ -33,7 +33,8 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
    wrong section is NOT caught (no list per section: 19 sections across 67 modules).
 6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
    review_view call per region. Not run end to end by a blind agent yet.
-7. Old head route still handed over: likeness_guide.md:94-121 teaches fit_likeness, which refuses block-in models.
+7. DONE (C457): likeness_guide.md hands a block-in head to face_ruler and block_in_step (fit_likeness refuses it);
+   the finder leads a feature job on a block-in head with the hand step. Whether fit_likeness stays: the legacy thread.
 8. No worked example a tool returns (kit_reference is 49k characters; examples/fox.json is 2.3k and unnamed).
 9. guide(topic="traps") and "gates" serve developer notes from docs/notes (Garrett's collars, the machine).
 10. DONE (C445): terrain views, plant looks and clutter looks run Blender inside resources.heavy(..., gpu=True);
@@ -52,6 +53,6 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: items 7, 8, 9, 11, then dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A
+NEXT: items 8, 9, 11, then dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A
 tool-description change runs tests/test_toolsets.py with -m "" (a slow-tier rule the suite skips); a new constant
 goes in its family's base module (tests/test_constants_address.py).
