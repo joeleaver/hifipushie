@@ -34,7 +34,7 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 7. Old head route still handed over: likeness_guide.md:94-121 teaches fit_likeness, which refuses block-in models.
 8. No worked example a tool returns (kit_reference is 49k characters; examples/fox.json is 2.3k and unnamed).
 9. guide(topic="traps") and "gates" serve developer notes from docs/notes (Garrett's collars, the machine).
-10. DONE (C444): terrain views, plant looks and clutter looks run Blender inside resources.heavy(..., gpu=True);
+10. DONE (C445): terrain views, plant looks and clutter looks run Blender inside resources.heavy(..., gpu=True);
     tests/test_gpu_lock.py holds it. The terrain view's 6 GB is a guess, not a measured peak.
 11. README.md's tool table has 12 rows.
 

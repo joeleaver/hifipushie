@@ -293,7 +293,7 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         jp.write_text(json.dumps(jb))
         t1 = time.perf_counter()
         from . import resources
-        with resources.heavy(f"plant look {Path(save).name if save else ''}".strip(), gb=4, gpu=True):  # (C444: one GPU render at a time)
+        with resources.heavy(f"plant look {Path(save).name if save else ''}".strip(), gb=4, gpu=True):  # (C445: one GPU render at a time)
             r = resources.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python",
                                str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:

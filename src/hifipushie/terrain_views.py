@@ -351,7 +351,7 @@ def render(T: Terrain, out_dir, views: list[dict], size=(1200, 700), samples=24)
     job.write_text(json.dumps({"mesh": str(mesh), "views": jobs, "size": size, "samples": samples}))
     script = Path(__file__).with_name("blender_terrain.py")
     from . import resources
-    with resources.heavy(f"terrain views {Path(out_dir).name}", gb=6, gpu=True):  # (C444: one GPU render at a time)
+    with resources.heavy(f"terrain views {Path(out_dir).name}", gb=6, gpu=True):  # (C445: one GPU render at a time)
         r = subprocess.run(["blender", "-b", "--factory-startup", "--python", str(script), "--", str(job)],
                            capture_output=True, text=True)
     if r.returncode or "Traceback" in r.stdout + r.stderr:  # Blender exits 0 after a Python error

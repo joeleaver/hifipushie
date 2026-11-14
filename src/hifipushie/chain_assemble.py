@@ -4,8 +4,9 @@ The unknowns are the panels' numbers (chain_panels: 9 per panel, ~250 for a jack
 least-squares fit (scipy least_squares, finite-difference Jacobian over the panels each residual touches):
 - SEAMS: every sew pair's two points at their panels' maps coincide (the residual IS the seam gap). Seams are one chain
   end to end (chain_seams.join_seams), so a seam is matched point for point along its whole length.
-- HINGES: a fold row's points on both its panels coincide, and the turned panel's direction across the row is the plan's
-  turn (chain_panels.hinge_read).
+- HINGES: a fold row's points on both its panels coincide; the turn is exact by construction (chain_panels.resolve: the
+  turned panel's rigid motion is its base's turned by the plan's angle); only an unruled hinge (a fold lying on another
+  piece) keeps the turn as a residual (chain_panels.hinge_read).
 - TIES: closures' pairs a LAYER apart.
 - ROLL: a stiff panel's curvature is a weight (stiff cloth rolls little), never a limit.
 - ASSEMBLE (`assemble`): a soft keep-out from a THIN body (the body's surface THIN m in: which way round, arms in
@@ -74,7 +75,8 @@ class Fit:
         pan, own = self.pan, self.pan.owner
         out = [(3, [own[a], own[b]]) for a, b in self.sew]
         for h in pan.hinges:
-            out += [(3, [h["base"], h["turned"]])] * len(h["row"]) + [(3, [h["base"], h["turned"]])]
+            out += [(3, [h["base"], h["turned"]])] * len(h["row"])
+            out += [] if h["turned"] in pan.ruled else [(3, [h["base"], h["turned"]])]
         out += [(1, [own[a], own[b]]) for a, b, _ in self.ties]
         out += [(1, [k]) for k in range(pan.n)]
         if self.keep is not None:
@@ -89,25 +91,27 @@ class Fit:
     def _sparsity(self):
         R, C = [], []
         r = 0
+        fc = self.pan.free_cols()
         for nr, ps in self._blocks():
+            cols = sorted({k * NP + q for p in set(ps) for k in self.pan.ancestors(p) for q in fc[k]})
             for q in range(nr):
-                for k in set(ps):
-                    R += [r + q] * NP
-                    C += list(range(k * NP, k * NP + NP))
+                R += [r + q] * len(cols)
+                C += cols
             r += nr
         self.m = r
         self.S = sp.coo_matrix((np.ones(len(R)), (R, C)), shape=(r, self.pan.n * NP)).tocsr()
 
     def residual(self, x):
         pan, c, own = self.pan, self.c, self.pan.owner
-        TH = x.reshape(pan.n, NP)
+        TH = pan.resolve(x.reshape(pan.n, NP))
         X = pan.positions(TH)
         out = [W_SEAM * (X[self.sew[:, 0]] - X[self.sew[:, 1]]).ravel()]
         for h in pan.hinges:
             uv = c.uv[h["row"]]
             out.append(W_HINGE * (pan.place(TH[h["base"]], h["base"], uv) - pan.place(TH[h["turned"]], h["turned"], uv)).ravel())
-            wb, tgt, _ = pan.hinge_read(TH, h)
-            out.append(W_TURN * (wb - tgt))
+            if h["turned"] not in pan.ruled:
+                wb, tgt, _ = pan.hinge_read(TH, h)
+                out.append(W_TURN * (wb - tgt))
         if self.ties:
             a, b, d = map(np.asarray, zip(*self.ties))
             out.append(TIE_W * (np.linalg.norm(X[a.astype(int)] - X[b.astype(int)], axis=1) - d))
@@ -133,7 +137,7 @@ class Fit:
                           method="trf", tr_solver="lsmr")
         if log:
             log(f"panels fit: cost {r.cost:.5f} after {r.nfev} evaluations, {time.time() - t0:.0f} s")
-        return r.x.reshape(self.pan.n, NP), {"cost": round(float(r.cost), 6), "evals": int(r.nfev),
+        return self.pan.resolve(r.x.reshape(self.pan.n, NP)), {"cost": round(float(r.cost), 6), "evals": int(r.nfev),
                                              "seconds": round(time.time() - t0, 1)}
 
 

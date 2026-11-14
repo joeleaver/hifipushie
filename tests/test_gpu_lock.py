@@ -1,4 +1,4 @@
-"""Every environment render (terrain views, plant looks, clutter looks) takes the machine's GPU lock (C444).
+"""Every environment render (terrain views, plant looks, clutter looks) takes the machine's GPU lock (C445).
 
 They ran Blender bare: two at once, or one beside a character render, shared the iGPU with the desktop (the laptop has
 gone down under that). resources.heavy(..., gpu=True) is the queue every other render waits in; nested in a heavy job

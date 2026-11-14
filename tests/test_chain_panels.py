@@ -102,6 +102,46 @@ def test_hinge_turns_to_its_planned_angle():
     assert max(rd["seam_gaps_mm"]["hinge f#0"]) < 0.5
 
 
+def test_outline_walked_whole_through_a_pinch():
+    """(N2f, C444) An outline touching itself at one vertex (a sliver triangle on a corner, as at a collar's tip) is
+    walked whole: every boundary edge once (a greedy walk cut it short and lost a collar's neck edge); a chains-only
+    network gives the pattern's outline."""
+    u, F = grid(5, 4, 0.2, 0.1)
+    corner = 4 * 4 + 3  # (the (0.2, 0.1) corner)
+    u = np.r_[u, [[0.25, 0.1], [0.25, 0.14]]]
+    F = np.r_[F, [[corner, len(u) - 2, len(u) - 1]]]
+    M, _ = pattern([("a", u, F)])
+    net = Network(M)
+    lp = net.loop("a")
+    assert len(lp) == 14 + 3 and (lp == corner).sum() == 2
+    E = {tuple(sorted(e)) for e in zip(lp, np.roll(lp, -1))}
+    assert len(E) == 17
+    c, keep = chain_network(net)
+    assert set(keep[c.loop("a")]) == set(lp[np.isin(lp, keep)])
+
+
+def test_ruled_hinge_turn_is_exact_by_construction():
+    """(N2f) A hinge rules its turned panel: whatever the numbers (any rigid motion, any roll of both panels), the turned
+    panel leaves the row at the plan's turn and meets the base at the row's middle; a fold lying on another piece is
+    not ruled."""
+    u, F = grid(21, 11, 0.2, 0.1)
+    M, _ = pattern([("a", u, F)])
+    row = [10 * 11 + j for j in range(11)]
+    M["folds"] = [{"piece": "a", "name": "f", "rows": [row], "sign": 1.0}]
+    c = _net(M)
+    pan = Panels(c, {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 85.0, "lies_on": "a"}}})
+    assert list(pan.ruled) == [pan.hinges[0]["turned"]]
+    rng = np.random.default_rng(3)
+    h = pan.hinges[0]
+    a, b = h["base"], h["turned"]
+    for _ in range(5):
+        TH = pan.resolve(np.c_[rng.normal(0, 1, (2, 6)), rng.uniform(0, 3, 2), rng.normal(0, 4, 2), np.zeros(2)])
+        assert abs(pan.hinge_read(TH, h)[2] - 85.0) < 0.5
+        assert np.linalg.norm(pan.place(TH[a], a, h["mid"][None]) - pan.place(TH[b], b, h["mid"][None])) < 1e-6
+    free = Panels(c, {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 85.0, "lies_on": "b"}}})
+    assert not free.ruled
+
+
 def test_sparse_seam_resampled_into_one_chain():
     ua, Fa = grid(13, 9, np.pi * R, 0.2)
     ub, Fb = grid(13, 5, np.pi * R, 0.2)  # (b coarser along its height: its seam points at other fractions)
