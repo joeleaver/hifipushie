@@ -162,7 +162,7 @@ def report_flow(T):
 def cobble_swatch(size=2.0, res=256, seed=4251):
     """A tileable bed swatch (top view, periodic): rounded cobbles and pebbles packed on gravel, 3-22 cm (a few big,
     many small: no two rows alike), each its own tone (grey, buff, a few dark or pale), dark wet gaps between, grit on
-    the stones. Returns what terrain_ground.grass_swatch returns."""
+    the stones. Returns what terrain_ground_grass.grass_swatch returns."""
     from .terrain_swatch_periodic import spectral
     L = float(size)
     n = int(round(L * res))

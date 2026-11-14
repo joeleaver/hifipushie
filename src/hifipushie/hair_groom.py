@@ -55,7 +55,7 @@ def groom_params(spec: dict) -> dict:
 
 
 def needs_body(g: dict) -> bool:
-    """Tied hair that hangs (a hanging tail, escaped pieces) lies on the body's own surface (hair_loose.collider)."""
+    """Tied hair that hangs (a hanging tail, escaped pieces) lies on the body's own surface (hair_loose_body.collider)."""
     tie = g.get("tie")
     if not tie:
         return False

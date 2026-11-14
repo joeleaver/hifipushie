@@ -562,7 +562,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             uv_[sl_, 1] = 1.0 - (sb_["row0"] + 0.5 + (1.0 - cv_) * (sb_["rows"] - 1.0)) / Hall_
         cap = {**cap, "uv": uv_}
         info["shells"] = {"n": ns_, "triangles": int(len(cap["tris"]) - len(cap["tris"]) // (ns_ + 1)), "heights": [float(m_["height"]) for m_ in shell_maps]}
-    # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
+    # against the body's own signed distance (hair_loose_body.collider), not the scalp's rays: a ray from the head's centre
     # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
     # moved out to the ear's silhouette (Garrett: 936 hero vertices, the ragged dark patches behind the ear and at
     # the temple)

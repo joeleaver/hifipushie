@@ -220,7 +220,7 @@ class Streams:
         pl = g.get("plunge", 0.0)  # (a waterfall's plunge pool: a pool, nothing else)
         return np.maximum(pool * run, pl), riffle * run * (1 - pl), bar * run * (1 - pl)
 
-    # ---- the bed's shape (terrain_ground.Edits.column)
+    # ---- the bed's shape (terrain_ground_model.Edits.column)
     def cut(self, xy, g):
         """(outer 0..1, cut height m, inner 0..1, cut distance m) at points: where the bank is a cut bank and how
         high, where it is the bar's side, and how far from the water's nominal edge the cut stands at most (on low

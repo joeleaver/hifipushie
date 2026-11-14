@@ -67,7 +67,7 @@ def region(T, r) -> np.ndarray:
         if r == "water":
             return (~np.isnan(T.water)).astype(float)
         if r in ("sea", "beach", "cliffs", "coast", "rocks") and getattr(T, "sea", None):
-            from .terrain_sea import regions
+            from .terrain_sea_report import regions
             return regions(T, r)
         if r in ("routes", "sites"):
             return T.masks.get(r, np.zeros(shape))

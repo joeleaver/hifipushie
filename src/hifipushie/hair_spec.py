@@ -112,8 +112,8 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     g = groom_params(spec)
     col = None
     if g.get("loose") or needs_body(g):
-        from . import hair_loose
-        col = hair_loose.collider(name, spec, sc)
+        from . import hair_loose_body
+        col = hair_loose_body.collider(name, spec, sc)
     reads: set = set()
     new = grow(sc, g, col, reads)
     not_read = unread(h.get("groom") or {}, reads)

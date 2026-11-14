@@ -431,7 +431,7 @@ def mod_fold(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.
 def mod_tissue(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
     """A soft-tissue fold (skin_folds.py: skin.folds as geometry): a groove + roll profile swept along a path on the
     skin, kept off the lid margins / the lip line and clear of the eyeballs."""
-    from .skin_folds import mod_tissue as f
+    from .skin_folds_geometry import mod_tissue as f
     return f(cur, p, pr)
 
 

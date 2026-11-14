@@ -113,13 +113,14 @@ CROPS = {"direction__three_quarter__top_front": ("v1", 30.0, 60.0, 85.0),
 def geo(m):
     import copy
     from hifipushie import hair, hair_loose as hl, hair_read as hr, humanfit, store
+    from hifipushie import hair_loose_body, hair_loose_grow
     from hifipushie import hair_groom, hair_head, hair_job, hair_seat, humanfit_views
     spec = store.load(m)
     sc = hair_head.scalp(m, spec)
-    col = hl.collider(m, spec, sc)
+    col = hair_loose_body.collider(m, spec, sc)
     g = hair_seat.fit_to_head(copy.deepcopy(hair_groom.groom_params(spec)), sc)
     line = hair_groom.hairline(sc, g)
-    locks = hl.grow(sc, g, line, np.random.default_rng(int(g.get("seed", 0))), col)
+    locks = hair_loose_grow.grow(sc, g, line, np.random.default_rng(int(g.get("seed", 0))), col)
     P = [np.asarray(lk["pts"], float) + sc.C for lk in locks.values()]
     A = np.concatenate([p[:-1] for p in P]); B = np.concatenate([p[1:] for p in P])
     refs = json.loads((store.HOME / m / "human_refs.json").read_text())

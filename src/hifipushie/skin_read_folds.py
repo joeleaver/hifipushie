@@ -131,6 +131,7 @@ def fold_read(c: Context) -> dict:
     valley over ours, log luminance), "excess" (ours over the picture's), "share", "extent" [t0, t1], "shift" [mm at
     N_SHIFT stations], "confidence", "views"}}}}; + "fields": the fine-line zones."""
     from . import skin_folds as sf
+    from . import skin_folds_map
     from . import skin_zones
     J = skin_zones._joints(c.st)
     part = (c.st.get("skin") or {}).get("part", "body")
@@ -138,7 +139,7 @@ def fold_read(c: Context) -> dict:
     out = {}
     if "lm_jaw_1.L" not in J:
         return {"folds": {}, "fields": {}, "why": "no GNM head landmarks"}
-    nominal = sf.paths(c.st, part, J, None)
+    nominal = skin_folds_map.paths(c.st, part, J, None)
     ldirs = {}
     for f in c.frames:
         try:

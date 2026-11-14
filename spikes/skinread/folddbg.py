@@ -3,6 +3,7 @@ heights round the eye (where lid_fold's nominal path sits over the lid margin)."
 import sys
 import numpy as np
 from hifipushie import skin_read as sr, store, paint, skin, skin_folds as sf
+from hifipushie import skin_folds_map
 from hifipushie import skin_read_frames, skin_zones
 
 m = sys.argv[1]
@@ -24,6 +25,6 @@ for k in ("lm_eye_inner.L", "lm_eye_outer.L", "lm_lid_upper.L", "lm_lid_lower.L"
     if k in J:
         print(k, (J[k] * 1000).round(1))
 print("io mm", round(io * 1000, 1))
-ps = sf.paths(st, "body", J, None, names=["lid_fold", "tear_trough"])
+ps = skin_folds_map.paths(st, "body", J, None, names=["lid_fold", "tear_trough"])
 for k, q in ps.items():
     print(k, "z mm", (q["P"][[0, len(q["P"]) // 2, -1], 2] * 1000).round(1), "y", (q["P"][[0, len(q["P"]) // 2, -1], 1] * 1000).round(1))

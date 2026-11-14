@@ -173,7 +173,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     sm_keys = list(sm)
     np.savez(tmp / "strand_scalp.npz", **sm)
     np.savez(tmp / "strand_collide.npz", **(col.mesh() if col is not None else collide_mesh(sc)))  # (loose hair: the
-    # body's own surface down to the back, hair_loose.Collider)
+    # body's own surface down to the back, hair_loose_body.Collider)
     G = lock_guides(hair_locks, sc.C, S, seed)
     ug = under_guides(sc, g, line, hair_locks, S, seed)
     ph = physical(S)

@@ -100,6 +100,7 @@ Parameters and defaults for the kits (hand, face), strokes (clay, crease, flatte
 Create a model or replace its whole spec. Missing keys get defaults. The stored plan (set_plan) is kept
 unless the new spec gives one, or "plan": null to drop it. Returns a summary. joins=["ear", "tail"] adds a
 join_report line per part (WARNING under 0.75: a stalk or neck), every save.
+A whole worked spec to start from (a fox, a chair): guide(topic="example").
 
 ### `edit_model`
 

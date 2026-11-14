@@ -101,7 +101,7 @@ def geometry(spec: dict) -> dict:
         return spec
     out = {k: v for k, v in spec.items() if k not in skip}
     if (spec.get("skin") or {}).get("folds"):  # the one thing of the skin that IS shape: its folds as relief
-        from . import skin_folds  # (skin_folds.prims); None unless a fold has an amount and the relief is geometry
+        from . import skin_folds  # (skin_folds_geometry.prims); None unless a fold has an amount and the relief is geometry
         tis = skin_folds.geometry_key(spec["skin"])
         if tis:
             out["tissue"] = tis
@@ -381,11 +381,11 @@ def _compile(spec: dict) -> list[Prim]:
             out[bi + 1:bi + 1] = fp
     if s.get("tissue"):  # skin.folds as geometry (skin_folds.py): modifiers after everything else of the skin's part
         # that is not a region cut, seated on that part's field without them
-        from . import skin_folds
+        from . import skin_folds_geometry
         part = s["tissue"].get("part", "body")
         idx = [i for i, p in enumerate(out) if p.part == part]
         if idx:
-            fp = skin_folds.prims(s, [out[i] for i in idx])
+            fp = skin_folds_geometry.prims(s, [out[i] for i in idx])
             for p in fp:
                 p.reach, p.inert = 0.0, 0.0
             at = max(i for i in idx if out[i].op != "intersect") + 1

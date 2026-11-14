@@ -71,7 +71,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     "auto" / left out (terrain_sun picks a raking sun for what the view sees; the choice is noted in render_job.json).
     haze: aerial perspective, metres for 63% (None/0: off). props: placeholder buildings, tee pads and baskets on the
     sites (the export's meta), for scale. clutter: metres round each eye where ground clutter placeholders stand
-    (terrain_ground.clutter: bushes on the scrub, tussocks and tall grass in rough grass, boulders on the shore;
+    (terrain_ground_clutter.clutter: bushes on the scrub, tussocks and tall grass in rough grass, boulders on the shore;
     0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
     blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
     "exposure"}; default the hazy sky every earlier round was judged under. grass=False leaves the turf's tiling
@@ -162,7 +162,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                          "variation_scale": D["variation_scale"], "variation_offset": D["variation_offset"],
                          "fade": (D.get("fade") or {}).get("footprint_m") if detail_fade else None, "show": detail_show}
     if clutter and not channel:  # ground clutter round the eyes (an engine's detail scatter, as placeholders)
-        from . import terrain_ground
+        from . import terrain_ground_clutter
         cf, *_ = build_field(T)
         cm = Materials(T, cf)
         ks = ("bush", "tussock", "tallgrass", "boulder")
@@ -170,7 +170,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         lo_, hi_ = eyes[:, :2].min(0) - clutter, eyes[:, :2].max(0) + clutter
         if box:
             lo_, hi_ = np.maximum(lo_, box[0]), np.minimum(hi_, box[1])
-        C = terrain_ground.clutter(T, cm, cf, ks, box=[lo_.tolist(), hi_.tolist()], near=(eyes, clutter))
+        C = terrain_ground_clutter.clutter(T, cm, cf, ks, box=[lo_.tolist(), hi_.tolist()], near=(eyes, clutter))
         if len(C):  # (no bush or boulder at an eye: a view from inside a bush was all leaves)
             from scipy.spatial import cKDTree
             de, _ = cKDTree(eyes[:, :2]).query(C[:, :2])

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from test_hair_strands import _hanging, _lock, _strands  # noqa: E402
 
 from hifipushie import hair, hair_loose as hl  # noqa: E402
+from hifipushie import hair_loose_body, hair_loose_grow
 from hifipushie import hair_groom, hair_head, hair_seat
 from hifipushie import hair_cards as hc  # noqa: E402
 from hifipushie import hair_cards_mass
@@ -34,14 +35,14 @@ def _ball_head(step=0.01):
     n = np.ceil((np.asarray(hl.BOX[1]) - np.asarray(hl.BOX[0])) / step).astype(int) + 1
     X = np.stack(np.meshgrid(*[lo[i] + step * np.arange(n[i]) for i in range(3)], indexing="ij"), -1)
     phi = np.minimum(np.linalg.norm(X - C, axis=-1) - 0.095, X[..., 2] - (C[2] - 0.17))
-    return sc, hl.Collider(lo, step, phi)
+    return sc, hair_loose_body.Collider(lo, step, phi)
 
 
 def _grow(loose, parting="left"):
     sc, col = _ball_head()
     g = hair_groom._merge(hair.GROOM, {"loose": loose, "parting": {"side": parting}, "seed": 2})
     line = hair_groom.hairline(sc, g)
-    return sc, col, hl.grow(sc, g, line, np.random.default_rng(2), col)
+    return sc, col, hair_loose_grow.grow(sc, g, line, np.random.default_rng(2), col)
 
 
 def test_loose_hair_falls_and_stays_out():
@@ -142,7 +143,7 @@ def test_regions_left_out_take_the_default():
     s_top = h_sides({**crop, "lift": {"top": 0.03}})
     assert abs(s_top - s_def) < 0.0015, (s_def, s_top)  # (the mean would have lifted the sides by 3 cm)
     W = np.eye(len(hair.REGIONS))
-    L = hl._lengths({"nape": 0.01}, W)
+    L = hair_loose_grow._lengths({"nape": 0.01}, W)
     assert np.allclose(L[hair.REGIONS.index("nape")], 0.01) and np.allclose(L[hair.REGIONS.index("top")], 0.2), L
 
 
