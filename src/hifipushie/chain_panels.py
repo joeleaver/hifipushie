@@ -13,9 +13,11 @@ free variable:
   HINGE along the row with one angle: the turned panel's direction across the row against the plan's turn (the turn
   split over the draft's rows, towards the side the draft's sign says: sign x the flat's winding x the row's handedness
   (its drafted direction x the turned side; N2e: without it a mirrored piece's fold turned the other way), +1 = +z).
-  The turned side of a row is its smaller side.
+  The turned side of a row is its smaller side. N2f: the hinge RULES its turned panel (`resolve`): that panel's rigid
+  motion is its base's at the row's middle turned by the plan's angle, exactly; only its roll is its own. A fold lying on
+  another piece (plan lies_on) is not ruled: its turn stays a residual.
 - A piece sewn to nothing (a ply that follows its host) is not a panel: it is bound on its host afterwards.
-Panels(cnet, plan, skip) -> .panels [{piece, ids, c (flat centre)}], .owner (point -> its first panel), .hinges.
+Panels(cnet, plan, skip) -> .panels [{piece, ids, c (flat centre)}], .owner (point -> its first panel), .hinges, .rule.
 place(th, k, uv) / positions(th): the map; fit_start(Xs): each panel's numbers fitted to a start (Kabsch then the roll).
 Nothing here knows a garment, a piece's role or a wear state.
 """
@@ -91,7 +93,8 @@ class Panels:
             rows = [np.asarray(r, np.int64) for r in fd.get("rows") or []]
             way = float(fd.get("sign", 1.0)) * _uv_wind(cnet, f["on"])
             for r in rows:
-                rows_of.setdefault(cnet.pid(f["on"]), []).append((r, float(f["turn_deg"]) / len(rows), way, bid))
+                rows_of.setdefault(cnet.pid(f["on"]), []).append((r, float(f["turn_deg"]) / len(rows), way, bid,
+                                                                  bool(f.get("lies_on")) and f["lies_on"] != f["on"]))
         self.panels, self.hinges = [], []
         self.owner = -np.ones(cnet.n, np.int64)
         for p, nm in enumerate(cnet.names):
@@ -105,7 +108,7 @@ class Panels:
             S = np.stack([_side(cnet.uv, r, cnet.uv[ids]) for r, *_ in rows], 1)
             # (the turned side of a fold's first row is its smaller side; every row of that fold turns the same way:
             # its base side is the one holding the base's farthest point from the first row)
-            for bid in dict.fromkeys(b for *_, b in rows):
+            for bid in dict.fromkeys(rr[3] for rr in rows):
                 ks = [k for k, rr in enumerate(rows) if rr[3] == bid]
                 k0 = ks[0]
                 sm = [np.ptp(cnet.uv[ids[S[:, k0] == s_]], 0).prod() if (S[:, k0] == s_).any() else 0 for s_ in (1, -1)]
@@ -158,9 +161,69 @@ class Panels:
                     rd = cnet.uv[r[-1]] - cnet.uv[r[0]]
                     way = way * (1.0 if rd[0] * m2[1] - rd[1] * m2[0] >= 0 else -1.0)
                     self.hinges.append({"base": a, "turned": b, "row": on, "turn_deg": turn, "way": way,
-                                        "mid": cnet.uv[on].mean(0), "across": m2, "name": f"{bid}#{k}"})
+                                        "mid": cnet.uv[on].mean(0), "across": m2, "name": f"{bid}#{k}",
+                                        "free": rows[k][4]})
         self.n = len(self.panels)
         self.shared = [(h["base"], h["turned"], h["row"]) for h in self.hinges]
+        # (N2f: a hinge RULES its turned panel: that panel's rigid motion is its base's at the row's middle turned by the
+        # plan's angle (exact by construction, no turn residual); its own numbers keep only its roll. A fold that lies
+        # on ANOTHER piece is not ruled (it must follow what it rests on: its turn stays a residual). Bases first; a
+        # panel ruled once.)
+        self.rule, seen = [], set()
+        left = list(range(len(self.hinges)))
+        while left:
+            ok = [i for i in left if self.hinges[i]["base"] not in {self.hinges[j]["turned"] for j in left if j != i}]
+            if not ok:
+                break
+            for i in ok:
+                h = self.hinges[i]
+                if h["turned"] not in seen and h["base"] != h["turned"] and not h["free"]:
+                    seen.add(h["turned"])
+                    self.rule.append(i)
+                left.remove(i)
+        self.ruled = {self.hinges[i]["turned"]: i for i in self.rule}
+        self.up = {b: self.hinges[i]["base"] for b, i in self.ruled.items()}
+
+    def ancestors(self, k):
+        """Panel k and every panel its map depends on (its ruling bases)."""
+        out = [k]
+        while out[-1] in self.up:
+            out.append(self.up[out[-1]])
+        return out
+
+    def _frame(self, th, k, mid, m, local=False):
+        """(point, row tangent, across) of panel k's map at flat mid, across m (unit)."""
+        t = np.array([-m[1], m[0]])
+        f = (lambda q: roll(q - self.panels[k]["c"], th[6], th[7], self._taper(th, k))) if local else \
+            (lambda q: self.place(th, k, q))
+        e = 1e-4
+        P = f(np.array([mid, mid + e * t, mid - e * t, mid + e * m, mid - e * m]))
+        return P[0], (P[1] - P[2]) / (2 * e), (P[3] - P[4]) / (2 * e)
+
+    def resolve(self, TH):
+        """TH with every ruled panel's rigid motion set from its base and the hinge's angle (module doc)."""
+        TH = np.array(TH, float)
+        for i in self.rule:
+            h = self.hinges[i]
+            a, b, mid, m = h["base"], h["turned"], h["mid"], h["across"]
+            pa, ta, wa = self._frame(TH[a], a, mid, m)
+            na = self.normal(TH[a], a, mid[None])[0] * h["way"]
+            ang = np.radians(h["turn_deg"])
+            wt = np.cos(ang) * wa + np.sin(ang) * na
+            pb, tb, wb = self._frame(TH[b], b, mid, m, local=True)
+            def orth(t, w):
+                t = t / np.linalg.norm(t)
+                w = w - (w @ t) * t
+                w /= np.linalg.norm(w)
+                return np.c_[t, w, np.cross(t, w)]
+            R = orth(ta, wt) @ orth(tb, wb).T
+            TH[b, 3:6] = pa - R @ pb
+            TH[b, :3] = Rotation.from_matrix(R).as_rotvec()
+        return TH
+
+    def free_cols(self):
+        """Per panel, the columns of its numbers the solver moves (a ruled panel: only its roll)."""
+        return [[6, 7, 8] if k in self.ruled else list(range(NP)) for k in range(self.n)]
 
     def _add(self, nm, ids):
         k = len(self.panels)
@@ -201,13 +264,13 @@ class Panels:
                 X[m] = self.place(TH[k], k, self.cnet.uv[m])
         return X
 
-    def hinge_read(self, TH, h, eps=1e-3):
-        """(turned panel's direction across the row, target direction, measured turn deg) at the row's middle."""
-        a, b, mid, m = h["base"], h["turned"], h["mid"][None], h["across"][None]
-        pa0, pa1 = self.place(TH[a], a, mid), self.place(TH[a], a, mid + eps * m)
-        pb1 = self.place(TH[b], b, mid + eps * m)
-        wa = (pa1 - pa0)[0] / eps
-        wb = (pb1 - self.place(TH[b], b, mid))[0] / eps
+    def hinge_read(self, TH, h):
+        """(turned panel's direction across the row, target direction, measured turn deg) at the row's middle (the
+        maps' own central differences: a 1 mm step on a narrow strip rolled tight read a ruled turn 13 deg off)."""
+        a, b, mid, m = h["base"], h["turned"], h["mid"], h["across"]
+        wa = self._frame(TH[a], a, mid, m)[2]
+        wb = self._frame(TH[b], b, mid, m)[2]
+        mid = mid[None]
         n = self.normal(TH[a], a, mid)[0] * h["way"]
         th = np.radians(h["turn_deg"])
         tgt = np.cos(th) * wa + np.sin(th) * n
@@ -235,4 +298,4 @@ class Panels:
                     if best is None or r.cost < best.cost:
                         best = r
             TH[k] = best.x
-        return TH
+        return self.resolve(TH)
