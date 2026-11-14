@@ -582,7 +582,7 @@ def _clutter_variant(kind, v, sea=None):
 
 def _clutter_instance(points_ob, kind, sea=None):
     """Clutter on every vertex of points_ob: a variant picked at random, scaled by the vertex's "scale" (and "squash"
-    in height), turned by its "yaw" (deg), all from terrain_ground.clutter."""
+    in height), turned by its "yaw" (deg), all from terrain_ground_clutter.clutter."""
     ng = bpy.data.node_groups.new("clutter_" + kind, "GeometryNodeTree")
     ng.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     ng.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")

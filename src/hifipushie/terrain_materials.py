@@ -51,6 +51,7 @@ class Materials:
         order = []
         self.cover = []
         from . import terrain_ground
+        from . import terrain_ground_model
         for name, m in T.cover.items():
             c = terrain_design_cover._spec_cover(T, name)
             typ = c.get("type", name)
@@ -88,7 +89,7 @@ class Materials:
         self.routes = T.masks.get("routes")
         # the ground's character between the rock faces (terrain_ground): turf edges, shore, variation, cover kinds
         ed = getattr(field, "edits", None) or getattr(getattr(field, "base", None), "edits", None)
-        self.ground = terrain_ground.Ground(T, field.H, self.sea, ed) if getattr(T, "spec", {}).get(
+        self.ground = terrain_ground_model.Ground(T, field.H, self.sea, ed) if getattr(T, "spec", {}).get(
             "ground_character", True) is not False else None
         if self.ground is not None:  # (its per-cover grids made now, not lazily per worker)
             for name, layer, k, kind in self.cover:
@@ -200,7 +201,7 @@ class Materials:
         return c
 
     def relief(self, P, Wt, texel):
-        """The ground's maps-only relief (terrain_ground.Ground.relief) as a plan gradient (n, 2), weighted by the
+        """The ground's maps-only relief (terrain_ground_model.Ground.relief) as a plan gradient (n, 2), weighted by the
         grass layers (not on rock or sand), or None without ground character."""
         if self.ground is None:
             return None

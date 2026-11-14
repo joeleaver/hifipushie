@@ -35,7 +35,7 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
    review_view call per region. Not run end to end by a blind agent yet.
 7. DONE (C458): likeness_guide.md hands a block-in head to face_ruler and block_in_step (fit_likeness refuses it);
    the finder leads a feature job on a block-in head with the hand step. Whether fit_likeness stays: the legacy thread.
-8. DONE (C459): guide(topic="example") returns a whole fox and a whole chair, held to examples/ by a test. Still
+8. DONE (C460): guide(topic="example") returns a whole fox and a whole chair, held to examples/ by a test. Still
    open: kit_reference is 49k characters with no section argument.
 9. guide(topic="traps") and "gates" serve developer notes from docs/notes (Garrett's collars, the machine).
 10. DONE (C445): terrain views, plant looks and clutter looks run Blender inside resources.heavy(..., gpu=True);

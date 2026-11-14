@@ -110,3 +110,44 @@ def test_no_script_in_the_repo_names_a_moved_name():
             except (SyntaxError, UnicodeDecodeError):
                 pass
     assert not left, "scripts that name a function where it used to be (bin/repoint <script> --write):\n  " + "\n  ".join(left[:20])
+
+
+def own_source_reads(src: str) -> list:
+    """Lines where a module reads its own docstring, or reads its own file whole (a code key over this file alone)."""
+    out = []
+    for n in ast.walk(ast.parse(src)):
+        if isinstance(n, ast.Name) and n.id == "__doc__" and isinstance(n.ctx, ast.Load):
+            out.append(f"{n.lineno}: __doc__")
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("read_bytes", "read_text")
+              and any(isinstance(x, ast.Name) and x.id == "__file__" for x in ast.walk(n.func.value))
+              and not any(isinstance(x, ast.Attribute) and x.attr in ("with_name", "parent") for x in ast.walk(n.func.value))):
+            out.append(f"{n.lineno}: {n.func.attr} of __file__")
+    return sorted(out, key=lambda s: int(s.split(":")[0]))
+
+
+def test_a_split_off_module_reads_no_docstring_or_source_of_its_own():
+    """A function moved out of its file takes the names it reads with it, but __doc__ and __file__ stay the module's
+    own: skin_reference's text quoted skin.py's docstring through a bare __doc__ and was an IndexError for two days
+    after the split (no test called the tool, and every syntax tree was equal); veg_leaf's atlas cache hashed
+    Path(__file__), which became one file of five. The docstring is the base's (<base>.__doc__); a code key is
+    moved.files(<base>)."""
+    assert own_source_reads('def f():\n    return __doc__.split("x")\n') == ["2: __doc__"]
+    assert own_source_reads("from pathlib import Path\nk = Path(__file__).read_bytes()\n") == ["2: read_bytes of __file__"]
+    assert own_source_reads("from pathlib import Path\ns = Path(__file__).with_name('a.json').read_text()\n"
+                            "d = skin.__doc__\nh = (Path(__file__).parent / f).read_bytes()\n") == []
+    bad = {}
+    for base, mods in moved.families().items():
+        for m in mods:
+            p = SRC / f"{m}.py"
+            if p.exists() and (found := own_source_reads(p.read_text())):
+                bad[p.name] = found
+    assert not bad, f"reads its own docstring or hashes only its own file, in a module split off another: {bad}"
+
+
+def test_the_skin_reference_tool_gives_its_text():
+    """(the case above, at the tool) the description's keys from skin.py's docstring, the marks' text from
+    skin_features.py's, and nothing of the paragraph that says where the code is."""
+    from hifipushie import server
+    text = server.skin_reference()
+    assert text.startswith("ZONES") and 'spec["skin"] = {' in text and "tattoo" in text
+    assert "Where the code is" not in text and "moved.refuse" not in text

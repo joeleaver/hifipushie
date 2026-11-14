@@ -115,7 +115,7 @@ def mass_shell(D: dict, locks: list, C, tiles: list, col=None, triangles: int = 
     down to `triangles`. Cards over it never show air or skin between them, and a far tier is little more than
     this. Faces turned toward the body close to it are dropped (nobody sees the inside of a head of hair). It
     wears the dense tile: v = how far along its strands the hair there is (root .. tip, so the tile's ragged end
-    lies at the hair's ends), u round the head. `col`: hair_loose.Collider (the body)."""
+    lies at the hair's ends), u round the head. `col`: hair_loose_body.Collider (the body)."""
     from scipy import ndimage
     from skimage import measure
     names = [str(n) for n in D["names"]]

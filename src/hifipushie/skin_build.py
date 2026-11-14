@@ -457,7 +457,8 @@ def reference() -> str:
         "  centre: " + ", ".join(centre),
         "  sided:  " + ", ".join(sided),
         "",
-        __doc__.split("spec[\"skin\"] = {", 1)[1].join(["spec[\"skin\"] = {", ""]).rsplit("Anatomical zones", 1)[0].rstrip(),
+        # (C459: skin.py's docstring, where the description's keys are written; a bare __doc__ is this module's own)
+        skin.__doc__.split("spec[\"skin\"] = {", 1)[1].join(["spec[\"skin\"] = {", ""]).rsplit("Anatomical zones", 1)[0].rstrip(),
         "",
         skin_features_marks.reference(),
         "",
@@ -466,5 +467,5 @@ def reference() -> str:
         ", ".join(f"F{k} {''.join(f'{int(round(c * 255)):02x}' for c in tone_rgb({'fitzpatrick': k}))}" for k in range(1, 7)),
         "BUILT-IN ZONE LAYERS (skin.zones: {layer: strength}): " + ", ".join(skin.ZONE_LAYERS),
         "",
-        __import__("hifipushie.skin_folds", fromlist=["reference"]).reference(),
+        __import__("hifipushie.skin_folds_geometry", fromlist=["reference"]).reference(),
     ])

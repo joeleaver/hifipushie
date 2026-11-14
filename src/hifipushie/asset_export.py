@@ -613,8 +613,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             with open(os.environ["HP_SHAPES_DUMP"], "wb") as fh:
                 pickle.dump({"spec": spec, "parts": copy.deepcopy(moving), "face_shapes": face_shapes}, fh)
         shapes = faceshapes_apply.apply(spec, moving, face_shapes, log)
-        from . import skin_folds
-        fx = skin_folds.expression(spec, {pn: parts[pn] for pn in shapes}, log)   # the folds' own change with each shape
+        from . import skin_folds_geometry
+        fx = skin_folds_geometry.expression(spec, {pn: parts[pn] for pn in shapes}, log)   # the folds' own change with each shape
         for pn, nms in shapes.items():
             report[pn]["face_shapes"] = nms
             if fx and parts[pn].get("shapes") and pn.split("/")[-1].split("~")[0] == (spec.get("skin") or {}).get("part", "body"):

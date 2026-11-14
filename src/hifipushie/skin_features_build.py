@@ -161,8 +161,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
                 out[k_]["opacity"] = round(float(out[k_]["opacity"]) * (1 - wb_), 4)
     _gnm_mouth(spec, out, part)
     _wrinkles(p, J, layer, T, ctx)
-    from . import skin_folds
-    skin_folds.build(spec, p, J, layer, ctx)
+    from . import skin_folds_geometry
+    skin_folds_geometry.build(spec, p, J, layer, ctx)
     _hair(p, J, layer, T, ctx)
     if p.get("projection") and ctx["face"]:   # the references as albedo (skin_project): over our colours and painted hair
         from . import skin_project_model

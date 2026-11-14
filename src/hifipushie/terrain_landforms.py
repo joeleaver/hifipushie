@@ -312,8 +312,8 @@ class _TerrainLandforms:
         self.warnings = [w for w in self.warnings if not w.startswith("lake ")]  # this runs twice
         for name, lk in self.lakes.items():
             if lk.get("sea"):
-                from . import terrain_sea
-                wet = terrain_sea.fill(self, lk) & np.isnan(self.water)
+                from . import terrain_sea_report
+                wet = terrain_sea_report.fill(self, lk) & np.isnan(self.water)
                 self.water[wet] = lk["level"]
                 self.lake_id[wet] = lk["id"]
                 lk.update(area=wet.sum() * self.cell ** 2, depth=float((lk["level"] - self.H[wet]).max()) if wet.any() else 0)

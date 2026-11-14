@@ -18,7 +18,7 @@ sources; photos in workspace/level_refs/streams):
 Three things are made from the built terrain's own river data (T.river_water_lines: path, water level, width):
 - `Streams`: grids round every river (distance to the water's edge, water level, energy, bend, pool phase, flow
   direction), and the per-point rules: `shares` (the bed's layers: gravel, silt, bedrock, the damp bank), `colour`,
-  `relief` (the maps' cobble lumps), `dz` (the bed's SHAPE in Field.column via terrain_ground.Edits: pools deeper on
+  `relief` (the maps' cobble lumps), `dz` (the bed's SHAPE in Field.column via terrain_ground_model.Edits: pools deeper on
   the outside of bends, riffles shallower, bars inside bends, an uneven bed; only ever under the water, never the
   banks, and the bed stays under the water's level except a bar's top);
 - `clutter`: instances for an engine (clutter.csv): river_rock, cobbles, slab, driftwood, reeds, litter, each with a

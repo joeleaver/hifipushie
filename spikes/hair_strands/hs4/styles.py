@@ -7,6 +7,7 @@ Each style is its own model hu_s_<style> (a copy of its test head with the groom
 import json, os, shutil, sys, time
 import numpy as np
 from hifipushie import hair, store, hair_loose
+from hifipushie import hair_loose_body
 from hifipushie import hair_export, hair_head, hair_look, hair_spec
 
 HR, OUT = os.environ["HR"], os.environ["OUT"]
@@ -94,7 +95,7 @@ def plot(style):
     name = model(style)
     spec = store.load(name)
     sc = hair_head.scalp(name, spec)
-    col = hair_loose.collider(name, spec, sc)
+    col = hair_loose_body.collider(name, spec, sc)
     locks = hair_spec.resolve(spec, sc)
     S, W = 900, 420
     img = Image.new("RGB", (W * 3, S), (235, 235, 235))
