@@ -279,3 +279,16 @@ def test_covered_at_lod0_reads_a_loose_sleeve_as_cover_and_keeps_what_a_pose_unc
     un = P0[:, 0] < 0.4
     _, kept = ga.covered_at_lod0(skin, [cover], (P0, un, 0.0, None, un, un & (P0[:, 0] > 0.2)))  # x <= 0.2 shows in a pose
     assert not kept[P0[:, 0] < 0.18].any() and kept[(P0[:, 0] > 0.22) & (P0[:, 0] < 0.38)].all()
+
+
+def test_a_characters_lod_is_drawn_with_its_assets_notes(tmp_path):
+    """asset_export.preview read <glb>.json for its cameras and blender_game.py <stem>_shading.json for its materials;
+    a character's LOD GLB has neither (one json and one shading file per asset), so a LOD could not be previewed."""
+    from hifipushie import asset_budget
+    for f in ("hero.glb", "hero.json", "hero_shading.json", "hero_LOD2.glb", "shirt_LOD1.glb", "shirt_LOD1.json", "lone_LOD3.glb"):
+        (tmp_path / f).write_text("{}")
+    assert asset_budget.notes_of(tmp_path / "hero.glb") == (tmp_path / "hero.json", {})
+    assert asset_budget.notes_of(tmp_path / "hero_LOD2.glb") == (
+        tmp_path / "hero.json", {"json": str(tmp_path / "hero.json"), "shading": str(tmp_path / "hero_shading.json")})
+    assert asset_budget.notes_of(tmp_path / "shirt_LOD1.glb") == (tmp_path / "shirt_LOD1.json", {})  # (a garment's LOD has its own)
+    assert asset_budget.notes_of(tmp_path / "lone_LOD3.glb") == (tmp_path / "lone_LOD3.json", {})    # (no asset json: as before)

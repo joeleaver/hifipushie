@@ -277,7 +277,7 @@ def find_tool(query: str = "", limit: int = 5) -> str:
     from . import head_route
     q = _words(query.lower().replace("make-up", "makeup").replace("make up", "makeup"))
     raw = _tool_scores(q)
-    scores = head_route.pin_block_in(query, skin_route.find_bias(q, raw))
+    scores = find_route.pin_dressed_export(query, head_route.pin_block_in(query, skin_route.find_bias(q, raw)))
     # The domain comes from the job's subject words, never from a stray word match; in a domain its steps lead in
     # order (the process, not a shortcut), outside one the word matches stand as they are (find_route.py, C400).
     g, order, note = find_route.route(q, _verb(query), scores, raw, TOOL_GROUPS, _group_of,

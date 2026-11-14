@@ -135,6 +135,11 @@ FRESH = [
     ("fit the nose and mouth of my block-in head to the photos", {"block_in_step", "face_ruler"}),
     ("move the nose of my block-in head", {"block_in_step", "face_ruler"}),
     ("start a block-in of a person from photos", {"block_in_start"}),
+    # the dressed character's export, measured 2026-11-14 (export_garment led, with the pattern steps behind it)
+    ("export the dressed character as one GLB", {"export_asset"}),
+    ("export my character with its clothes for the game", {"export_asset"}),
+    ("a game-ready file of the dressed character", {"export_asset"}),
+    ("export the shirt as a game asset", {"export_garment"}),
 ]
 
 FRESH_MISSES: dict[str, str] = {
