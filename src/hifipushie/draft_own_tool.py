@@ -65,16 +65,6 @@ def stand_ref(name: str, garment: str) -> dict | None:
     return ref
 
 
-def _body(name: str) -> dict | None:
-    """{"V", "at"}: the model's body and its landmarks (draft_girths places the levels on it); None: no body."""
-    from . import cloth, store
-    try:
-        b = cloth.Body(cloth.body_mesh(store.load(name)))
-        return {"V": b.V, "T": b.T, "at": b.at}
-    except (KeyError, ValueError, TypeError):
-        return None
-
-
 def _fit(name: str, garment: str) -> dict:
     """Step 0's fit ease {region: {ease_mm}} (the body_lengths row's ease; {} when step 0 has none)."""
     from . import garment_record as gr
@@ -95,8 +85,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
-    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
-                   _body(name), step2=rd.get("2"))
+    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))
     from . import draft_marks
     rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
     from . import draft_links
@@ -189,8 +178,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     blk = do.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
-    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment),
-                   _body(name), step2=rd.get("2"))  # (expanded: C366)
+    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))  # (expanded: C366)
     from . import draft_marks
     mrow, drawn = draft_marks.place(M, B["decl"], rd["1"])  # (C380: where every mark lands, as step 7 places it)
     rows.append(mrow)

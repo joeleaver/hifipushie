@@ -723,44 +723,76 @@ def test_a_cut_away_stand_isnt_held_to_the_neck_girth():  # (t s4-12: its top do
     assert "the top doesn't close round the neck" in row["value"] and "grips" not in row["why"], row
 
 
-def test_s4_13_the_pattern_round_the_body_at_each_girths_level():  # (t s4-13: a waist 5 cm under the plan passed; C383)
+def _tube(widths, tapes, closure=None, cut=0.0):
+    """Pieces in a ring (rectangles 0.9 m long, flat y up), a waist loop of 800 mm at z 1.0, a length tape from z 1.5."""
     import numpy as np
-    from hifipushie import draft_girths as dg
-    th = np.linspace(0, 2 * np.pi, 49)[:-1]
-    zs = np.linspace(0.0, 1.6, 81)
-    V = np.array([[0.14 * np.cos(t), 0.14 * np.sin(t), z] for z in zs for t in th])
-    n = len(th)
-    T = np.array([[i * n + j, i * n + (j + 1) % n, (i + 1) * n + j] for i in range(len(zs) - 1) for j in range(n)] +
-                 [[i * n + (j + 1) % n, (i + 1) * n + (j + 1) % n, (i + 1) * n + j] for i in range(len(zs) - 1) for j in range(n)])
-    body = {"V": V, "T": T, "at": {"hps.L": [0.06, 0.0, 1.5]}}
+    names = list(widths)
+    pcs = {}
+    for i, (nm, w) in enumerate(widths.items()):
+        P = [[0, 0], [w, 0], [w, -0.9], [0, -0.9]]
+        if cut and i == 0:
+            P[3] = [cut, -0.9]  # (its free front edge runs in: a cut-away)
+        if cut and i == len(names) - 1:
+            P[2] = [w - cut, -0.9]
+        pcs[nm] = {"name": nm, "P": np.array(P, float), "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {},
+                   "wrap": {"to": "torso"}}
+    seams = [[f"{a}:tr>br", f"{b}:tl>bl"] for a, b in zip(names, names[1:])]
+    if closure is None:
+        seams.append([f"{names[-1]}:tr>br", f"{names[0]}:tl>bl"])
+    r = 800 / (2000 * np.pi)
+    th = np.linspace(0, 2 * np.pi, 65)[:-1]
+    s3 = {"measurements": [{"name": "waist", "mm": 800.0, "loop": [[r * np.cos(t), r * np.sin(t), 1.0] for t in th]},
+                           {"name": "len", "mm": 900.0, "path": [[0.05, -r, 1.5], [0.05, -r, 0.6]]}]}
+    B = {"pieces": pcs, "seams": seams, "edge_arcs": {}, "closures": closure or [], "decl": {"tapes": tapes}}
+    return B, s3
 
-    def rect(nm, w, side):
-        return {"name": nm, "P": np.array([[0, 0], [w, 0], [w, -0.7], [0, -0.7]], float),
-                "names": {"tl": 0, "tr": 1, "br": 2, "bl": 3}, "marks": {}, "wrap": {"to": "torso", "side": side}}
-    pcs = {"front.L": rect("front.L", 0.2, "front"), "front.R": rect("front.R", 0.2, "front"),
-           "side.L": rect("side.L", 0.05, "side"), "side.R": rect("side.R", 0.05, "side"),
-           "back.L": rect("back.L", 0.2, "back"), "back.R": rect("back.R", 0.2, "back"),
-           "facing.L": rect("facing.L", 0.08, "front")}
-    seams = [[f"front.{s}:tr>br", f"side.{s}:tl>bl"] for s in "LR"] + [[f"side.{s}:tr>br", f"back.{s}:tr>br"] for s in "LR"]
-    seams += [["back.L:tl>bl", "back.R:tl>bl"], ["facing.L:tl>bl", "front.L:tl>bl"]]
-    B = {"pieces": pcs, "seams": seams, "edge_arcs": {},
-         "closures": [{"over": "front.L", "under": "front.R", "edge": {"over": "tl>bl", "under": "tl>bl"}, "pairs": []}]}
-    loop = [[0.14 * np.cos(t), 0.14 * np.sin(t), 1.2] for t in th]
-    s3 = {"measurements": [{"name": "waist", "mm": 850.0, "loop": loop}]}
-    r = dg.rows(B, s3, {"waist": {"ease_mm": 80.0}}, body)[0]
-    assert r["status"] == "FAIL" and "pattern 900 mm round" in r["value"] and "30 mm tight" in r["why"], r
-    assert "facing.L" not in r["value"], r["value"]  # (a facing lying on the front isn't round the body)
-    assert dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]["status"] == "PASS"
-    s3["measurements"][0]["mm"] = 950.0
-    assert "can't close" in dg.rows(B, s3, {}, body)[0]["why"]
-    # a side panel placed on the back, with no neck edge: its line comes over its seams, not from its own top (C384)
-    s3["measurements"][0]["mm"] = 850.0
-    for sd in "LR":
-        pcs[f"side.{sd}"]["P"] = pcs[f"side.{sd}"]["P"] + [0, -0.3]  # (its top at the armpit, 300 mm below the hps)
-        pcs[f"side.{sd}"]["wrap"]["side"] = "back"
-    B["edge_arcs"] = {p: {"neck": "tl>tr"} for p in pcs if p.startswith(("front", "back"))}
-    r = dg.rows(B, s3, {"waist": {"ease_mm": 40.0}}, body)[0]
-    assert r["status"] == "PASS" and "pattern 900 mm round" in r["value"], r
+
+def test_g1_the_pattern_round_every_girth_vs_body_plus_the_plans_ease():  # (G1: D2's jacket, 70-130 mm under its plan)
+    from hifipushie import draft_girths as dg
+    tp = {"a": ["len", "waist"], "b": ["len", "waist"]}
+    B, s3 = _tube({"a": 0.425, "b": 0.425}, tp)  # (850 round: 30 under 800 + 80)
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 80.0}})[0]
+    assert r["status"] == "FAIL" and "waist: pattern 850 mm, body 800, planned ease 80" in r["value"], r
+    assert "30 mm too tight" in r["why"] and "widen a, b at the waist line by 30 mm" in r["why"], r
+    B, s3 = _tube({"a": 0.44, "b": 0.44}, tp)
+    assert dg.rows(B, s3, {"waist": {"ease_mm": 80.0}})[0]["status"] == "PASS"
+    assert dg.rows(B, s3, {"waist": {"ease_mm": 200.0}})[0]["status"] == "FAIL"  # (off by 120 > 15 % of 200)
+    B, s3 = _tube({"a": 0.405, "b": 0.405}, tp)  # (810: under 800 + the cloth's gap, no plan ease stated)
+    r = dg.rows(B, s3, {})[0]
+    assert r["status"] == "FAIL" and "can't be worn" in r["why"] and "none stated" in r["value"], r
+    # a piece in the ring whose tapes don't name the girth: a missing declaration, by name
+    B, s3 = _tube({"a": 0.44, "b": 0.44}, {"a": ["len", "waist"], "b": ["len"]})
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 80.0}})[0]
+    assert r["status"] == "FAIL" and "b lie(s) in the waist ring but its tapes don't name 'waist'" in r["why"], r
+    B, s3 = _tube({"a": 0.44, "b": 0.44}, {"a": ["waist"], "b": ["waist"]})  # (no length tape: no level)
+    assert "no length tape declared" in dg.rows(B, s3, {})[0]["why"]
+
+
+def test_g1_a_closures_lap_comes_off_and_an_open_front_is_cloth_only():
+    from hifipushie import draft_girths as dg
+    tp = {p: ["len", "waist"] for p in ("fl", "bk", "fr")}
+    cl = [{"name": "front", "over": "fl", "under": "fr", "edge": {"over": "tl>bl", "under": "tr>br"},
+           "pairs": [["h1", "b1"], ["h2", "b2"]]}]
+    B, s3 = _tube({"fl": 0.24, "bk": 0.44, "fr": 0.24}, tp, closure=cl)
+    B["pieces"]["fl"]["marks"] = {"h1": [0.02, -0.2], "h2": [0.02, -0.6]}
+    B["pieces"]["fr"]["marks"] = {"b1": [0.22, -0.2], "b2": [0.22, -0.6]}
+    r = dg.rows(B, s3, {"waist": {"ease_mm": 80.0}})[0]  # (920 of cloth less 40 of lap = 880)
+    assert r["status"] == "PASS" and "pattern 880 mm" in r["value"] and "lap -40" in r["value"], r
+    B["pieces"]["fl"]["marks"] = {}
+    assert "no fastening marks" in dg.rows(B, s3, {})[0]["why"]
+    # cut away below the button: the edges stand short of the centre line at the waist: open, cloth only, no
+    # can't-be-worn FAIL; the plan's girth (the garment closed) still holds it
+    B, s3 = _tube({"fl": 0.2, "bk": 0.4, "fr": 0.2}, tp, closure=cl, cut=0.09)
+    B["pieces"]["fl"]["marks"] = {"h1": [0.02, -0.05], "h2": [0.021, -0.1]}
+    B["pieces"]["fr"]["marks"] = {"b1": [0.18, -0.05], "b2": [0.179, -0.1]}
+    r = dg.rows(B, s3, {})[0]
+    assert r["status"] == "PASS" and "OPEN at the front" in r["value"], r
+    assert dg.rows(B, s3, {"waist": {"ease_mm": 80.0}})[0]["status"] == "FAIL"
+    # no closure at all: an open chain round the body, said
+    B, s3 = _tube({"fl": 0.24, "bk": 0.44, "fr": 0.24}, tp, closure=[])
+    B["seams"] = B["seams"][:2]
+    r = dg.rows(B, s3, {})[0]
+    assert "open: no closure across it" in r["value"], r
 
 
 def test_s4_15_a_span_ratio_doesnt_crash_and_a_reversed_seam_carries_the_level():  # (t s4-15; C385)
@@ -784,8 +816,12 @@ def test_s4_15_a_span_ratio_doesnt_crash_and_a_reversed_seam_carries_the_level()
     B2 = {"pieces": {"front": rect("front", 0.2, 0.6), "side": side, "back": back},
           "seams": [["front:tr>br", "side:bl>tl"], ["side:tr>br", "back:tl>bl"], ["back:tr>br", "front:tl>bl"]],
           "edge_arcs": {"front": {"neck": "tl>tr"}, "back": {"neck": "tl>tr"}}}
-    w = dg.level(B2, {"front": 0.2, "back": 0.2})[0]
-    assert abs(w.get("side", 0) - 0.05) < 2e-3, w  # (read across its length, 0.6 m, before)
+    import numpy as np
+    loop = np.array([[0.1 * np.cos(t), 0.1 * np.sin(t), 1.3] for t in np.linspace(0, 6.2, 40)])
+    T = {"len": {"kind": "path", "path": np.array([[0.05, -0.1, 1.5], [0.05, -0.1, 0.9]])}}
+    lines = dg.place(B2, loop, T, {"tapes": {"front": ["len"], "back": ["len"]}})[0]
+    w = dg.width(B2["pieces"]["side"]["P"], *lines["side"])[0]
+    assert abs(w - 0.05) < 2e-3, w  # (read across its length, 0.6 m, before)
 
 
 def test_s4_16_a_darts_seams_dont_stop_the_length_rows():  # (t s4-16: "seams not one to one"; C386)
