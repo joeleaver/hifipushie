@@ -1,7 +1,7 @@
 """A long mass from its marks: the mark's own MIDDLE LINE, wherever it runs and however it bends, and its width
 measured ACROSS that line. masses.py builds a "tube" from it.
 
-Why (Baynard Racing, 2026-11-12): a tube read its mark in slices across a world axis. A slanted arm's slice is
+Why (Braynard Racing, 2026-11-12): a tube read its mark in slices across a world axis. A slanted arm's slice is
 wider than the arm, and each end was set in by that too-wide radius, so a 16 cm arm came out as an 8 cm chain of
 4 cm balls (a blind agent could not thin it by any setting); a horn's sideways splay, which only its other view
 shows, was dropped for one mean number.

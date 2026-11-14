@@ -187,7 +187,7 @@ def test_puff_makes_a_lens_thickest_mid_width():
         one({**EAR, "stations": [dict(s, puff=2) for s in EAR["stations"]]})
 
 
-# a fat clay ear folded hard (Baynard Racing, Puddles, gap 32): bend radius ~0.026 m, half thickness 0.03
+# a fat clay ear folded hard (Braynard Racing, Puddles, gap 32): bend radius ~0.026 m, half thickness 0.03
 FAT = dict(EAR, curve="bezier", tip=0.02,
            spine=[[0.105, -0.005, 0.745], [0.11, -0.01, 0.84], [0.125, -0.05, 0.84], [0.15, -0.09, 0.79]],
            stations=[{"half_width": 0.06, "half_thickness": 0.03, "puff": 1},

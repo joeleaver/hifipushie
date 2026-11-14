@@ -10,7 +10,7 @@ three kinds of rows:
   spreading over the body behind it, or shrinking inside it; this can. Rays search the feature's field only in
   front of the first surface they hit.
 - PRESS: a part may sink into the rest of the model where it joins on, and elsewhere rest on it at most `mm`
-  in. A buried tip changes no outline, so an outline fit will bury tips (Baynard Racing, Puddles' ears, folded
+  in. A buried tip changes no outline, so an outline fit will bury tips (Braynard Racing, Puddles' ears, folded
   back 20-41 mm into the head) unless this is a row. The feature's surface buried deeper than `mm` is split into
   connected pieces; the piece within 1 cm of `join` (plus its depth inside the part) (default: the largest piece) is the join, every other one is penalised
   by its depth.

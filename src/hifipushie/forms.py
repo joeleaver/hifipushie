@@ -2,7 +2,7 @@
 as a stroke (strokes.py), every point of its path a ray from that view through the mark. The sculptor says WHAT
 the form is and how far it stands out or sinks; no coordinate is typed.
 
-Why (Baynard Racing, 2026-11-12): two racers stopped at block-in, 18 shapes and no stroke between them, because
+Why (Braynard Racing, 2026-11-12): two racers stopped at block-in, 18 shapes and no stroke between them, because
 every stroke's path had to be typed as surface addresses. A blind block-in built from marks had the best profile
 of three sculpts and still a slab for a face: sockets, brows, a muzzle and a fringe are forms, and a character
 reads by them. The marks already say where each one is.

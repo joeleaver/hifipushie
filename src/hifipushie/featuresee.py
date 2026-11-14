@@ -1,7 +1,7 @@
 """Measure a model against its feature map (featuremap.py), feature by feature, from each reference view's camera:
 is the feature MADE, is it where the picture has it, is it the picture's size, does it cover the picture's mark.
 
-Why: an outline score passes a box-headed block-in (Baynard's Scraps: 88 % overlap, no muzzle, sockets, brows or
+Why: an outline score passes a box-headed block-in (Braynard's Scraps: 88 % overlap, no muzzle, sockets, brows or
 mouth). The outline is one row of this table; the features inside it are all the others.
 
 A feature's FOOTPRINT in a view is what is SEEN OF THE THING ITSELF.

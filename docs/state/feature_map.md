@@ -1,6 +1,6 @@
 # Feature map / sculpt from pictures: STATE 2026-11-14 (CLOSED by Joe)
 
-Branch feature-map (worktree .claude/worktrees/feature-map), from main c3288704. For Baynard Racing (Scraps the
+Branch feature-map (worktree .claude/worktrees/feature-map), from main c3288704. For Braynard Racing (Scraps the
 goat, from a three-view turnaround and a painting). Not pushed. Joe closed it: "I don't think this is going to work",
 and of fitting the block-in: "Doing it parts means we got... parts, not a solid, flowing, organic looking shape".
 

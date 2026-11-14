@@ -1,7 +1,7 @@
 # Flesh weights (soft forms, the torso loft, a limb's seam): STATE 2026-11-06 (round 2)
 
 Branch flesh-visibility (worktree .claude/worktrees/flesh-visibility), from main 769fbff2 (WIP c78e10d7 + the fix).
-Asked for by Baynard Racing: Puddles' (pud2 v74) side rose with his raised arms. Not pushed; coordinator lands.
+Asked for by Braynard Racing: Puddles' (pud2 v74) side rose with his raised arms. Not pushed; coordinator lands.
 
 ## What the tools hold now (rig.py, rig_join.py; their comments are the spec; ledger C397)
 - `skeleton()`: soft forms (`SOFT` super / loft / sheet) are flesh like any blob, placed by their box's middle.
@@ -14,14 +14,14 @@ Asked for by Baynard Racing: Puddles' (pud2 v74) side rose with his raised arms.
   `JOIN_SPLIT` 0.2 on the seam, 90 % of the band on the limb's side (the body's side stays put).
 - People and limbs in the body's own layer: untouched (troll, goblin, fox_rig weights bit-identical to main).
 
-## Proof (Puddles, export c3.npz of pud2 v74; spikes/flesh_measure.py; renders in the Baynard notes folder flesh_weights/)
+## Proof (Puddles, export c3.npz of pud2 v74; spikes/flesh_measure.py; renders in the Braynard notes folder flesh_weights/)
 | | main | WIP c78e10d7 | now |
 |---|---|---|---|
 | arms 80: body side moving > 3 cm | 25.6 % | 1.3 % | 0.2 % |
 | arms 80: edges > 3x / p99.9 / max | 3283 / 5.18 / 8.4 | 3028 / 6.70 / 23 | 1871 / 7.00 / 40 |
 | seated: edges > 3x / > 2x / p99.9 | 131 / 1170 / 2.23 | 1138 / 4889 / 4.37 | 126 / 1142 / 2.23 |
 
-pud2 v75 (Baynard's sculpt fix: inner-arm gap >= 4.5 mm below the armpit, upperarm / forearm blend 0.003 / 0.002),
+pud2 v75 (Braynard's sculpt fix: inner-arm gap >= 4.5 mm below the armpit, upperarm / forearm blend 0.003 / 0.002),
 export d1.npz, this branch: arms 80: side moving > 3 cm 0 %, edges > 3x 268 (> 2x 1445), p99.9 2.45x, max 15x;
 seated: 101 > 3x (> 2x 1076), p99.9 2.21x. The armpit now stretches over the band instead of tearing.
 
@@ -55,6 +55,6 @@ spikes/flesh_same.py <out.npz> examples/troll.json goblin fox_rig (each checkout
 spikes/flesh_headturn.py pud2 <npz> <outdir> <tag> (head turn 45 / nod 30). Unit: tests/test_rig_join.py.
 spikes/flesh_wire.py out.png a.npz [b.npz] (CENTER / SCALE / VIEWS env).
 
-NEXT: coordinator lands flesh-visibility (suite passing); Baynard re-exports Puddles (v75) and judges arms raised and
+NEXT: coordinator lands flesh-visibility (suite passing); Braynard re-exports Puddles (v75) and judges arms raised and
 a head turn in the kart.
 History: this page + commits on flesh-visibility; ledger row C397.

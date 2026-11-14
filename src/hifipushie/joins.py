@@ -9,7 +9,7 @@
   1 cm grid, up = out of the body. A stalk shows as a waist between them.
 
 Why: a silhouette can't show a stalk (it sits inside the outline) and a shaded render hides it under the overhang.
-(Baynard Racing, Puddles' ears, 2026-11: three rounds of "both edges meet" about an ear standing on a stalk;
+(Braynard Racing, Puddles' ears, 2026-11: three rounds of "both edges meet" about an ear standing on a stalk;
 v83's ear measured 0.58.)
 
 A part is named by element (prim) name, its part name, or a base name with `side` (".L" by default), e.g.

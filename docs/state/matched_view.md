@@ -1,8 +1,8 @@
 # Matched views (concept camera, feature tiles, join report): STATE 2026-11-06
 
-Branch matched-view (worktree .claude/worktrees/matched-view), from main a27f5551. Asked for by Baynard Racing
-(Puddles the pig, gap 31 in baynard-racing/workspace/puddles/hifipushie_gaps.md; prototypes camfit / camrender /
-joinsee in baynard-racing/workspace/tools/). Not pushed; coordinator lands. Ledger C396; gates.md LOOK bullet.
+Branch matched-view (worktree .claude/worktrees/matched-view), from main a27f5551. Asked for by Braynard Racing
+(Puddles the pig, gap 31 in braynard-racing/workspace/puddles/hifipushie_gaps.md; prototypes camfit / camrender /
+joinsee in braynard-racing/workspace/tools/). Not pushed; coordinator lands. Ledger C396; gates.md LOOK bullet.
 
 ## What the tools hold now
 - `matched.py` (docstring = spec): `mask_of` (alpha, a given mask, or a border flood across soft gradients only:
@@ -31,5 +31,5 @@ joinsee in baynard-racing/workspace/tools/). Not pushed; coordinator lands. Ledg
 - The join ratio reads "joined along its base" for ears / tails; for free-hanging limbs a high ratio is the fault.
 - tests/test_toolsets.py::test_short_descriptions_point_at_the_guide fails on main too (body_tape 740 > 700).
 
-NEXT: coordinator lands matched-view (suite), then Baynard's Puddles session uses look_matched + feature_tiles
+NEXT: coordinator lands matched-view (suite), then Braynard's Puddles session uses look_matched + feature_tiles
 every round.

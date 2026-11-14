@@ -1,7 +1,7 @@
 # Mouth loops (edge loops round an opening modelled into a part, no template): STATE 2026-11-05
 
 Landed on main 2026-11-10 (built on limb loops, C375; this run 2026-11-05). Step 3 of
-the creature-topology project, asked for by Joe through Baynard Racing (Puddles' open mouth). Exploring run (no gate).
+the creature-topology project, asked for by Joe through Braynard Racing (Puddles' open mouth). Exploring run (no gate).
 Ledger C405. Limb part of the thread: docs/state/limb_loops.md.
 
 ## What the tools hold now (mouthloops.py docstring = spec)
@@ -22,7 +22,7 @@ Ledger C405. Limb part of the thread: docs/state/limb_loops.md.
 - tests/test_mouthloops.py (1 test, ~3 s): round head on stub legs with a wide cut; rim + 2 walls closed, mesh closed.
 
 ## Proof (workspace pudmo = copy of pud2 + topology "limbs"; /mnt/data/hifipushie/mouthloops, renders also in the
-Baynard notes folder mouth_loops/)
+Braynard notes folder mouth_loops/)
 - Model build: rim + walls 1-5 closed quad rings of 36 (wall 6 feeds the fan: not a loop by design); field 0.08 /
   0.6 mm; turned faces round the mouth 2 (both at the hidden back fan). m1.png (wire: new top, today's below).
 - Export (pudmo.glb, export_asset(rig=True), body 12.8k tris): limbloops.quality on the exported topology by its
@@ -37,7 +37,7 @@ Baynard notes folder mouth_loops/)
 1. The back fan (36-38 spokes) shades as lumps seen through the open mouth: close the back with a grid patch (or
    stop the walls earlier and cap flat) instead of a pole.
 2. Body-wide export warnings with "limbs" (13-18 folded edges, max error 6.5 mm, 1 non-manifold edge): not at the
-   mouth (0 there); find them (likely the leg tips inside the hooves) before Baynard ships it.
+   mouth (0 there); find them (likely the leg tips inside the hooves) before Braynard ships it.
 3. From limb_loops.md: crotch patch (the GLB front read worse), torso / head rings from loft sections and the head
    ball, shoulder / neck junctions, eyes / snout loops, sheet ears and tails as tubes, weights smoothed along rings,
    a quad-remesher fallback for shapes that aren't limb-like.
