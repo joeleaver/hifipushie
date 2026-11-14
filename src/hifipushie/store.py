@@ -71,7 +71,8 @@ def validate(spec: dict) -> None:
     """Every check a spec must pass before it is saved (raises SpecError / ValueError)."""
     from . import cloth, realism, strokes
     from . import paint_check, paint_masks
-    from . import hair_spec
+    from . import hair_spec, spec_keys
+    spec_keys.check(spec)  # an unknown key on a joint, bone or blob: refused with the list (it used to save in silence)
     realism.validate(spec)
     hair_spec.validate(spec)
     cloth.validate(spec)

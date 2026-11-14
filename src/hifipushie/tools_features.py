@@ -11,7 +11,7 @@ from .tool_common import _out
 def read_reference(name: str, image: str | None = None, views: list[str] | None = None, height: float | None = None,
                    mask: str | None = None, boxes: dict | None = None, detail: str = "medium",
                    view: str | None = None, focus: list[float] | None = None, save: str | None = None):
-    """Read a reference picture for a sculpt: cut the sheet into its views, give each a camera, and show what it
+    """Read a reference picture of a character or a prop: cut the sheet into its views, give each a camera, and show what it
     holds inside its outline: numbered colour patches to point at, and its form lines. First call: image, views
     (one name per figure, left to right: "front", "side" (faces picture-left), "side_r", "back"; any other name is
     a perspective picture), height (m, feet to top of the first such view). Later calls: view (+ focus [x0, y0,
@@ -76,7 +76,7 @@ def read_reference(name: str, image: str | None = None, views: list[str] | None 
 @mcp.tool(structured_output=False)
 def mark_features(name: str, features: dict | None = None, remove: list[str] | None = None, notes: str | None = None,
                   view: str | None = None, focus: list[float] | None = None, save: str | None = None):
-    """Name what a reference shows, as marks on its pictures: the feature map a sculpt is built from and measured
+    """Name what a reference shows, as marks on its pictures: the feature map a model's parts are placed from and measured
     against. features: {name: {"kind": "mass" | "form" | "paint", "on": feature, "join": words, "separate": bool,
     "authority": view, "inferred": words, "marks": {view: {"piece": [x, y] + "cuts" (cut off the figure's own
     outline) | "patches": [ids] | "box" | "ellipse" | "polygon" | "line", "minus", "mirror"} | null}}}. A call
@@ -104,7 +104,7 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
     """Measure a model against its feature map, feature by feature, from each reference view's camera: NOT MADE,
     HIDDEN, OFF (how far, how big, how much of the mark it covers) or right. elements: {feature: [the model's
     element names / patterns / "part:<part>"]} says what makes each feature (remembered). The whole outline is one
-    row; the features inside it are the rest: a sculpt is not done on its outline. Returns the table and, for
+    row; the features inside it are the rest: a model is not done on its outline. Returns the table and, for
     `view`, the picture with its marks beside the model with its footprints. Details: guide(topic="feature_report"); the page: guide(topic="features")."""
     from . import featuresee
     rep = featuresee.report(name, elements, views, resolution)

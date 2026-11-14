@@ -208,7 +208,8 @@ def export_asset(name: str, out_dir: str, triangles: int | None = None, texture:
                         instancing, rig, fbx, face_shapes or None, asset_name=asset_name, lods=lods or None,
                         cloth_triangles=cloth_triangles, role=role, correctives=correctives)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
-    text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
+    out_ = "".join(f"NOT IN THIS EXPORT: garment {x['garment']}: {x['why']}\n" for x in info.get("garments_left_out") or [])
+    text = (out_ + f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"
             + "\n".join(info["log"])
             + "\nmaps: " + ", ".join(Path(v).name for a in info["atlases"].values() for v in a["maps"].values()))

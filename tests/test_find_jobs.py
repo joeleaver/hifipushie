@@ -70,6 +70,76 @@ KNOWN_MISSES: dict[str, str] = {
 }
 
 
+# Jobs worded afresh for the area re-review of 2026-11-12, never used to tune the first list: 33 of 49 found then, which
+# is what an agent's own words meet. The make-a-thing rule, the plain-word KEYWORDS and "render = look" (find_route,
+# C436) came from its misses; it is a regression list now, so the next measure needs new wording again.
+FRESH = [
+    # the modelling core
+    ("turn the head to the left", {"edit_model", "rig"}),
+    ("make the legs longer", {"edit_model", "fit"}),
+    ("sculpt muscle definition on the arm", {"edit_model", "kit_reference", "guide"}),
+    ("paint the creature green with darker spots", {"edit_model", "kit_reference", "guide"}),
+    ("what does the model look like from above", {"look"}),
+    ("check the mesh for problems", {"check"}),
+    ("save an OBJ file", {"export"}),
+    ("go back to an earlier version", {"revert", "history"}),
+    ("show me the saved spec", {"get_model"}),
+    ("make a dragon", {"put_model", "guide"}),
+    ("make a stylised owl from this picture", {"put_model", "guide"}),
+    ("build a wooden cart", {"put_model", "guide"}),
+    ("use this concept image as a guide", {"set_reference", "fit_concept_camera", "set_plan"}),
+    ("does the hand join the wrist cleanly", {"join_report"}),
+    ("does the character match the art style", {"style_check"}),
+    ("can a person fit through the doorway", {"clearance"}),
+    ("crop the eyes from the concept and my render side by side", {"feature_tiles"}),
+    ("put the hat on the character's head", {"edit_model", "put_model", "guide"}),
+    # export, rig
+    ("make lower-detail versions for distance", {"export_asset"}),
+    ("how many triangles does the export have", {"judge_asset", "export_asset"}),
+    ("bring my Blender edits back into the model", {"pull"}),
+    ("add a skeleton", {"rig"}),
+    ("bake the textures", {"export_asset"}),
+    # humans, skin, hair
+    ("make an old man", {"human"}),
+    ("make her taller with broader shoulders", {"fit_human", "human"}),
+    ("what are the body's measurements", {"measure_human", "body_tape"}),
+    ("likeness of an actor from photos", {"block_in_start"}),
+    ("fix the eyelids so they match the photo", {"lid_read", "block_in_step", "eye_ruler"}),
+    ("what reference photos do I need", {"reference_brief", "check_references"}),
+    ("raise one eyebrow", {"set_expression", "gnm_controls"}),
+    ("skin tone and pores from the photo", {"skin_from_reference", "skin_project"}),
+    ("close-up render of the skin", {"look_skin"}),
+    ("short cropped hair", {"groom_hair", "hair_from_reference"}),
+    ("copy the hairstyle from the photo", {"hair_from_reference"}),
+    ("render the hair quickly", {"look_hair"}),
+    ("export hair cards for the game", {"export_hair", "export_asset"}),
+    # clothes
+    ("sew a pair of trousers", {"garment_plan"}),
+    ("draft the sewing pattern", {"draft_pattern"}),
+    ("add buttons and a pocket", {"garment_details"}),
+    ("set the fabric colour", {"garment_appearance"}),
+    ("export the jacket for the game", {"export_garment"}),
+    ("why was my pattern refused", {"pattern_check", "garment_record"}),
+    # terrain, plants, clutter
+    ("an island with cliffs and a beach", {"set_terrain"}),
+    ("check the terrain's slopes", {"check_terrain"}),
+    ("export the landscape as tiles", {"export_terrain"}),
+    ("an oak tree in winter", {"grow_plant"}),
+    ("prune the lower branches", {"edit_plant"}),
+    ("a forest of pines", {"grow_stand"}),
+    ("make the tree sway in the wind", {"wind_plant"}),
+    ("a mossy boulder", {"make_clutter"}),
+    ("grass and ferns on the forest floor", {"grow_plant", "grow_stand", "make_clutter"}),
+]
+
+FRESH_MISSES: dict[str, str] = {
+    "turn the head to the left": "no tool poses a model while it is being modelled (edit_model moves joints one by one)",
+    "close-up render of the skin": "look_skin is fourth: the skin route's steps lead and no word of the job is its verb",
+    "set the fabric colour": "garment_appearance is the clothes route's seventh step; the route's first steps lead",
+    "why was my pattern refused": "pattern_check is fifth: the clothes route's first steps lead",
+}
+
+
 def ranked(query: str, limit: int = 5) -> list[str]:
     return [line.split(". ", 1)[1].split(" [")[0] for line in server.find_tool(query, limit).splitlines()
             if line[:1].isdigit() and ". " in line]
@@ -82,6 +152,24 @@ def _hit(job: str, want: set) -> bool:
 def test_plain_jobs_find_their_tool():
     missed = [(j, ranked(j, TOP)) for j, want in JOBS if j not in KNOWN_MISSES and not _hit(j, want)]
     assert not missed, missed
+
+
+def test_freshly_worded_jobs_find_their_tool():
+    missed = [(j, ranked(j, TOP)) for j, want in FRESH if j not in FRESH_MISSES and not _hit(j, want)]
+    assert not missed, missed
+    fixed = [j for j in FRESH_MISSES if _hit(j, dict(FRESH)[j])]
+    assert not fixed, f"now found, take them out of FRESH_MISSES: {fixed}"
+
+
+def test_making_a_thing_no_domain_names_is_the_modellers_job():
+    """ "make a stylised owl from this picture" came back as three hair tools (the word "picture"): a making job whose
+    subject no domain names leads with put_model and the playbook; a domain's own subject still wins."""
+    for job in ("make a stylised owl from this picture", "build a wooden cart", "sculpt a dragon", "make a chair"):
+        assert ranked(job)[:2] == ["put_model", "guide"], (job, ranked(job))
+        assert server.find_tool(job).startswith("no domain makes this by name"), job
+    assert ranked("make a tree")[0] == "grow_plant" and ranked("make a shirt")[0] == "garment_plan"
+    assert ranked("make an old man")[0] == "human" and ranked("make a head from photos of a person")[0] == "block_in_start"
+    assert "put_model" not in ranked("make the character smile")[:1]  # ("make the ..." changes a thing, it makes none)
 
 
 def test_known_misses_still_miss():
@@ -99,7 +187,8 @@ def test_a_job_outside_a_workflow_is_not_handed_one():
         text, r = server.find_tool(job), ranked(job)
         assert text[:2] in ("1.", "no"), (job, text[:80])  # (no workflow line on top)
         assert all(r != steps[:len(r)] for steps in flows), (job, r)
-    assert server.find_tool("make a chair").startswith("no tool is named for this job") and ranked("make a chair")[0] == "guide"
+    assert server.find_tool("make a chair").startswith("no domain makes this by name") and ranked("make a chair")[0] == "put_model"
+    assert server.find_tool("a chair").startswith("no tool is named for this job") and ranked("a chair")[0] == "guide"
     assert 'guide(topic="props")' in server.find_tool("add a sword prop")
 
 

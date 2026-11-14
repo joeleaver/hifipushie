@@ -46,15 +46,27 @@ When those can't all hold, the build names which and where, and which step it go
 meet (step 4: the pattern), a tape a chain can't lie on (step 3 or 4), a tie that can't close (step 4). Never a held
 length.
 
-## The build (one algorithm, no roles, no wear states)
-1. **Lay the chains on their tapes.** Each edge step 4 names on a tape is walked along it by arc length (lengths exact by
-   construction). The piece's other chains are walked from where they are sewn to a laid chain, by their own links, bent
-   only; the start is isometric (memory: start isometric), so a seam that can't meet is named, not stretched closed.
-2. **Merge.** Sewn edges are one chain; tied pairs one constraint each.
-3. **Solve once, everything free** (chain_solve on the chain network): links hard, ties, contact, bending along chains,
-   fold turns, lines across, tapes as soft pulls, followers inside their host. No held set.
-4. **Report** the residual per link, seam, tie and fold, by piece, edge and step.
-5. (Step 6, not here) surfaces filled between the solved chains.
+## The build (one algorithm, no roles, no wear states; ROLLED PANELS, BENDS, N2d 2026-11-12)
+Joe (2026-11-12): "in real life, the pieces would get assembled _before_ they get put on the body"; then "Rolled panels,
+bends": lengths given, only bends chosen, literally. Three runs (N2, N2b, N2c) failed turning flats into a 3D shape with
+positions as the unknowns (N2c: links 300-2,900 % off their cut before any bend). Now NO POINT IS EVER A FREE VARIABLE.
+0. **Seams one chain end to end** (chain_seams.join_seams): between consecutive sew pairs of a sparse seam each side gets
+   a point at every arc fraction the other has (an edge split, nothing moved) and they are sewn.
+1. **Panels** (chain_panels): each piece's flat (split at its planned fold rows) mapped by a roll round a cylinder (axis
+   angle in the flat, curvature) and a rigid motion: 8 numbers a panel, isometric by construction (a link is its chord:
+   0.0x %). A fold row is a HINGE between two panels with one angle (the plan's turn). A piece sewn to nothing (a ply)
+   is bound on its host afterwards (chain_solve_plies.bind).
+2. **Assemble** (chain_assemble.assemble): one least-squares fit of every panel's numbers (~190 for a jacket): seams
+   coincide point for point (the residual IS the gap), hinge rows coincide and turn to plan, ties a layer apart, a stiff
+   panel's roll a weight, a soft keep-out from the body's skeleton (chain_settle.skeleton: which way round), each panel
+   weakly near its start (read from the pattern and tapes). Rigid rolled panels cannot make a doubly-curved garment:
+   the gaps left are REPORTED per seam, never hidden.
+3. **Dress** (chain_assemble.dress): the same numbers refitted with the body at full size (points off it, one-sided),
+   the girth tapes pulling, seams / hinges / ties as before.
+4. **Close** (chain_assemble.close): ONE projection of the chain points (chain_net.project, links exact, off the body)
+   closes what panels leave (darts, ease); how far it moved points (mm) and links (% off cut) is read.
+5. **Report**: unknowns, seam gaps per seam after assembly and dressing, hinge turns vs plan, roll radii, points inside,
+   tape mm, the projection's moves. (Step 6, not here: surfaces filled between the solved chains.)
 
 ## What stays, what goes
 - Stays (reworked where needed): chain_net's Network and projection (without the held mask), closure_ties,
@@ -79,6 +91,7 @@ length.
 | N1 | The solver (done: no held set, CHOLMOD) | done |
 | N2 | Plies as a term; a whole-surface seed (done; the seed FAILED: the step was too big, see the spec) | done |
 | N2b | The chain network (boundary + fold chains + lines across, no interior); chains laid on their tapes and walked from their seams; one solve; the jacket's chains rendered alone beside the reference | M |
+| N2c | Assemble then dress: seams one chain from the start, loops closed by bends, the body grown inside | M |
 | N3 | Step 6 fills surfaces between the solved chains; the new build wired into GarmentBuild; the old stages and the whole-surface seed deleted | L |
 | N4 | Shirt and hussar: steps 3 and 4 redone with tapes, built by the same code | M |
 | T | Blind step-5 trials, the jacket first | trials |

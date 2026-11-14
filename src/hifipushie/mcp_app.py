@@ -147,7 +147,7 @@ TOOL_GROUPS: dict[str, dict] = {
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
                "tools": ["export", "export_asset", "rig", "judge_asset"]},
-    "human": {"subject": "human humanoid", "entry": "human",
+    "human": {"subject": "human humanoid man woman boy girl actor actress", "entry": "human",
               "about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",

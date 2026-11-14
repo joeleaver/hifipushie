@@ -212,30 +212,38 @@ class Network:
                 "max_pct": round(float(d[k] / max(self.link_L[k], 1e-9) * 100), 2) if len(d) else 0.0}
 
     def loop(self, name: str) -> np.ndarray:
-        """A piece's outline as one ordered loop of its vertices (the longest loop when a piece has several)."""
+        """A piece's outline as one ordered loop of its vertices (the longest loop when a piece has several), walked as one
+        circuit of its boundary edges: an outline that touches itself at a vertex (a pinch at a pointed tip) is walked
+        whole, that vertex twice (a greedy walk cut a collar's outline short there, C444); a chains-only network gives
+        its pattern's outline (chain_lay_net.chain_network)."""
+        if getattr(self, "outlines", None) is not None:
+            return self.outlines[name]
         p = self.pid(name)
         Fp = self.F[np.all(self.piece[self.F] == p, axis=1)]
         be = boundary_edges(Fp)
         nb: dict = {}
-        for a, b in be:
-            nb.setdefault(int(a), []).append(int(b))
-            nb.setdefault(int(b), []).append(int(a))
-        seen, best = set(), []
-        for s in nb:
-            if s in seen:
+        for e, (a, b) in enumerate(be):
+            nb.setdefault(int(a), []).append((int(b), e))
+            nb.setdefault(int(b), []).append((int(a), e))
+        used = np.zeros(len(be), bool)
+        best: list = []
+        for s0 in sorted(nb, key=lambda v: len(nb[v])):  # (start off any pinch)
+            if all(used[e] for _, e in nb[s0]):
                 continue
-            path, prev, cur = [s], None, s
-            seen.add(s)
-            while True:
-                nx = [q for q in nb[cur] if q != prev and q not in path[-2:]]
-                nx = [q for q in nx if q not in seen] or []
-                if not nx:
-                    break
-                prev, cur = cur, nx[0]
-                seen.add(cur)
-                path.append(cur)
-            if len(path) > len(best):
-                best = path
+            stack, circ = [s0], []
+            while stack:  # (Hierholzer: every outline vertex has an even number of boundary edges)
+                v = stack[-1]
+                while nb[v] and used[nb[v][-1][1]]:
+                    nb[v].pop()
+                if nb[v]:
+                    q, e = nb[v].pop()
+                    used[e] = True
+                    stack.append(q)
+                else:
+                    circ.append(stack.pop())
+            circ = circ[:-1] if len(circ) > 1 and circ[0] == circ[-1] else circ
+            if len(circ) > len(best):
+                best = circ
         return np.array(best, np.int64)
 
     def arc(self, name: str, members) -> np.ndarray:

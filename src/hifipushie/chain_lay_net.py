@@ -127,4 +127,10 @@ def chain_network(net: cn.Network):
     c.chain_L, c.chain_kind, c.chain_piece = net.chain_L, net.chain_kind, net.chain_piece
     c.link_i, c.link_j = idx[net.link_i], idx[net.link_j]
     c.link_L, c.link_cut, c.link_of_chain = net.link_L, net.link_cut, net.link_of_chain
+    # (each piece's outline is the PATTERN's, its kept points in order: the chain faces between rows are not a clean
+    # disk, and a loop walked on them breaks at the rows' ends (a collar's read 199 of its 373 edges, C444))
+    c.outlines = {}
+    for nm in net.names:
+        lp = idx[net.loop(nm)]
+        c.outlines[nm] = lp[lp >= 0]
     return c, keep

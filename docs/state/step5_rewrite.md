@@ -1,58 +1,51 @@
-# STATE: step 5 rewritten (docs/proposals/step5_rewrite.md, approved 2026-11-11; cut to CHAINS ONLY 2026-11-12)
+# STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2f: COLLAR START, EXACT TURNS)
 
-Step 5 lays out the CHAINS (boundary + fold rows + a few lines across), lengths given, only bends chosen, one solve with
-nothing held. Step 6 fills surfaces between them. Runs N1 (solver) -> N2 (plies term) -> N2b (chains only, this) -> N3.
+Step 5 lays out the CHAINS (boundary + fold rows + lines across), lengths given, only bends chosen, nothing held.
+Step 6 fills surfaces between them. Runs N1 -> N2 -> N2b -> N2c -> N2d (rolled panels) -> N2e (live start) -> N2f (this).
 
-## Current best (N1 solver + N2 plies term + N2b chains)
-- `chain_solve.py`: `solve(net, X0, body, ties, folds, pulls, stiffness, plies=...)` -> (X, report); PD -> LM -> projection.
-  Takes any Network: on the chain network it runs in 40 s (jacket, 3,000 nodes) vs 160 s on the whole cloth.
-- `chain_solve_plies.py`: followers as a term on the host's ring normal (N2).
-- `chain_lay_net.py` (N2b): `chain_network(net)` -> (cnet, keep): net's chains at their cut (links copied, not re-derived)
-  + per-piece Delaunay lines across (inside the outline, never across a fold row; each row link a face each side), no
-  interior points. Jacket 4,302 points / 3,000 nodes / 9,755 lines.
-- `chain_lay.py` (N2b): `lay(net, cnet, keep, body, plan)` -> {X0, pulls, folds, ties, plies, reads, start}. Taped edge on
-  its tape (lay_on_tape, then re-laid on the lifted line by its own arc), every other piece from its longest run sewn to
-  laid cloth (along the partner's line by own arc), rest of the outline walked link by link at its cut aimed at a guide
-  (geodesic walk on the body from the run's middle, turned every 15 deg to where its other seams + its highest length
-  path say; side away from the cloth it's sewn to, a follower towards it), .R = mirror of .L, fold rows from laid ends.
-  Unsewn followers (canvas) seeded on the host by bind. chain_seed.py deleted.
-- Proof: `spikes/n2b_chains_jacket.py <out> <loaded.pkl> [start|noplies]`, `spikes/n2b_render.py <run> <pkl> <ref> X.npy
-  [quick]` (tubes by piece). ws /mnt/data/hifipushie/n2b/ws, loaded.pkl /mnt/data/hifipushie/n2/mine.
+## The 98 mm (N2f item 1): (a) a step-5 bug
+- The 642 mm "neck edge" was the collar's outline read on a BROKEN loop: the chain network's faces aren't a clean disk
+  and the pattern collar's outline is pinched at a tip (one vertex of degree 4); a greedy walk lost the neck points.
+- Fixed: the edge is now 452.5 mm (cbN > hps 88 + hps > cc > notch 139, x 2) on the 544 mm neckline: it fits. The tape is right.
 
-## Numbers
-- tests/test_chain_lay.py 4 pass (chains only; strip on a curved tape exact; band + panel seam < 1 mm; stiff collar's row
-  turned 160 deg on a neck, links < 2 %). test_chain_solve 9, test_chain_plies 3.
-- JACKET run3 (/mnt/data/hifipushie/n2b/run3, report.json): start links: within each piece exact but its one closing link
-  (front 317 %, back 840 %, sleeves 1,500-3,200 %, undercollar 5,100 %, collar 10,100 %), 446 of 4,317 over 2 % (mostly
-  followers + 157 collar points put at their guide). Seam gaps (mm): front~undercollar 0.8, back~side 2.9, back~sleeve
-  20-47, side~sleeve 46, front~side 99, collar~undercollar 103, front~sleeve_top 114, sleeve_top~under 125, back~front
-  (shoulder) 132, facing~front 201, collar~facing 203-253, back.L~back.R (CB) 304.
-- After the solve (40 s, load 85-110): links worst 849 % (undercollar), 1,635 of 3,031 over 2 %; sleeves and sides <= 5 %;
-  hems turned within 1.5 deg; lapels 41-63 deg off, collar fall 48-63 off; 16 inside (10.8 mm); neckline pull 54 mean /
-  134 max mm; plies crossed 17-265.
-- Render run3/X_chains_sheet.png: FAILS. Start (X0_chains_sheet.png) reads as a jacket: backs, sides, fronts on the torso,
-  sleeves down the arms, hem at the seat; facings stand up like horns. The solve balls the torso, collar and fronts into
-  the neck and shoulders; only the sleeves keep their line.
+## Current code
+- `chain_net.Network.loop`: an Euler circuit of the boundary edges (a pinch walked whole, that vertex twice; test).
+  `chain_lay_net.chain_network` keeps each piece's PATTERN outline (`cnet.outlines`); cnet.loop returns it.
+- `panel_start._edge`: edge points ordered along the outline; arc length along it from the centre-line crossing
+  nearer the edge (a centre piece) or the end nearer x = 0 (a sided piece), never across a gap between declared arcs.
+  A centre piece's halves go to the side of the already-started pieces they are sewn to (edge-taped pieces start
+  last); winding only if sewn to nothing started (the winding rule crossed every collar seam).
+- `chain_panels.Panels.resolve(TH)`: a hinge RULES its turned panel: rigid motion = base's frame at the row's middle
+  turned by the plan's angle; only the roll (phi, kappa, g) stays free (`free_cols`, `ancestors`). A fold whose plan
+  `lies_on` another piece is not ruled (its turn stays a W_TURN residual). `fit_start` and `Fit.solve` return
+  resolved numbers; the Jacobian's sparsity follows the ruling chain. `hinge_read` uses central differences.
+- Proof: `spikes/n2e_jacket.py <out> <loaded.pkl> [start] [iters]`; render `spikes/n2c_render.py <run> <pkl> <ref>
+  X.npy quick`. ws /mnt/data/hifipushie/n2f (loaded.pkl in /mnt/data/hifipushie/n2/mine).
+
+## Numbers (jacket, /mnt/data/hifipushie/n2f/run1; 28 panels; 80 evals x 2 starts, ~6.5 min each)
+- Start alone (n2f/s0/X_start_quick_sheet.png): collar + undercollar ring the neck, ends down to the notch, no knot;
+  start panel fit rms 15 mm (N2e 53). Start seams collar-to-torso still 93-121 mm (torso rolled at chest radius).
+- Assemble: cost 0.460 / 0.511 (spin 0 kept). Hinges: all 14 at plan exactly (lapels 85 / 85, hems 90 / 90, collar
+  fall 90 / 90). Gaps mean 25-30 mm (max 40-62: collar ~ undercollar 62, back ~ sleeve 58, front ~ undercollar 50);
+  hinge rows meet only at their middle: sleeve-hem rows 24 mean / 45 max mm apart. Inside 686 points.
+- Dress: cost 0.558; inside 278; gaps front ~ undercollar 33 / 65 mm.
+- Tapes after close: fronts 180-350 mm off (chest / waist / hips), facings 190-400, sides 70-215. FAIL.
+- Close: moved median 19.5 / p95 51 / max 90 mm (target p95 < 10); links median 1.9 %, p99 46 %, max 71 % (target 2 %).
+- Judged beside the reference (run1/X_quick_sheet.png): FAIL. The collar is a flat band ringing the neck base, with no
+  visible roll or fall. The fronts stand open and flared, not lying to the side seams. In side view the body leans
+  ~30 deg forward like a cape. Sleeves are splayed panels, not tubes on the arms. The hem flares.
 
 ## Open faults (ranked)
-1. Start seam gaps up to 30 cm: a piece walked from ONE run drifts at its far seams (CB, shoulder, facing). The solve
-   merges each seam at its mean and the torso tears inward. Lay each piece fitted to ALL its laid seams (a run per seam,
-   the outline between runs walked from both), or lay the torso ring first (front, side, back closed round the chest
-   tape) before the neck. Collar: 157 points (its inner roll rows' ends) not reached by any walk.
-2. Followers sewn to their host are walked on it, but the facing goes up off the lapel (its side vote); canvas bound on
-   long Delaunay triangles cuts through the body (ply term at chain level needs host triangles near the follower).
-3. Undercollar has no roll row: the collar's planned fall can't happen on a stiff flat host (step 2/4 question).
-4. Girth tapes (chest, waist, hips) are not pulls yet: only the taped edge pulls.
+1. The assembly loses the start: the tapes pull at W_TAPE 0.3 and the fronts end 200-350 mm off theirs. The torso
+   tilts forward round the collar. Raise the tapes or hold the start's centres harder, and recheck from the good start.
+2. Hinge rows meet only at their middle (each panel rolls its own way): tie the turned panel's curvature to its
+   base's along the row, or read the row's gap as the fold's error.
+3. Sleeves: caps not on armholes (gaps 40-58 mm); cones still untested on the jacket.
+4. Speed: FD Jacobian (~4.5 s an eval); analytic per panel not done.
+5. The torso's neck points start at chest radius (start seams to the collar ~100 mm).
 
-## Decisions in force
-- No held set, no role names, no wear state in chain_solve*, chain_lay*. Pulls soft. Followers are a term.
-- The start is isometric per piece; gaps are measured, never stretched (C433).
+Run: `uv run pytest -q tests/test_chain_panels.py tests/test_chain_lay.py tests/test_chain_solve.py tests/test_chain_plies.py`.
+Ledger C426-C433, C435, C438, C440, C444.
 
-## Dead ends
-- PD stiff springs; LM alone; contact rows in PD; stale CG; chord steps (C426). Whole-surface seed (C431, deleted).
-- Frame transported along the outline walk (holonomy: 10-60 cm loop gaps): replaced by the guide (one geodesic per point).
-
-Run: `uv run pytest -q tests/test_chain_lay.py tests/test_chain_solve.py tests/test_chain_plies.py`. Ledger C426-C433.
-
-NEXT: N2c, close the start's seams: lay each piece from all its laid seams (or torso ring first), then re-solve; only then
-N3 (step 6 fill + wiring).
+NEXT: N2g: keep the start through assembly (tape weight / start pull from the fixed start, one start), then tie hinge
+rows' curvature; judge X_asm beside the reference before dressing.
