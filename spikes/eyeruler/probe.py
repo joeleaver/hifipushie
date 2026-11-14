@@ -2,6 +2,7 @@
 import sys
 import numpy as np
 from hifipushie import blockin_eyes as be, onemesh, store
+from hifipushie import blockin_eyes_reader
 from hifipushie import onemesh_head
 
 for name in sys.argv[1:]:
@@ -10,7 +11,7 @@ for name in sys.argv[1:]:
     if name == sys.argv[1]:
         print("ht keys", sorted(ht.keys()))
         print("head keys", {k: (v if not isinstance(v, (dict, list)) else type(v).__name__) for k, v in base["head"].items()})
-    rd = be.Reader(ht)
+    rd = blockin_eyes_reader.Reader(ht)
     V = np.asarray(ht["verts"], float)
     R = V[rd.ring]
     c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)

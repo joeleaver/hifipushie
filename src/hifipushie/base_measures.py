@@ -204,7 +204,7 @@ def _vermilion_edges() -> dict:
     chords cut the Cupid's bow and the corners off) and the inner edges (the contact ring's upper / lower halves)."""
     if "verm_edges" in base._CACHE:
         return base._CACHE["verm_edges"]
-    from . import faceslide
+    from . import faceslide_mouth
     g = _gnm_data()
     X = np.asarray(g["template_vertex_positions"], float)
     ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5
@@ -215,7 +215,7 @@ def _vermilion_edges() -> dict:
         m = (np.asarray(g["groups"][grp]) > 0.5) & ext
         edge = np.unique(e[m[e[:, 0]] & ~m[e[:, 1]] & ext[e[:, 1]] & np.asarray(g["skin"], bool)[e[:, 1]], 0])
         out[key] = edge[np.argsort(X[edge, 0])]
-    R = faceslide._lip_rings()
+    R = faceslide_mouth._lip_rings()
     C = R["rings"][R["contact"]]
     x = X[C, 0]
     a, b = X[C[np.argmin(x)]], X[C[np.argmax(x)]]

@@ -103,10 +103,11 @@ def tess():
 @need_ref
 def test_lid_obs_reads_a_known_lid_change(tess):
     from hifipushie import blockin_eyes as be
+    from hifipushie import blockin_eyes_reader
     from hifipushie import onemesh_head
     A, B, dc = tess
     ht = onemesh_head.head_template(B["spec"]["base"])
-    mg = be.Reader(ht).margins(ht)
+    mg = blockin_eyes_reader.Reader(ht).margins(ht)
     rv = {"up": mg["up"], "lo": mg["lo"] + be.LO_BIAS, "outer": [mg["ring_out"][0] - be.OUT_RING, 0.0], "inner": mg["inner"]}
     obs = face_ruler_features._lid_obs(A, {}, rv)
     assert len(obs) >= 12 and all(ob["type"] == "lid" and ob["view"] == "eye frame" for ob in obs)

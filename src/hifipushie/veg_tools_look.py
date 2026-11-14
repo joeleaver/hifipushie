@@ -101,9 +101,10 @@ def look(name: str, views=("clay", "leaf", "far"), azimuth: float = 0.0, size: i
     if T.get("clump"):  # a small plant is seen from the side, from standing height and from above; and its pictures
         import math
         from PIL import Image
-        from . import veg_leaf, veg_small
+        from . import veg_small
+        from . import veg_leaf_atlas
         s = T["spec"]
-        at = veg_leaf.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
+        at = veg_leaf_atlas.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
         c = at["color"]
         img = np.clip(c[..., :3] * c[..., 3:] + np.array([0.75, 0.78, 0.82]) * (1 - c[..., 3:]), 0, 1)
         pa = str(d / f"atlas{suffix}_v{v}.png")

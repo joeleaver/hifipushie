@@ -88,9 +88,9 @@ def ground_tile(R: Region, mats, i, j, lo, n, lods, out: Path, cfg):
             prims.append(terrain_tile_finish._prim(SP - origin, np.repeat(N0[sv], 2, 0), np.repeat(C0[sv], 2, 0),
                                   np.repeat(W0[sv], 2, 0), SF, 1, {"role": "skirt"}, mats, lo, cfg))
         fn = f"ground_{i}_{j}_lod{k}.glb"
-        from . import terrain_bake
+        from . import terrain_bake_layers
         terrain_gltf.write_glb(out / fn, f"ground_{i}_{j}_lod{k}", prims, trans,
-                     mat + ([terrain_bake.material("terrain_baked")] if images else []),
+                     mat + ([terrain_bake_layers.material("terrain_baked")] if images else []),
                      extras={"tile": [i, j], "lod": k, "ground": True}, images=images)
         entry["lods"].append({"file": fn, "triangles": int(len(F)), "bytes": (out / fn).stat().st_size})
         if binfo:
@@ -122,7 +122,7 @@ def _ground_baked(R, mats, fine, P, N, W, F, k, lo, origin, cfg, out, stem):
     """A ground tile LOD with maps: uv = the tile's square (row 0 north), colour/normal/ORM baked from the pushed
     heightmap sampled at each texel (finer than the grid mesh), AO from the rock field."""
     from PIL import Image
-    from . import terrain_bake as tb
+    from . import terrain_bake_layers, terrain_bake_maps, terrain_bake_unwrap
     size = max(32, fine["n0"] >> k)
     tile = R.G.tile
     # texel centres on the tile's edges (u = 0.5 / size at the west edge, 1 - 0.5 / size at the east): both tiles bake
@@ -130,7 +130,7 @@ def _ground_baked(R, mats, fine, P, N, W, F, k, lo, origin, cfg, out, stem):
     # two sides a texel apart: 1 m at LOD 2)
     s_ = (size - 1) / size
     uv = np.c_[0.5 / size + (P[:, 0] - lo[0]) / tile * s_, 0.5 / size + (1 - (P[:, 1] - lo[1]) / tile) * s_]
-    T4 = tb.tangents(P, N, uv, F)
+    T4 = terrain_bake_unwrap.tangents(P, N, uv, F)
 
     def sample(a, x, y):
         return ndimage.map_coordinates(a, [(x - fine["x0"]) / fine["t"], (y - fine["y0"]) / fine["t"]], order=1,
@@ -141,7 +141,7 @@ def _ground_baked(R, mats, fine, P, N, W, F, k, lo, origin, cfg, out, stem):
         X = np.c_[x, y, sample(fine["H"], x, y)]
         G = np.c_[-sample(fine["gx"], x, y), -sample(fine["gy"], x, y), np.ones(len(x))]
         return X, G / np.linalg.norm(G, axis=1, keepdims=True), np.zeros(len(x), bool)
-    maps, info = tb.bake(surface, R.base, mats, P, N, T4, uv, F, (size, size), cfg["_layer_rough"],
+    maps, info = terrain_bake_maps.bake(surface, R.base, mats, P, N, T4, uv, F, (size, size), cfg["_layer_rough"],
                          texel=tile / size)
     (out / "maps").mkdir(exist_ok=True)
     wfiles = []
@@ -149,8 +149,8 @@ def _ground_baked(R, mats, fine, P, N, W, F, k, lo, origin, cfg, out, stem):
         fn = f"maps/{stem}_weights{g}.png"
         Image.fromarray(w, "RGBA").save(out / fn)
         wfiles.append(fn)
-    images = [(tb.jpeg(maps["basecolor"]), "image/jpeg"), (tb.png(maps["orm"], "RGB"), "image/png"),
-              (tb.png(maps["normal"], "RGB"), "image/png")]
+    images = [(terrain_bake_layers.jpeg(maps["basecolor"]), "image/jpeg"), (terrain_bake_layers.png(maps["orm"], "RGB"), "image/png"),
+              (terrain_bake_layers.png(maps["normal"], "RGB"), "image/png")]
     attrs = {"POSITION": terrain_gltf._to_gltf(P - origin), "NORMAL": terrain_gltf._to_gltf(N),
              "TANGENT": np.c_[terrain_gltf._to_gltf(T4[:, :3]), T4[:, 3]], "TEXCOORD_0": uv}
     sq = int(cfg["splat"])

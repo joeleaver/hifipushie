@@ -23,8 +23,9 @@ for k in faceext.EXT:
           f"at most {np.linalg.norm(d1 - d0, axis=1).max() * 1000:.2f} mm")
 # ... on the visible lip (facing forward, outside the contact ring) vs inside the mouth
 from hifipushie import faceslide  # noqa: E402
+from hifipushie import faceslide_mouth
 T = faceslide.template()
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 inner = np.zeros(len(T["X"]), bool)
 for r in R["rings"][:R["contact"] + 1]:
     inner[r] = True

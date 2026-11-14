@@ -38,10 +38,11 @@ def set_reference(name: str, image: str, mask: dict, bare: bool = False, credit:
 
 def _report_clump(name: str, T: dict) -> str:
     """An assembled plant in numbers: size, cards per layer, how they stand, cover from above, triangles."""
-    from . import veg_leaf, veg_small
+    from . import veg_small
+    from . import veg_leaf_atlas
     s, m = T["spec"], veg_small.measures(T)
-    at = veg_leaf.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
-    pc = veg_leaf.part_cards(s["leaves"])
+    at = veg_leaf_atlas.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
+    pc = veg_leaf_atlas.part_cards(s["leaves"])
     tw = T["twigs"]
     out = [f"plant {name}: {s.get('species') or 'no preset'}, assembled from cards (plant: clump), seed {s.get('seed', 1)}",
            f"size: {m['height_m']} m tall, {m['spread_m']} m across; {m['cards']} cards on {m.get('stalks', 0)} stalks; "
@@ -81,7 +82,7 @@ def _report_clump(name: str, T: dict) -> str:
 def report(name: str) -> str:
     """The grown plant in numbers: size, form (measured on its own silhouettes), limbs, foliage, guides, and its
     reference match when it has one. WARNINGS last."""
-    from . import veg_leaf
+    from . import veg_leaf_place
     T = grown(name)
     s = T["spec"]
     st = T["stats"]
@@ -113,7 +114,7 @@ def report(name: str) -> str:
         out.append(f"dead wood: {int((d_ & (T['order'] == 1)).sum() and len(np.unique(T['axis'][d_ & (T['order'] == 1)])))} limbs the shade killed within the last "
                    f"{s['habit']['dead_keep']} years are still on the trunk ({seg_[d_].sum():.0f} m of dead wood, from {P_[d_, 2].min():.1f} m up); "
                    f"live crown from {base_:.1f} m = {1 - base_ / T['height']:.0%} of the height"
-                   + ("" if veg_leaf.dead_part(s["leaves"]) is not None else " (no `leaves.parts.dead` picture: its fine twigs are not drawn)"))
+                   + ("" if veg_leaf_place.dead_part(s["leaves"]) is not None else " (no `leaves.parts.dead` picture: its fine twigs are not drawn)"))
     ms = [vegetation_measures.shape_measures(vegetation_measures.silhouette(T, az, 12, leaves=True)[0]) for az in (0, 90)]
     f = lambda k: round(float(np.mean([m[k] for m in ms])), 2)
     H = T["height"]
@@ -154,7 +155,7 @@ def report(name: str) -> str:
             out.append(f"  {L['name']}{' (drawn)' if L['guide'] else ' (id ' + L['id'] + ')'}: at {L['height']} m, {L['diameter'] * 100:.0f} cm, "
                        f"{L['length']} m long to [{L['end'][0]:+.1f}, {L['end'][1]:+.1f}, {L['end'][2]:.1f}], "
                        f"carries {L['low']}-{L['high']} m high, {L['reach']} m out, since year {L['born_year']}")
-    tw = veg_leaf.place_live(T)
+    tw = veg_leaf_place.place_live(T)
     if len(tw["pos"]):
         out.append(f"foliage: {len(tw['pos'])} twigs ({s['leaves'].get('shape', 'ovate')} leaves, "
                    f"{s['leaves'].get('length', 0.07)} m)")
@@ -266,10 +267,11 @@ def ground_lines(T: dict, triangles: int | None = None, force: bool = False) -> 
     """(lines, WARNING lines) on how the drawn plant stands on its ground (veg_ground.audit: wood, card corners). The
     cards need the plant's atlas: when that isn't made yet (minutes for a needle atlas) only the wood is judged, and
     the line says so; look_plant and export_plant always judge the cards."""
-    from . import veg_ground, veg_leaf
+    from . import veg_ground
+    from . import veg_leaf_atlas
     s = T["spec"]
     twc = (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35]
-    if force or triangles or veg_leaf.atlas_ready(s["leaves"], twc):
+    if force or triangles or veg_leaf_atlas.atlas_ready(s["leaves"], twc):
         lines = veg_ground.report(veg_ground.audit(T, triangles))
     else:
         d = veg_ground.drawn({**T, "spec": {**s, "season": "bare"}})

@@ -195,7 +195,8 @@ def _contact_pairs():
     """GNM's own lip contact ring (faceslide._lip_rings, the ring the seal closes), split by the upper_lip / lower_lip
     groups; each upper vertex paired with the lower vertex nearest in x on the template (the corners' 10% left out)."""
     from hifipushie import faceslide
-    R = faceslide._lip_rings()
+    from hifipushie import faceslide_mouth
+    R = faceslide_mouth._lip_rings()
     C = R["rings"][R["contact"]]
     T = np.asarray(g["template_vertex_positions"], float)
     U, Lw = C[R["upper"][C]], C[~R["upper"][C]]

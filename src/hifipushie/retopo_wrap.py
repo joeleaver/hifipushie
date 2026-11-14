@@ -54,7 +54,8 @@ def base_quads(spec: dict, log: list) -> dict | None:
             # sheets collapsed into each other, TORN OR TANGLED at both lids (300 folded edges on an older head, 82 without the
             # fold): the fold's own vertices stay as base.head.lid_fold built them (exact; the field is the smoothed copy)
             from . import gnm_fold
-            dlt = gnm_fold.mesh_delta(gnm_fold.vertices() / 1000.0, None, lf)
+            from . import gnm_fold_mesh
+            dlt = gnm_fold_mesh.mesh_delta(gnm_fold.vertices() / 1000.0, None, lf)
             moved = np.linalg.norm(dlt, axis=1) > 1e-6
             inner |= (gnm >= 0) & moved[np.clip(rid, 0, len(moved) - 1)]
     V = surface.newton(prims, V, voxel * 0.125, voxel, iterations=12)[0]

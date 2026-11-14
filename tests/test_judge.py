@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from hifipushie import judge as J  # noqa: E402
+from hifipushie import judge_ab, judge_glb, judge_measures
 
 
 def _glb(path, X, U, F, img: Image.Image, double=False):
@@ -48,8 +48,8 @@ def test_uv_reader_top_left():
     a = np.zeros((64, 64, 3), np.float32)
     a[:32, :, 0] = 1.0  # top rows red
     a[32:, :, 2] = 1.0  # bottom rows blue
-    assert J.texel_at(a, np.array([[0.5, 0.25]]))[0, 0] > 0.99
-    assert J.texel_at(a, np.array([[0.5, 0.75]]))[0, 2] > 0.99
+    assert judge_glb.texel_at(a, np.array([[0.5, 0.25]]))[0, 0] > 0.99
+    assert judge_glb.texel_at(a, np.array([[0.5, 0.75]]))[0, 2] > 0.99
 
 
 def test_glb_back_faces_and_probes():
@@ -61,11 +61,11 @@ def test_glb_back_faces_and_probes():
     with tempfile.TemporaryDirectory() as td:
         g = Path(td) / "t.glb"
         _glb(g, X, U, F, img)
-        js, binc = J.read_glb(g)
-        assert J.glb_triangles(js) == {"card": 4}
-        assert J.glb_merged_faces(js, binc) == {"card": {"back": 1, "degenerate": 1}}
-        assert J._engine_sides(g) == {"card": [True]}  # explicit back faces: drawn two-sided
-        probes, ours = J.uv_probes(g, n=2, min_tris=1)
+        js, binc = judge_glb.read_glb(g)
+        assert judge_glb.glb_triangles(js) == {"card": 4}
+        assert judge_glb.glb_merged_faces(js, binc) == {"card": {"back": 1, "degenerate": 1}}
+        assert judge_glb._engine_sides(g) == {"card": [True]}  # explicit back faces: drawn two-sided
+        probes, ours = judge_glb.uv_probes(g, n=2, min_tris=1)
         assert len(probes) == 2 and len(ours["ours"]) == 2
 
 
@@ -80,14 +80,14 @@ def _face(w=160, seed=0):
 
 def test_measures_self_checks():
     ref = _face()
-    for name, ok, detail in J.self_check_measures(ref):
+    for name, ok, detail in judge_measures.self_check_measures(ref):
         assert ok, (name, detail)
 
 
 def test_blot_found_where_planted():
     ref = _face(seed=3)
-    bad, at = J.plant_blot(ref, at=(60, 95))
-    c = J.compare(bad, ref)
+    bad, at = judge_measures.plant_blot(ref, at=(60, 95))
+    c = judge_measures.compare(bad, ref)
     assert np.hypot(c["worst"][0] - 60, c["worst"][1] - 95) < 0.08 * 160, c["worst"]
     assert c["spot"] > 1.0 and c["L50"] <= 0
 
@@ -98,18 +98,18 @@ def test_sharp_is_signed():
     a[60:90, 50:110, :3] = (a[60:90, 50:110, :3] * 0.6).astype(np.uint8)  # a hard-edged decal (a lip sticker)
     ref = Image.fromarray(a, "RGBA")
     soft = ref.filter(ImageFilter.GaussianBlur(2))
-    assert J.compare(soft, ref)["sharp"] < -0.1
-    assert J.compare(ref, soft)["sharp"] > 0.1
+    assert judge_measures.compare(soft, ref)["sharp"] < -0.1
+    assert judge_measures.compare(ref, soft)["sharp"] > 0.1
 
 
 def test_review_controls():
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "review.md"
         p.write_text("...\nKEY APPLIED:\nmouth: NEW\nbrows: OLD\nmouth_b: OLD\nmouth_c: NEW\nVERDICT: TIE\n")
-        r = J.score_review(Path(td))
+        r = judge_ab.score_review(Path(td))
         assert r["controls_ok"] and r["votes"]["new"] == 1
         p.write_text("KEY APPLIED:\nmouth: NEW\nmouth_b: NEW\nmouth_c: NEW\nVERDICT: NEW\n")
-        assert J.score_review(Path(td))["verdict"].startswith("REFUSED")
+        assert judge_ab.score_review(Path(td))["verdict"].startswith("REFUSED")
 
 
 if __name__ == "__main__":

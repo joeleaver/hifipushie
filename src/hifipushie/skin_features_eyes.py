@@ -43,7 +43,7 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     (unset / 0: off; the LATERAL corner: a soft warm shadow on the eyeball's outer end and the lid junction's wet
     red, against the white wedge running to a point that GNM's sharp outer corner shows; ~0.8), "crease":
     {"amount": 0..1 (0.6), "path": [[u, v], ...] (mm from the iris centre in the eye's frame, u toward the outer
-    corner, v up: eye_ruler.crease_path reads it off the picture), "width": mm (0.5), "color", "shade": 0..1 (0.4:
+    corner, v up: eye_ruler_compare.crease_path reads it off the picture), "width": mm (0.5), "color", "shade": 0..1 (0.4:
     a soft band over the line, the fold's underside)}: the fold LINE as a thin shadow in the skin (multiply), where
     the lid's soft valley gives no line of its own}."""
     e = spec.get("skin", {}).get("eyes")

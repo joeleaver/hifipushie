@@ -213,8 +213,8 @@ def template(base: dict) -> dict:
     if sealed and ht.get("skin_index") is None:
         # (faceslide / base_surface._sealed_field) the closed mouth's field: the rolls inside the contact ring left out, the
         # contact rows overlapped
-        from . import faceslide
-        R = faceslide._lip_rings()
+        from . import faceslide_mouth
+        R = faceslide_mouth._lip_rings()
         row_of = np.full(len(a["g2f"]), -1)
         row_of[gid[hrow]] = len(mh_rows) + len(br) + np.arange(len(hrow))
         kc = R["contact"]

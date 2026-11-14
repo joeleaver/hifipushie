@@ -49,7 +49,7 @@ spec["skin"] = {
                                   space (made by the skin_project tool: de-lit, filled; see skin_project.py). Laid over
                                   the skin's own colours and painted hair, under scars, tattoos and make-up.
   "stack": {...}                  the skin's colour as a STACK OF LAYER MAPS in the head's atlas, decomposed from the de-lit
-                                  reference (skin_layers.py; made by skin_from_reference / skin_layers.apply): a base +
+                                  reference (skin_layers.py; made by skin_from_reference / skin_layers_stack.apply): a base +
                                   pigment, redness, periorbital, brows, lips, beard, shade maps, each a multiply layer
                                   "skin:stack_<name>" with its own opacity (an edit changes one map); over the skin's
                                   broad colour layers, under every fine generator.
@@ -82,7 +82,7 @@ UNDER_SHADE = 1.0  # skin.lips.under_shade: the lower lip's own shade on the ski
 RIM_LOWER = 1.0  # skin.lips.rim_lower: the pale rim's share under the LOWER lip (mouth_eye_bias)
 VERSION = 12  # 12: the visible eye (lash frame past the outer canthus, darker lower line, inner canthus tip, occlusion .5) and lip volume (soft sheen, wet seam, pocketed corners, under_shade 1); 11: cells capped at detail 1, pores tint at most 0.3 (above detail 1 they printed as stubble dots); 10: stacked faces: pores everywhere the photos show them, cells' colour faint; 9: pores at full strength under a measured stack (projskin); 8: the face microrelief (cells network base, sparser pores; projskin); 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
 LOWER_LIP = {"melanin": 0.72, "blood": 3.8, "epidermis": 0.0, "oxygenation": 0.66}  # x the lips' melanin / blood (see _build)
-# the face's base map layers (skin_marks.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
+# the face's base map layers (skin_marks_pores.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
 # x sqrt(variation) / sqrt(detail): tuned on Tess (variation .6, detail .45); linear, Garrett's 1.3 / 1.8 read as sandpaper
 BASE_MAP = {"red": 0.4, "light": 0.36, "pigment": 0.3, "depth": 0.00011}
 

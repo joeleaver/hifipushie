@@ -26,7 +26,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7. 8 (C427) rig, retopo, hair_cards, hair_flow, veg_style, asset,
     lods, paint, terrain_style, humanfit, hair_read, images (19.5k) -> 71; asset.export stays (the export scripts call it).
   9 (landed 2026-11-12; C428) skin, skin_features, terrain_cliffs, onemesh, scene, veg_export, terrain_stream,
-    hair_strands, veg_tools, assemble (11.4k) -> 43 modules.
+    hair_strands, veg_tools, assemble (11.4k) -> 43 modules. 10 (2026-11-14; C447) veg_leaf, skin_layers, faceslide, judge, blockin_eyes, terrain_caves, skin_marks, gnm_fold, terrain_swatch, terrain_bake, gnm_controls, eye_ruler (10.7k) -> 54.
 - CONSTANTS STAY (C422): scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET, assembly_garrett/s15/
   sh4t.py, haircards/t47/r47.sh). A family's base holds every constant and alone runs code at import (rule test).
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
@@ -50,11 +50,11 @@ cloth_background) are what was left after the old paragraphs went: they need one
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
 Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. A split: sections.py, rebound.py, external_uses.py
-(before); pipeline.sh <root> <tag> <module> runs split_module / split_class / rehome / add_modules / regap / retail /
-repoint and the proof. Proofs: same_units, same_members, same_comments, same_order, rehomed_all, shadow_check, surface.
+(before; units_brief.py lists a file's units for the plan); pipeline.sh <root> <tag> <module> runs split_module / split_class / rehome / add_modules / regap / retail /
+repoint, the proof, same_comments and same_order (a rehome plan needs MID_IMPORTS too). Proofs: same_units, same_members, rehomed_all, shadow_check, surface.
 
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 faceext 376 lines, terrain_seams 201 of 308 (its measure side), flipfit 137, faceatlas 105, gnm_controls 90. NOT unreachable: blender_cards, blender_lashes (blender_scene imports both inside functions).
 
-Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: six reports and their brief in /mnt/data/hifipushie/review_20261112/ (top claims checked against the code).
-NEXT: Joe's call on the review (first move: export_asset takes a chain garment, asset_export.py:421); then the 35 files of 700-1,000 lines or the five giant functions (the clothes files wait for the chain-build cut).
+Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: reports in /mnt/data/hifipushie/review_20261112/; its fixes: docs/state/mcp_rules.md.
+NEXT: the long files still whole: terrain_sea, hair_loose, terrain_ground, skin_folds (their callers are in files other sessions have in flight: split once those land), resources, sdf, spec; then the five giant functions (asset_export is 1,004 lines). The clothes files wait for the chain-build cut.

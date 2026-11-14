@@ -17,6 +17,7 @@ import rock_round  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 from hifipushie import terrain, terrain_mesh, terrain_swatch as ts  # noqa: E402
+from hifipushie import terrain_swatch_detail, terrain_swatch_make
 from hifipushie import terrain_model, terrain_tile_views, terrain_tiles
 
 REPO = Path(__file__).resolve().parents[1]
@@ -55,9 +56,9 @@ def main():
     M = json.loads((o / "manifest.json").read_text())
     stats = {}
     for src in sources:
-        S = old_swatch(rev) if src == "old" else ts.detail_swatch(None, src)
-        de = ts.write(o, None, "rock", S=S)
-        stats[src] = {**ts.swatch_stats(S), "repetition_fade": de["fade"]}
+        S = old_swatch(rev) if src == "old" else terrain_swatch_make.detail_swatch(None, src)
+        de = terrain_swatch_detail.write(o, None, "rock", S=S)
+        stats[src] = {**terrain_swatch_make.swatch_stats(S), "repetition_fade": de["fade"]}
         M["detail"].update({k: de[k] for k in ("size_m", "height_m", "texels_per_m", "fade", "source")})
         (o / "manifest.json").write_text(json.dumps(M, indent=1))
         views = rock_round.views_for(T, cfg["views"])

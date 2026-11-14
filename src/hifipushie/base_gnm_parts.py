@@ -298,10 +298,10 @@ def lip_close_delta(V: np.ndarray, g: dict, scale: float = 1.4) -> np.ndarray:
     68 landmarks off the mouth held (0.3 mm; the corners 0.6). Re-solved on every head, so identity steps keep the
     mouth closed. The vermilion border keeps GNM's turn (the seal halved it); the field leaves the crossed inner rolls
     out (onemesh.CLOSED_SEAL_V). V: GNM's raw vertices (its frame: Y up, facing +Z). Returns the (n, 3) move."""
-    from . import faceslide
+    from . import faceslide_mouth
     P = base.LIP_CLOSE
     if "sub" not in base._LIPC:
-        R = faceslide._lip_rings()
+        R = faceslide_mouth._lip_rings()
         C = R["rings"][R["contact"]]
         up = R["upper"][C]
         lower = [i for i, nm in enumerate(g["expression_names"]) if str(nm).startswith("lower_face")][:P["n"]]

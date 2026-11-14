@@ -150,14 +150,14 @@ def _build(spec: dict, J: dict) -> dict:
     # (fine mottling up from 0.2 / 0.16: the 0.35-1.4 mm L bands measured 0.15-0.18 on Tess against 0.39-0.47 on her photo, skin3)
     mottle("mottle_fine", 0.0032, [0.45, 0.75], 14, 0.32, blood=1.7, melanin=1.15)
     mottle("mottle_fine_pale", 0.0045, [0.5, 0.8], 15, 0.26, blood=0.6, melanin=0.9)
-    # 2b. the face's base skin per PIXEL, a unique map on the head's own surface (skin_marks.base_map): blood and pigment
+    # 2b. the face's base skin per PIXEL, a unique map on the head's own surface (skin_marks_pores.base_map): blood and pigment
     # uneven at 1-4 mm, capillary threads beside the nose, and (micro_map, last) pores by zone + skin lines + a fine
     # undulation as relief. The mottles above are per vertex: nothing of theirs lives below ~3 mm (skin3 measured
     # Tess's 0.35-1.4 mm lightness bands at .16-.18 against .39-.47 on her photo)
     base_map = None
     if face and (var > 0 or det > 0):
-        from . import skin_marks
-        bpath, bplace, _ = skin_marks.base_map(spec, part, J, {"pore_size": round(1 - 0.15 * p["fem"] + 0.15 * p["masc"] + 0.25 * old, 3),
+        from . import skin_marks_pores
+        bpath, bplace, _ = skin_marks_pores.base_map(spec, part, J, {"pore_size": round(1 - 0.15 * p["fem"] + 0.15 * p["masc"] + 0.25 * old, 3),
                                                               "seed": seed})
         base_map = lambda ch, lv=None: {"image": {"file": bpath, **bplace, "channel": ch}, **({"levels": lv} if lv else {})}  # noqa: E731
         if var > 0:

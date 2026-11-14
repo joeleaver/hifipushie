@@ -361,6 +361,7 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
     cost x locality; control = one described; zones=True; families, sort, per_family, sign. Act: block_in_step
     {"mm:<measure>": mm}, {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details: guide(topic="gnm_controls")."""
     from . import gnm_controls as gcm
+    from . import gnm_controls_latent, gnm_controls_table
     if ruler:
         from . import blockin as bi, gnm_mm
         a, b = [x.strip() for x in ruler.split(",")][:2]
@@ -382,11 +383,11 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
         z = gcm.zones()
         return "\n".join(f"{k}: {d} ({len(z[k])} vertices)" for k, (d, _) in gcm.ZONES.items())
     if control:
-        return gcm.text(gcm.describe(control))
+        return gnm_controls_table.text(gnm_controls_table.describe(control))
     if not query:
         return ("gnm_controls: give query= (a feature) or control= (a name) or zones=True. Families: "
-                + ", ".join(f"{f} ({len(gcm.names(f))})" for f in gcm.FAMILIES))
-    return gcm.text(gcm.query(query, families=families, top=top, sort=sort, sign=sign, per_family=per_family))
+                + ", ".join(f"{f} ({len(gnm_controls_latent.names(f))})" for f in gcm.FAMILIES))
+    return gnm_controls_table.text(gnm_controls_table.query(query, families=families, top=top, sort=sort, sign=sign, per_family=per_family))
 
 
 @mcp.tool(structured_output=False)
@@ -404,14 +405,14 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
         return blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(name))
     if match == "pose":
         raise ValueError('lid_read: match="pose" is retired; match=True is the eye step')
-    from . import blockin_eyes as be
+    from . import blockin_eyes_solve
     lines = []
-    rep = be.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor, fold=fold)
+    rep = blockin_eyes_solve.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor, fold=fold)
     to = rep["entry"]["to"]
     path = save or str(store.HOME / "human_renders" / f"blockin_{to}_eyes.png")
     blockin_focus.focus(to, "eyes", path, before=name)
     e = rep["eyes"]
-    txt = (blockin_steps.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(to))
+    txt = (blockin_steps.step_text(rep) + "\n" + "\n".join(lines) + "\n" + blockin_eyes_solve.text(e) + "\n" + blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(to))
            + f"\nfocus=eyes sheet (before | after, raking light): {path}")
     c0_, c1_ = bi.identity(store.load(name)), bi.identity(store.load(to))   # NOTHING FORCED is the solve's rule, not yet
     big = int((abs(c1_) > 3.0).sum())                                       # this step's: say it when the step breaks it
@@ -431,10 +432,10 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
     model read against `name`'s picture. Returns the picture's eyes with the read and the model's lid outline drawn
     over them (save: the path) and the table. Sizes read by eye are 30-50 % off: read this before and after an eye
     step. Details: guide(topic="eye_ruler")."""
-    from . import eye_ruler as er
-    c = er.compare(name, model)
+    from . import eye_ruler_compare
+    c = eye_ruler_compare.compare(name, model)
     path = save or str(store.HOME / "human_renders" / f"eye_ruler_{model or name}.png")
-    im = er.overlay(c["image"], c["eyes"], c["mesh"], c["mm"])
+    im = eye_ruler_compare.overlay(c["image"], c["eyes"], c["mesh"], c["mm"])
     im.save(path)
     return [_png(im), c["text"] + f"\noverlay (picture; green = its margins, red = its canthi, blue = the model's ring / margins / "
                                   f"inner-corner landmark laid over by iris centre): {path}"]

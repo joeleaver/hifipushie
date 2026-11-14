@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import base as basemod, faceatlas, faceid, faceslide, likeness, store
+from hifipushie import faceslide_fields
 from hifipushie import base_identity, likeness_render
 
 OUT = Path(os.environ.get("OUT", "/mnt/data/hifipushie/faces4/out/perc"))
@@ -207,8 +208,8 @@ def run(what, heads):
             else:
                 if k in faceslide.AGE_SLIDERS if hasattr(faceslide, "AGE_SLIDERS") else False:
                     pass
-                Dp = faceslide.delta({k: 1.0})
-                Dm = faceslide.delta({k: -1.0})
+                Dp = faceslide_fields.delta({k: 1.0})
+                Dm = faceslide_fields.delta({k: -1.0})
                 if Dm is None:   # one-sided: 0 vs +1
                     Dm = np.zeros_like(Dp)
                 rows.append(measure(k, lambda c, D=Dp: verts(c, D=D), lambda c, D=Dm: verts(c, D=D), heads))

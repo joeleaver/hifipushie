@@ -63,7 +63,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     G = Grid(T, cfg)
     if cfg.get("detail") and base.rock is not None:  # (the tiling detail's projection, read by the workers)
         from . import terrain_swatch
-        terrain_mesh._CTX["detail"] = terrain_swatch.DetailProjection(base, base.rock)
+        from . import terrain_swatch_detail
+        terrain_mesh._CTX["detail"] = terrain_swatch_detail.DetailProjection(base, base.rock)
         de = _swatch(out, base.rock, cfg["texel_density"][0], cfg["detail_source"])  # (cached by seed + code)
         de.update(texcoord=1 + bool(int(cfg["splat"])), bins=terrain_mesh._CTX["detail"].BINS, line_d=terrain_swatch.LINE_D,
                   layers=[nm for nm in ("rock", "wet_rock") if nm in mats.layers], recipe=terrain_swatch.RECIPE,
@@ -311,7 +312,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     CN=CN, CW=CW, CC=CC, mat=mat, keep=[np.array(sorted(kk), np.int64) for kk in keep])
         if cfg.get("maps"):  # the field the maps are baked from: the rock with its bake-only fine relief
             import copy
-            from . import terrain_bake
+            from . import terrain_bake_layers, terrain_bake_maps
             bfs = []
             for k in range(G.lods):  # (per LOD: the fine relief band-limited to its texel)
                 bf = copy.copy(base)
@@ -324,7 +325,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                     bf.edit_riser = max(base.edits.lip_cfg["maps"], 2.5 / dens)
                     bf.edit_wmin = 2.5 / dens
                 if base.rock is not None and float(cfg["micro"]) > 0:
-                    bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens,
+                    bf.micro = terrain_bake_maps.micro_relief(base.rock, float(cfg["micro"]), 1.0 / dens,
                                                          fine="detail" not in terrain_mesh._CTX)
                 if region is not None:  # (a cliff's visible face: the rock, its ground sunk toward the region's edge)
                     bf = terrain_cliffs.CliffField(bf, region).front_field()
@@ -580,8 +581,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     groups = [mats.layers[g:g + 4] for g in range(0, len(mats.layers), 4)]
     layer_tex = {}
     if cfg.get("maps"):
-        from . import terrain_bake
-        layer_tex = terrain_bake.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
+        from . import terrain_bake_layers, terrain_bake_maps
+        layer_tex = terrain_bake_layers.layer_textures(out, {nm: mats.layer_ref(nm) for nm in mats.layers})
     style_sec = None
     if T.spec.get("styles"):  # (per-style tileable layer textures + zone maps for the engine's shader: terrain_style)
         from . import terrain_style_files
@@ -733,14 +734,14 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                   "2^k, hole cells left out, vertical skirts on shared borders)"}
     if caves:  # a person walked through every passage
         t0 = time.time()
-        from . import terrain_caves
+        from . import terrain_caves_early, terrain_caves_walk
         with prof.stage("cave walk (parent)"):
             manifest["cave_paths"] = []
-            manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T), paths=manifest["cave_paths"])
+            manifest["caves"] = terrain_caves_walk.check(caves, base, sea=_sea(T), paths=manifest["cave_paths"])
             # the same walk's floor on what an engine collides with (the collision meshes): its steps can be taller
             # than the field's (decimation at the collision LOD's error, a pile of blocks simplified to a riser)
             try:
-                for ln in terrain_caves.collision_steps(manifest["cave_paths"], out, manifest_tiles,
+                for ln in terrain_caves_early.collision_steps(manifest["cave_paths"], out, manifest_tiles,
                                                         int(cfg["collision"])):
                     manifest["caves"].append(ln)
             except Exception as ex_:  # (a measure, never the export's failure)
@@ -807,6 +808,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             check["summary"]["swatch_wrap_seam"] = detail["wrap_seam"]
             if not detail["tileable"]:
                 from . import terrain_swatch
+                from . import terrain_swatch_detail
                 check["failures"].append(f"the detail swatch's wrap seam shows (jump excess {detail['wrap_seam']}, "
                                          f"limit {terrain_swatch.TILE_LIMIT})")
         for o in over:

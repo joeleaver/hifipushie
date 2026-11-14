@@ -79,6 +79,7 @@ for s_, key in ((0, "R"), (1, "L")):      # read_lid: subject's right first; col
 try:
     import crease_trace as ct
     from hifipushie import gnm_fold as gf, humanfit, likeness as lk, onemesh
+    from hifipushie import gnm_fold_mesh
     from hifipushie import humanfit_views
     cam = rj["cameras"][vi]
     st = humanfit.state(blockin_expression.view_base(spec["base"], rj, vi))
@@ -92,7 +93,7 @@ try:
     gidall = np.asarray(onemesh.asset()["gnm_id"])
     gid = np.where(fid < len(gidall), gidall[np.clip(fid, 0, len(gidall) - 1)], -1)
     rows = {int(gg): i for i, gg in enumerate(gid) if gg >= 0}
-    ch, ang = gf.chains_wrap()
+    ch, ang = gnm_fold_mesh.chains_wrap()
     bags = []
     UPL = ((33, 246, 161, 160, 159, 158, 157, 173, 133), (263, 466, 388, 387, 386, 385, 384, 398, 362))
     for s_, key in ((0, "R"), (1, "L")):
@@ -218,7 +219,7 @@ try:
         if len(out) >= 4:
             # the trace's own roughness (it is seated as gnm_fold.smooth_crease's arc, never point by point)
             a_ = np.asarray(sorted(out), float)
-            rr = gf.crease_roughness(np.interp(np.linspace(a_[0, 0], a_[-1, 0], 24), a_[:, 0], a_[:, 1]))
+            rr = gnm_fold_mesh.crease_roughness(np.interp(np.linspace(a_[0, 0], a_[-1, 0], 24), a_[:, 0], a_[:, 1]))
             print(f"eye {key}: traced crease roughness {rr}" + ("  (WARNING: noisy trace; seated as one smooth arc)" if rr["sign_changes"] or rr["d2_rms"] > 0.08 else ""))
             cfg.setdefault(key, {})["crease_by_angle"] = out
             # the wrap reaches as far round the outer corner as the crease was traced (+ its fade)

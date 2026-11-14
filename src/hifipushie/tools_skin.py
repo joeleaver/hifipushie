@@ -77,9 +77,10 @@ def brow_read(name: str, match: bool = False, out: str | None = None):
     middle line miss in mm at the model, and the picture's iris (limbus, mm at the model; its colour) against the
     drawn one. match=True: skin.hair.brows' placement (drop, tilt, apart, fall, thickness, taper) fitted to the
     picture's hair band and written to `out` (default: the model itself). Paint only. Details: guide(topic="brow_read")."""
-    from . import blockin_brows as bb, blockin_eyes as be
+    from . import blockin_brows as bb
+    from . import blockin_eyes_evidence
     try:
-        iris = be.iris_check(name)["text"]
+        iris = blockin_eyes_evidence.iris_check(name)["text"]
     except Exception as e:  # noqa: BLE001  (no readable iris: the brows still read)
         iris = f"IRIS: not read ({e})"
     if not match:
@@ -99,7 +100,8 @@ def skin_from_reference(name: str, out: str = "", groups: list[str] | None = Non
     redness, periorbital, brows, lips, beard, shade: skin.stack). painting=True: the per-picture read instead (tone, zones,
     lips, beard, brows, freckles, folds). read_only=True: the read alone. No pores or roughness are read. out: save to a
     copy. Details: guide(topic="skin_from_reference")."""
-    from . import skin_layers, store
+    from . import store
+    from . import skin_layers_stack
     from . import skin_project_model
     from . import skin_read_fit, skin_read_frames, skin_read_reads
     from . import skin_read
@@ -117,7 +119,7 @@ def skin_from_reference(name: str, out: str = "", groups: list[str] | None = Non
                         anchor=anchor, stubble=stubble, log=lambda s: None, tone=tone, white=white)
     text = pre + r["text"]
     if layers and has_atlas:
-        text += "\n\n" + skin_layers.apply(dst, log=lambda s: None)["text"]
+        text += "\n\n" + skin_layers_stack.apply(dst, log=lambda s: None)["text"]
     return text + skin_route.after_read(dst, painting=not has_atlas)
 
 

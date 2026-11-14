@@ -5,6 +5,7 @@ import numpy as np
 
 import lidmap as lm
 from hifipushie import gnm_controls as gc
+from hifipushie import gnm_controls_latent
 
 
 def ident(src):
@@ -42,7 +43,7 @@ def structure(c, e=None, u=0.0):
     drape        stand-off 3 mm of skin above the crease - the crease's
     hang         mm: how far the fold's rings (crease+1..+4) come DOWN below the crease ring in a front view (overhang)
     brow         stand-off at ring 11; row = the ring spacing at the crease (the mesh's resolution there)."""
-    V = gc.vertices(c, e) * 1000
+    V = gnm_controls_latent.vertices(c, e) * 1000
     ctr, r = lm.eye_frame_raw(c)
     col = {k: (v, w) for k, v, w in lm.column(V, ctr, u)}
     ks = [k for k in range(0, 12) if k in col]

@@ -6,7 +6,8 @@ import math
 import numpy as np
 
 from . import veg_style
-from . import veg_leaf, veg_mesh
+from . import veg_mesh
+from . import veg_leaf_atlas
 from . import vegetation_kernels
 from .veg_style import season_color, styled
 
@@ -160,8 +161,8 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
     triangles = int(triangles or full)
     tw = tree["twigs"]
     lf = s["leaves"]
-    parts = veg_leaf.part_specs(lf)
-    pc = veg_leaf.part_cards(lf)
+    parts = veg_leaf_atlas.part_specs(lf)
+    pc = veg_leaf_atlas.part_cards(lf)
     owner = {ci: p_ for p_, cc in pc.items() for ci in cc}
     flowery = {p_ for p_, sp_ in parts.items() if (sp_.get("twig") or {}).get("flower")}
     is_head = np.array([owner[int(c)] in flowery for c in tw["card"]], bool) if len(tw["pos"]) else np.zeros(0, bool)

@@ -184,7 +184,7 @@ def _eye_read(c: Context) -> dict:
 
 def _iris_rel(name: str, c: Context) -> dict:
     """THE IRIS AGAINST THE SCLERA BESIDE IT, picture over ours (readmix, 2026-10-13): what sets skin.eyes.iris.
-    PICTURE: at the picture's OWN iris (blockin_eyes.limbus: the limbus circle found on the picture; the ring's colour
+    PICTURE: at the picture's OWN iris (blockin_eyes_evidence.limbus: the limbus circle found on the picture; the ring's colour
     along rays in the two lateral sectors, where no lid covers it) and the sclera just outside the limbus on the same
     rays, its BRIGHT part (a picture's sclera lies half under lid and lash shadow: Tess's front reads luminance 0.08 /
     0.16 / 0.25 at its 20 / 50 / 80 %). OURS: the render's eyeball pixels by the model's own geometry. Both tried and
@@ -193,7 +193,8 @@ def _iris_rel(name: str, c: Context) -> dict:
     Views turned past 50 deg or with an iris under IRIS_R_PX of radius are left out. -> {"read", "ratio" (linear, per
     channel), "views", "px"}."""
     from PIL import Image
-    from . import blockin_eyes as be, lidfold
+    from . import lidfold
+    from . import blockin_eyes_evidence
     from . import blockin_clay, blockin_models
     from .likeness_eyes import frame
     rj = blockin_models._refs(name)
@@ -214,7 +215,7 @@ def _iris_rel(name: str, c: Context) -> dict:
             P = blockin_clay.detect_view(img, v)
             if P is None:
                 continue
-            lb = be.limbus(img, P)
+            lb = blockin_eyes_evidence.limbus(img, P)
         except Exception:  # noqa: BLE001
             continue
         A = _lin(np.asarray(img, float) / 255.0)

@@ -19,7 +19,8 @@ import math
 
 import numpy as np
 
-from . import vegetation, veg_leaf
+from . import vegetation
+from . import veg_leaf_twig
 from . import vegetation_fit, vegetation_grow
 from .vegetation_kernels import _child, _u
 
@@ -145,7 +146,7 @@ def grow(stand: dict, log=None) -> dict:
 
 def brash_mesh(variant: int = 0, length: float = 1.8) -> dict:
     """A fallen dead branch lying on the ground: a dead twig's tangle at a branch's size, pressed flat."""
-    m = veg_leaf.dead_twig_mesh({"twig": {"length": length, "radius": 0.018 + 0.006 * (variant % 3), "droop": 0.0, "forks": 3.5,
+    m = veg_leaf_twig.dead_twig_mesh({"twig": {"length": length, "radius": 0.018 + 0.006 * (variant % 3), "droop": 0.0, "forks": 3.5,
                                           "depth": 3, "crook": 0.3, "broken": 0.35, "flat": 0.12, "lichen": 0.0}}, 40 + variant)
     V = m["V"].copy()
     V[:, 2] = np.abs(V[:, 2]) * 0.6 + 0.012

@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain_ground, terrain_swatch
+from hifipushie import terrain_swatch_make
 from hifipushie import terrain_model
 from hifipushie import terrain_materials, terrain_relief, terrain_tile_jobs, terrain_volumes
 from hifipushie import terrain_mesh
@@ -74,7 +75,7 @@ def test_grass_swatch_tiles():
     S = terrain_ground.grass_swatch()
     for k in ("albedo", "height"):
         a = S[k] if S[k].ndim == 2 else S[k][..., 1]
-        assert max(terrain_swatch.tileability(a)) <= terrain_swatch.TILE_LIMIT, k
+        assert max(terrain_swatch_make.tileability(a)) <= terrain_swatch.TILE_LIMIT, k
     assert abs(S["albedo"].reshape(-1, 3).mean(0) - 1).max() < 1e-6
 
 
@@ -131,10 +132,10 @@ def test_kinds_and_swatches(T):
     for kind in ("turf", "grass"):
         Sw = terrain_ground.SWATCHES[kind]
         S = terrain_ground.grass_swatch(seed=Sw["seed"], blades=Sw["blades"] // 4, length=Sw["length"])
-        assert max(terrain_swatch.tileability(S["height"])) <= terrain_swatch.TILE_LIMIT
+        assert max(terrain_swatch_make.tileability(S["height"])) <= terrain_swatch.TILE_LIMIT
     S = terrain_ground.sand_swatch()
     for a in (S["albedo"][..., 1], S["height"]):
-        assert max(terrain_swatch.tileability(a)) <= terrain_swatch.TILE_LIMIT
+        assert max(terrain_swatch_make.tileability(a)) <= terrain_swatch.TILE_LIMIT
 
 
 def test_clutter_lips(T):

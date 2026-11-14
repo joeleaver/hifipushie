@@ -6,12 +6,13 @@ import sys
 import numpy as np
 
 from hifipushie import faceslide, humanfit, onemesh, store
+from hifipushie import faceslide_mouth
 from hifipushie import humanfit_integrity, onemesh_head
 
 name = sys.argv[1]
 seals = [float(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 else [0.0, 0.25, 0.5, 1.0]
 b0 = store.load(name)["base"]
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 C = R["rings"][R["contact"]]
 
 

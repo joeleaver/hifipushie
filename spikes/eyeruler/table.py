@@ -7,12 +7,13 @@ import sys
 import numpy as np
 
 from hifipushie import blockin_brows as bb, eye_ruler as er, humanfit, store
+from hifipushie import eye_ruler_compare, eye_ruler_model, eye_ruler_picture
 
 G = os.environ["G"] + "/out"
 q = bb._inputs("gd_T12")
 mm, cam, P = q["mm"], q["cam"], q["P"]
-ph = er.read(q["img"], P, mm)
-pm = er.mean(ph)
+ph = eye_ruler_picture.read(q["img"], P, mm)
+pm = eye_ruler_compare.mean(ph)
 pd = float(np.linalg.norm(np.array(ph[0]["c"]) - np.array(ph[1]["c"])) * mm)
 
 
@@ -28,8 +29,8 @@ line("PHOTO (read)", pm, pd, f"| detector corner width {np.mean(det):.1f}")
 out = {"photo": {"mean": pm, "pd": pd, "detector_width": float(np.mean(det))}}
 for name in sys.argv[1:]:
     spec = store.load(name)
-    t = er.model(spec, cam)
-    m = er.mean(t)
+    t = eye_ruler_model.model(spec, cam)
+    m = eye_ruler_compare.mean(t)
     m["platform"] = np.nanmean([x["platform"] for x in t], 0).tolist()
     m["gap_up"] = np.nanmean([x["gap"]["up"] for x in t], 0).tolist()
     m["gap_lo"] = np.nanmean([x["gap"]["lo"] for x in t], 0).tolist()

@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hifipushie import terrain_mesh as tm, terrain_stream as ts, terrain_style, terrain_swatch
+from hifipushie import terrain_mesh as tm, terrain_stream as ts, terrain_style
+from hifipushie import terrain_swatch_make
 from hifipushie import terrain_stream_clutter, terrain_stream_water
 from hifipushie import terrain_style_fields
 from hifipushie import terrain_model
@@ -272,7 +273,7 @@ def test_swatches_and_styles():
     for fn in (terrain_stream_water.cobble_swatch, terrain_stream_water.silt_swatch):
         S = fn()
         a = np.round(np.clip(0.5 * S["albedo"], 0, 1) * 255).astype(np.uint8)
-        assert max(terrain_swatch.tileability(a)) < 1.5, (fn.__name__, terrain_swatch.tileability(a))
+        assert max(terrain_swatch_make.tileability(a)) < 1.5, (fn.__name__, terrain_swatch_make.tileability(a))
         assert abs(float(S["albedo"].mean()) - 1) < 0.02
     refs = {k: dict(v) for k, v in tm.LAYERS.items()}
     for name in ("realistic", "blobby", "anime", "cartoon", "pixar"):

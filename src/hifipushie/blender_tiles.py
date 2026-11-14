@@ -476,7 +476,7 @@ def _detail(m, D, lines=None):
         w = _math(nt, "MULTIPLY", w, D["strength"])
     wn = wa = w
     if D.get("fade"):  # the detail fades with the pixel's footprint (view distance x the pixel's angle, set per view):
-        # only where its repetition would show (terrain_swatch.repetition_fade; mipmaps handle the rest), on log
+        # only where its repetition would show (terrain_swatch_detail.repetition_fade; mipmaps handle the rest), on log
         # footprint
         pa = nt.nodes.new("ShaderNodeValue")
         pa.name = "hp_pixel_angle"

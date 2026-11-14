@@ -387,7 +387,7 @@ def block_colour(P, N, rc, r, fd, lines=True):
     # and depth): darker all along, it was a ruled band across the pebble chasm)
     rec = terrain_blocks.package_recess(P[:, :2], K, j, B)
     tone = 1 + (terrain_mesh.BLOCK_TONE["bed"] * (2 * hsh(K, j, 1) - 1) - terrain_mesh.BLOCK_TONE["thin"] * I["thin"] * rec) * eb
-    # (lines=False: the open bed planes and joints are drawn crisp from the lines map, terrain_swatch.structure_lines)
+    # (lines=False: the open bed planes and joints are drawn crisp from the lines map, terrain_swatch_lines.structure_lines)
     dark = 0.5 * I["bed_crack"] * (1 - eb) * lines  # (bed planes: faint; the geometry draws the ledges)
     fresh = np.zeros(len(P))
     # (a block's tone is not uniform across it: weathering wanders within the face, and a spall bares only part of it;

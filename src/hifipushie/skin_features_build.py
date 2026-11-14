@@ -22,8 +22,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     ctx = {**ctx, "torso": "chest" in J, "spec": spec}
     ctx["smooth"] = []
     if p.get("stack") and ctx["face"]:   # (skin_layers) the colour as a stack of layer maps from the reference: over the
-        from . import skin_layers       # broad colour layers laid so far, under every fine generator below
-        skin_layers.layers(spec, p["stack"], out, part)
+        from . import skin_layers_stack
+        skin_layers_stack.layers(spec, p["stack"], out, part)
     from . import paint as _paint
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
     from . import lashes as _lashes
@@ -89,9 +89,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
         scattered = not o.get("at") or (isinstance(f.get("moles"), dict) and "amount" in f["moles"])
         if scattered and ctx["face"] and "lm_jaw_1.L" in J and not o.get("where"):
             # a few on the face from the mark map (the swatch's "strongest marks" were nearly invisible): ~12 at amount 1
-            from . import skin_marks
+            from . import skin_marks_freckles
             q = {**freckle_options({"amount": 1e-4}), "moles": int(round(12 * float(o["amount"]))), "seed": int(o.get("seed", 0))}
-            path, place, _ = skin_marks.freckle_map(ctx["spec"], p["part"], J, q)
+            path, place, _ = skin_marks_freckles.freckle_map(ctx["spec"], p["part"], J, q)
             stacks.append([{"image": {"file": path, **place, "channel": "b"}}])
         elif scattered:
             hi = float(np.clip(0.955 - 0.05 * o["amount"], 0.8, 0.96))  # only the swatch's few strongest marks

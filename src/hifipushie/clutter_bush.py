@@ -48,7 +48,7 @@ def _kmeans(P, k, iters=20):
 
 def grown(cfg: dict, k: int) -> dict:
     """Variant k's shrub: stems [(points, radii)] stoutest first, twigs (pos, run), height; 1 m across its foliage."""
-    from . import veg_leaf
+    from . import veg_leaf_place
     from . import vegetation_grow
     f = cfg["form"]
     vf = (cfg.get("variant_forms") or [{}])
@@ -56,7 +56,7 @@ def grown(cfg: dict, k: int) -> dict:
     spec = {"species": "shrub", "seed": int(cfg["seed"]) * 10 + k + 1, "height": 1.0,
             "habit": {"stems": int(o.get("stems", f["stems"])), "stem_angle": float(o.get("stem_angle", f["stem_angle"]))}}
     tree = vegetation_grow.grow(spec)
-    tw = veg_leaf.place_live(tree)
+    tw = veg_leaf_place.place_live(tree)
     P, par, rad, ax = tree["pos"], tree["parent"], tree["radius"], tree["axis"]
     tp, run = tw["pos"], tw["frame"][:, 1] if tw["frame"].shape[1:] == (3, 3) else tw["frame"][:, :, 1]
     lo, hi = tp.min(0), tp.max(0)
