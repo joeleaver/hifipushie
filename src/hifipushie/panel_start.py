@@ -10,7 +10,8 @@ fitted to (chain_panels.Panels.fit_start). N2d started from a saved per-vertex X
   centres at their radius (+ GAP, interpolated by height), the grain along that line pointing up, its top at the top of
   the length paths it names, centred round the line at the angle of those paths; the cloth's outside (the flat's +z
   times its winding) faces out. Where the paths give no angle (they run on the line) the piece faces -Y, and pieces
-  sharing the same loops spread round the line (`spin` turns them: several starts).
+  sharing the same loops spread round the line (`spin` turns them: several starts). Which way round it rolls is read
+  from its SEAMS (`_ways`): one flat cuts a pair, so a sided piece's flat may show either face (N2g).
 - NO TAPE: refused by name (P2), never guessed.
 starts(cnet, body, skip, spin) -> (Xs (n, 3) per chain point, nan for skipped pieces, edge pulls, read).
 Nothing here knows a garment, a piece's role or a wear state.
@@ -46,8 +47,8 @@ def _tapes(st, nm):
     return loops, paths
 
 
-def _girth(cnet, nm, ids, loops, paths, spin):
-    """Start positions of a girth-taped piece's points (module doc)."""
+def _girth(cnet, nm, ids, loops, paths, spin, way=1.0):
+    """Start positions of a girth-taped piece's points (module doc). way -1: rolled the other way round (its mirror)."""
     C = np.array([L.mean(0) for L in loops])
     if len(loops) >= 2:
         a = np.linalg.svd(C - C.mean(0))[2][0]
@@ -80,7 +81,7 @@ def _girth(cnet, nm, ids, loops, paths, spin):
     w = _wind(cnet, ids)
     h = top - (al.max() - al)
     r = np.interp(h, hl, rl) + GAP
-    th = th0 + w * (ac - 0.5 * (ac.min() + ac.max())) / r
+    th = th0 + way * w * (ac - 0.5 * (ac.min() + ac.max())) / r
     X = o + h[:, None] * a + r[:, None] * (np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2)
     return X, {"tapes": "girth", "loops": len(loops), "angle": how, "radius_mm": [round(float(x * 1e3)) for x in rl]}
 
@@ -188,6 +189,7 @@ def starts(cnet, keep, body, skip=(), spin=None):
     Xs = np.full((cnet.n, 3), np.nan)
     pulls, rd = [], {}
     groups: dict = {}
+    girth: dict = {}
     edged = lambda nm: (st.get("edges") or {}).get(nm) or (st.get("edges") or {}).get(nm[:-2] if hand_of(nm) else nm)
     order = sorted(range(len(cnet.names)), key=lambda p: bool(edged(cnet.names[p])))  # (edge-taped last: sides by seams)
     for p in order:
@@ -197,6 +199,9 @@ def starts(cnet, keep, body, skip=(), spin=None):
         ids = np.where(cnet.piece == p)[0]
         em = edged(nm) or {}
         loops, paths = _tapes(st, nm)
+        if em and girth:  # (the girth pieces' ways settled before an edge piece reads their sides)
+            _ways(cnet, Xs, girth, rd)
+            girth = {}
         if em:
             X, pull, r = _edge(cnet, nm, ids, em, T, body, idx, Xs)
             pulls.append(pull)
@@ -214,4 +219,36 @@ def starts(cnet, keep, body, skip=(), spin=None):
                                "was drafted on); a piece starts where it was measured, never guessed")
         Xs[ids] = X
         rd[nm] = r
+        if loops and not em:
+            girth[p] = (nm, ids, loops, paths, spin.get(nm, 0.0) + 2 * np.pi * r.get("spread", 0) / 2)
+    _ways(cnet, Xs, girth, rd)
     return Xs, pulls, rd
+
+
+def _seam_cost(cnet, Xs, mine):
+    a, b = cnet.sew[:, 0], cnet.sew[:, 1]
+    a, b = np.r_[a, b], np.r_[b, a]
+    k = mine[a] & ~mine[b] & ~np.isnan(Xs[b, 0]) & ~np.isnan(Xs[a, 0])
+    return float(np.linalg.norm(Xs[a[k]] - Xs[b[k]], axis=1).sum())
+
+
+def _ways(cnet, Xs, girth, rd, sweeps: int = 3):
+    """Which way round each girth-taped piece rolls, read from its SEAMS (N2g): one flat cuts a pair, so the flat may
+    show either face of a sided piece (the jacket's front flat shows its inside, the back's its outside: rolled the same
+    way, the front's side seam landed at the centre front, 245-300 mm from its partners). Each piece takes the way whose
+    seams to the other started pieces are nearer, a few sweeps until none changes; the way taken is in its read."""
+    for _ in range(sweeps):
+        changed = False
+        for p, (nm, ids, loops, paths, sp_) in sorted(girth.items()):
+            mine = cnet.piece == p
+            now = rd[nm].get("way", 1.0)
+            c0 = _seam_cost(cnet, Xs, mine)
+            Xo = Xs[ids].copy()
+            Xs[ids] = _girth(cnet, nm, ids, loops, paths, sp_, -now)[0]
+            if _seam_cost(cnet, Xs, mine) < c0:
+                rd[nm]["way"] = -now
+                changed = True
+            else:
+                Xs[ids] = Xo
+        if not changed:
+            break
