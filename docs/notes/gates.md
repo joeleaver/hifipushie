@@ -60,7 +60,7 @@ The faults were in the PROCESS, at four points:
      (nose base to chin), each eye with its lower lid, each cheek / nasolabial area (front, + 3/4 when a 3/4 photo exists).
      Tool: assembly scratch r46/tiles.py (MediaPipe, similarity per feature); spikes/tour/tour.py does the same for heads
      from the block-in. The 1 m / 3 m frames stay, but only as the separate game-readability check under the game rig.
-   - CHARACTER SCULPTS ARE REVIEWED FROM THE CONCEPT'S OWN CAMERA (Baynard Racing, Puddles, 2026-11-06, C396). Judging
+   - CHARACTER SCULPTS ARE REVIEWED FROM THE CONCEPT'S OWN CAMERA (Braynard Racing, Puddles, 2026-11-06, C396). Judging
      from a camera picked by eye, or by silhouette overlays, the author sees what was meant: Puddles' arms (welded along
      the side), ears (on a stalk, folded the wrong way) and tail went many rounds that way. The standard LOOK input for
      a creature / character / prop sculpt with a concept image: `fit_concept_camera(name, image)` (IoU >= 0.85; a

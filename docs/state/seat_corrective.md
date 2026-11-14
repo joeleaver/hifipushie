@@ -1,7 +1,7 @@
 # Stub seat corrective (seated hips 90 on legs blended into the body): STATE 2026-11-05
 
 Branch seat-corrective (worktree .claude/worktrees/seat-corrective), from main c1b55537. Leg-blend's "Open 1"; asked for
-by Baynard Racing (Puddles, gap 22). Not pushed; coordinator lands. Exploring run (no gate).
+by Braynard Racing (Puddles, gap 22). Not pushed; coordinator lands. Exploring run (no gate).
 
 ## What the tools hold now (correctives.py `_stub_target` docstring = spec; ledger C374)
 - `keys(bones, girth=)`: frames from `rig_bend.arc_frames(bones, girth)` (the ones the weights used). New motion
@@ -14,7 +14,7 @@ by Baynard Racing (Puddles, gap 22). Not pushed; coordinator lands. Exploring ru
   UpLeg rows (driver as every corrective; Blender's preview drives them by itself). No BUILD_VERSION bump.
 - People: keys identical with or without girth, no UpLeg key (tests/test_rig_stub.py, 5 tests, 2 new).
 
-## Proof (workspace pudsc = copy of pud2; renders in the Baynard notes folder, seat_corrective/)
+## Proof (workspace pudsc = copy of pud2; renders in the Braynard notes folder, seat_corrective/)
 - Model (160 voxel build), seated: edges > 3x 20 -> 37, > 2x 406 -> 503, p99.9 2.18x -> 2.27x. Seat skin > 5 mm
   past the turned thigh's underside: L 30 -> 7, R 38 -> 10 (worst 20 -> 12 mm). Front: the fold line at z 0.21-0.24
   is gone (belly stays round, meets the thigh at z 0.2). Back: as LBS with the seat a little higher. Crotch: still
@@ -24,7 +24,7 @@ by Baynard Racing (Puddles, gap 22). Not pushed; coordinator lands. Exploring ru
   gain shows on the model, barely on the GLB (front edge a touch lower, jaggies at the thigh top either way).
 
 ## Open, ranked by what shows in the kart
-1. Judge the GLB in the kart at 1 m (Joe / Baynard): it is not yet a clear win on the export. If it reads worse,
+1. Judge the GLB in the kart at 1 m (Joe / Braynard): it is not yet a clear win on the export. If it reads worse,
    STUB_ONLY = () turns it off with nothing else changed.
 2. Crotch notch at the midline (model and GLB): needs both legs solved together (a seated key on the pair).
 3. Knee: Leg_flex solves 0 vertices on a stub's knee (reach 0.28 x a 5.5 cm shin < its girth). Not touched.
@@ -41,6 +41,6 @@ plane from the thigh's own skin (a pig's thigh has no back skin: it came out on 
 ## Commands
 `/mnt/data/hifipushie/seatcorr/measure.py <model> [render dir]` (CMSET="NAME=val;..." overrides), glbcheck.py.
 
-NEXT: coordinator lands after bin/suite; Baynard exports Puddles and judges seated in the kart (Open 1) before
+NEXT: coordinator lands after bin/suite; Braynard exports Puddles and judges seated in the kart (Open 1) before
 anyone builds on it; then the pair key for the crotch.
 History: this page + commits on seat-corrective; ledger C374.

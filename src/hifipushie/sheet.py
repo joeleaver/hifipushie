@@ -29,7 +29,7 @@ as the spine's bend radius stays above the half thickness (refused otherwise) an
 normal) stays wide next to the half width. With "fold": "crush" a tighter bend is allowed: the spine is cut into
 pieces turning <= 20 degrees through each over-tight bend (and a thickness either side), each piece capped flat at
 its cuts, and the sheet is their union (min), which is the same sweep of cross-sections with the inside of the bend
-filled to one crease instead of folding through itself (Baynard Racing's Puddles: a fat clay ear folded ~90 degrees
+filled to one crease instead of folding through itself (Braynard Racing's Puddles: a fat clay ear folded ~90 degrees
 into one solid lump, gap 32). Distance estimate: exact across the thickness, close elsewhere.
 `fit` moves the spine points (group "pos") and the stations' half sizes ("size").
 """

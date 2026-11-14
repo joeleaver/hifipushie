@@ -1,6 +1,6 @@
 """Read a reference picture: its views, each view's camera, and what the picture holds INSIDE its outline.
 
-Why (Baynard Racing, Scraps and Puddles, 2026-11-12): two racers were sculpted from concept art and scored on
+Why (Braynard Racing, Scraps and Puddles, 2026-11-12): two racers were sculpted from concept art and scored on
 their outer outline only. Scraps' block-in overlapped his turnaround 88 %, with a box for a head: no muzzle, no
 sockets, no brows, no mouth. Everything inside the outline was read by the sculptor's eye, turned into 3D numbers
 in its head and typed. The picture itself holds that information; this module gets it out, in the picture's own

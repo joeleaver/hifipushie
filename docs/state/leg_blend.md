@@ -1,7 +1,7 @@
 # Legs blended into the body, seated (stub limbs): STATE 2026-11-05
 
-Branch leg-blend (worktree .claude/worktrees/leg-blend), from main d89f5709. Asked for by Baynard Racing (Puddles the
-pig, gap 22 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coordinator lands. Exploring run (no gate).
+Branch leg-blend (worktree .claude/worktrees/leg-blend), from main d89f5709. Asked for by Braynard Racing (Puddles the
+pig, gap 22 in braynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coordinator lands. Exploring run (no gate).
 
 ## What the tools hold now (rig.py, `_arc_bend` comments = spec; ledger C373)
 - `limb_girth(rb, V, J, W)`: per bend driver, the lower quartile of the distance from the segment's axis of the skin
@@ -13,9 +13,9 @@ pig, gap 22 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed;
 - People untouched: a person's limb is never a stub; `_arc_bend` is bit-identical (tests/test_rig_stub.py, 3 tests).
 - Export: weights only, through the same `rig_weights` -> `_spread_twist` -> `_arc_bend` path that export_asset(rig=True)
   uses; the bend helpers and their rig notes (engine wiring) were already there. No engine change, no BUILD_VERSION
-  bump (no meshing change). NOT checked: an actual export of the blended model (do it before Baynard relies on it).
+  bump (no meshing change). NOT checked: an actual export of the blended model (do it before Braynard relies on it).
 
-## Proof (hifipushie workspace; renders in the Baynard notes folder, leg_blend/)
+## Proof (hifipushie workspace; renders in the Braynard notes folder, leg_blend/)
 - pudlb_one = pud2 with thigh/shin back in the body (no part), body rig_drop without UpLeg/Leg/Foot/ToeBase.
   pudlb_sep = pud2 as is. pud2 untouched.
 - Seated (hips, knees 90), edges stretched > 3x: before 2442 (> 2x 5568, p99.9 6.7x; belly torn across at z 0.25-0.30, thigh
@@ -34,5 +34,5 @@ pig, gap 22 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed;
 3. Arms are stubs too by the rule (Puddles' are their own part, not tried blended).
 
 NEXT: coordinator lands leg-blend after bin/suite; then a corrective run for open 1 (the seat and crotch), then
-Baynard re-exports Puddles with legs in the body and judges seated in the kart.
+Braynard re-exports Puddles with legs in the body and judges seated in the kart.
 History: this page + commits on leg-blend; ledger row C373. (No line in CLAUDE.md Threads: it would pass 8 KB.)

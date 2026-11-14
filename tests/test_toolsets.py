@@ -22,7 +22,7 @@ export_plant wind_plant sync_plant plant_history heavy_status heavy_queue make_c
 clutter_kit""".split()
 # added since: the artist block-in (2026-10-10)
 ADDED = {"fit_concept_camera", "look_matched", "feature_tiles", "join_report",  # (matched views, gap #31)
-         "fit_matched",  # (fit a part to fitted-camera pictures: its seen outline, a press limit; Baynard gap 33)
+         "fit_matched",  # (fit a part to fitted-camera pictures: its seen outline, a press limit; Braynard gap 33)
          "read_reference", "mark_features", "feature_report",  # (the feature map: a sculpt read from its pictures)
          "build_masses",  # (masses from their marked outlines)
          "build_forms",  # (forms laid on the masses from their marks, as strokes)

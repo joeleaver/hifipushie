@@ -1,7 +1,7 @@
 """Masses from their outlines: a mass marked on a reference's flat views (featuremap.py) becomes a shape in the
 model, its numbers read off the marks. The sculptor says WHAT each mass is; no coordinate is typed.
 
-Why (Baynard Racing, 2026-11-12): a block-in typed as numbers cost six saves for a head and ten for a horn, and
+Why (Braynard Racing, 2026-11-12): a block-in typed as numbers cost six saves for a head and ten for a horn, and
 still missed the outline by centimetres, because every number was read off a picture by eye and typed. The marks
 already hold those numbers.
 

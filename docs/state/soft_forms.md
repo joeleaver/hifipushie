@@ -1,7 +1,7 @@
 # Soft primary forms (loft, super): STATE 2026-11-04
 
-Branch loft-super (worktree .claude/worktrees/loft-super), from main 5e840ded. Asked for by Baynard Racing (Puddles
-the pig, gaps 11 and 14 in baynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coordinator lands.
+Branch loft-super (worktree .claude/worktrees/loft-super), from main 5e840ded. Asked for by Braynard Racing (Puddles
+the pig, gaps 11 and 14 in braynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coordinator lands.
 
 ## What the tools hold now
 - `softforms.py` (docstring = spec), wired into spec._compile, sdf.SDF, spec.SHAPES (csg / deform / hollow apply).
@@ -18,7 +18,7 @@ the pig, gaps 11 and 14 in baynard-racing/workspace/puddles/hifipushie_gaps.md).
   the step is rejected / the difference taken backwards. Found on pud's ears in the full fit.
 - server SOLIDS (kit_reference) describes both shapes. tests/test_softforms.py: 12 tests.
 
-## Proof (hifipushie workspace; renders in the Baynard notes folder, see below)
+## Proof (hifipushie workspace; renders in the Braynard notes folder, see below)
 - pud_loft v8: pud with body + waist + head blobs replaced by ONE loft from the brief's measured sections, then a
   full fit: IoU front 0.976, side 0.963. pud_blobs v2: copy of pud, same full fit: 0.973 / 0.965. pud untouched.
 - Raking light: blobs show horizontal grooves z 0.42-0.6; loft none. Blind review (bin/review, a = loft, b = blobs):
@@ -32,8 +32,8 @@ the pig, gaps 11 and 14 in baynard-racing/workspace/puddles/hifipushie_gaps.md).
    a tent peaking at the knot (measured); the render colours the field's Laplacian, which also jumps there. A C3+
    interpolant (quintic) would round the peak if reviewers keep reading it as a line.
 2. fit barely moves squareness (Jacobian small next to the prior at max_step 0.02); give "shape" its own step.
-3. Puddles' head-and-body proportions (Baynard side): re-measure sections from the turnaround with the head as the
+3. Puddles' head-and-body proportions (Braynard side): re-measure sections from the turnaround with the head as the
    largest volume, top round ~2.5, then fit. Approval of pud_loft not asked (tooling run).
 
-NEXT: coordinator lands loft-super after bin/suite; Baynard rebuilds Puddles' mass as a loft.
+NEXT: coordinator lands loft-super after bin/suite; Braynard rebuilds Puddles' mass as a loft.
 History: this page + commits on loft-super; ledger row C370.

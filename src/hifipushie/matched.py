@@ -1,5 +1,5 @@
 """Matched views: look at a model from the camera its concept image was drawn from, and cut the same feature
-tiles from both, so the LOOK gate compares like with like (gap from Baynard Racing's Puddles, 2026-11-06).
+tiles from both, so the LOOK gate compares like with like (gap from Braynard Racing's Puddles, 2026-11-06).
 
 Why: a camera picked by eye, or a silhouette overlay, shows what the author meant, not what is there. Puddles'
 arms, ears and tail went many rounds that way (an arm welded along the side, ears on stalks, the wrong fold);
