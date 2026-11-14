@@ -53,7 +53,7 @@ match the description is wrong, however good its numbers.
 | # | Stage | Tools | Gate |
 |---|---|---|---|
 | 1 | Plan | `set_plan` (front / side outlines, landmark heights, 3-4 sections), `set_reference` | Proportions match the description: fix them here, where it costs one edit |
-| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report` | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
+| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; then on the figure itself: `fuse` (two masses that are one form), `grab` (an outline that is off) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
 | 3 | Secondary forms | strokes (`look(strokes=True)`, `shading="raking"`), `feature_report` | Every FORM of the feature map made; masses read; the silhouette barely moved |
 | 4 | Detail | strokes with repeat / scatter, in close-ups | Details at the right scale, judged in close-ups |
 | 5 | Parts | parts (eyes, teeth, clothing shells), seated joints | Each part its own mesh, nothing cutting into another |
@@ -104,6 +104,12 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 
 ## When something looks wrong
 
+- Two masses that are ONE form in the reference read as two (a neck crease between head and body, a snowman): `fuse`
+  them. Don't fill the gap with another blob (it makes a ring, a scarf) and don't raise one mass's `blend` (it rounds
+  it against everything).
+- A mass's outline is off against the reference (a round end that should come to a point, a tip that should lean, a
+  face that should be flatter): `grab` the clay there and move it to where the reference has it, in the view that
+  shows it. Don't rebuild the mass from new numbers to find out how they turn it.
 - Don't guess and pile on fixes. Isolate: render the region with `shading="curvature"` and remove suspects one at a
   time (history makes it cheap) until the defect goes.
 - Stripes or speckle across a stroke: its path crosses busy features or it is deep for its width: widen it, make it
@@ -122,6 +128,7 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 | Speculative fixes stacked on a defect | Isolate it first |
 | Heavy-handed weathering | Restraint: a shift of tone, centimetres of sag |
 | Calling a blockout done on its outline | `feature_report`: nothing NOT MADE (an outline can match round a box) |
+| Filling a join with another blob, or rebuilding a mass to change its outline | `fuse` the two masses; `grab` the outline |
 | Calling it done on numbers | The self-review beside the reference |
 
 ## 4d. Realistic humans start from a base, not blobs

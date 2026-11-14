@@ -256,6 +256,45 @@ rest only in the buried piece at the join (within 1 cm of it); anywhere else dee
 depth. Without it an outline fit buries tips, which change no outline (Puddles' ears, 20-41 mm into the head).
 Trace the part where it meets the body too: that line is what stops it spreading. Judge the result by
 look_matched / feature_tiles and the blind review, not by IoU: outlines can't see form.
+### `fuse`
+
+`fuse(name, a, b, fill=None, width=None, note='')`
+
+Work two masses into ONE flowing mass, as a modeller smooths two lumps of clay together. The hollow between `a`
+and `b` fills and the line between them goes; the rest of the model blends against the fused mass as before.
+Use it when two masses that are one form in the reference read as two in the look: a head and body that should
+be one pear and are two balls with a neck crease (a snowman), a snout that should grow out of a face. A blob put
+in the gap makes a ring (a scarf); a bigger `blend` on one mass rounds it against everything; this is the join
+of THIS pair.
+fill: how far the two are worked into each other, in metres (0.05 a soft crease, 0.15 a clear waist, 0.25 one
+mass with a slight pinch; the hollow fills by about a sixth of it). OR width: how wide the figure is at its narrowest between the two, in metres, read off the
+reference's outline at that height: the fill is found for you (two masses one above the other only). One of the
+two. fill=0 parts them again. Fusing a third mass to one already fused puts all three in one fuse, with one fill.
+Returns the front and side look, and the waist as measured: its width (across x), depth (across y) and height,
+with what they were before. The masses must both add clay, in the same layer and part; a mass in a kit's group
+can't be fused. In the spec it is two keys on each mass: "fuse": "<tag>", "fill": metres.
+
+### `grab`
+
+`grab(name, of, view, at, to, radius, label='', remove=False, note='')`
+
+Take hold of clay that is already there and move it: a modeller's move brush. In a flat view, the clay of the
+masses `of` at the point `at` goes to `to`; the clay within `radius` of `at` (in that view) follows, all of it at
+`at`, less the further out, none at `radius`, all the way through the depth, so the outline moves whole and the
+surface stays smooth. Only the named masses move; they blend with their neighbours as before.
+view: "front" (at, to are [x, z]), "side" ([y, z]; the figure faces -y, so its front is the lower y) or "top"
+([x, y]): metres, read off the rulers of `look` (grid=True helps). of: names of bones or blobs (the centre or the
+".L" one).
+Use it wherever a mass's outline is off against the reference and retyping its numbers would mean guessing: a
+round end pulled out to a point, a tip tipped forward (in the side view), a cheek pulled out, a domed face pushed
+flatter, a back line pulled straight.
+A grab moves clay by at most half its radius (further would fold it): a bigger move takes a bigger radius, or is
+a move of the mass itself (its joint, its `at`), followed by a grab for the rest. Grabs on the same mass add up.
+label names the grab (default grab1, grab2 ...): the same label replaces it; remove=True with a label takes it
+off. On a symmetric model a grab on a ".L" mass is made on its ".R" twin, and a grab off the centre line of a
+centre mass is made on the other side too. Returns the look from that view and three-quarter. In the spec:
+"grabs": {label: {"of", "view", "at", "to", "radius"}}.
+
 ### `look_matched`
 
 `look_matched(name, label='concept', resolution=192, samples=32, only_parts=None, hide_parts=None, save=None)`

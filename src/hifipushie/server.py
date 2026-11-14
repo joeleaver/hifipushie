@@ -41,6 +41,7 @@ from .tools_plan import (  # noqa: F401
     clearance, compare, feature_tiles, fit, fit_concept_camera, fit_matched, join_report, look_matched, set_plan,
     set_reference, style_check,
 )
+from .tools_reshape import fuse, grab  # noqa: F401
 from .tools_plants import (  # noqa: F401
     edit_plant, export_plant, export_stand, get_plant, grow_plant, grow_stand, look_plant, look_plants, look_stand,
     plant_form, plant_history, plant_reference, sync_plant, wind_plant,
@@ -54,7 +55,7 @@ from .tools_terrain import (  # noqa: F401
 
 # A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
 __getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
-                                      "tools_features", "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
+                                      "tools_features", "tools_reshape", "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
                                       "tools_terrain", "tools_plants", "tools_clutter"))
 
 _register_core()

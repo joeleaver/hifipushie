@@ -23,6 +23,7 @@ start from.
 | core | Native tools: models, specs, look, check, measure, history, the guide, find / call any tool | `guide`, `find_tool`, `call_tool`, `list_models`, `get_model`, `kit_reference`, `put_model`, `edit_model`, `look`, `check`, `measure`, `history`, `revert`, `review_view` |
 | plan | Plans, reference images, compare, silhouette fit, clearance, style check | `set_plan`, `set_reference`, `compare`, `fit`, `clearance`, `style_check` |
 | concept | Match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles for review_view, how parts join the body (stalk or base) | `fit_concept_camera`, `look_matched`, `feature_tiles`, `join_report`, `fit_matched` |
+| reshape | Reshape what is already there, as a modeller's hands do: work two masses into one flowing mass, take hold of clay in a flat view and move it | `fuse`, `grab` |
 | features | Sculpt from reference pictures: read a picture's views, patches and form lines, name its features as marks on it (the feature map), build the masses from their marks, measure a model feature by feature | `read_reference`, `mark_features`, `build_masses`, `build_forms`, `feature_report` |
 | scene | The Blender scene (sync, pull) and the heavy-job queue | `sync`, `pull`, `heavy_status`, `heavy_queue` |
 | export | OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB | `export`, `export_asset`, `rig`, `judge_asset` |

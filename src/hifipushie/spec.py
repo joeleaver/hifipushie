@@ -359,6 +359,7 @@ def _compile(spec: dict) -> list[Prim]:
         p.group, p.join = el.get("group"), float(el.get("join", 0.0))
         p.part = el.get("part") or "body"
         p.instance = el.get("instance")
+    prims, els = _fuse(prims, els)
     first: dict = {}  # a group blends into the body once, by its first member's blend and join: every member carries
     for p in prims:  # them, or a chunk that culls the first member blends by another's (seams at chunk edges)
         if p.group:
@@ -369,6 +370,7 @@ def _compile(spec: dict) -> list[Prim]:
         prims.insert(0, _base(s, k_default))
         prims[1:1] = _gnm_mouth(s, prims[0].part)
     prims = _deform(s, prims)
+    prims = _grabs(s, prims)
     out = _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
     if s.get("base"):  # the upper lids' fold (base.head.fold, lidfold.py): modifiers right after the base, seated on
         # the base as it is finally built (seated on the base as first made, the lines stood 4 mm off the meshed lid)
@@ -444,6 +446,73 @@ def _deform(s: dict, prims: list[Prim]) -> list[Prim]:
         p.params["warp"] = (ops, lip)
         p.lo, p.hi = p.lo - reach, p.hi + reach
         p.reach = np.asarray(p.reach, float) * lip
+    return prims
+
+
+def _fuse(prims: list[Prim], els: list[dict]) -> tuple[list[Prim], list[dict]]:
+    """Elements that share a "fuse" tag are worked into one mass (reshape.py): joined first, smooth by the tag's
+    "fill" (the largest given), then blended into the rest once, like a kit's group. A group joins neighbours in
+    the combination order, so the members are gathered at the first one's place."""
+    tags: dict = {}
+    for i, el in enumerate(els):
+        if el.get("fuse"):
+            tags.setdefault(str(el["fuse"]), []).append(i)
+    if not tags:
+        return prims, els
+    order, placed = [], set()
+    for i in range(len(prims)):
+        if i in placed:
+            continue
+        t = els[i].get("fuse")
+        mem = tags[str(t)] if t else [i]
+        if t:
+            if len(mem) < 2:
+                raise SpecError(f"fuse {t!r}: only {prims[i].name!r} has it; a fuse works two or more masses together")
+            fill = max(float(els[j].get("fill", 0.0)) for j in mem)
+            if fill < 0:
+                raise SpecError(f"fuse {t!r}: fill is how far the masses are worked into each other, in metres: 0 or more")
+            for j in mem:
+                p, p0 = prims[j], prims[mem[0]]
+                if p.group:
+                    raise SpecError(f"{p.name!r} is already in the group {p.group!r}: it can't be fused as well")
+                if p.op != "add" or (p.layer, p.part) != (p0.layer, p0.part):
+                    raise SpecError(f"fuse {t!r}: {p.name!r} and {p0.name!r} must both add clay, in the same layer and part")
+            for j in mem:
+                prims[j].group, prims[j].join = f"fuse:{t}", fill
+        order += mem
+        placed.update(mem)
+    return [prims[i] for i in order], [els[i] for i in order]
+
+
+def _grabs(s: dict, prims: list[Prim]) -> list[Prim]:
+    """grabs: clay of named masses moved as a modeller's move brush moves it (reshape.py). Each grab's masses are
+    evaluated through its warp, like a style deformation, so what is moved stays one smooth surface and blends
+    with its neighbours as before."""
+    grabs = s.get("grabs")
+    if not grabs:
+        return prims
+    from . import reshape
+    eff = reshape.effective(grabs, bool(s.get("symmetry", True)), [p.name for p in prims])
+    sets: dict = {}
+    for i, p in enumerate(prims):
+        if p.instance is None and p.op in ("add", "subtract", "intersect") and p.kind in SHAPES:
+            hit = tuple(j for j, (_, of) in enumerate(eff) if p.name in of)
+            if hit:
+                prev = p.params.get("warp") if p.kind == "csg" else None
+                sets.setdefault((id(prev[0]) if prev else 0, hit), []).append(i)
+    for (_, hit), idx in sets.items():
+        prev = prims[idx[0]].params.get("warp") if prims[idx[0]].kind == "csg" else None
+        mine = [{"grab": eff[j][0]} for j in hit]
+        lip, reach = reshape.stretch(mine, [prims[i].name for i in idx])
+        ops = (list(prev[0]) if prev else []) + mine
+        for i in idx:
+            p = prims[i]
+            if p.kind != "csg":
+                p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+                p.kind = "csg"
+            p.params["warp"] = (ops, lip * (prev[1] if prev else 1.0))
+            p.lo, p.hi = p.lo - reach, p.hi + reach
+            p.reach = np.asarray(p.reach, float) * lip
     return prims
 
 
@@ -727,16 +796,20 @@ def _set_reach(prims: list[Prim]) -> None:
     it can be skipped without changing the combined field. That needs its value to stay out of its own
     blend and out of the blend of every later primitive that overlaps it (a fillet from a later part
     rounds toward everything already combined), plus k/4 for the dip smooth union adds."""
+    def blend(q: Prim) -> float:  # a fused mass also rounds toward its fellows by the fuse's fill (often the larger)
+        return max(q.blend, q.join) if (q.group or "").startswith("fuse:") else q.blend
+
     scale = [np.broadcast_to(np.asarray(p.reach, float), (3,)) for p in prims]
     for i in range(len(prims) - 1, -1, -1):
-        p, k = prims[i], prims[i].blend
+        p, k = prims[i], blend(prims[i])
         if p.op == "modify":  # applied exactly within its box, not blended: nothing to widen
             p.reach, p.inert = 0.0, 0.0
             continue
         for q in prims[i + 1:]:
-            if q.op != "modify" and q.blend * 1.25 > k and np.all(p.lo - scale[i] * q.blend * 1.25 <= q.hi + q.reach) \
-                    and np.all(q.lo - q.reach <= p.hi + scale[i] * q.blend * 1.25):
-                k = q.blend * 1.25
+            kq = blend(q)
+            if q.op != "modify" and kq * 1.25 > k and np.all(p.lo - scale[i] * kq * 1.25 <= q.hi + q.reach) \
+                    and np.all(q.lo - q.reach <= p.hi + scale[i] * kq * 1.25):
+                k = kq * 1.25
         p.reach, p.inert = scale[i] * k, k
 
 

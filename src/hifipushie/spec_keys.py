@@ -20,7 +20,7 @@ from __future__ import annotations
 import difflib
 
 JOINT_KEYS = ("pos", "r", "on", "lift", "shift")
-GENERIC = ("blend", "op", "layer", "group", "join", "part", "tags", "array", "between", "inset", "targets",
+GENERIC = ("blend", "op", "layer", "group", "join", "fuse", "fill", "part", "tags", "array", "between", "inset", "targets",
            "lumpy", "chips", "hollow",  # element-level solids (spec._csg): on bones and shaped blobs
            "instance", "local")         # an element of a prefab's instance (written by the expansion)
 BONE_KEYS = ("a", "b", "r_a", "r_b", "flat", "bow", "up", "ends", *GENERIC)

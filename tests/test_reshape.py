@@ -1,0 +1,144 @@
+"""fuse and grab (reshape.py): two masses worked into one, and clay moved where it stands."""
+import copy
+
+import numpy as np
+import pytest
+
+from hifipushie import reshape, store
+from hifipushie.sdf import field_at
+from hifipushie.spec import SpecError, compile_prims, empty_spec
+
+
+def _figure():
+    """A ball of a head on a ball of a body, an ear each side, an arm that is a bone (so bone + blob orders mix)."""
+    s = empty_spec()
+    s["joints"] = {"pelvis": {"pos": [0, 0, 0.25]}, "head": {"pos": [0, 0, 0.6]}, "ear.L": {"pos": [0.13, 0, 0.74]},
+                   "shoulder.L": {"pos": [0.17, 0, 0.42]}, "wrist.L": {"pos": [0.3, 0, 0.3]}}
+    s["bones"] = {"arm.L": {"a": "shoulder.L", "b": "wrist.L", "r_a": 0.04, "r_b": 0.035}}
+    s["blobs"] = {"torso": {"at": "pelvis", "size": [0.2, 0.18, 0.2]},
+                  "head": {"at": "head", "size": [0.2, 0.17, 0.16]},
+                  "ear.L": {"at": "ear.L", "size": [0.045, 0.025, 0.06], "blend": 0.02}}
+    return s
+
+
+def _top(prims, x, y=0.0, z0=0.4, z1=1.0):
+    """The highest z at (x, y) where there is clay."""
+    z = np.linspace(z0, z1, 1201)
+    f = field_at(prims, np.stack([np.full_like(z, x), np.full_like(z, y), z], 1), clip=False)
+    return float(z[np.nonzero(f < 0)[0].max()])
+
+
+def _edge(prims, z, y=0.0):
+    """The furthest x at height z where there is clay."""
+    x = np.linspace(0.0, 0.6, 1201)
+    f = field_at(prims, np.stack([x, np.full_like(x, y), np.full_like(x, z)], 1), clip=False)
+    return float(x[np.nonzero(f < 0)[0].max()])
+
+
+def test_a_fuse_fills_the_waist_and_more_fill_fills_more():
+    prims = compile_prims(_figure())
+    w = [reshape.waist(prims, "head", "torso", k)["width"] for k in (0.0, 0.05, 0.1, 0.2)]
+    assert w == sorted(w) and w[-1] - w[0] > 0.05
+
+
+def test_a_width_read_off_the_reference_is_met():
+    prims = compile_prims(_figure())
+    fill, said = reshape.solve_fill(prims, "head", "torso", 0.30)
+    assert said == "" and abs(reshape.waist(prims, "head", "torso", fill)["width"] - 0.30) < 0.003
+
+
+def test_a_width_wider_than_a_fuse_can_fill_is_said():
+    prims = compile_prims(_figure())
+    fill, said = reshape.solve_fill(prims, "head", "torso", 0.39)
+    assert fill > 0.2 and "overlap further" in said
+
+
+def test_a_width_no_fill_can_reach_is_said():
+    prims = compile_prims(_figure())
+    narrow = reshape.waist(prims, "head", "torso", 0.0)["width"]
+    fill, said = reshape.solve_fill(prims, "head", "torso", narrow - 0.02)
+    assert fill == 0.0 and "already" in said
+
+
+def test_fused_masses_are_one_group_whatever_their_order_and_the_model_shows_the_fill():
+    s = _figure()
+    plain = compile_prims(copy.deepcopy(s))
+    for n in ("head", "torso"):
+        s["blobs"][n].update(fuse="head+torso", fill=0.15)
+    s["blobs"] = {"torso": s["blobs"]["torso"], "ear.L": s["blobs"]["ear.L"], "head": s["blobs"]["head"]}  # apart
+    prims = compile_prims(s)
+    names = [p.name for p in prims]
+    assert abs(names.index("head") - names.index("torso")) == 1
+    assert {p.group for p in prims if p.name in ("head", "torso")} == {"fuse:head+torso"}
+    z = reshape.waist(plain, "head", "torso", 0.03)["z"]
+    assert _edge(prims, z, y=0.04) - _edge(plain, z, y=0.04) > 0.02  # the neck is wider in the whole model (clear of the arm)
+    for p in prims:
+        if p.name in ("head", "torso"):
+            assert p.inert >= 0.15  # their boxes reach as far as the fill rounds (a short reach leaves a torn band)
+
+
+def test_a_fuse_on_one_mass_alone_and_a_fuse_with_a_grouped_mass_are_refused():
+    s = _figure()
+    s["blobs"]["head"].update(fuse="x", fill=0.1)
+    with pytest.raises(SpecError, match="two or more"):
+        compile_prims(s)
+    s["blobs"]["torso"].update(fuse="x", fill=0.1, group="g")
+    with pytest.raises(SpecError, match="already in the group"):
+        compile_prims(s)
+
+
+def test_a_grab_moves_the_clay_it_holds_to_where_it_is_put():
+    s = _figure()
+    before = _top(compile_prims(copy.deepcopy(s)), 0.13)
+    s["grabs"] = {"tip": {"of": ["ear.L"], "view": "front", "at": [0.13, before], "to": [0.13, before + 0.03],
+                          "radius": 0.07}}
+    prims = compile_prims(s)
+    assert abs(_top(prims, 0.13) - (before + 0.03)) < 0.003
+    assert abs(_top(prims, -0.13) - (before + 0.03)) < 0.003  # the right ear too
+    assert abs(_top(prims, 0.0) - _top(compile_prims(_figure()), 0.0)) < 1e-3  # the head, not named, has not moved
+
+
+def test_a_grab_off_the_centre_line_of_a_centre_mass_is_made_on_both_sides():
+    s = _figure()
+    z = 0.6
+    e0 = _edge(compile_prims(copy.deepcopy(s)), z)
+    s["grabs"] = {"cheek": {"of": ["head"], "view": "front", "at": [e0, z], "to": [e0 + 0.02, z], "radius": 0.08}}
+    prims = compile_prims(s)
+    x = np.linspace(-0.6, 0.6, 2401)
+    inside = field_at(prims, np.stack([x, np.zeros_like(x), np.full_like(x, z)], 1), clip=False) < 0
+    assert abs(x[inside].max() - (e0 + 0.02)) < 0.003 and abs(x[inside].min() + (e0 + 0.02)) < 0.003
+
+
+def test_a_grab_that_would_fold_the_clay_is_refused_with_the_radius_it_needs():
+    s = _figure()
+    s["grabs"] = {"far": {"of": ["head"], "view": "front", "at": [0, 0.76], "to": [0, 0.86], "radius": 0.08}}
+    with pytest.raises(SpecError, match="radius of 20.0 cm"):
+        compile_prims(s)
+
+
+def test_a_grab_of_a_mass_that_is_not_there_names_the_masses():
+    s = _figure()
+    s["grabs"] = {"g": {"of": ["nose"], "view": "side", "at": [0, 0.6], "to": [0.01, 0.6], "radius": 0.05}}
+    with pytest.raises(SpecError, match="no mass called 'nose'"):
+        compile_prims(s)
+
+
+def test_the_tools_save_a_version_and_say_what_they_did(tmp_path, monkeypatch):
+    from hifipushie import server
+    monkeypatch.setattr(store, "HOME", tmp_path)
+    monkeypatch.setattr(server.tools_reshape if hasattr(server, "tools_reshape") else __import__(
+        "hifipushie.tools_reshape", fromlist=["x"]), "_with_look", lambda name, views, text: text)
+    store.save("fig", _figure(), "start")
+    out = server.fuse("fig", "head", "torso", width=0.30)
+    import re
+    assert "worked into one mass" in out and "before:" in out
+    assert abs(float(re.search(r"them: (\d+\.\d) cm across", out).group(1)) - 30.0) < 0.4
+    assert store.load("fig")["blobs"]["head"]["fuse"] == "head+torso"
+    out = server.grab("fig", ["ear.L"], "front", [0.13, 0.8], [0.14, 0.82], 0.06, label="tip")
+    assert "grab 'tip'" in out and store.load("fig")["grabs"]["tip"]["radius"] == 0.06
+    out = server.grab("fig", [], "front", [0, 0], [0, 0], 0.1, label="tip", remove=True)
+    assert "taken off" in out and "grabs" not in store.load("fig")
+    out = server.fuse("fig", "head", "torso", fill=0)
+    assert "parted" in out and "fuse" not in store.load("fig")["blobs"]["head"]
+    with pytest.raises(ValueError, match="no mass called 'neck'"):
+        server.fuse("fig", "head", "neck", fill=0.1)

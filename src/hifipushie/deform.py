@@ -25,7 +25,8 @@ import numpy as np
 
 from .spec import SpecError
 
-KINDS = ("sag", "bulge", "taper", "lean", "twist", "wobble")
+KINDS = ("sag", "bulge", "taper", "lean", "twist", "wobble", "grab")
+GRAB_AXES = {"front": (1, 0, 2), "side": (0, 1, 2), "top": (2, 0, 1)}  # view -> (looked along, across, up) axes
 
 
 def _ramp(z, a, b):
@@ -78,6 +79,12 @@ def displacement(ops: list, x: np.ndarray) -> np.ndarray:
                     k = rng.normal(size=3)
                     k *= 2 * np.pi / sc / np.linalg.norm(k)
                     D[..., i] += amp / 3 * np.sin(x @ k + rng.uniform(0, 2 * np.pi))
+        elif kind == "grab":  # the move brush (reshape.py): the clay at `at` goes to `to`, what lies within
+            _, i, j = GRAB_AXES[p["view"]]  # `radius` of it in the view follows by (1 - t^2)^2, all through the depth
+            c, t, r = p["at"], p["to"], float(p["radius"])
+            w = np.clip(1.0 - ((x[..., i] - c[0]) ** 2 + (x[..., j] - c[1]) ** 2) / (r * r), 0.0, None) ** 2
+            D[..., i] += (t[0] - c[0]) * w
+            D[..., j] += (t[1] - c[1]) * w
     return D
 
 
@@ -98,7 +105,8 @@ def validate(ops) -> list:
                             '{"sag": {"axis": "x", "span": [-5, 5], "amount": 0.4, "from": 2.4, "to": 4.7}}')
         (kind, p), = op.items()
         need = {"sag": ("span", "amount"), "bulge": ("half", "amount"), "taper": ("amount",),
-                "lean": ("amount",), "twist": ("deg",), "wobble": ("amount",)}[kind]
+                "lean": ("amount",), "twist": ("deg",), "wobble": ("amount",),
+                "grab": ("view", "at", "to", "radius")}[kind]
         miss = [k for k in need if k not in p]
         if miss:
             raise SpecError(f"style.shape.deform[{i}] {kind}: needs {', '.join(miss)}")
