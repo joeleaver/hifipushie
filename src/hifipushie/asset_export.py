@@ -377,6 +377,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         heights[an] = res["height_range"]
         cover[an] = res["coverage"]
     extra_ext = {}
+    hair_cards = None  # (the cards a strand groom ships as; set where the hair is exported)
     if (spec.get("hair") or {}).get("locks"):  # curve locks (hair.py): meshed and baked in Blender, their own atlas
         from . import hair as hairmod
         from . import hair_export, hair_head
@@ -529,7 +530,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     for pn, lk_ in chain_looks.items():  # (a chain garment's alpha-cut base map: frayed or lace edges)
         if pn in parts:
             looks.setdefault(pn, {}).update(lk_)
-    if (spec.get("hair") or {}).get("locks") and locals().get("hair_cards"):
+    if (spec.get("hair") or {}).get("locks") and hair_cards:
         looks.setdefault(pn_h, {}).update(alpha_cutoff=hair_cards["alpha_cutoff"],
                                           double_sided=not hair_cards.get("back_faces"),  # (c6: own back faces)
                                           extras={"hifipushie_hair": hair_cards})
@@ -704,6 +705,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         from . import lods as lodmod
         from . import lods_part, lods_under
         ratios = list(lodmod.LOD_RATIOS) if lods is True else [float(r) for r in lods]
+        above = below = None  # (the role's LOD ratios above and below the neck; set with a role's budgets)
         ratio_of, mesh_r, shape_lods = None, None, None
         if rb is not None and lods is True:
             from . import budgets as budgetmod
@@ -714,7 +716,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             ratio_of = True
         cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
         tier_parts = {}
-        if locals().get("hair_cards"):  # hair LODs are the groom's own card TIERS (one atlas for all:
+        if hair_cards:  # hair LODs are the groom's own card TIERS (one atlas for all:
             # hair.export_hair), cut for their budget; thinning LOD0's cards dropped the tail first. (Unrigged too,
             # round 25: whole layers dropped once, 11996 -> 5324 at LOD1 and flat at LOD2 / LOD3.)
             from . import hair as hairmod
@@ -788,7 +790,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             with open(os.environ["HP_LOD_DUMP"], "wb") as fh:
                 pickle.dump({"parts": {pn: p for pn, p in parts.items() if pn not in pf_of and pn not in cards},
                              "rigged": rigged, "layer_stack": layer_stack, "under_masks": under_masks,
-                             "ratios": ratios, "above": locals().get("above"), "below": locals().get("below")}, fh)
+                             "ratios": ratios, "above": above, "below": below}, fh)
         for k, r in enumerate(ratios, 1):
             tl = time.time()
             if ratio_of is not None:  # above the neck holds detail longer than below it (budgets.lod_ratios)
@@ -806,7 +808,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             # its own file (export_garment's re-grid at a coarser grid), never a decimation of its LOD0
             lp, lr, rep_l = lods_part.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of and pn not in own_},
                                              rigged, rr_, skip=cards,
-                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None,
+                                             cards={pn_h: hair_cards["layers"]} if hair_cards and k not in tier_parts else None,
                                              mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods),
                                              ribbons=[pn for pn in cards if report[pn].get("lashes")])
             if own_:
