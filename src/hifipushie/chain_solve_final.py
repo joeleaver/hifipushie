@@ -12,6 +12,10 @@ Each pass is one equality-constrained Gauss-Newton step (sequential quadratic pr
   only when under). The active set is re-read every pass.
 - ALPHA: a proximal metric per node (rows / REF^2 like a pull of weight ALPHA_W) that keeps the KKT matrix definite
   and each pass local; it damps nothing the soft terms want.
+RESTORING (each round, before and after the soft pass): the KKT step with no soft gradient (the correction smallest
+in H's metric: a fix is taken as a smooth bend), kept only if it lowers |c|^2; else a damped Gauss-Newton step on
+|c|^2, (Jc^T Jc + mu H) dx = -Jc^T c, damping raised until it does (N2h: the undamped projection diverged on the
+jacket's collar from links 28 % off, worst 34 -> 990 % in 24 passes, with or without contact).
 The KKT system [[H, Jc^T], [Jc, -EPS I]] is quasi-definite and solved by a sparse LU (3 x nodes + active rows, ~25k at
 the jacket's 3k nodes: well under a second). A pass's largest move is capped at STEP. It stops when every hard term
 holds (links within TOL, ties and contact within 0.01 mm) and the last move is under DONE_MOVE; the report says how
@@ -32,8 +36,9 @@ TOL_POS = 1e-5  # m: ties and contact within this
 DONE_MOVE = 5e-5  # m: a soft pass moving no point further than this, with the hard terms holding, is the last
 DONE_DROP = 1e-4  # ... or one lowering the soft energy by less than this fraction
 STEP = 0.005  # m: a pass's largest move, and the soft pass's largest trust radius
-ITERS = 80  # KKT solves at most (restoring and soft)
-RESTORE = 8  # restoring passes per round at most
+ITERS = 200  # solves at most (restoring and soft)
+RESTORE = 40  # restoring passes per round at most
+MU0 = 1e-6  # the first damping of a restoring pass the KKT step made worse (x H, whose entries are ~1e5 x Jc^T Jc's)
 
 
 def hard_rows(Xn, t, ct, gap):
@@ -144,15 +149,32 @@ def step(Xn, t, w, ct, gap, iters: int = ITERS, log=None):
 
     def restore(X, H):
         nonlocal n_kkt
+        mu = 0.0  # (0: the KKT step; else the damped Gauss-Newton step on |c|^2 with this damping in H's metric)
+        Jc, c, rd_ = hard_rows(X, t, ct, gap)
         for _ in range(RESTORE):
-            Jc, c, rd_ = hard_rows(X, t, ct, gap)
             if _holds(rd_) or n_kkt >= iters:
                 return X, rd_
-            dx = _kkt(H, Jc, np.zeros(3 * nn), c)
+            if mu == 0.0:
+                dx = _kkt(H, Jc, np.zeros(3 * nn), c)
+            else:
+                A = (Jc.T @ Jc + mu * H).tocsc()
+                dx = splu(A, permc_spec="MMD_AT_PLUS_A").solve(-(Jc.T @ c)).reshape(-1, 3)
             n_kkt += 1
             mx = float(np.linalg.norm(dx, axis=1).max())
-            X = X + (dx * (STEP / mx) if mx > STEP else dx)
-        return X, hard_rows(X, t, ct, gap)[2]
+            dx = dx * (STEP / mx) if mx > STEP else dx
+            ok = False
+            for s_ in (1.0, 0.5, 0.25):  # (halvings cost a residual each, no solve)
+                Xt = X + s_ * dx
+                Jt, ctt, rdt_ = hard_rows(Xt, t, ct, gap)
+                if float(ctt @ ctt) < float(c @ c) or rdt_["worst"] < rd_["worst"] and rdt_["deep_mm"] <= rd_["deep_mm"]:
+                    ok = True
+                    break
+            if ok:
+                X, Jc, c, rd_ = Xt, Jt, ctt, rdt_
+                mu = 0.0 if mu <= MU0 else mu / 4
+            else:  # (the linearisation lied, e.g. a link nearly folded on itself: damp, never diverge)
+                mu = MU0 if mu == 0.0 else mu * 8
+        return X, rd_
 
     E, H, g = metric(Xn)
     Xn, rd = restore(Xn, H)

@@ -28,6 +28,7 @@ from hifipushie.chain_net import Network
 from hifipushie.chain_panels import Panels
 from hifipushie.chain_seams import join_seams
 
+cst.EXACT_INTERFACED = False  # (N2h: Delaunay rulings exact made the interfaced collar a board that can't wrap)
 SEAM_W = (0.1, 1.0, 10.0)  # per REF (1 cm): the seam pulls' weights, stage by stage, before the sewn solve
 
 out, src = sys.argv[1:3]

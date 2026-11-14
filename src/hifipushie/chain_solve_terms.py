@@ -3,7 +3,10 @@ lists; and the residual report. Nothing here moves a point; chain_solve.py is th
 
 - NODES: one per sewn group (Network.root); a vertex's position is its node's.
 - LINKS: Network's links (every boundary edge and fold row at its cut; a seam's two sides one link).
-- EDGES: every other mesh edge of the pattern, interfaced at both ends: exact; else at most its flat length.
+- EDGES: every other mesh edge of the pattern: exact where interfaced at both ends (EXACT_INTERFACED), else at most
+  its flat length. N2h: on the chains-only network the lines across are long Delaunay rulings, and exact ones made each
+  interfaced piece a flat board that could not wrap the neck (the jacket's collar: links stuck 27-43 % off; at most,
+  0.3 %), so the jacket driver sets EXACT_INTERFACED False; on a fine grid exact edges still bend along their lines.
 - BEND STENCILS: per vertex, the affine weights of its flat neighbours that reproduce its flat position (sum w = 1,
   sum w uv_j = uv_i, least norm). X_i - sum w_j X_j is zero for ANY rigid (indeed affine) placement of a flat
   neighbourhood and grows with the bend: a linear, rotation-free bending row (so the solve's matrix is constant).
@@ -17,6 +20,8 @@ import numpy as np
 import scipy.sparse as sp
 
 from . import chain_net as cn
+
+EXACT_INTERFACED = True  # (EDGES above; a knob: the chains-only proof sets it False)
 
 
 def nodes_of(net: cn.Network):
@@ -38,7 +43,7 @@ def edges(net, nid, li, lj):
     a, b = nid[e[:, 0]], nid[e[:, 1]]
     ok = a != b
     a, b, L = a[ok], b[ok], net.flat[ok]
-    ex = (net.stiff[e[ok, 0]] > 0.5) & (net.stiff[e[ok, 1]] > 0.5)
+    ex = (net.stiff[e[ok, 0]] > 0.5) & (net.stiff[e[ok, 1]] > 0.5) & EXACT_INTERFACED
     lo, hi = np.minimum(a, b), np.maximum(a, b)
     nn = int(max(nid.max() + 1, 1))
     key = lo * nn + hi
