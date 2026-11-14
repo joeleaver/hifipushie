@@ -457,7 +457,7 @@ def reference() -> str:
         "  centre: " + ", ".join(centre),
         "  sided:  " + ", ".join(sided),
         "",
-        # (C456: skin.py's docstring, where the description's keys are written; a bare __doc__ is this module's own)
+        # (C457: skin.py's docstring, where the description's keys are written; a bare __doc__ is this module's own)
         skin.__doc__.split("spec[\"skin\"] = {", 1)[1].join(["spec[\"skin\"] = {", ""]).rsplit("Anatomical zones", 1)[0].rstrip(),
         "",
         skin_features_marks.reference(),

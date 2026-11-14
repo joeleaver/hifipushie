@@ -332,7 +332,7 @@ def _tattoos(spec, p, layer, ctx) -> None:
 
 
 def reference() -> str:
-    # (C456) the docstring this quotes stayed in skin_features.py when the file was split: a bare __doc__ here is this
+    # (C457) the docstring this quotes stayed in skin_features.py when the file was split: a bare __doc__ here is this
     # module's one line, and the tool's text was an IndexError. Its last paragraph there ("Where the code is") is for
     # whoever edits the package, not for the tool's reader.
     return skin_features.__doc__.split("\n\n", 1)[1].split("\n\nWhere the code is", 1)[0].strip()
