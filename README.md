@@ -1,29 +1,39 @@
 # hifipushie
 
-An MCP server that lets an LLM sculpt characters and creatures.
+An MCP server that lets an LLM model characters, creatures, props and environments the way an artist does:
+by describing them, looking at the result beside the reference, and correcting.
 
-Instead of driving a mouse or writing raw mesh code, the model describes a creature as a
-**skeleton with SDF blobs hung on it**: joints and bones (round cones) plus ellipsoid masses,
-smooth-blended into one surface. hifipushie meshes it and returns clay renders with world-unit
-rulers, so the model can see what it made and correct it. When there is reference art, it scores
-silhouette overlap and reports edge errors in world units.
+Instead of driving a mouse or writing raw mesh code, the model describes a creature or a prop as a
+**skeleton with SDF blobs hung on it**: joints and bones (round cones) plus masses, smooth-blended into one
+surface, then sculpted with strokes and painted. hifipushie meshes it and returns clay renders with world-unit
+rulers, so the model can see what it made and correct it; with reference art it scores the silhouette and
+reports edge errors in world units. Realistic humans, hair, clothes, skin, terrain, plants and clutter have
+their own tools, and a finished model exports as a game-ready GLB.
 
 ## Tools
 
-| tool | what it does |
-|---|---|
-| `guide` | the playbook: working in stages, stroke and parts rules, judging renders, diagnosing artifacts (read it first) |
-| `put_model` / `get_model` / `list_models` | create or replace a spec, read it back with measurements |
-| `edit_model` | batch edits: set / delete / rename / move joints / scale radii |
-| `look` | build + clay contact sheet (front, side, top, 3/4 …); `focus` + `zoom` for close-ups, rebuilt at full resolution; `shading` raking / curvature to judge form; `strokes=True` draws stroke paths |
-| `kit_reference` | parameters of the `hand` and `face` kits (fingers; eyes with lids, brows, nose, lips, cheeks) |
-| `strokes` (in the spec) | sculpt on the surface: clay / crease / flatten along paths addressed from the skeleton, with profiles for edge hardness and `repeat` for sets (wrinkles); they displace the skin, so they follow curvature and move with the bones |
-| `measure` | cross-section sizes as numbers: axis-to-surface distances along a bone chain, or every part in slices across X/Y/Z |
-| `set_plan` / `check` | draw a 2D blockout plan first (front/side outlines from ellipses, capsules and polygons; landmark heights; planned sections), then check the model against it at every stage: silhouette diff in exact world units, landmark joints, section widths/depths |
-| `set_reference` / `compare` | reference silhouettes → IoU, red/blue diff image, band tables of edge errors |
-| `fit` | auto-adjust joints, radii and blobs so the silhouettes match the references or the plan (saved as a new version) |
-| `history` / `revert` | every change is checkpointed |
-| `export` | OBJ for Blender or printing, one object per part |
+107 tools in 14 domains. A small core is native MCP tools; every other tool runs through
+`call_tool(name, args)`. An agent does not need this table: `guide` is the playbook (read first),
+`find_tool("<the job in plain words>")` names the tool for a job with an example call, and
+`guide(topic="<tool>")` gives any tool's full parameters. `guide(topic="example")` returns two whole models to
+start from.
+
+| domain | what it is for | tools |
+|---|---|---|
+| core | Native tools: models, specs, look, check, measure, history, the guide, find / call any tool | `guide`, `find_tool`, `call_tool`, `list_models`, `get_model`, `kit_reference`, `put_model`, `edit_model`, `look`, `check`, `measure`, `history`, `revert`, `review_view` |
+| plan | Plans, reference images, compare, silhouette fit, clearance, style check | `set_plan`, `set_reference`, `compare`, `fit`, `clearance`, `style_check` |
+| concept | Match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles for review_view, how parts join the body (stalk or base) | `fit_concept_camera`, `look_matched`, `feature_tiles`, `join_report`, `fit_matched` |
+| features | Sculpt from reference pictures: read a picture's views, patches and form lines, name its features as marks on it (the feature map), build the masses from their marks, measure a model feature by feature | `read_reference`, `mark_features`, `build_masses`, `build_forms`, `feature_report` |
+| scene | The Blender scene (sync, pull) and the heavy-job queue | `sync`, `pull`, `heavy_status`, `heavy_queue` |
+| export | OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB | `export`, `export_asset`, `rig`, `judge_asset` |
+| human | Realistic humans: the base body, the artist block-in of a head from pictures (the default), measurements, fits, skin | `human`, `measure_human`, `fit_human`, `nudge_human`, `human_reference`, `block_in_start`, `block_in_look`, `block_in_step`, `block_in_solve`, `block_in_expression`, `set_expression`, `lid_read`, `eye_ruler`, `face_ruler`, `lip_read`, `gnm_controls` |
+| skin | A human's skin: description, measured from the reference pictures, close looks beside them | `skin`, `skin_from_reference`, `brow_read`, `look_skin`, `skin_reference`, `skin_project` |
+| likeness | Matching a real person's face and look from reference pictures | `likeness`, `fit_likeness`, `likeness_points`, `character_read`, `project_reference`, `texture_from_reference`, `reference_brief`, `check_references` |
+| hair | Hair: strand grooms, tied styles, stylised locks, look, reference, export | `groom_hair`, `tie_hair`, `look_hair`, `hair_reference`, `hair_from_reference`, `export_hair` |
+| cloth | Garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references | `garment_plan`, `body_tape`, `draft_pattern`, `pattern_parts`, `pattern_check`, `chain_garment`, `garment_details`, `look_chain`, `garment_appearance`, `export_garment`, `garment_record` |
+| terrain | Terrain and game levels (height fields in a level designer's words) | `set_terrain`, `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history` |
+| plants | Trees and plants (grown, measured, exported), stands of them, wind | `grow_plant`, `edit_plant`, `get_plant`, `look_plant`, `look_plants`, `plant_form`, `plant_reference`, `export_plant`, `wind_plant`, `sync_plant`, `plant_history`, `grow_stand`, `look_stand`, `export_stand` |
+| clutter | Ground clutter kits (rocks, logs, leaves ...) for terrain | `make_clutter`, `look_clutter`, `clutter_kit` |
 
 ## Install
 
