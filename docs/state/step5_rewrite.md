@@ -1,7 +1,7 @@
-# STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2g: PANEL START + FLEXIBLE SOLVE)
+# STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2h: SMOOTH CHAINS)
 
 Step 5 lays out the CHAINS (boundary + fold rows + lines across), lengths given, only bends chosen, nothing held.
-Step 6 fills surfaces between them. Runs N1 -> N2 -> N2b -> N2c -> N2d -> N2e -> N2f -> N2g (this).
+Step 6 fills surfaces between them. Runs N1 -> N2 -> N2b -> N2c -> N2d -> N2e -> N2f -> N2g -> N2h (this).
 
 ## Current code
 - `panel_start.starts`: each piece placed from its own tapes (girth roll / edge on its tape). NEW `_ways`: a girth piece
@@ -11,37 +11,41 @@ Step 6 fills surfaces between them. Runs N1 -> N2 -> N2b -> N2c -> N2d -> N2e ->
   jacket (way read off the flat: collar fall up into a funnel). The N2g driver sets every hinge's turn to 0 (start
   unturned) and leaves turning to the solve's fold terms.
 - `chain_assemble` (rigid assembly / dress / close): KEPT. N2g did not pass, so the brief's deletion did not apply.
-- Proof: `spikes/n2g_jacket.py <out> <loaded.pkl> [measure] [bindall]`: start, then chain_solve on the unsewn network
+- N2h: chain_solve bending is CLOTH (`cloth_bend`: CLOTH_B / CLOTH_ES x link weight / h^2, x BEND_KIND), plus
+  second differences along chains (`chain_solve_terms.chain_bend_rows`); the last word is `chain_solve_final.step`
+  (constrained Gauss-Newton: soft terms minimised, links / edges / ties / contact linearised equalities, restoring by a
+  damped GN step). `chain_solve_terms.smoothness`: zigzag = a chain point turning against both neighbours.
+  `chain_solve_terms.EXACT_INTERFACED` (knob): the jacket proof sets it False (exact Delaunay rulings = a board).
+- Proof: `spikes/n2h_jacket.py <out> <loaded.pkl> [measure] [bindall]`: start, then chain_solve on the unsewn network
   with seam pairs pulled to their midpoints (SEAM_W 0.1, 1, 10), then the sewn network. Render `spikes/n2c_render.py <run>
-  <pkl> <ref> X_start.npy|X.npy quick`. ws /mnt/data/hifipushie/n2g (loaded.pkl in /mnt/data/hifipushie/n2/mine).
+  <pkl> <ref> X_start.npy|X.npy quick`. ws /mnt/data/hifipushie/n2h (loaded.pkl in /mnt/data/hifipushie/n2/mine).
 
-## Numbers (jacket; 4,326 points, 2,994 nodes; load 80-89)
-- N2f start as landed (n2g/s0): front rolled mirrored. Seams front ~ sleeve 299 / 317 mm (mean / max), front ~ back 263,
-  front ~ side 246, collar ~ facing 98 / 147. Links: 161 over 2 % (row links between panels; max 717 % collar).
-  Inside 1686.
-- Start with `_ways`, unturned (n2g/run2/X_start_quick_sheet.png): front ~ side 90 / 93, front ~ sleeve 66-99,
-  back ~ front (shoulder) 203 / 282, back ~ sleeve 113-147, collar ~ facing 101 / 138, back ~ back 119 / 128.
-  Links: 156 over 2 % (max 710 %). Inside 1414. Panel fit rms 18.6 mm.
-- Solved (run2: only pieces sewn to nothing bound; n2g/run2/X_quick_sheet.png): FAIL. Links median 5.1 %, max
-  1233 % (collar), 2960 of 4341 over 2 %. The projection stops at its 40-pass cap without converging. Seams are shared
-  nodes: sides moved up to 164 mm to meet (back ~ front 116 / 164). Merge jump after the stages: up to 109 mm
-  (facing ~ front). Folds: hems 75-93 of 90 per row (R undersleeve 39), collar fall 68 / 90, lapels L 31 / 110, R 11 / 61
-  of 85 / 85. Inside 47. Tapes 56-73 mm mean off (biceps, chest, waist). Wall: 227 s (stages 46 / 37 / 31, sewn 51).
-- run1 (every follower bound): the collar bound point for point on the undercollar fought its own fall: links 3966 %.
-- Beside the reference: the torso wraps the body with no lean and the sleeves are tubes down the arms (better than any
-  assembly so far). Collar: a crumpled knot at the neck base, no roll, no fall. Lapels: not turned back, the front
-  edges run straight up to the neck. Sleeve caps sit on the armholes roughly. Hem: stepped (fronts lower than back
-  and sides). The links are far off their cut.
+## Numbers (jacket, n2h/run2; 4,326 points, 3,023 sewn links; load 63-76; X_quick_sheet.png)
+- Links: every SEWN link within 0.03 % of its cut (0 over 2 %; N2g median 5.1 %, max 1233 %, 2960 over). Per side
+  (each side vs its own cut): 260 over 2 %, max 20 %: the seam truing / cap ease (132 links whose sides differ > 2 %).
+- Smoothness (turn minus flat turn per chain point): median 2.3 deg, p99 49, zigzags 54 (N2g, same measure: 13.2 /
+  164 / 1,075). Most left: sleeve_top.R 10, fronts 7-8.
+- Folds at plan within 0.2-4 deg (collar fall 89 / 90, lapels 83-85 / 85, hems 87-94 / 90; N2g lapels 11-31).
+- Inside 0, under gap 0. Tapes 44 mm mean off, max 101. Seams moved to meet up to 158 mm (sleeve seams, shoulders
+  149); merge jump up to 108 mm (facing ~ front).
+- Final step: hard terms hold, but every solve ran to its 200-pass cap (the SOFT phase does not settle: radius stays
+  5 mm). Wall 773 s (stages 146-157, sewn 271; final step 227 s of the sewn solve). Run1 (rulings exact): links stuck
+  27-43 % off on collar / undercollar / canvas.
+- Beside the reference: torso wraps the body, chains smooth. Collar: a small tight ring at the neck base, no visible
+  roll or fall over the back. Lapels: no V opening; front edges run up the centre front to the neck and cross there.
+  Sleeves: thin bundles down the arms, the cap seams not reading as round armholes; small loops at the wrists. Hem:
+  roughly level, slightly scalloped at the fronts.
 
 ## Open faults (ranked)
-1. Links don't hold: the projection hits 40 passes. Find the infeasible constraint set (seam sides that differ: sleeve
-   top/under 58 mm, collar/undercollar 34 mm; contact vs links; at-most edges). Read the projection's worst rows per pass.
-2. Hinge way convention: Panels' hinge way and chain_lay.fold_rows' toward disagree. One convention, tested on a
-   mirrored pair and a flat drawn inside-up.
-3. Shoulder: a vertical girth roll can't go over the shoulder (start seams 200-280 mm).
-4. Collar / undercollar: a fold on a ply that is bound flat; bind only the undercollar's free edge, or fold both.
+1. Final step's soft phase hits its cap (200): needs a proper trust region / merit (or fewer, cheaper passes).
+2. Front edges / lapels closed at the centre front; collar a ring: the shapes, not the chains, are now wrong.
+3. Hinge way convention (chain_panels vs chain_lay.fold_rows: Panels multiplies by the row's handedness, fold_rows
+   does not): not done. Shoulder seams start 200-280 mm apart: not done. Collar ply across its fall: not done.
+4. Synthetic arch / ease tests (tests/test_chain_smooth.py) pass on main's solver too: the jacket's zigzags came from
+   competing terms + the projection, which the tests don't reproduce.
 
-Run: `uv run pytest -q tests/test_chain_panels.py tests/test_chain_lay.py tests/test_chain_solve.py tests/test_chain_plies.py`.
-Ledger C426-C433, C435, C438, C440, C444, C446.
+Run: `uv run pytest -q tests/test_chain_smooth.py tests/test_chain_solve.py tests/test_chain_panels.py tests/test_chain_lay.py`.
+Ledger C426-C433, C435, C438, C440, C444, C446, C448.
 
-NEXT: N2h: make the sewn chain_solve hold its links from the N2g start (projection infeasibility, named per constraint), and fix the hinge-way convention, then judge X beside the reference.
+NEXT: N2h2: final step converges (trust region on a merit); then lapels open and collar fall from the start (hinge
+way convention on a mirrored pair), judge X beside the reference.
