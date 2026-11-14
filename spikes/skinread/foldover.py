@@ -4,6 +4,7 @@ import os, sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import skin_read as sr, skin_folds as sf, skin as skinmod, humanfit, store
+from hifipushie import skin_folds_map
 from hifipushie import humanfit_views, skin_read_folds, skin_read_frames, skin_zones
 
 m = sys.argv[1]
@@ -12,7 +13,7 @@ K = 3
 f = skin_read_frames.capture(m, views=[vi], log=lambda s: None)[0]
 st = skin_read_frames.stage_spec(store.load(m))
 J = skin_zones._joints(st)
-nominal = sf.paths(st, "body", J, None)
+nominal = skin_folds_map.paths(st, "body", J, None)
 im = Image.fromarray((np.clip(sr._srgb(f["P"]), 0, 1) * 255).astype(np.uint8)).resize((sr.N * K, sr.N * K), Image.LANCZOS)
 d = ImageDraw.Draw(im)
 box = f["box"]; k = sr.N / (box[2] - box[0])

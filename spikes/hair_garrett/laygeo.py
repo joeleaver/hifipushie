@@ -18,6 +18,7 @@ import sys
 import numpy as np
 
 from hifipushie import hair, hair_loose as hl, store
+from hifipushie import hair_loose_body, hair_loose_grow
 from hifipushie import hair_groom, hair_head, hair_seat
 
 
@@ -32,7 +33,7 @@ def merge(a, b):
 
 def measure(sc, g, col):
     line = hair_groom.hairline(sc, g)
-    locks = hl.grow(sc, g, line, np.random.default_rng(int(g.get("seed", 0))), col)
+    locks = hair_loose_grow.grow(sc, g, line, np.random.default_rng(int(g.get("seed", 0))), col)
     rise_w, rise_v, segs, sel_pts, drops, dips = [], [], [], [], [], []
     for lk in locks.values():
         P = np.asarray(lk["pts"], float) + sc.C
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     m = sys.argv[1]
     spec = store.load(m)
     sc = hair_head.scalp(m, spec)
-    col = hl.collider(m, spec, sc)
+    col = hair_loose_body.collider(m, spec, sc)
     base = hair_groom.groom_params(spec)
     for pf in [None] + sys.argv[2:]:
         g = copy.deepcopy(base)

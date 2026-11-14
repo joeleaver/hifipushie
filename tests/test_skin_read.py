@@ -8,6 +8,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import paint, skin, skin_folds as sf, skin_marks as mk, skin_read as sr, store
+from hifipushie import skin_folds_geometry, skin_folds_map, skin_folds_surface
 from hifipushie import skin_marks_beard, skin_marks_map
 from hifipushie import skin_params, skin_zones
 from hifipushie import skin_read_context, skin_read_fit, skin_read_fold_fit, skin_read_folds, skin_read_frames, skin_read_params, skin_read_reads
@@ -96,8 +97,8 @@ def test_beard_zones_partition_and_weights():
 def test_fold_map_and_layers():
     spec = head_spec(age=30, folds={"nasolabial": {"amount": 1.0, "L": {"shift": [3.0] * 5}}, "tear_trough": 0.8})
     J = skin_zones._joints(spec)
-    ps0 = sf.paths(spec, "body", J, None, names=["nasolabial"])
-    ps1 = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["nasolabial"])
+    ps0 = skin_folds_map.paths(spec, "body", J, None, names=["nasolabial"])
+    ps1 = skin_folds_map.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["nasolabial"])
     q0, q1 = ps0[("nasolabial", ".L")], ps1[("nasolabial", ".L")]
     moved = ((q1["P"] - q0["P"]) * q0["across"]).sum(1) * 1000
     assert 2.0 < np.median(moved) < 4.0, np.median(moved)        # 3 mm toward the fold's plus side, on the skin
@@ -132,9 +133,9 @@ def test_folds_are_geometry():
     tis = {p.name for p in prims if p.kind == "tissue"}
     assert tis == {"fold_nasolabial.L", "fold_tear_trough.L", "fold_tear_trough.R", "fold_lid_fold.L", "fold_lid_fold.R"}, tis
     J = skin_zones._joints(spec)
-    S = sf.surface(spec, "body", J)
+    S = skin_folds_surface.surface(spec, "body", J)
     body = [p for p in prims if p.part == "body"]
-    ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]))
+    ps = skin_folds_map.paths(spec, "body", J, sf.options(spec["skin"]["folds"]))
     def move(name, sd, u_mm):          # the skin's move along its normal (mm, + out) at u mm across the path's middle
         q = ps[(name, sd)]
         i = len(q["P"]) // 2
@@ -147,15 +148,15 @@ def test_folds_are_geometry():
     t = move("tear_trough", ".L", [0, 4.6])
     assert t[0] < -0.3 and t[1] > 0.9, t                               # the trough and the bag over it
     # the keep-out: nothing moves at the lid's margin or on the lips
-    keep = sf.keep_lines(J)
+    keep = skin_folds_geometry.keep_lines(J)
     assert len(keep) > 20
-    assert np.abs(sdf.field_at(body, keep) - sdf.field_at(images_frame.prims_on(sf.without(spec), ["body"]), keep)).max() < 1e-5
+    assert np.abs(sdf.field_at(body, keep) - sdf.field_at(images_frame.prims_on(skin_folds_surface.without(spec), ["body"]), keep)).max() < 1e-5
     # profile: a fold with a roll is a step (steep under the roll, a long wall on the other side)
     pr = {"G": np.array([0.001]), "sg": np.array([0.001]), "O": np.array([0.001]), "Pl": np.array([0.0]), "lee": 2.2, "has_roll": True,
           "r0": 0.004, "so": 0.002, "sh": 0.002, "has_plat": False, "ph": 0.001}
     j = np.zeros(4, int)
-    v = sf.profile(np.array([-0.002, 0.0, 0.002, 0.004]), pr, j)
-    assert v[1] == -0.001 and v[0] < sf.profile(np.array([0.002]), {**pr, "has_roll": False}, j[:1])[0] and v[3] > 0.0009, v
+    v = skin_folds_geometry.profile(np.array([-0.002, 0.0, 0.002, 0.004]), pr, j)
+    assert v[1] == -0.001 and v[0] < skin_folds_geometry.profile(np.array([0.002]), {**pr, "has_roll": False}, j[:1])[0] and v[3] > 0.0009, v
     # the eyeball: a fold pushed in over it stops BALL outside
     c = np.array([0.0, 0.0, 0.0])
     q = np.array([[0.0, -0.0121, 0.0], [0.0, -0.014, 0.0]])
@@ -165,7 +166,7 @@ def test_folds_are_geometry():
           "Pl": np.zeros(2), "lee": 1.0, "has_roll": False, "r0": 0.0, "so": 0.001, "sh": 0.001, "has_plat": False, "ph": 0.001,
           "keep": np.zeros((0, 3)), "keep_key": "none", "balls": np.array([[0, 0, 0, 0.012]]), "radius": 0.01, "k": 2, "tree": tree}
     cur = np.array([-0.0004, 0.0015])           # a lid 0.5 mm thick over a 12 mm ball: the skin at 12.5 mm
-    new = sf.mod_tissue(cur.copy(), q, mp)
+    new = skin_folds_geometry.mod_tissue(cur.copy(), q, mp)
     assert new[1] > cur[1] and new[0] <= 0.0, new       # pushed in outside, but the point 0.1 mm off the ball stays inside the skin
 
 
@@ -268,7 +269,7 @@ def test_shade_white_and_bounds():
     # a chin's notch: a groove with a lobe on BOTH sides
     pr = {"G": np.array([0.0009]), "sg": np.array([0.002]), "O": np.array([0.0006]), "Pl": np.array([0.0]), "lee": 1.0, "sym": True, "has_roll": True,
           "r0": 0.0055, "so": 0.0035, "sh": 0.004, "has_plat": False, "ph": 0.001}
-    v = sf.profile(np.array([-0.0055, 0.0, 0.0055]), pr, np.zeros(3, int))
+    v = skin_folds_geometry.profile(np.array([-0.0055, 0.0, 0.0055]), pr, np.zeros(3, int))
     assert v[1] < -0.0008 and abs(v[0] - v[2]) < 1e-9 and v[0] > 0.0005, v
     assert sr.SHADE_SIGMA_PLAIN < 0.1 < sr.SHADE_SIGMA and sr.FACE_BOUND <= sr.TONE_BOUND_WHITE and sr.ZONE_BOUND[0] <= 5
     # a picture: grey backdrop 0.5, a face-coloured block, a shirt under it
@@ -333,7 +334,7 @@ def test_fold_rules2():
     pr = {"G": np.array([0.0]), "sg": np.array([0.0005]), "O": np.array([0.0]), "Pl": np.array([0.0]), "lee": 1.0, "has_roll": False,
           "r0": 0.0, "so": 0.001, "sh": 0.001, "has_plat": False, "ph": 0.001, "has_over": True, "Ov": np.array([0.0008]), "or0": 0.0011,
           "oso": 0.0013, "osh": 0.0009}
-    v = sf.profile(np.array([-0.001, 0.0, 0.001, 0.006]), pr, np.zeros(4, int))
+    v = skin_folds_geometry.profile(np.array([-0.001, 0.0, 0.001, 0.006]), pr, np.zeros(4, int))
     assert v[0] == 0 and v[1] == 0 and v[2] > 0.0007 and v[3] < 0.0001, v
 
 
@@ -346,9 +347,9 @@ def test_folds_under_expression():
     from hifipushie import images_frame
     spec = head_spec(age=30, folds={"lid_fold": 1.0, "nasolabial": 1.0})
     J = skin_zones._joints(spec)
-    ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["lid_fold"])
+    ps = skin_folds_map.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["lid_fold"])
     q = ps[("lid_fold", ".L")]
-    full, free = images_frame.prims_on(spec, ["body"]), images_frame.prims_on(sf.without(spec), ["body"])
+    full, free = images_frame.prims_on(spec, ["body"]), images_frame.prims_on(skin_folds_surface.without(spec), ["body"])
     # vertices ON the folded surface, 2 mm over the fold's line (its roll), along the path's middle third
     i = np.arange(len(q["P"]) // 3, 2 * len(q["P"]) // 3)
     X = q["P"][i] + 0.002 * q["across"][i]
@@ -361,7 +362,7 @@ def test_folds_under_expression():
     mk_ = lambda: {"body": {"verts": X.copy(), "corner_vert": T.ravel(), "shapes": {k: (z.copy(), z.copy(), z.copy()) for k in  # noqa: E731
                                                                                ("eyeBlinkLeft", "eyeBlinkRight", "jawForward", "eyeWideLeft")}}}
     parts, log = mk_(), []
-    got = sf.expression(spec, parts, log)
+    got = skin_folds_geometry.expression(spec, parts, log)
     d = parts["body"]["shapes"]["eyeBlinkLeft"][0]
     after = np.abs(sdf.field_at(free, X + d))
     assert after.max() < 0.35 * before.max(), (before.max(), after.max())      # unfolded
@@ -370,7 +371,7 @@ def test_folds_under_expression():
     assert np.abs(w + 0.3 * d).max() < 1e-6, "eyes wide: 1.3 x the fold"            # (gain - 1) x the same displacement, the other way
     assert "lid_fold.L" in got and log and "wrinkle-map" in log[0]
     off = mk_()
-    assert sf.expression({**spec, "skin": {**spec["skin"], "fold_expressions": False}}, off, []) == {}
+    assert skin_folds_geometry.expression({**spec, "skin": {**spec["skin"], "fold_expressions": False}}, off, []) == {}
     assert np.abs(off["body"]["shapes"]["eyeBlinkLeft"][0]).max() == 0
 
 

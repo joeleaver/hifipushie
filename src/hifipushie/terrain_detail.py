@@ -227,5 +227,5 @@ def refine(T, f: int):
     T.P = np.stack([T.X.ravel(), T.Y.ravel()], 1)
     T.cell = cf
     T.detail = {"factor": f, "cell": c}
-    from . import terrain_sea
-    terrain_sea.recut(T)
+    from . import terrain_sea_report
+    terrain_sea_report.recut(T)

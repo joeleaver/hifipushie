@@ -338,7 +338,7 @@ def test_beach_shelves_on_to_the_sea_floor():
     """Offshore of a beach the sand shelves on down to the sea's floor. Its profile was held 3 beach widths out
     (-8.4 m): a dead-flat shelf to the frame's edge with straight one-step sides, a pale rectangle in depth-coloured
     water (pushieworld note 107). The report's sea-floor measure names such shelves and steps."""
-    from hifipushie import terrain_sea
+    from hifipushie import terrain_sea_report
     spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [384, 384]], "cell": 1.92,
             "tilt": {"down": "south", "grade": 0.12},
             "sea": {"level": 0, "depth": 30, "shore": "rocky", "beaches": {"strand": {"at": [192, 120], "length": 160}}},
@@ -349,13 +349,13 @@ def test_beach_shelves_on_to_the_sea_floor():
     sea = T.H < -1.5
     assert sea.sum() * T.cell ** 2 > 2e4, "the test terrain has no sea"
     held = float((np.abs(T.H[sea] + 8.4) < 0.05).mean())
-    sb = terrain_sea.seabed(T)
+    sb = terrain_sea_report.seabed(T)
     assert held < 0.02 and not sb["plateaus"] and not sb["steps"], (held, sb["warnings"])
     # the measure sees a shelf when there is one
     keep = T.H.copy()
     T.H = np.where(sea & (T.H < -3), np.maximum(T.H, -4.0), T.H)
     try:
-        assert terrain_sea.seabed(T)["plateaus"], "a flat shelf went unseen"
+        assert terrain_sea_report.seabed(T)["plateaus"], "a flat shelf went unseen"
     finally:
         T.H = keep
     return held

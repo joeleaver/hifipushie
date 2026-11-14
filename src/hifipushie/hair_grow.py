@@ -28,7 +28,7 @@ class Read(dict):
 
 
 def grow(sc: Scalp, g: dict, col=None, reads: set | None = None) -> dict:
-    """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose.collider) for
+    """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose_body.collider) for
     hair that falls off the head. `reads`: a set that takes every groom key this grow read (hair_spec.unread says
     which written keys it never did: loose or tied hair is the whole groom, and the solid locks' keys beside it were
     ignored without a word)."""
@@ -45,8 +45,8 @@ def grow(sc: Scalp, g: dict, col=None, reads: set | None = None) -> dict:
     if g.get("drawn"):  # the top drawn by hand (clumps on the top view), the rest grown round it
         locks.update(hair_drawn.drawn(sc, g, g["drawn"]))
     if g.get("loose"):  # loose hair is the whole groom too (with drawn clumps and any tie: half up)
-        from . import hair_loose
-        locks.update(hair_loose.grow(sc, g, line, rng, col))
+        from . import hair_loose_grow
+        locks.update(hair_loose_grow.grow(sc, g, line, rng, col))
     if g.get("tie"):  # tied hair makes the whole groom (with any drawn clumps): no generated tiers under it
         from . import hair_tied
         locks.update(hair_tied.grow(sc, g, line, rng, col))

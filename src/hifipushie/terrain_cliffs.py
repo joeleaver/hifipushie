@@ -203,7 +203,7 @@ class Region:
 
     def height(self, x, y, riser=None, wmin=0.0):
         """The pushed heightmap: the ground eroded in plan by a ball of radius push x S (so it lies behind the cliff
-        face by about that much). riser: the turf step's half-width (terrain_ground.Edits; the maps' crisper one)."""
+        face by about that much). riser: the turf step's half-width (terrain_ground_model.Edits; the maps' crisper one)."""
         x, y = np.asarray(x, float).ravel(), np.asarray(y, float).ravel()
         h, _ = self.base.column(x, y) if riser is None else self._col_riser(x, y, riser, wmin)
         R = ndimage.map_coordinates(self.Rg, [(x - self.G.origin[0]) / self.d, (y - self.G.origin[1]) / self.d],
@@ -428,7 +428,7 @@ class CliffField:
                 return cf.base.relief_at(x, y)
 
             def designed_step(self, x, y):
-                """True at columns where the ground has designed steps finer than the grid (terrain_ground.Edits'
+                """True at columns where the ground has designed steps finer than the grid (terrain_ground_model.Edits'
                 zone: the turf's riser at a lip, a bunker's cut edge and raised lip)."""
                 e = getattr(cf.base, "edits", None)
                 out = np.zeros(len(x), bool)

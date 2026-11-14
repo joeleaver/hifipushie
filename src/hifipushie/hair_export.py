@@ -242,8 +242,8 @@ def _export_hair(name, out_dir, tiers, groom, spec, check, sheet, textures) -> d
         locks = [k for k in resolve(spec, sc) if not re.fullmatch(r"t\d*band", k["name"])]
         colg = None
         if g.get("loose"):
-            from . import hair_loose
-            colg = hair_loose.collider(name, spec, sc)
+            from . import hair_loose_body
+            colg = hair_loose_body.collider(name, spec, sc)
         sd = hair_strands_job.job(sc, g, spec, locks, tmp, count=int((h.get("export") or {}).get("strands", 0)) or None, col=colg)
         abc, usd = out_dir / f"{name}_groom.abc", out_dir / f"{name}_groom.usdc"  # (binary: the .usda was 33 MB)
         r = hair_strands_eval.evaluate(sd, abc=str(abc), usd=str(usd))

@@ -249,7 +249,7 @@ def _xyz(sc, P):
 
 
 def grow(sc, g: dict, line, rng, col=None) -> dict:
-    """{name: lock} for the groom's tie(s). `col`: the body's collider (hair_loose.Collider): a hanging tail and
+    """{name: lock} for the groom's tie(s). `col`: the body's collider (hair_loose_body.Collider): a hanging tail and
     escaped locks lie on the neck and shoulders by it (without one: the scalp's rays, the head alone)."""
     from . import hair_flow_gather, hair_flow_tail, hair_flow_wisps
     from .hair import az_el, dirs

@@ -4,6 +4,7 @@ is minus the skin's move along its normal. Prints the profile in mm (+ = out).""
 import json, os, sys
 import numpy as np
 from hifipushie import store, sdf, images, skin_folds as sf
+from hifipushie import skin_folds_map, skin_folds_surface
 from hifipushie import images_frame
 from hifipushie.spec import expand_mirror
 
@@ -15,10 +16,10 @@ if folds != "-":
                     "folds": json.load(open(folds)) if os.path.exists(folds) else json.loads(folds)}
 part = (spec.get("skin") or {}).get("part", "body")
 J = {k: np.asarray(v["pos"], float) for k, v in expand_mirror(spec)["joints"].items() if "pos" in v}
-S = sf.surface(spec, part, J)
+S = skin_folds_surface.surface(spec, part, J)
 prims = images_frame.prims_on(spec, [part])
 cfg = sf.options(spec["skin"]["folds"])
-ps = sf.paths(spec, part, J, cfg)
+ps = skin_folds_map.paths(spec, part, J, cfg)
 u = np.arange(-12, 12.01, 1.0)
 for (nm, sd), q in ps.items():
     if want and nm not in want:
