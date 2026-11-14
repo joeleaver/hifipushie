@@ -29,7 +29,8 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 5. DONE for joints, bones, blobs and the elements inside prefabs (C442, C449: spec_keys.py; C442 wrongly refused
    "hollow" and "chips" on a bone, fixed) and for hair's solid-lock keys beside loose / tied hair (C449: groom_hair
    WARNS about each written key the grow did not read; a refusal would have stopped 301 current models).
-   Still open: terrain ignores unknown keys outside rivers.
+   Terrain (C450): the report WARNS about a key no terrain code names (terrain.unnamed_keys); a real key in the
+   wrong section is NOT caught (no list per section: 19 sections across 67 modules).
 6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
    review_view call per region. Not run end to end by a blind agent yet.
 7. Old head route still handed over: likeness_guide.md:94-121 teaches fit_likeness, which refuses block-in models.
@@ -51,6 +52,6 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: terrain's unknown keys (a WARNING per unknown key in each section; measure on saved terrains first), then
-items 7, 8, 9, 11 and dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A tool-description
-change runs tests/test_toolsets.py with -m "" (a slow-tier rule the suite skips).
+NEXT: items 7, 8, 9, 11, then dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A
+tool-description change runs tests/test_toolsets.py with -m "" (a slow-tier rule the suite skips); a new constant
+goes in its family's base module (tests/test_constants_address.py).
