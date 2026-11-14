@@ -33,9 +33,13 @@ THE METHOD, and why. Rounds of
    take the strain out (N1b: the LM pass at 1.5k points started at E 6e3, links 14 % off; after these stages E ~1,
    links 0.1 %; the soft optimum barely moves). Contact rows in PD's matrix were tried: an isotropic row holds a node
    where it first touched (a sleeve could not slide round its arm), E at LM's start went UP 10-25x.
-2. FAST PROJECTION (Goldenthal et al. 2007, as chain_net.project, over every point): the hard constraints, linearised,
-   solved in one sparse system per pass (J J^T lambda = C), moving the points as little as possible until each holds to
-   PROJ_TOL. Why: PD's springs only approach a length; the projection makes it exact. It is the last word of the solve.
+2. THE FINAL STEP (chain_solve_final, N2h): the hard constraints made exact WHILE BENDING LEAST: constrained
+   Gauss-Newton passes on the soft terms (bending, folds, pulls, plies) with every link, exact edge, tie and contact as
+   a linearised equality (at-most edges and contact when active). It replaced the minimum-displacement projection
+   (Goldenthal et al. 2007), whose identity metric took any slack as a zigzag (N2g: 1,913 zigzags, 40-pass cap hit).
+   BENDING IS CLOTH (cloth_bend): a kink costs what it costs cloth against the links' stretch (N2g's 0.4 per vertex was
+   ~50x weaker), along chains too (second differences, chain_solve_terms.chain_bend_rows). PD keeps the old, weaker
+   bending (BEND_BASE): its springs are soft (W_LINK) and a stiff bend would hold the big moves back.
 The report reads the residuals at the end (chain_solve_terms.report). Deterministic: no random numbers, fixed orders,
 direct factorisations. Self-contact is not handled here; plies and layers are a term (chain_solve_plies, N2).
 Factors (PD's and LM's): CHOLMOD, METIS ordering, supernodal, analysed once per solve and refactored (gn.Factor says why,
@@ -52,6 +56,7 @@ from sksparse.cholmod import CholeskyFactor
 from threadpoolctl import threadpool_limits
 
 from . import chain_net as cn
+from . import chain_solve_final as final
 from . import chain_solve_gn as gn
 from . import chain_solve_plies as plies_
 from . import chain_solve_terms as terms
@@ -59,21 +64,49 @@ from .chain_core import GAP
 
 W_LINK = 0.03  # PD weight of a link's strain (dimensionless rows). LOW on purpose: PD's springs aim at their current
 # directions, so stiff ones lock rotations (a stiff collar pulled onto a neckline: 27 mm off at 1e3, 3.5 at 10; a 170
-# degree fold's halves 25 degrees out of plane at 10, 0.3 mm at 0.03). Lengths are the LM pass's and projection's job.
+# degree fold's halves 25 degrees out of plane at 10, 0.3 mm at 0.03). Lengths are the LM pass's and final step's job.
 W_EDGE = 0.003  # PD weight of an interior edge's strain
 W_FOLD = 30.0  # PD weight of a fold quad's turn (rows / flat distance from the hinge)
 W_TIE = 1e3  # PD weight of a tie (rows / REF)
 REF = 0.01  # m: pulls and ties are weighed per this distance (weight 1: 1 cm off costs as much as a strain of 1)
 PROX = 1e-3  # PD's proximal weight per node (rows / REF): keeps the matrix definite, damps nothing measurable
-ROUND_TOL = 0.01  # a round whose projection changes E by less than this fraction is the last
+ROUND_TOL = 0.01  # a round whose final step changes E by less than this fraction is the last
 TOL_PCT = 2.0  # a link past this % off its cut is reported (over_tol)
-PROJ_TOL = 1e-4  # the projection's own target: links and exact edges within this fraction
-STEP = 0.02  # m: a projection pass's largest move
 PD_STIFFEN = (10.0, 100.0)  # the warm start's later stages: link and edge weights x these, refactored once each
 PD_STAGE_ITERS = 100  # PD passes per later stage
 PUSH_EVERY = 4  # PD passes between pushes out of the body (a body query is the PD pass's dearest part)
+CLOTH_B = 1e-5  # N m: plain cloth's bending rigidity (wool suiting, KES-B ~0.1 gf cm^2 / cm); x bending.BEND_KIND
+CLOTH_ES = 200.0  # N / m: plain cloth's tensile stiffness (KES-T initial modulus of a suiting, order of magnitude)
+CHAIN_STRAIGHT_DEG = 25.0  # a chain point turning less than this in the flat gets a second-difference row (rest straight)
 # the Levenberg-Marquardt pass's weights (chain_solve_gn): it linearises directions, so the hard terms may be stiff
 W_GN = {"link": 1e4, "edge": 1e3, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF, "ply": plies_.W_PLY}
+
+
+def cloth_bend(net):
+    """Per vertex bending weight for the LM pass and the final step, stated as CLOTH: a link's strain residual
+    W_GN['link'] eps^2 stands for the cloth's stretch energy ES h^2 eps^2 (a cell h x h), so the solve's scale is
+    W_GN['link'] / (ES h^2), and a kink theta in that cell (curvature theta / h over h^2) costs B theta^2 of cloth: in
+    solve units W_GN['link'] B / (ES h^2) theta^2. The bending rows' residual at a kink is ~h theta / 2 and their weight
+    is divided by h^2 (chain_solve_terms), hence the 4. B per kind: CLOTH_B x net.bend (bending.BEND_KIND's ratios:
+    plain 1, fusible 8, canvas 20). h: the point's mean chain link length in the flat."""
+    h = np.zeros(net.n)
+    k = np.zeros(net.n)
+    for c in (0, 1):
+        np.add.at(h, net.chain_v[:, c], net.chain_L)
+        np.add.at(k, net.chain_v[:, c], 1.0)
+    h = np.where(k > 0, h / np.maximum(k, 1), np.mean(net.chain_L) if len(net.chain_L) else 0.01)
+    return 4.0 * W_GN["link"] * CLOTH_B / CLOTH_ES * np.asarray(net.bend, float) / np.maximum(h, 1e-4) ** 2
+
+
+def _bend(net, nid, nn, stiff_w, row_v, folds):
+    """Every bending row: across the lines (affine stencils), along the chains (second differences), along fold rows."""
+    Sb, Wb, _ = terms.bend_rows(net, nid, nn, stiff_w, skip=row_v)
+    Sc, Wc = terms.chain_bend_rows(net, nid, nn, stiff_w, CHAIN_STRAIGHT_DEG, skip=row_v)
+    Sb, Wb = sp.vstack([Sb, Sc]).tocsr(), np.r_[Wb, Wc]
+    if folds:  # (a fold row bends across itself, never along: row_rows)
+        Sr, Wr = terms.row_rows(net, nid, nn, stiff_w, [f["row"] for f in folds])
+        Sb, Wb = sp.vstack([Sb, Sr]).tocsr(), np.r_[Wb, Wr]
+    return Sb, Wb
 
 
 def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
@@ -88,11 +121,9 @@ def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
     folds = list(folds)
     fq = terms.fold_quads(net, folds)
     row_v = np.unique(np.concatenate([q["quads"][:, :2].ravel() for q in fq])).astype(np.int64) if fq else []
-    stiff_w = cn.BEND_BASE * np.asarray(net.bend, float) if stiffness is None else np.asarray(stiffness, float)
-    Sb, Wb, _ = terms.bend_rows(net, nid, nn, stiff_w, skip=row_v)
-    if fq:  # (a fold row bends across itself, never along: row_rows)
-        Sr, Wr = terms.row_rows(net, nid, nn, stiff_w, [f["row"] for f in folds])
-        Sb, Wb = sp.vstack([Sb, Sr]).tocsr(), np.r_[Wb, Wr]
+    Sb, Wb = _bend(net, nid, nn, cloth_bend(net) if stiffness is None else np.asarray(stiffness, float), row_v, folds)
+    _, Wpd = _bend(net, nid, nn, cn.BEND_BASE * np.asarray(net.bend, float) if stiffness is None else
+                   np.asarray(stiffness, float), row_v, folds)
     T = [(int(a), int(b), float(g)) for a, b, g in ([t["a"], t["b"], t["gap"]] if isinstance(t, dict) else t
                                                      for t in ties)]
     P = []
@@ -101,7 +132,7 @@ def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
         P.append({"ids": ids, "to": np.asarray(p["to"], float).reshape(len(ids), 3), "w": float(p.get("weight", 1.0)),
                   "name": p.get("name", f"pull{k}")})
     return {"nid": nid, "nn": nn, "Xn": Xn, "links": (li, lj, L, lp), "edges": (ei, ej, eL, ex), "folds": fq,
-            "Sb": Sb, "Wb": Wb, "ties": T, "pulls": P, "ct": ct, "plies": plies_.blocks(plies, nid, nn)}
+            "Sb": Sb, "Wb": Wb, "Wb_pd": Wpd, "ties": T, "pulls": P, "ct": ct, "plies": plies_.blocks(plies, nid, nn)}
 
 
 def _diff_rows(i, j, nn):
@@ -123,7 +154,7 @@ class _PD:
         B = []  # (S, W, kind)
         B.append((_diff_rows(li, lj, nn), W_LINK / np.maximum(L, 1e-9) ** 2, "link"))
         B.append((_diff_rows(ei, ej, nn), W_EDGE / np.maximum(eL, 1e-9) ** 2, "edge"))
-        B.append((t["Sb"], t["Wb"], "bend"))
+        B.append((t["Sb"], t["Wb_pd"], "bend"))
         for p in t["pulls"]:
             n_ = nid[p["ids"]]
             B.append((sp.coo_matrix((np.ones(len(n_)), (np.arange(len(n_)), n_)), shape=(len(n_), nn)).tocsr(),
@@ -260,83 +291,6 @@ def _push_out(Xn, ct, gap):
     return Xn
 
 
-def _project(Xn, t, ct, gap, iters: int = 40, log=None):
-    """The hard constraints over every node (fast projection): links, edges (exact / at most), ties, contact."""
-    nid = t["nid"]
-    li, lj, L, _ = t["links"]
-    ei, ej, eL, ex = t["edges"]
-    I = np.r_[li, ei]
-    J_ = np.r_[lj, ej]
-    Ls = np.r_[L, eL]
-    exact = np.r_[np.ones(len(L), bool), ex]
-    ti = nid[np.array([x[0] for x in t["ties"]], np.int64)] if t["ties"] else np.zeros(0, np.int64)
-    tj = nid[np.array([x[1] for x in t["ties"]], np.int64)] if t["ties"] else np.zeros(0, np.int64)
-    tg = np.array([x[2] for x in t["ties"]], float)
-    nn = len(Xn)
-    Xn = Xn.copy()
-    for it in range(iters):
-        dv = Xn[J_] - Xn[I]
-        l = np.maximum(np.linalg.norm(dv, axis=1), 1e-12)
-        c = l - Ls
-        act = exact | (c > 0)
-        worst = float(np.max(np.abs(c[act]) / Ls[act])) if act.any() else 0.0
-        u = dv / l[:, None]
-        ka = np.where(act)[0]
-        R, C, V, Cs = [], [], [], [c[ka]]
-        r0 = np.arange(len(ka))
-        for side, sg in ((J_, 1.0), (I, -1.0)):
-            for dd in range(3):
-                R.append(r0)
-                C.append(3 * side[ka] + dd)
-                V.append(sg * u[ka, dd])
-        m = len(ka)
-        tie_bad = 0.0
-        for k in range(len(tg)):
-            dvt = Xn[tj[k]] - Xn[ti[k]]
-            lt = float(np.linalg.norm(dvt))
-            if tg[k] < 1e-6 or lt < 1e-9:  # (on each other: three rows, one per axis)
-                tie_bad = max(tie_bad, lt)
-                for dd in range(3):
-                    R += [np.array([m]), np.array([m])]
-                    C += [np.array([3 * tj[k] + dd]), np.array([3 * ti[k] + dd])]
-                    V += [np.array([1.0]), np.array([-1.0])]
-                    Cs.append(np.array([dvt[dd]]))
-                    m += 1
-            else:
-                tie_bad = max(tie_bad, abs(lt - tg[k]))
-                ut = dvt / lt
-                for dd in range(3):
-                    R += [np.array([m]), np.array([m])]
-                    C += [np.array([3 * tj[k] + dd]), np.array([3 * ti[k] + dd])]
-                    V += [np.array([ut[dd]]), np.array([-ut[dd]])]
-                Cs.append(np.array([lt - tg[k]]))
-                m += 1
-        deep = 0.0
-        if ct is not None:
-            sd, nrm = ct.query(Xn)
-            sh = np.where(sd < gap)[0]
-            if len(sh):
-                deep = float(np.max(gap - sd[sh]))
-                r = m + np.arange(len(sh))
-                for dd in range(3):
-                    R.append(r)
-                    C.append(3 * sh + dd)
-                    V.append(nrm[sh, dd])
-                Cs.append(sd[sh] - gap)
-                m += len(sh)
-        if log:
-            log(f"  project {it}: worst {worst * 100:.4f} %, tie {tie_bad * 1e3:.3f} mm, deep {deep * 1e3:.3f} mm")
-        if worst <= PROJ_TOL and tie_bad <= 1e-5 and deep <= 1e-5:
-            break
-        Jm = sp.coo_matrix((np.concatenate(V), (np.concatenate(R), np.concatenate(C))), shape=(m, 3 * nn)).tocsr()
-        dx = -cn._solve(Jm, np.concatenate(Cs), 1e-9).reshape(nn, 3)
-        mx = float(np.linalg.norm(dx, axis=1).max())
-        if mx > STEP:
-            dx *= STEP / mx
-        Xn = Xn + dx
-    return Xn, it + 1
-
-
 def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness=None, gap: float = GAP, plies=(),
           pd_iters: int = 200, polish_rounds: int = 2,
           lm_iters: int = 30, log=None) -> tuple:
@@ -348,7 +302,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     pd = _PD(t)
     pd.finish(net)
     Xn = _push_out(t["Xn"], near, gap)
-    passes, lm, nfac = [], [], []
+    passes, lm, nfac, convs = [], [], [], []
     tm = {"setup": time.time() - t0}
     t1 = time.time()
     for npd in range(pd_iters):
@@ -371,16 +325,17 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
         t1 = time.time()
         Xn, k, E, nf = gn.polish(Xn, t, W_GN, near, gap, iters=lm_iters, log=log)
         t2 = time.time()
-        Xn, np_ = _project(Xn, t, near, gap, log=log)
+        Xn, np_, conv, frd = final.step(Xn, t, W_GN, near, gap, log=log)
         tm["lm"] += t2 - t1
         tm["project"] += time.time() - t2
         lm.append(k)
         nfac.append(nf)
         passes.append(np_)
+        convs.append(conv)
         if log:
-            log(f"round {rnd}: lm passes {k} ({nf} factors, E {E:.4g}), projection passes {np_}")
+            log(f"round {rnd}: lm passes {k} ({nf} factors, E {E:.4g}), final passes {np_} (converged {conv})")
         Ep = float(np.sum(gn.residuals(Xn, t, W_GN, near, gap, jac=False)[0] ** 2))
-        if abs(Ep - E) <= ROUND_TOL * E:  # (the projection barely moved the energy: another round would not either)
+        if abs(Ep - E) <= ROUND_TOL * E:  # (the final step barely moved the energy: another round would not either)
             break
     t["Xn"] = Xn
     X = Xn[t["nid"]]
@@ -388,7 +343,9 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     rep["plies"] = plies_.report(Xn, t["plies"])
     rep["seconds"] = round(time.time() - t0, 2)
     rep["points"] = int(net.n)
-    rep["projection_passes"] = passes
+    rep["final_passes"] = passes
+    rep["final_converged"] = convs
+    rep["chains"] = terms.smoothness(net, X)
     rep["lm_passes"] = lm
     rep["lm_factors"] = nfac
     rep["pd_passes"] = npd + 1
