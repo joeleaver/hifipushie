@@ -92,7 +92,7 @@ def test_hinge_turns_to_its_planned_angle():
     M["folds"] = [{"piece": "a", "name": "f", "rows": [row], "sign": 1.0}]
     c = _net(M)
     plan = {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 90.0}}}
-    pan = Panels(c, plan)
+    pan = Panels(c, plan, out={"a": 1.0})
     assert pan.n == 2 and len(pan.hinges) == 1
     TH0 = pan.fit_start(np.c_[c.uv, np.zeros(c.n)] + [0, 0, 0.2])
     keep = np.array([[[5, 5, 5], [5, 5, 6]]], float)
@@ -129,7 +129,7 @@ def test_ruled_hinge_turn_is_exact_by_construction():
     row = [10 * 11 + j for j in range(11)]
     M["folds"] = [{"piece": "a", "name": "f", "rows": [row], "sign": 1.0}]
     c = _net(M)
-    pan = Panels(c, {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 85.0, "lies_on": "a"}}})
+    pan = Panels(c, {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 85.0, "lies_on": "a"}}}, out={"a": 1.0})
     assert list(pan.ruled) == [pan.hinges[0]["turned"]]
     rng = np.random.default_rng(3)
     h = pan.hinges[0]
@@ -138,7 +138,7 @@ def test_ruled_hinge_turn_is_exact_by_construction():
         TH = pan.resolve(np.c_[rng.normal(0, 1, (2, 6)), rng.uniform(0, 3, 2), rng.normal(0, 4, 2), np.zeros(2)])
         assert abs(pan.hinge_read(TH, h)[2] - 85.0) < 0.5
         assert np.linalg.norm(pan.place(TH[a], a, h["mid"][None]) - pan.place(TH[b], b, h["mid"][None])) < 1e-6
-    free = Panels(c, {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 85.0, "lies_on": "b"}}})
+    free = Panels(c, {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 85.0, "lies_on": "b"}}}, out={"a": 1.0})
     assert not free.ruled
 
 
@@ -241,7 +241,7 @@ def test_mirrored_fold_rows_turn_the_same_way_about_the_body():
     c = _net(M)
     plan = {"folds": {"f.L": {"on": "a.L", "fold": "f", "turn_deg": 90.0},
                       "f.R": {"on": "a.R", "fold": "f", "turn_deg": 90.0}}}
-    pan = Panels(c, plan)
+    pan = Panels(c, plan, out={"a.L": 1.0, "a.R": 1.0})  # (both flats' +z away from the body: the outside)
     assert len(pan.hinges) == 2
     TH0 = pan.fit_start(np.c_[c.uv, np.zeros(c.n)] + [0, 0, 0.2])
     keep = np.array([[[5, 5, 5], [5, 5, 6]]], float)
@@ -253,7 +253,7 @@ def test_mirrored_fold_rows_turn_the_same_way_about_the_body():
         m = pan.place(TH[b], b, h["mid"][None])[0]
         n = pan.normal(TH[b], b, h["mid"][None])[0]  # (both flats wound the same way: +z is the same side of the cloth)
         zs.append(float((pan.place(TH[t], t, pan.panels[t]["c"][None])[0] - m) @ n))
-    assert zs[0] * zs[1] > 0 and min(map(abs, zs)) > 0.01, zs  # (both turned to the same side of the cloth)
+    assert min(zs) > 0.01, zs  # (both turned OUTWARD, onto the outside: N2i, the draft's sign picks the flap only)
 
 
 def test_fold_over_two_rows_reads_its_whole_turn_on_the_faces():
@@ -265,7 +265,7 @@ def test_fold_over_two_rows_reads_its_whole_turn_on_the_faces():
     M["folds"] = [{"piece": "a", "name": "f", "rows": rows, "sign": 1.0}]
     c = _net(M)
     plan = {"folds": {"f": {"on": "a", "fold": "f", "turn_deg": 90.0}}}
-    pan = Panels(c, plan)
+    pan = Panels(c, plan, out={"a": 1.0})
     TH0 = pan.fit_start(np.c_[c.uv, np.zeros(c.n)])
     TH, rd = ca.assemble(pan, TH0, np.array([[[5, 5, 5], [5, 5, 6]]], float))
     got = _fold_turns(c, pan.positions(TH), plan)["f"]

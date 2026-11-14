@@ -11,13 +11,13 @@ free variable:
   (`roll`: (s, t) -> (s, sin(k t) / k, (1 - cos(k t)) / k), the flat's +z onto the surface's normal).
 - A FOLD ROW splits its piece into panels (each point's side of each row; row points belong to both) joined by a
   HINGE along the row with one angle: the turned panel's direction across the row against the plan's turn (the turn
-  split over the draft's rows, towards the side the draft's sign says: sign x the flat's winding x the row's handedness
-  (its drafted direction x the turned side; N2e: without it a mirrored piece's fold turned the other way), +1 = +z).
+  split over the draft's rows, the way chain_lay.fold_way says (N2i: THE one rule, from the draft's turn and the piece's
+  outside: `out`, chain_lay.outside at the start) in the flat's +z terms (x the flat's winding), +1 = +z).
   The turned side of a row is its smaller side. N2f: the hinge RULES its turned panel (`resolve`): that panel's rigid
   motion is its base's at the row's middle turned by the plan's angle, exactly; only its roll is its own. A fold lying on
   another piece (plan lies_on) is not ruled: its turn stays a residual.
 - A piece sewn to nothing (a ply that follows its host) is not a panel: it is bound on its host afterwards.
-Panels(cnet, plan, skip) -> .panels [{piece, ids, c (flat centre)}], .owner (point -> its first panel), .hinges, .rule.
+Panels(cnet, plan, skip, out) -> .panels [{piece, ids, c (flat centre)}], .owner (point -> its first panel), .hinges, .rule.
 place(th, k, uv) / positions(th): the map; fit_start(Xs): each panel's numbers fitted to a start (Kabsch then the roll).
 Nothing here knows a garment, a piece's role or a wear state.
 """
@@ -27,6 +27,7 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.spatial.transform import Rotation
 
+from .chain_core import ChainRefused
 from .chain_lay_net import _side
 
 NP = 9  # numbers per panel: rotation vector (3), translation (3), roll axis angle in the flat, curvature, taper
@@ -83,15 +84,17 @@ def roll_normal(uv, phi, kappa, g=0.0, eps=1e-4):
 class Panels:
     """The panels of a chains-only network (module doc)."""
 
-    def __init__(self, cnet, plan=None, skip=()):
-        from .chain_lay import _draft_fold, _uv_wind
+    def __init__(self, cnet, plan=None, skip=(), out=None):
+        from .chain_lay import _draft_fold, _uv_wind, fold_way
         self.cnet = cnet
         plan = plan or {}
         rows_of: dict = {}
         for bid, f in sorted((plan.get("folds") or {}).items()):
             fd = _draft_fold(cnet, f, bid)
             rows = [np.asarray(r, np.int64) for r in fd.get("rows") or []]
-            way = float(fd.get("sign", 1.0)) * _uv_wind(cnet, f["on"])
+            if f["on"] not in (out or {}):
+                raise ChainRefused(f"fold {bid}: no outside read for {f['on']}: place it first (chain_lay.outside)")
+            way = fold_way(fd, out[f["on"]]) * _uv_wind(cnet, f["on"])  # (F's normal side -> the flat's +z side)
             for r in rows:
                 rows_of.setdefault(cnet.pid(f["on"]), []).append((r, float(f["turn_deg"]) / len(rows), way, bid,
                                                                   bool(f.get("lies_on")) and f["lies_on"] != f["on"]))
@@ -155,11 +158,6 @@ class Panels:
                     tp = self.panels[b]["ids"]
                     if (cnet.uv[tp].mean(0) - cnet.uv[on].mean(0)) @ m2 < 0:
                         m2 = -m2
-                    # (N2e, ONE rule: the draft's sign is the side of its row's direction, so a mirrored piece's
-                    # mirrored row with the opposite sign turns the same way about the body: x the row's handedness
-                    # (its direction x the turned side) x the flat's winding: +1 = the panel's own +z)
-                    rd = cnet.uv[r[-1]] - cnet.uv[r[0]]
-                    way = way * (1.0 if rd[0] * m2[1] - rd[1] * m2[0] >= 0 else -1.0)
                     self.hinges.append({"base": a, "turned": b, "row": on, "turn_deg": turn, "way": way,
                                         "mid": cnet.uv[on].mean(0), "across": m2, "name": f"{bid}#{k}",
                                         "free": rows[k][4]})
