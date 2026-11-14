@@ -1,0 +1,22 @@
+{
+ "symmetry": true,
+ "blend": 0.004,
+ "parts": {"wood": {"color": "#8a6644"}},
+ "joints": {
+  "front_top.L": {"pos": [0.19, -0.19, 0.44], "r": 0.02},
+  "front_foot.L": {"pos": [0.2, -0.2, 0.0], "r": 0.017},
+  "back_seat.L": {"pos": [0.19, 0.19, 0.44], "r": 0.02},
+  "back_foot.L": {"pos": [0.2, 0.22, 0.0], "r": 0.017},
+  "back_top.L": {"pos": [0.18, 0.24, 0.92], "r": 0.016}
+ },
+ "bones": {
+  "front_leg.L": {"a": "front_top.L", "b": "front_foot.L", "ends": "flat", "part": "wood"},
+  "back_leg.L": {"a": "back_seat.L", "b": "back_foot.L", "ends": "flat", "part": "wood"},
+  "back_post.L": {"a": "back_seat.L", "b": "back_top.L", "ends": "flat", "part": "wood"}
+ },
+ "blobs": {
+  "seat": {"shape": "box", "at": [0, 0, 0.455], "size": [0.22, 0.22, 0.018], "round": 0.006, "part": "wood"},
+  "top_rail": {"shape": "box", "at": [0, 0.238, 0.88], "size": [0.19, 0.012, 0.04], "round": 0.005, "part": "wood"},
+  "slat": {"shape": "box", "at": [0, 0.225, 0.66], "size": [0.19, 0.01, 0.03], "round": 0.004, "part": "wood"}
+ }
+}

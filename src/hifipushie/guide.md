@@ -25,7 +25,7 @@ from pictures), `human`, `likeness`, `skin`, `hair`, `cloth`, `terrain`, `vegeta
 |---|---|---|
 | A realistic human | `spec["base"]` (MakeHuman body + GNM head, by parameters), never blobs | `human`, then `block_in` for a person from pictures |
 | A real or drawn person from pictures | the artist block-in (THE DEFAULT) | `block_in` |
-| A creature, a cartoon character | skeleton + blobs + kits (hand, face, foot) + strokes | this playbook, `spec`, `blockout` |
+| A creature, a cartoon character | skeleton + blobs + kits (hand, face, foot) + strokes | this playbook, `spec`, `blockout`; `example` (a whole fox, a whole chair) |
 | ... from ONE concept picture | the same, judged through the picture's own camera: `fit_concept_camera` once, then each round `look_matched` (concept beside the render, pixel-aligned), `feature_tiles` and `review_view` on each pair | `fit_concept_camera`, `look_matched`, `feature_tiles` |
 | A prop, a building, a room | prefabs, arrays, hard solids, `walls` | `props` |
 | Hair / clothes / skin | their own tools on the model | `hair`, `cloth`, `skin` |
