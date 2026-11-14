@@ -131,6 +131,11 @@ def feature_report(name: str, elements: dict | None = None, views: list[str] | N
           for r in rep["rows"] if r["status"] == "right"]
     if ok:
         lines.append("right: " + ", ".join(ok))
+    measured = len(by) - count["IN ITS MASS"] - count[CANT]
+    if measured and count["right"] >= 0.8 * measured:   # the moment an agent would go round again for the likeness
+        lines.append("PLACED, NOT A LIKENESS: \"right\" is where a part is and how big it is, nothing more. More rounds of "
+                     "this do not make it look like the reference (four blind builds of one goat gave four different "
+                     "heads), and neither does shaping or fitting these parts: they stay parts. docs/state/feature_map.md")
     view = view or next(iter(rep["cams"]), None)
     if view is None:
         return "\n".join(lines)

@@ -4,6 +4,15 @@ A model can match its reference's outline and still be wrong everywhere inside i
 no mouth. The outline is one feature. The feature map names all of them, as marks on the reference's own pictures,
 so the sculpt is built from them and measured against each one. Make it BEFORE any shape is made.
 
+## What this gives, and what it does not
+
+It PLACES a character's parts: every mass where the pictures have it and as big, in a handful of rounds, with no
+coordinate typed (proven with blind agents). It does NOT give a likeness, and no amount of it does: the parts are
+plain solids, `feature_report`'s "right" is place and size, and a character is one flowing surface where this is an
+assembly of parts. Tried on top of it and closed (2026-11-14, the list is in `docs/state/feature_map.md`): more
+rounds, forms as strokes, the pictures' read surface pressed in part by part, whole shapes built from several
+pictures' read surfaces, fitting the solids. Use the map to name and place, and to check a shape made another way.
+
 ## The calls
 
 1. `read_reference(name, image, views, height)`: cuts a sheet into its views (one name per figure, left to right)

@@ -1,60 +1,54 @@
-# The feature map (a sculpt read from its reference pictures): STATE 2026-11-12
-Branch `feature-map` (worktree .claude/worktrees/feature-map), from main c3288704. Not pushed, not landed; bin/suite
-NOT run (tests/test_featuremap.py, masslines, toolsets, find_jobs, skill_file pass). Ledger C434, b, c (renumber).
-For Baynard Racing's sculpting from references (`baynard-racing/workspace/scraps/SCULPT_PROJECT.md`). Joe's rulings:
-reference PICTURES only (no generated mesh as input); every trial by a blind Opus 5.5 medium agent, page alone.
+# Feature map / sculpt from pictures: STATE 2026-11-14 (CLOSED by Joe)
 
-## What the tools hold (module docstrings are the spec; the sculptor's page is guide(topic="features"))
-- `read_reference` (refread.py): a sheet cut into views; front / back / side / side_r get a far camera at the
-  sheet's scale in matched.py's format (<model>/cameras/<view>.json). Per view: numbered PATCHES (cut along steps
-  in brightness and colour: a plain subject has them too), FORM LINES, and the outline's labelled NOTCHES.
-- `mark_features` (featuremap.py): kind mass / form / paint + on, join, separate, authority, inferred, says,
-  elements; marks per view (piece + cuts between notches, patches, box, ellipse, polygon, line, minus, mirror)
-  kept as masks. Owes: UNMARKED (> 2 %, hatched, boxes listed), DISAGREE, SIDE, DEPTH, ON.
-- `feature_report` (featuresee.py, featurerays.py, featurealign.py): the whole outline per picture, then per
-  feature and view NOT MADE / HIDDEN / OFF / right / IN ITS MASS / CAN'T MEASURE. An added shape's footprint is the
-  skin it OWNS (nearest own surface at the hit; a shell part whole); a cut's or stroke's is what changes when it
-  leaves the EXPANDED spec. A model not built from the map is first laid under the flat views. Kept between calls.
-- `build_masses` (masses.py, masslines.py): a marked mass becomes a shape from its marks: ball (+ socket), drum,
-  flap, trunk, tube. A tube follows its mark's own MIDDLE LINE with its thickness read across it; an end cut from
-  another mass runs on under it. The built elements are linked in the map; the model lives in the map's frame.
-- `build_forms` (forms.py): a marked form becomes a stroke on the mass it is on, laid from the view it was marked
-  in: raise / sink along the mark's middle line, rim round a ring, a line as a ridge or groove; "view": "all";
-  band: one stroke round the bone of the tube it is on.
-- guide.md: stage 0 = the map; blockout gate = every mass made and right; stage 3 = every form made. Every save
-  of a model with a map prints how much of it no element makes.
+Branch feature-map (worktree .claude/worktrees/feature-map), from main c3288704. For Baynard Racing (Scraps the
+goat, from a three-view turnaround and a painting). Not pushed. Joe closed it: "I don't think this is going to work",
+and of fitting the block-in: "Doing it parts means we got... parts, not a solid, flowing, organic looking shape".
 
-## Proof, and where it stops (trial files: /mnt/data/hifipushie/featuremap/; notes: baynard SCULPT_PROJECT.md 11-13)
-- tests/test_featuremap.py (10; ~1 min) and tests/test_masslines.py (7): a figure draws its own turnaround; the
-  true model all right; planted faults each found; its masses rebuilt from the marks and forms laid from them land
-  on the picture; a slanted limb, a cut end, a curl, a lump, a foreshortened lean, each with a known answer.
-- MAP, blind: Scraps 46 features in 8 rounds (Joe: "it looks pretty good to me"); the troll 58 in 7. MEASURE,
-  blind, the troll told to be the true model (2de593ca): 7 -> 31 right of 37 in six report rounds.
-- BUILD, blind: the troll (d77063f9) 8 rounds, outlines 93-95 %, volume overlap with the true troll 0.80, surface
-  median 9 mm off (troll3/score.py). Scraps: (08024656) typed polygons, a lumpy toy; (4e634f13) pieces cut by
-  notches, fat arms (the tube's fault, C434b); (76bc7660) 7 rounds, 16 of 19 right, outlines 89 / 92 / 87 %.
+## What holds (blind-proven or measured; worth landing as tools for SEEING and PLACING)
+- Feature map: `read_reference` -> `mark_features` (mass / form / paint, marked on the pictures) -> `feature_report`
+  (each feature's footprint against its mark). Fresh Opus-medium agents with the page only put every mass of Scraps in
+  the right place and size in 7-8 rounds (16 of 19 right, outlines 89 / 92 / 87 %), no coordinate typed.
+- `build_masses` (ball, drum, flap, trunk, tube along the mark's own middle line), `build_forms` (raise, sink, rim, band).
+- `surfaceread.py`: MoGe-2 normals of ANY picture on the CPU (own venv, 16 s a picture, cached); `height()` adds the
+  slopes up inside a region (pins, hidden stretches, one gain). ONE picture read as ONE surface is a clean, real
+  relief (record/17: a face). Use: a grey-clay target beside a sculpt; detail from one view.
 
-## Open faults, worst first
-1. NO LIKENESS YET, and no gate picture. Four blind Scraps block-ins gave four different heads (baynard pictures
-   9-12): one trunk is a box; split into skull, face, muzzle, jaw (trial 7, 2c15150b, scraps9/out) it is a
-   long-nosed tapir, and the split body got a shoulder shelf. Parts land in the right place and size in 8 rounds;
-   the SHAPE of what the flat views hide (a head behind its horns, ears, eyes) does not converge in one pass.
-   Missing: the loop after the first pass (same-view tiles per feature + a blind reviewer naming the worst fault,
-   each round: feature_tiles and bin/review exist, the trials did not offer them), and the perspective picture.
-2. A perspective picture's camera comes from fit_concept_camera (the MODEL's outline): circular on a rough
-   model. Solve it from the map's own features. Not built: the 3/4 painting has never constrained anything.
-3. From trial 7: a cut end of a trunk or flap should run on under its neighbour as a tube's does (stacked trunks
-   groove; a flap floats); a flap can't be turned about the upright; a horn has no taper or curl handle. Bands,
-   lumps per piece and the forms fixes after trial 6 are tested but not yet used by a blind agent. Shell parts
-   are owned whole; notches are sparse where a join has no pinch; featuresee.py is ~690 lines (split it).
+## What does not come out of it (why it is closed)
+- PLACEMENT IS NOT LIKENESS: four blind block-ins of one goat gave four heads (can, slab, box, tapir). "right" in
+  feature_report is place and size. The old 34-round hand sculpt was no further from the concept than any of them.
+- A CHARACTER IS ONE FLOWING SURFACE. Everything below starts from separate parts or separate pictures and stays an
+  assembly or a patchwork. Two pictures' accounts of one corner of a head lie 1-2 cm apart; the features are mm.
 
-## Decisions in force, and dead ends
-- Pictures in, nothing else; trials by a blind Opus 5.5 medium agent; the builder fixes the tool, never coaches;
-  what a subject's features are is the sculptor's judgement per subject (the page names no subject). Dead: a
-  mass measured with everything on it; halos dropped by a share of the feature's largest change.
+## Dead ends (each was built and rendered; pictures and slices in record/)
+- More rounds of marks -> solids; a big part as several masses (worse: tapir head, rippled body).
+- Forms as strokes for surface detail: clutter, not likeness.
+- A picture's relief pressed into a block-in solid, part by part: tears on every part border (record/14, 15).
+- Monocular depth: not used at all (docs/notes/measuremodels.md); only slopes, added up.
+- Whole head as front + back skins joined at the outline: seam, ridge down the middle line; with the ears in the
+  same surface the eyes are squashed (a 10 cm depth jump inside "one surface"). Record/16, 18.
+- One depth gain for a whole read (anteater head). Pins at full weight on a finer grid (face folded: a pin's weight is
+  per pixel AREA). A stiff-sheet bend to the outlines (wedge-shaped section).
+- Sides from the outlines alone: ribs (a furry outline pushed through the head) and slabs (an eye's surround).
+- Front, back and side skins: the side skin cutting everywhere (forehead cut, eyes pinched); standing away at points
+  in a layer under the front skin (a lip like a mask's edge: record/seam_s17.png); the front skin lifted to the side
+  skin's account (a fin along the rim). Best version: the side skin lifted as a height map (twoskin_agree.py), still
+  a rough patchwork (record/21).
+- `surfacefuse.refine` (Nehab et al. 2005) on the real reads: grain, twice (it passes on a rippled ball). A field made
+  from refined points and normals: wrong sign beside thin edges.
+- A horn as two skins with a flap's hem (a cushion with a flange); its root by carrying the outline into the head
+  (blocky). Block-in rays through ALL the clay (the far horn is met first: one slab across the head).
+- Fitting the block-in's solids to the reads: not built; ruled out by Joe (parts stay parts).
 
-## Commands
-- Trials: `FM_OUT=<dir> /mnt/data/hifipushie/featuremap/fm <tool> '<json>'` (this worktree's src; freeze a copy per
-  trial: `git archive HEAD src | tar -x -C frozenN`). scraps5/rebuild.py, scraps5/lines.py: trial 4 rebuilt, lines drawn.
-- `PYTHONPATH=src ../../../.venv/bin/python -m pytest -m "" tests/test_featuremap.py tests/test_masslines.py`
-NEXT: the likeness loop (tiles + blind review each round) on the third block-in; the painting's camera. Then Puddles.
+## Where things are
+- Tools: tools_features.py, featuremap.py, featuresee.py, masses.py, masslines.py, forms.py, refread.py,
+  guide_features.md. Reader: surfaceread.py. The closed route: relief.py, relief_press.py, twoskin.py,
+  twoskin_build.py, twoskin_agree.py, surfacefuse.py, meshclay.py (each docstring lists what failed).
+  Tests: test_featuremap.py, test_masslines.py, test_relief.py (9). Full bin/suite NOT run on this branch.
+- Record (durable): /mnt/data/hifipushie/featuremap/record/ = SCULPT_PROJECT.md (the whole history, sections 1-25)
+  and pictures 10-21, seam_s17.png, horn_marks.png. Models: featuremap/home (scraps_five = the best blind block-in,
+  scraps_s23 = where it ended). Reader: /mnt/data/hifipushie/measuremodels/surface (venv + weights, 6 GB).
+- Ledger rows C434, C434b-f (renumber on landing; main was at C445).
+
+NEXT: nothing queued. To land: the feature map, the measure and the reader as seeing / placing tools (suite first;
+featuresee.py is over 500 lines); the closed route's modules go to an archive tag, not to main. Reopen only with a
+way to make a character's surface WHOLE, as one thing: not from parts, and not by joining pictures.

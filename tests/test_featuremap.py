@@ -242,6 +242,7 @@ def test_the_tools_return_a_picture_and_the_table(fig):
     assert "feature map: 7 masses and forms" in tools_model._feature_line("fig") and tools_model._feature_line("none") == ""
     im, text = server.feature_report("fig", {n: [n] for n in fig["marks"]}, view="front", resolution=128)
     assert "0 NOT MADE" in text and "right" in text
+    assert "PLACED, NOT A LIKENESS" in text and "docs/state/feature_map.md" in text   # said when most parts are right
 
 
 def test_a_flat_views_camera_and_the_small_helpers():
