@@ -14,10 +14,10 @@ def test_a_read_groom_remembers_its_reads_and_a_copy_does_not():
 
 def _grow(monkeypatch, groom):
     """hair_grow.grow with the head work stubbed out: only which groom keys it reads matters here."""
-    from hifipushie import hair_loose, hair_tied
+    from hifipushie import hair_loose_grow, hair_tied
     monkeypatch.setattr(hair_grow, "fit_to_head", lambda g, sc: dict(g))  # (a copy, as the real one makes)
     monkeypatch.setattr(hair_grow, "hairline", lambda sc, g: np.zeros((4, 2)))
-    monkeypatch.setattr(hair_loose, "grow", lambda sc, g, line, rng, col=None: {"l0": {"tier": "loose", "n": g["loose"]}})
+    monkeypatch.setattr(hair_loose_grow, "grow", lambda sc, g, line, rng, col=None: {"l0": {"tier": "loose", "n": g["loose"]}})
     monkeypatch.setattr(hair_tied, "grow", lambda sc, g, line, rng, col=None: {"t0": {"tier": "tie", "n": g["tie"]}})
     reads: set = set()
     locks = hair_grow.grow(None, {**hair.GROOM, **groom}, None, reads)
