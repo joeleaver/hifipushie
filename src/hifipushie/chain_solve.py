@@ -15,10 +15,11 @@ solve(net, X0, body, ties, folds, pulls, stiffness) -> (X, report)
 - plies: bindings of plies, floating layers and inside pieces to their host (chain_solve_plies.bind, N2): each point a
   LAYER off its host's surface, on its host's inner face, as a TERM of this solve (never a copied or held position).
 
-HARD: every link at its cut (reported past TOL_PCT), every other mesh edge at most its flat length (N2i: interfaced or
-not). SOFT, N2i: a line across SHORTER than flat costs W_SHORT x its ends' interfacing (net.stiff): a stiff piece does
-not crumple in its own plane (the bending stencils are affine: blind to it), yet it can wrap (exact lines across made
-a chains-only collar a flat board), no point nearer the body than gap, every tie at its gap. SOFT: bending (each point towards its
+HARD: every link at its cut (reported past TOL_PCT): the pattern's chains AND the lines across (N2j: chain_lines, each
+a chain of ~30 mm exact links, so a piece curves but never squashes; N2i's soft W_SHORT is gone); every other mesh
+edge (the faces between them) at most its flat length (cloth doesn't stretch: without it an edge pulled outward
+scalloped between the lines' ends, 0.7 mm at their 30 mm spacing); no point nearer the body than gap, every tie at its
+gap. SOFT: bending (each point towards its
 flat neighbourhood's shape: chain_solve_terms' affine stencils, so a stiff piece keeps its flat shape), fold turns,
 pulls. When the soft terms ask for what the hard ones forbid (two pulls further apart than the cloth is long), the hard
 ones win and the soft residual is reported: never a stretched link.
@@ -81,8 +82,7 @@ CLOTH_B = 1e-5  # N m: plain cloth's bending rigidity (wool suiting, KES-B ~0.1 
 CLOTH_ES = 200.0  # N / m: plain cloth's tensile stiffness (KES-T initial modulus of a suiting, order of magnitude)
 CHAIN_STRAIGHT_DEG = 25.0  # a chain point turning less than this in the flat gets a second-difference row (rest straight)
 # the Levenberg-Marquardt pass's weights (chain_solve_gn): it linearises directions, so the hard terms may be stiff
-W_SHORT = 1e2  # a line across shorter than flat, per unit of its ends' interfacing (net.stiff): soft (N2i; module doc)
-W_GN = {"link": 1e4, "edge": 1e3, "short": W_SHORT, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF, "ply": plies_.W_PLY}
+W_GN = {"link": 1e4, "edge": 1e3, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF, "ply": plies_.W_PLY}
 
 
 def cloth_bend(net):
@@ -134,10 +134,7 @@ def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
         ids = np.asarray(p["ids"], np.int64)
         P.append({"ids": ids, "to": np.asarray(p["to"], float).reshape(len(ids), 3), "w": float(p.get("weight", 1.0)),
                   "name": p.get("name", f"pull{k}")})
-    ns = np.zeros(nn)
-    np.maximum.at(ns, nid, np.asarray(net.stiff, float))
     return {"nid": nid, "nn": nn, "Xn": Xn, "links": (li, lj, L, lp), "edges": (ei, ej, eL), "folds": fq,
-            "edge_stiff": np.minimum(ns[ei], ns[ej]),
             "Sb": Sb, "Wb": Wb, "Wb_pd": Wpd, "ties": T, "pulls": P, "ct": ct, "plies": plies_.blocks(plies, nid, nn)}
 
 

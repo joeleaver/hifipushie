@@ -1,4 +1,4 @@
-"""N2i proof (ONE fold-direction rule: chain_lay.fold_way from the draft's turn and each piece's outside read at the
+"""N2j proof (lines across are real chains: chain_lines; else as N2i). N2i proof (ONE fold-direction rule: chain_lay.fold_way from the draft's turn and each piece's outside read at the
 start; lines across at most, a soft resistance to shortening on interfaced pieces; the final step a trust region on one
 merit). N2h proof (smooth chains: cloth bending, the final step bends least; else as N2g). N2g proof (docs/proposals/step5_rewrite.md): N2f's START (rolled panels placed from their own tapes, folds exact by
 construction: panel_start + chain_panels.fit_start) closed by the FLEXIBLE chain solve (chain_solve on the chains-only
@@ -7,7 +7,7 @@ No rigid assembly. Seams close by CONTINUATION: the network unsewn (each side it
 its pair's current midpoint at rising weight (SEAM_W), each stage a full solve warm-started from the last; then the
 sewn network (one node per seam point) solved from there (a small merge jump instead of N2b's 10-30 cm one).
 
-  HIFIPUSHIE_HOME=<scratch ws> capped uv run python spikes/n2i_jacket.py <out> <loaded.pkl> [measure]
+  HIFIPUSHIE_HOME=<scratch ws> capped uv run python spikes/n2j_jacket.py <out> <loaded.pkl> [measure]
 The start as N2f's (panel_start.starts, Panels.fit_start), each girth piece's way round read from its seams. measure:
 the start's numbers only. Writes X_start.npy, X_stage<k>.npy, X.npy (solved), cnet.pkl, report.json."""
 import copy
@@ -82,7 +82,7 @@ def numbers(c, X, pulls, tag):
     return r
 
 
-with resources.heavy("n2i chain solve jacket", gb=3, kind="chain_build", log=log):
+with resources.heavy("n2j chain solve jacket", gb=4, kind="chain_build", log=log):
     t0 = time.time()
     rep = {"uptime": [up()], "seam_w": SEAM_W}
     M2, st2, bd2, _ = join_seams(pat.M, pat.stiff, pat.bend)
