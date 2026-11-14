@@ -270,3 +270,31 @@ def test_fold_over_two_rows_reads_its_whole_turn_on_the_faces():
     TH, rd = ca.assemble(pan, TH0, np.array([[[5, 5, 5], [5, 5, 6]]], float))
     got = _fold_turns(c, pan.positions(TH), plan)["f"]
     assert abs(got["median"] - 90.0) < 8.0, (got, rd["hinges"])
+
+
+def test_girth_piece_rolls_the_way_its_seams_say():
+    """N2g: one flat cuts a pair, so a flat may show either face. Piece b's flat is drawn mirrored (its faces rewound,
+    the same winding as a's): rolled the same way, the seams land on the wrong edges; _ways rolls one of them back."""
+    from hifipushie import panel_start as ps
+    M = _tube()
+    b = M["piece"] == 1
+    M["uv"] = M["uv"].copy()
+    M["uv"][b, 0] = M["uv"][b, 0].max() + M["uv"][b, 0].min() - M["uv"][b, 0]
+    fb = b[M["F"]].all(1)
+    M["F"] = M["F"].copy()
+    M["F"][fb] = M["F"][fb][:, ::-1]
+    c = _net(M)
+    loops = [np.c_[R * np.cos(t), R * np.sin(t), np.full_like(t, z)]
+             for t in [np.linspace(0, 2 * np.pi, 33)[:-1]] for z in (0.0, 0.1, 0.2)]
+    Xs = np.full((c.n, 3), np.nan)
+    girth, rd = {}, {}
+    for p, nm in enumerate(c.names):
+        ids = np.where(c.piece == p)[0]
+        Xs[ids], rd[nm] = ps._girth(c, nm, ids, loops, [], np.pi * p)
+        girth[p] = (nm, ids, loops, [], np.pi * p)
+    mine = c.piece == 1
+    before = ps._seam_cost(c, Xs, mine)
+    ps._ways(c, Xs, girth, rd)
+    after = ps._seam_cost(c, Xs, mine)
+    assert sorted(rd[n].get("way", 1.0) for n in "ab") == [-1.0, 1.0]  # (one of them turned: the seams are relative)
+    assert after < 0.15 * before  # (2.3 -> 0.25 m summed over its sew pairs)
