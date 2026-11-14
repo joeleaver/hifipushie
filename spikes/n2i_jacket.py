@@ -1,11 +1,13 @@
-"""N2h proof (smooth chains: cloth bending, the final step bends least; else as N2g). N2g proof (docs/proposals/step5_rewrite.md): N2f's START (rolled panels placed from their own tapes, folds exact by
+"""N2i proof (ONE fold-direction rule: chain_lay.fold_way from the draft's turn and each piece's outside read at the
+start; lines across at most, a soft resistance to shortening on interfaced pieces; the final step a trust region on one
+merit). N2h proof (smooth chains: cloth bending, the final step bends least; else as N2g). N2g proof (docs/proposals/step5_rewrite.md): N2f's START (rolled panels placed from their own tapes, folds exact by
 construction: panel_start + chain_panels.fit_start) closed by the FLEXIBLE chain solve (chain_solve on the chains-only
 network: links hard at their cut, bends free, folds at plan, tapes pulling, followers bound on their hosts, contact).
 No rigid assembly. Seams close by CONTINUATION: the network unsewn (each side its own nodes), each sew pair pulled to
 its pair's current midpoint at rising weight (SEAM_W), each stage a full solve warm-started from the last; then the
 sewn network (one node per seam point) solved from there (a small merge jump instead of N2b's 10-30 cm one).
 
-  HIFIPUSHIE_HOME=<scratch ws> capped uv run python spikes/n2h_jacket.py <out> <loaded.pkl> [measure]
+  HIFIPUSHIE_HOME=<scratch ws> capped uv run python spikes/n2i_jacket.py <out> <loaded.pkl> [measure]
 The start as N2f's (panel_start.starts, Panels.fit_start), each girth piece's way round read from its seams. measure:
 the start's numbers only. Writes X_start.npy, X_stage<k>.npy, X.npy (solved), cnet.pkl, report.json."""
 import copy
@@ -28,7 +30,6 @@ from hifipushie.chain_net import Network
 from hifipushie.chain_panels import Panels
 from hifipushie.chain_seams import join_seams
 
-cst.EXACT_INTERFACED = False  # (N2h: Delaunay rulings exact made the interfaced collar a board that can't wrap)
 SEAM_W = (0.1, 1.0, 10.0)  # per REF (1 cm): the seam pulls' weights, stage by stage, before the sewn solve
 
 out, src = sys.argv[1:3]
@@ -65,7 +66,7 @@ def seam_read(c, X, X0=None):
 
 
 def numbers(c, X, pulls, tag):
-    m = chain_lay.measures(c, X, plan, body.contact)
+    m = chain_lay.measures(c, X, plan, body.contact, OUT)
     a, b = c.chain_v[:, 0], c.chain_v[:, 1]
     e = np.abs(np.linalg.norm(X[b] - X[a], axis=1) / np.maximum(c.chain_L, 1e-12) - 1) * 100
     el = np.abs(np.linalg.norm(X[c.link_j] - X[c.link_i], axis=1) / np.maximum(c.link_L, 1e-12) - 1) * 100
@@ -81,7 +82,7 @@ def numbers(c, X, pulls, tag):
     return r
 
 
-with resources.heavy("n2h chain solve jacket", gb=3, kind="chain_build", log=log):
+with resources.heavy("n2i chain solve jacket", gb=3, kind="chain_build", log=log):
     t0 = time.time()
     rep = {"uptime": [up()], "seam_w": SEAM_W}
     M2, st2, bd2, _ = join_seams(pat.M, pat.stiff, pat.bend)
@@ -91,21 +92,21 @@ with resources.heavy("n2h chain solve jacket", gb=3, kind="chain_build", log=log
     skip = [p for p in cnet.names if p not in other]
     h = holds_read(net)
     follow = {**h.plies, **h.layers, **h.inside}
-    pan = Panels(cnet, plan, skip)
     Xs, epulls, srd = panel_start.starts(cnet, keep, body, skip, spin={p: 0.0 for p in cnet.names})
+    OUT = chain_lay.outside(cnet, np.nan_to_num(Xs), body.contact, [p for p in cnet.names if p not in skip])
+    pan = Panels(cnet, plan, skip, OUT)
     for h_ in pan.hinges:  # (the start UNTURNED: the solve's fold terms turn each fold, in the solve's own sign; N2g:
         # a hinge's way read off the flat turned the collar fall up into a funnel, and neither way read within 50 deg)
         h_["turn_deg"] = 0.0
     t1 = time.time()
     TH0 = pan.fit_start(np.nan_to_num(Xs))
     rep["seconds_fit_start"] = round(time.time() - t1, 1)
-    sgn0 = {p: chain_lay._out_sign(cnet, p, np.nan_to_num(Xs), body.contact) for p in cnet.names if p not in skip}
     X = pan.positions(TH0)
     ok = ~np.isnan(X[:, 0]) & ~np.isnan(Xs[:, 0])
     rep["start_pieces"] = srd
     rep["start_fit_rms_mm"] = round(float(np.sqrt(((X[ok] - Xs[ok]) ** 2).sum(1).mean())) * 1e3, 1)
     # followers (plies, floating layers, inside pieces) bound on their hosts: a term of every solve, and their start
-    sign = {p: chain_lay._out_sign(cnet, p, np.nan_to_num(X), body.contact) for p in set(follow.values())}
+    sign = chain_lay.outside(cnet, np.nan_to_num(X), body.contact, sorted(set(follow.values())))
     k_of = {p: (1 + sum(1 for q, hh in h.layers.items() if hh == follow[p])) if p in h.inside else 1 for p in follow}
     bound = {p: follow[p] for p in (follow if "bindall" in sys.argv else skip)}  # (run1 bound every follower: the
     # collar bound point for point on the undercollar fought its own fall fold, links to 3966 %)
@@ -115,7 +116,8 @@ with resources.heavy("n2h chain solve jacket", gb=3, kind="chain_build", log=log
             P = (b["w"][:, :, None] * X[b["tri"]]).sum(1) + b["d"][:, None] * cp.normals(X, b["tri"], b.get("hostF"))
             X[b["ids"]] = np.where(np.isnan(X[b["ids"]]), P, X[b["ids"]])
     pulls = chain_settle.girth_pulls(cnet, X) + epulls
-    folds = chain_lay.fold_rows(cnet, plan, sgn0)
+    folds = chain_lay.fold_rows(cnet, plan, OUT)
+    rep["outside"] = OUT
     ties = chain_lay.tie_pairs(cnet, plan)
     np.save(os.path.join(out, "X_start.npy"), X)
     pickle.dump({"keep": keep, "cnet": cnet, "TH0": TH0}, open(os.path.join(out, "cnet.pkl"), "wb"))
@@ -137,7 +139,7 @@ with resources.heavy("n2h chain solve jacket", gb=3, kind="chain_build", log=log
             sr = numbers(cnet, Xk, pulls, f"stage {k} (seam w {w})")
             sr.update(seconds=round(time.time() - t1, 1), solve={kk: rk.get(kk) for kk in
                                                                 ("links", "folds", "contact", "ties", "plies",
-                                                                 "final_passes", "final_converged", "timing")})
+                                                                 "final_passes", "final_converged", "final_hard", "timing")})
             rep["stages"].append(sr)
         t1 = time.time()
         Xf, rf = cs.solve(cnet, Xk, body, ties, folds, pulls, plies=plies, log=None)
@@ -146,7 +148,7 @@ with resources.heavy("n2h chain solve jacket", gb=3, kind="chain_build", log=log
         rep["solved"]["seam_moved_mm"] = seam_read(cnet, Xf, X)
         rep["solved"]["merge_moved_mm"] = seam_read(cnet, Xf, Xk)
         rep["solved"]["solve"] = {kk: rf.get(kk) for kk in ("links", "folds", "contact", "ties", "plies", "pulls",
-                                                            "timing", "lm_passes", "final_passes", "final_converged",
+                                                            "timing", "lm_passes", "final_passes", "final_converged", "final_hard",
                                                             "chains")}
         rep["seconds"]["stages"] = [s_["seconds"] for s_ in rep["stages"]]
         rep["seconds"]["sewn"] = round(time.time() - t1, 1)

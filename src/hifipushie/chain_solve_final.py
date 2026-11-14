@@ -7,8 +7,8 @@ Each pass is one equality-constrained Gauss-Newton step (sequential quadratic pr
     minimise 1/2 dx^T (Js^T Js + ALPHA I) dx + (Js^T rs)^T dx   subject to   Jc dx = -c
 - rs, Js: the SOFT terms of chain_solve_gn.residuals (bending along chains and across lines, fold turns, pulls, plies)
   with the hard terms' weights set to zero: the step bends least, keeps folds at plan and tapes where they pull.
-- c, Jc: the HARD terms, linearised: every link at its cut, interfaced edges exact, other edges no longer than their
-  flat length (active only when over), ties at their gap, points nearer the body than the gap put out to it (active
+- c, Jc: the HARD terms, linearised: every link at its cut, other edges no longer than their flat length (active
+  only when over), ties at their gap, points nearer the body than the gap put out to it (active
   only when under). The active set is re-read every pass.
 - ALPHA: a proximal metric per node (rows / REF^2 like a pull of weight ALPHA_W) that keeps the KKT matrix definite
   and each pass local; it damps nothing the soft terms want.
@@ -17,9 +17,10 @@ in H's metric: a fix is taken as a smooth bend), kept only if it lowers |c|^2; e
 |c|^2, (Jc^T Jc + mu H) dx = -Jc^T c, damping raised until it does (N2h: the undamped projection diverged on the
 jacket's collar from links 28 % off, worst 34 -> 990 % in 24 passes, with or without contact).
 The KKT system [[H, Jc^T], [Jc, -EPS I]] is quasi-definite and solved by a sparse LU (3 x nodes + active rows, ~25k at
-the jacket's 3k nodes: well under a second). A pass's largest move is capped at STEP. It stops when every hard term
-holds (links within TOL, ties and contact within 0.01 mm) and the last move is under DONE_MOVE; the report says how
-many passes it took and whether it converged.
+the jacket's 3k nodes: well under a second). THE SOFT PASSES (N2i): a trust region on ONE MERIT, phi = soft energy +
+NU x |hard violation|^2: each pass the SQP step capped at the radius, the radius set by actual / predicted drop of phi;
+it stops when an accepted step lowers phi by less than DONE_DROP of it (converged), then restores once. The report says
+how many passes it took and whether it converged (and the hard terms hold).
 """
 from __future__ import annotations
 
@@ -31,11 +32,14 @@ from . import chain_solve_gn as gn
 
 ALPHA_W = 1e-3  # proximal weight per node, as a pull of this weight per REF (1 cm)
 EPS = 1e-10  # the KKT matrix's regularisation of the constraint block
-TOL = 1e-4  # links and exact edges within this fraction of their length
+TOL = 1e-4  # links within this fraction of their length (edges: no longer than it)
 TOL_POS = 1e-5  # m: ties and contact within this
-DONE_MOVE = 5e-5  # m: a soft pass moving no point further than this, with the hard terms holding, is the last
-DONE_DROP = 1e-4  # ... or one lowering the soft energy by less than this fraction
-STEP = 0.005  # m: a pass's largest move, and the soft pass's largest trust radius
+DONE_MOVE = 5e-5  # m: a trust radius this small that still lowers nothing: a minimum of the merit
+DONE_DROP = 1e-4  # an accepted step lowering the merit by less than this fraction of it is the last
+STEP = 0.005  # m: a restoring pass's largest move, and the first trust radius
+RADIUS_MAX = 0.05  # m: the trust radius grows to at most this
+NU_W = 10.0  # the merit's violation weight: TOL on every hard row weighs this x the starting soft energy
+RHO_TAKE, RHO_SHRINK, RHO_GROW = 0.1, 0.25, 0.75  # actual / predicted merit drop: take, shrink, grow
 ITERS = 200  # solves at most (restoring and soft)
 RESTORE = 40  # restoring passes per round at most
 MU0 = 1e-6  # the first damping of a restoring pass the KKT step made worse (x H, whose entries are ~1e5 x Jc^T Jc's)
@@ -45,9 +49,9 @@ def hard_rows(Xn, t, ct, gap):
     """The hard constraints at Xn (nodes), linearised: (Jc (m x 3nn) csr, c (m,), read {worst, tie_mm, deep_mm})."""
     nid = t["nid"]
     li, lj, L, _ = t["links"]
-    ei, ej, eL, ex = t["edges"]
+    ei, ej, eL = t["edges"]
     I, J_, Ls = np.r_[li, ei], np.r_[lj, ej], np.r_[L, eL]
-    exact = np.r_[np.ones(len(L), bool), ex]
+    exact = np.r_[np.ones(len(L), bool), np.zeros(len(eL), bool)]
     nn = len(Xn)
     dv = Xn[J_] - Xn[I]
     l = np.maximum(np.linalg.norm(dv, axis=1), 1e-12)
@@ -135,7 +139,7 @@ def step(Xn, t, w, ct, gap, iters: int = ITERS, log=None):
     gradient: the hard terms made exact by the correction smallest in the soft terms' own metric, so a fix is taken as
     a smooth bend, not a kink), then one SOFT pass (bend least on the constraints' tangent, its move capped by a trust
     radius), kept only if the soft energy after restoring is lower, else the radius halves. Converged when the hard
-    terms hold and the soft pass moves less than DONE_MOVE (or its radius is that small)."""
+    terms hold after the merit's trust region settles (module doc)."""
     ws = soft_weights(w)
     nn = len(Xn)
     alpha = ALPHA_W / w["ref"] ** 2
@@ -176,34 +180,51 @@ def step(Xn, t, w, ct, gap, iters: int = ITERS, log=None):
                 mu = MU0 if mu == 0.0 else mu * 8
         return X, rd_
 
+    # (N2i: ONE MERIT, phi = soft energy + NU x |hard violation|^2 (NU scaled so a violation of TOL on every hard row
+    # weighs NU_W x the starting soft energy), and a TRUST REGION on it: the full SQP step, capped at the radius; the
+    # ratio of phi's actual to its model's predicted drop grows or shrinks the radius; stop when an accepted step drops
+    # phi by less than DONE_DROP of it. N2h restored after every soft pass and accepted only a soft-energy drop with every
+    # hard term holding, capped at 5 mm: every jacket solve ran to its 200-pass cap.)
     E, H, g = metric(Xn)
     Xn, rd = restore(Xn, H)
     E, H, g = metric(Xn)
+    Jc, c, rd = hard_rows(Xn, t, ct, gap)
+    Ls = np.r_[t["links"][2], t["edges"][2]]
+    nu = NU_W * max(E, 1e-12) / max(float(np.sum((TOL * Ls) ** 2)), 1e-30)
+    phi = E + nu * float(c @ c)
     while n_kkt < iters:
-        Jc, c, rd = hard_rows(Xn, t, ct, gap)
         dx = _kkt(H, Jc, g, c)
         n_kkt += 1
         mx = float(np.linalg.norm(dx, axis=1).max())
         if mx > radius:
             dx *= radius / mx
-        Xt, rdt = restore(Xn + dx, H)
+        d = dx.ravel()
+        lin = c + Jc @ d
+        pred = -(2 * float(g @ d) + float(d @ ((H - I3) @ d))) + nu * (float(c @ c) - float(lin @ lin))
+        Xt = Xn + dx
         Et, Ht, gt = metric(Xt)
+        Jt, ctt, rdt = hard_rows(Xt, t, ct, gap)
+        phit = Et + nu * float(ctt @ ctt)
+        rho = (phi - phit) / pred if pred > 0 else -1.0
         if log:
-            log(f"  final {n_kkt}: E {E:.5g} -> {Et:.5g}, move {min(mx, radius) * 1e3:.3f} mm (radius "
-                f"{radius * 1e3:.2f}), worst {rdt['worst'] * 100:.4f} %, deep {rdt['deep_mm']:.3f} mm")
-        if Et <= E and _holds(rdt):
-            drop = (E - Et) / max(E, 1e-30)
-            Xn, E, H, g, rd = Xt, Et, Ht, gt, rdt
-            if min(mx, radius) <= DONE_MOVE or drop < DONE_DROP:
+            log(f"  final {n_kkt}: phi {phi:.5g} -> {phit:.5g} (rho {rho:.2f}), move {min(mx, radius) * 1e3:.3f} mm "
+                f"(radius {radius * 1e3:.2f}), worst {rdt['worst'] * 100:.4f} %, deep {rdt['deep_mm']:.3f} mm")
+        if rho > RHO_TAKE:
+            drop = (phi - phit) / max(phi, 1e-30)
+            Xn, E, H, g, Jc, c, rd, phi = Xt, Et, Ht, gt, Jt, ctt, rdt, phit
+            if rho > RHO_GROW and mx >= radius:
+                radius = min(RADIUS_MAX, 2 * radius)
+            elif rho < RHO_SHRINK:
+                radius *= 0.5
+            if drop < DONE_DROP:
                 conv = True
                 break
-            radius = min(STEP, 2 * radius)
         else:
-            radius *= 0.5
+            radius *= 0.25
             if radius <= DONE_MOVE:
-                conv = _holds(rd)
+                conv = True  # (no step of any size lowers the merit: a minimum of it)
                 break
-    if not _holds(rd):
-        conv = False
-    rd = {k: round(float(v), 6) for k, v in rd.items()}
+    Xn, rd = restore(Xn, H)  # (the hard terms made to hold where the merit settled)
+    holds = _holds(rd)  # (converged = the merit settled; whether every hard term then holds at TOL is said apart)
+    rd = {**{k: round(float(v), 6) for k, v in rd.items()}, "holds": bool(holds)}
     return Xn, n_kkt, conv, rd
