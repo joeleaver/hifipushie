@@ -34,15 +34,13 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
     rs, R, C, V = [], [], [], []
     m = 0
 
-    def spring(i, j, L, wt, atmost, short=False):
+    def spring(i, j, L, wt, atmost):
         nonlocal m
         dv = Xn[j] - Xn[i]
         l = np.maximum(np.linalg.norm(dv, axis=1), 1e-12)
         c = (l - L) / L
         if atmost is not None:
             c = np.where(atmost, np.maximum(c, 0), c)
-        if short:  # (only a line SHORTER than flat: a stiff piece's resistance to crumpling)
-            c = np.minimum(c, 0)
         s = np.sqrt(wt)
         rs.append(s * c)
         if jac:
@@ -57,7 +55,6 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
     spring(li, lj, L, np.full(len(L), w["link"]), None)
     ei, ej, eL = t["edges"]
     spring(ei, ej, eL, np.full(len(eL), w["edge"]), np.ones(len(eL), bool))
-    spring(ei, ej, eL, w["short"] * t["edge_stiff"], None, short=True)
     # bending (linear)
     Sb = sp.diags(np.sqrt(t["Wb"])) @ t["Sb"]
     rs.append(Sb @ Xn)  # (rows, 3): flattened below as 3 rows each

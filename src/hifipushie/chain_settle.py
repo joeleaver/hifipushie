@@ -44,7 +44,8 @@ def girth_pulls(cnet, X, weight=GIRTH_W, band=GIRTH_BAND) -> list:
     T = st.get("tapes") or {}
     out = []
     for p, nm in enumerate(cnet.names):
-        ids = np.unique(cnet.chain_v[cnet.chain_piece == p])
+        ids = np.unique(cnet.chain_v[(cnet.chain_piece == p) & (np.asarray(cnet.chain_kind) < 2)])  # (N2j: the
+        # pattern's chains; a line across's lattice points are not where a tape was laid)
         for t in (st.get("pieces") or {}).get(nm) or []:
             if t not in T or T[t].get("kind") != "loop":
                 continue
