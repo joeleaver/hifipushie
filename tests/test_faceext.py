@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, faceext, faceslide, gnmloops  # noqa: E402
+from hifipushie import faceslide_fields, faceslide_mouth
 
 
 def _ok():
@@ -53,7 +54,7 @@ def test_extensions_fold_nothing():
         if k not in faceext.table():
             continue
         for v in (-1.0, 1.0):
-            X1 = X0 + faceslide.delta({k: v})
+            X1 = X0 + faceslide_fields.delta({k: v})
             turned = int(((np.einsum("ij,ij->i", n0, nrm(X1)) < 0) & big).sum())
             assert turned == 0, (k, v, turned)
 
@@ -110,7 +111,7 @@ def test_extensions_bend_the_visible_skin_smoothly():
     l2 = np.zeros(len(X))
     np.add.at(l2, r, ((X[r] - X[c]) ** 2).sum(1))
     l2 /= deg
-    R = faceslide._lip_rings()
+    R = faceslide_mouth._lip_rings()
     inner = np.zeros(len(X), bool)
     for rr in R["rings"][:R["contact"] + 1]:
         inner[rr] = True

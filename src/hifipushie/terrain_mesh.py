@@ -70,8 +70,8 @@ DEFAULTS = {
     "corridors": False,    # river-corridor heightmaps (terrain_corridors): true | {"spacing", "buffer", "size"}
     "detail": True,        # the tiling rock detail (terrain_swatch): swatches in materials/ and, on cliff tiles, a
                            # strike-binned UV set (TEXCOORD_n, metres) + _DETAIL (strike x, y, side share, bed v)
-    "detail_source": "procedural",  # the swatch: "procedural" (terrain_swatch.swatch) or "scan:<set>" (a CC0
-                           # photoscan from the rock_scans asset pack: terrain_swatch.scan_swatch)
+    "detail_source": "procedural",  # the swatch: "procedural" (terrain_swatch_make.swatch) or "scan:<set>" (a CC0
+                           # photoscan from the rock_scans asset pack: terrain_swatch_make.scan_swatch)
     "checks": True,        # the seam/ground/pattern checks after writing (off for previews)
 }
 
@@ -123,7 +123,7 @@ NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
 # RELIEF_FADE, so the field stays continuous where the cull starts (Field._solid)
 RELIEF_CUT = 0.01
 RELIEF_FADE = 0.1
-JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
+JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake_maps.bake_texels) a tile LOD may have (seam_check)
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
 FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
 FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs_checks.floating's tol)

@@ -11,6 +11,7 @@ from PIL import Image
 
 import mk
 from hifipushie import blockin as bi, blockin_eyes as be, store
+from hifipushie import blockin_eyes_evidence, blockin_eyes_solve
 from hifipushie import blockin_clay, blockin_models
 
 src, dst = sys.argv[1], sys.argv[2]
@@ -22,8 +23,8 @@ if os.environ.get("SIGSHAPE"):
     be.SIG_SHAPE = float(os.environ["SIGSHAPE"])
 rj = blockin_models._refs(src)
 v = rj["views"][blockin_clay._front(rj)]
-ev = be.photo_evidence(Image.open(v["image"]).convert("RGB"), v)
-rv = be.ruler_evidence(src)
+ev = blockin_eyes_evidence.photo_evidence(Image.open(v["image"]).convert("RGB"), v)
+rv = blockin_eyes_evidence.ruler_evidence(src)
 ev["ruler"] = {k: rv[k] for k in ("up", "lo", "inner", "outer", "crease_cols")}
 if os.environ.get("NOCREASE"):
     ev["ruler"]["crease_cols"] = None
@@ -39,7 +40,7 @@ if os.environ.get("IDENT"):   # the identity of another model (e.g. gd_T12: the 
     bi.set_identity(sp, bi.identity(store.load(os.environ["IDENT"])))
 if os.environ.get("NOEXPR"):
     hd.pop("expression", None)
-s = be.solve(sp["base"], ev, iters=iters, crease=crease, ne=ne, log=lambda m: print(m, flush=True),
+s = blockin_eyes_solve.solve(sp["base"], ev, iters=iters, crease=crease, ne=ne, log=lambda m: print(m, flush=True),
              crisp=float(os.environ["CRISP"]) if os.environ.get("CRISP") else None,
              hold_mm=None if os.environ.get("NOMM") else "default")
 print("narrow crease depth", round(s["read0"]["narrow"], 3), "->", round(s["read"]["narrow"], 3))

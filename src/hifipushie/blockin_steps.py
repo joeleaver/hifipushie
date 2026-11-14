@@ -150,8 +150,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             if nm in blockin.LOCAL_SD and abs(v) > 2.5 * blockin.LOCAL_SD[nm]:
                 big.append(f"{k} (population sd {blockin.LOCAL_SD[nm]})")
         elif k.startswith(("sculpt:", "relief:")):
-            from . import gnm_controls as gcm
-            sc = gcm.sculpt(**gcm.parse_sculpt(k))
+            from . import gnm_controls_sculpt
+            sc = gnm_controls_sculpt.sculpt(**gnm_controls_sculpt.parse_sculpt(k))
             c = c + v * sc["dc"]
             sculpts[k] = {"mm": v, "cost": round(abs(v) * sc["cost"], 2), "released": sc["released"],
                           "outside_mm": round(abs(v) * sc["outside_mm"], 3)}
@@ -165,7 +165,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     if "hooding" in (moves or {}):
         from . import gnm_fold
         hood = [gnm_fold.read_text(gnm_fold.read(gnm_fold.vertices(x))) for x in (c0, c)]
-    if _identity is not None:   # (solved steps: blockin_eyes.eye_step) the identity given, head keys set / cleared
+    if _identity is not None:   # (solved steps: blockin_eyes_solve.eye_step) the identity given, head keys set / cleared
         c = np.asarray(_identity, float)
     for k, v in (_head_set or {}).items():
         if v is None:
@@ -441,6 +441,7 @@ def iris_size(name: str, off=None) -> dict:
     differ +- 7 % between people), "prior_sd" (GNM's spread of head size), "weight" / "combined_sd" (the two combined),
     "text"}. off: the identity's change since the block-in's start (default: read from the log's root)."""
     from . import blockin_eyes as be, solve_report as sr, store
+    from . import blockin_eyes_evidence
     from . import base_implied
     sp = store.load(name)
     if off is None:
@@ -454,7 +455,7 @@ def iris_size(name: str, off=None) -> dict:
         return {**out, "why": "the head overrides GNM's eyeball (base.head.eye_radius): its iris is not GNM's limbus",
                 "text": "IRIS SIZE CHECK: not read (the head overrides GNM's eyeball)"}
     try:
-        ic = be.iris_check(name)
+        ic = blockin_eyes_evidence.iris_check(name)
     except ValueError as e:
         return {**out, "why": str(e)[:120], "text": f"IRIS SIZE CHECK: not read ({str(e)[:80]})"}
     if not ic.get("photo_mm"):

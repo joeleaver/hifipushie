@@ -178,7 +178,7 @@ def _job_tile(ij):
                         bur[kb] |= q[:, 2] <= field.region.height(q[:, 0], q[:, 1]) + 0.05
             Ps, Fs, Ns, src = _unflip_corners(Ps, Fs, Ns, src, ~bur, bd[src])
         stem = f"tile_{i}_{j}_lod{k}"
-        from .terrain_bake import material as terrain_bake_material
+        from .terrain_bake_layers import material as terrain_bake_material
         images, binfo, deferred = None, None, None
         if cfg.get("maps") and (~bur).any():
             Pv, Nv, Cv, Wv, Fv = _compact(Ps, Ns, C[src], W[src], Fs[~bur])

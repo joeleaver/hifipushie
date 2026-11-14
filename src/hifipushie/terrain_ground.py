@@ -518,7 +518,7 @@ def sand_swatch(size=None, res=None, seed=4245):
     """A tileable sand swatch (top view, periodic, as grass_swatch returns it): wind/wave ripples ~8-12 cm apart in
     wandering patches (crests a little paler), grit speckle, scattered pebbles and shell (1-4 cm, darker and paler),
     so a beach isn't a smooth cream ramp at eye level."""
-    from .terrain_swatch import spectral
+    from .terrain_swatch_periodic import spectral
     L = float(size or GRASS["size"])
     n = int(round(L * (res or GRASS["res"])))
     rng = np.random.default_rng(seed)
@@ -563,7 +563,7 @@ def grass_swatch(size=None, res=None, seed=4243, blades=None, length=None, dry=N
     gaps between them), clumps 0.1-0.4 m, dry blades straw-coloured. Returns {"albedo" (n, n, 3) multiplier, mean 1;
     "height" m; "normal" (n, n, 3) tangent space (+x east, +y north); "rough"; "size_m"; "texels_per_m"; "n"}. Below
     the ground maps' texel (4/m) the macro colour is mush at eye level; this is what an engine tiles over it."""
-    from .terrain_swatch import spectral
+    from .terrain_swatch_periodic import spectral
     L = float(size or GRASS["size"])
     n = int(round(L * (res or GRASS["res"])))
     rng = np.random.default_rng(seed)
@@ -612,12 +612,12 @@ def grass_swatch(size=None, res=None, seed=4243, blades=None, length=None, dry=N
 
 
 def write_grass(out_dir, layers=None):
-    """The grass swatches' images in out_dir/materials (rows top = north), as terrain_swatch.write lays the rock's:
+    """The grass swatches' images in out_dir/materials (rows top = north), as terrain_swatch_detail.write lays the rock's:
     <kind>_detail_albedo (linear, x 2 = the multiplier), _normal (tangent: +x east, +y north), _height (16-bit), one
     set per SWATCHES kind whose layers exist (`layers`: the terrain's layer names; None = all). Returns the manifest
     entry: the first swatch's keys at the top (as before) and every swatch under "swatches"."""
     from PIL import Image
-    from .terrain_swatch import tileability
+    from .terrain_swatch_make import tileability
     d = out_dir / "materials"
     d.mkdir(exist_ok=True)
     q8 = lambda a: np.round(np.clip(a, 0, 1) * 255).astype(np.uint8)

@@ -8,6 +8,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import paint, skin, skin_folds as sf, skin_marks as mk, skin_read as sr, store
+from hifipushie import skin_marks_beard, skin_marks_map
 from hifipushie import skin_params, skin_zones
 from hifipushie import skin_read_context, skin_read_fit, skin_read_fold_fit, skin_read_folds, skin_read_frames, skin_read_params, skin_read_reads
 from hifipushie.spec import SpecError
@@ -78,13 +79,13 @@ def test_get_set_and_fold_options():
 def test_beard_zones_partition_and_weights():
     spec = head_spec(hair={"stubble": {"style": "short"}})
     J = skin_zones._joints(spec)
-    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
-    z = mk.beard_zones(J)(V)
+    z = skin_marks_beard.beard_zones(J)(V)
     assert set(z) == set(mk.BEARD_ZONES) and np.allclose(sum(z.values()), 1.0, atol=1e-9) and all((v >= -1e-12).all() for v in z.values())
     from hifipushie.skin_features_hair import stubble_options
-    full = mk.beard_density(J, stubble_options({"amount": 1.0, "style": "short"}))(V, N)
-    goat = mk.beard_density(J, stubble_options({"amount": 1.0, "style": "short", "zones": {"cheeks": 0.0, "jaw": 0.0, "neck": 0.0}}))(V, N)
+    full = skin_marks_beard.beard_density(J, stubble_options({"amount": 1.0, "style": "short"}))(V, N)
+    goat = skin_marks_beard.beard_density(J, stubble_options({"amount": 1.0, "style": "short", "zones": {"cheeks": 0.0, "jaw": 0.0, "neck": 0.0}}))(V, N)
     ch, ck = z["chin"] > 0.8, (z["cheeks"] > 0.8) & (full > 0.2)
     assert ck.sum() > 20 and goat[ck].mean() < 0.3 * full[ck].mean(), (ck.sum(), full[ck].mean(), goat[ck].mean())
     assert (goat[ch] >= 0.79 * full[ch] - 1e-9).all() and (goat <= full + 1e-9).all(), "the chin keeps its beard"
@@ -180,7 +181,7 @@ def test_colour_read_and_fit_recover_zones():
     truth = {"age": 30, "eyes": False, "zones": {"midface_red": 2.2, "forehead_yellow": 0.2, "nose_red": 2.0}, "lips": {"blood": 0.5, "melanin": 2.0}}
     spec = head_spec(age=30, eyes=False)
     J = skin_zones._joints(spec)
-    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
     front = N[:, 1] < -0.2
     V, N = V[front].astype(float), N[front].astype(float)
     c = _Fake()

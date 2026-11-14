@@ -3,6 +3,7 @@
 import numpy as np
 
 from hifipushie import assets, skin_layers as sl
+from hifipushie import skin_layers_decompose, skin_layers_stack
 from hifipushie import skin_params
 from hifipushie.spec import SpecError
 
@@ -35,25 +36,25 @@ def test_stack_layers_and_edit():
     spec = {"skin": {"tone": {"fitzpatrick": 2}, "stack": st}}
     assert skin_params.params(spec)["stack"] is st
     out = {}
-    sl.layers(spec, st, out, "body")
+    skin_layers_stack.layers(spec, st, out, "body")
     assert list(out) == ["skin:stack_base", "skin:stack_pigment", "skin:stack_redness", "skin:stack_beard"]
     assert out["skin:stack_redness"]["mix"] == "multiply" and out["skin:stack_redness"]["color"] == "image"
     assert out["skin:stack_redness"]["image"]["wrap"] == "uv"
     st2 = {**st, "fine": "f" * 16}
     out3 = {}
-    sl.layers({"skin": {"stack": st2}}, st2, out3, "body")
+    skin_layers_stack.layers({"skin": {"stack": st2}}, st2, out3, "body")
     assert "skin:stack_fine0" in out3 and out3["skin:stack_fine1"]["mask"][1]["image"]["channel"] == "luma" and out3["skin:stack_fine0"]["mix"] == "multiply"   # (fine0: pore grain everywhere; fine1: the mottle, by the map)
-    e = sl.edit(spec, "blush", "no_stubble")
+    e = skin_layers_stack.edit(spec, "blush", "no_stubble")
     op = {l["name"]: l["opacity"] for l in e["skin"]["stack"]["layers"]}
     assert op["pigment"] == 0.8 and op["redness"] == 1.0 and op["beard"] == 0.0 and 0.7 < op["redness+"] < 0.8   # 2.2 x: a second pass
     out2 = {}
-    sl.layers(e, e["skin"]["stack"], out2, "body")
+    skin_layers_stack.layers(e, e["skin"]["stack"], out2, "body")
     assert "skin:stack_beard" not in out2 and out2["skin:stack_redness"]["opacity"] == 1.0 and "skin:stack_redness+" in out2
-    assert [l["name"] for l in sl.edit(e, "pale")["skin"]["stack"]["layers"]] == ["pigment", "redness", "beard"]   # an edit of an edit starts clean
+    assert [l["name"] for l in skin_layers_stack.edit(e, "pale")["skin"]["stack"]["layers"]] == ["pigment", "redness", "beard"]   # an edit of an edit starts clean
     assert [l["opacity"] for l in spec["skin"]["stack"]["layers"]] == [0.8, 0.8, 0.8]    # the source is not touched
     # a layer's stored multiplier is exact at the default opacity
     od = np.array([[0.1, 0.2, 0.3]])
-    c = sl._multiplier(od)
+    c = skin_layers_decompose._multiplier(od)
     assert np.allclose(1 - sl.P0 + sl.P0 * c, np.exp(-od))
     try:
         skin_params.params({"skin": {"stack": {"layers": "x"}}})
@@ -68,25 +69,26 @@ def test_lid_fold_is_local_and_unfolds():
     except Exception as err:  # noqa: BLE001
         print("skipped:", str(err)[:80])
         return
-    from hifipushie import gnm_fold as gf
+    from hifipushie import gnm_controls, gnm_fold as gf
+    from hifipushie import gnm_fold_mesh
     V = gf.vertices() / 1000.0
     cfg = {"crease": [5.5, 7.0, 6.0], "overhang": [0.3, 1.0, 2.5]}
-    d = gf.mesh_delta(V, None, cfg)
+    d = gnm_fold_mesh.mesh_delta(V, None, cfg)
     t = gf.topo()
     ring = np.minimum(t["ring"], t["ring"][t["mir"]])
     moved = np.linalg.norm(d, axis=1) > 0
     assert 100 < moved.sum() < 1000
     assert set(ring[moved].tolist()) <= set(range(1, 13))          # rings 1..12 (the fold + its fade): the margin (0) and the brow stay
-    T = gf.gc.gnm()["T"] * 1000.0
-    J = gf.gc.gnm()["J"][2] * 1000.0
+    T = gnm_controls.gnm()["T"] * 1000.0
+    J = gnm_controls.gnm()["J"][2] * 1000.0
     up = (T[:, 1] > J[1] - 1.0) | (np.abs(T[:, 0]) - abs(J[0]) > 3.0)
     small = np.linalg.norm(d, axis=1) * 1000.0 < 0.5
     assert (up | small)[moved].all()            # nothing under the eye but the wrap round the OUTER corner and a < 0.5 mm fade
-    lm = gf.gc.gnm().get("lm68")
+    lm = gnm_controls.gnm().get("lm68")
     q = gf.read((V + d) * 1000.0)
     assert q["hang_max"] > 1.5 and gf.read(V * 1000.0)["hang_max"] == 0.0
     # L / R of their own: the right eye alone
-    d_r = gf.mesh_delta(V, None, {"crease": 6.5, "overhang": 1.0, "L": {"amount": 0.0}})
+    d_r = gnm_fold_mesh.mesh_delta(V, None, {"crease": 6.5, "overhang": 1.0, "L": {"amount": 0.0}})
     mv = np.linalg.norm(d_r, axis=1) > 0
     assert mv.any() and len(set(np.sign(V[mv, 0]).tolist())) == 1   # one side only
     # a blink unfolds it: the upper margin brought down its whole aperture
@@ -95,9 +97,9 @@ def test_lid_fold_is_local_and_unfolds():
     upm = r0[T[r0, 1] > J[1] + 0.5]
     for ids in (upm, t["mir"][upm]):
         En[ids, 1] -= 0.012
-    assert np.abs(gf.mesh_delta(V, En, cfg)).max() == 0.0
+    assert np.abs(gnm_fold_mesh.mesh_delta(V, En, cfg)).max() == 0.0
     half = En * 0.3
-    dh = gf.mesh_delta(V, half, cfg)
+    dh = gnm_fold_mesh.mesh_delta(V, half, cfg)
     assert 0 < np.abs(dh).max() < np.abs(d).max()
     del lm
 

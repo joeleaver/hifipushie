@@ -10,13 +10,14 @@ import numpy as np
 from hifipushie import blockin as bi
 from hifipushie import blockin_steps
 from hifipushie import blockin_eyes as be
+from hifipushie import blockin_eyes_evidence
 from hifipushie import server, store
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 c = bi.identity(store.load(m))
 print(f"== {m}: |c| {np.linalg.norm(c):.2f}, largest component {np.abs(c).max():.2f} sd; other GNM components {bi.identity_extra(store.load(m))}")
-ic = be.iris_check(m)
+ic = blockin_eyes_evidence.iris_check(m)
 print(ic["text"])
 for nm, fn in (("EYE RULER", lambda: server.eye_ruler(m, save=f"/mnt/data/hifipushie/nativedefault/out/er_{m}.png")),
                ("LID READ", lambda: server.lid_read(m)), ("LIP READ", lambda: server.lip_read(m))):
@@ -31,6 +32,6 @@ if kw.get("iris"):
         rep = blockin_steps.step(m, {"iris_mm": round(ic["photo_mm"], 2)}, out=kw["iris"], seen=f"the picture's limbus {ic['photo_mm']:.2f} mm, GNM's {ic['model_mm']:.2f}",
                       why="the iris read sets GNM's limbus component (eyes_000)")
         sp = store.load(kw["iris"])
-        print(f"-- IRIS STEP -> {kw['iris']}: eyes_000 {sp['base']['head']['identity'].get('eyes_000')}; " + be.iris_check(kw["iris"])["text"][:160])
+        print(f"-- IRIS STEP -> {kw['iris']}: eyes_000 {sp['base']['head']['identity'].get('eyes_000')}; " + blockin_eyes_evidence.iris_check(kw["iris"])["text"][:160])
     else:
         print("-- IRIS STEP: not applied (unreadable, within 2 %, or past 3 sd)")

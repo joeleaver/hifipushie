@@ -160,8 +160,8 @@ def structure(V, u: float = 0.0) -> dict:
 
 
 def mean_structure(c, e=None, us=(-4.0, 0.0, 4.0)) -> dict:
-    from . import gnm_controls as gc
-    V = gc.vertices(np.asarray(c, float), e) * 1000
+    from . import gnm_controls_latent
+    V = gnm_controls_latent.vertices(np.asarray(c, float), e) * 1000
     q = [structure(V, u) for u in us]
     return {k: float(np.mean([x[k] for x in q])) for k in q[0]}
 
@@ -172,9 +172,10 @@ def solve(c0, cdn, hc_person=None, *, e=None, clear: float = 0.0, hold: float = 
     "ring_miss" {ring: rms}, "held" / "held_max" (the held skin's move, mm), "margins" (ring 0's move, rms mm), "mm"
     (the largest gnm_mm measure drift, mm)}. e: the head's expression vector (GNM's order) when it carries one."""
     from . import gnm_controls as gc, gnm_mm, lidrings
+    from . import gnm_controls_latent
     g, t, mir = _g(), lidrings.topo(), lidrings.mirror()
     c0, cdn = np.asarray(c0, float), np.asarray(cdn, float)
-    Vs, Vd = gc.vertices(c0, e) * 1000, gc.vertices(cdn) * 1000
+    Vs, Vd = gnm_controls_latent.vertices(c0, e) * 1000, gnm_controls_latent.vertices(cdn) * 1000
     cs, r = lidrings.ball(Vs)
     cd, _ = lidrings.ball(Vd)
     tgt = dict(design(Vd, cd, Vs, cs, r, hc_person, rt, clear))
@@ -208,7 +209,7 @@ def solve(c0, cdn, hc_person=None, *, e=None, clear: float = 0.0, hold: float = 
     dc = np.zeros(NC)
     full = wt > 0.99
     for _ in range(3):
-        Nn = gc.normals(gc.vertices(c0 + dc, e))[ids]
+        Nn = gc.normals(gnm_controls_latent.vertices(c0 + dc, e))[ids]
         M = tw * np.eye(3)[None] + (1 - tw) * Nn[:, :, None] * Nn[:, None, :]
         At = (np.einsum("vij,cvj->cvi", M, IBt) * (wt / sig)[None, :, None]).reshape(NC, -1).T
         bt = (np.einsum("vij,vj->vi", M, D0) * (wt / sig)[:, None]).ravel()
@@ -256,13 +257,14 @@ def ball_clearance(ht: dict, rings=range(1, 8)) -> dict:
 
 def world_scale(ht: dict, c0, e=None) -> float:
     """World mm per raw GNM mm round the eye on a shipped head (the head's scale x the body's hook x eyes)."""
-    from . import gnm_controls as gc, lidrings
+    from . import lidrings
+    from . import gnm_controls_latent
     from . import base_identity
     sk = np.flatnonzero(np.asarray(base_identity._gnm_data()["skin"]))
     loc = -np.ones(len(_g()["T"]), int)
     loc[sk] = np.arange(len(sk))
     ids = np.concatenate([lidrings.upper_ids(k) for k in range(0, 9)])
-    A, B = (gc.vertices(np.asarray(c0, float), e) * 1000)[ids], np.asarray(ht["verts"], float)[loc[ids]] * 1000
+    A, B = (gnm_controls_latent.vertices(np.asarray(c0, float), e) * 1000)[ids], np.asarray(ht["verts"], float)[loc[ids]] * 1000
     return float(np.sqrt(((B - B.mean(0)) ** 2).sum() / ((A - A.mean(0)) ** 2).sum()))
 
 
@@ -332,14 +334,15 @@ def lid_step(base: dict, heights=None, cols=None, corners=None, donor_name: str 
 def fold_step(base: dict, heights=None, cols=None, corners=None, brow: float | None = FOLD_BROW,
               hold_mm: float | None = FOLD_MM, guard: float = GUARD, log=print) -> dict:
     """The eye step's shape term, RECIPE A (overhang, 2026-10-11; Joe: "recipe A is as good as it has to get"):
-    gnm_fold.fold's crisp fold, a designed lid (platform on the ball up to the fold line, the turn, the drape; no donor
+    gnm_fold_design.fold's crisp fold, a designed lid (platform on the ball up to the fold line, the turn, the drape; no donor
     head) fitted in the identity alone with the brows held `brow` mm, gnm_mm's measures held (`hold_mm`: a weight, not
     a tolerance; the hollow under the brow is left free: the fold IS that) and every other skin vertex at 1 mm. heights
     / cols as lid_step (the picture's fold line over the margin, mm at the model; None = 4.7 mm). Then the BALL GUARD:
     while the upper lid on the shipped head stands under `guard` mm off OUR eyeball the platform's stand-off is raised
-    FOLD_STEP. -> gnm_fold.fold()'s dict + "kind": "crisp", "structure0" / "structure", "ball0" / "ball", "standoff",
+    FOLD_STEP. -> gnm_fold_design.fold()'s dict + "kind": "crisp", "structure0" / "structure", "ball0" / "ball", "standoff",
     "tries", "scale", "guarded", "heights", "crease" (raw mm at the pupil), "mm" (largest held measure's drift)."""
     from . import blockin as bi, gnm_fold as gf, gnm_mm, onemesh
+    from . import gnm_fold_design
     from . import onemesh_head
 
     def head(c):
@@ -363,7 +366,7 @@ def fold_step(base: dict, heights=None, cols=None, corners=None, brow: float | N
     b0 = ball_clearance(ht0)
     standoff, tries, best = FOLD_STANDOFF, 0, None
     while True:
-        s = gf.fold(c0, crease=crease, brow=brow, hold_mm=hold_mm, standoff=standoff)
+        s = gnm_fold_design.fold(c0, crease=crease, brow=brow, hold_mm=hold_mm, standoff=standoff)
         s["ball"], s["standoff"] = ball_clearance(head(s["c"])), standoff
         tries += 1
         a = s["after"]

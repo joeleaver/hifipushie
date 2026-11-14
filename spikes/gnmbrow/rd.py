@@ -13,6 +13,7 @@ from PIL import Image
 
 import bm
 from hifipushie import blockin as bi, blockin_brows as bb, blockin_eyes as be, likeness, lidfold
+from hifipushie import blockin_eyes_evidence
 from hifipushie import likeness_detect
 
 REFS = "gd_T12"
@@ -39,7 +40,7 @@ for tag in sys.argv[1:]:
     r["gap"] = E.mean(0).round(2).tolist()
     r["core"] = C.mean(0).round(2).tolist()
     r["open"] = round(float(O[:, 1].mean()), 2)
-    lb = be.limbus(im, P)
+    lb = blockin_eyes_evidence.limbus(im, P)
     r["iris_mm"] = round(2 * float(np.mean([e["r_px"] for e in lb])) * mm, 2)
     rgb = np.mean([e["rgb"] for e in lb], 0)
     r["iris_hex"] = "#%02x%02x%02x" % tuple(int(round(255 * float(x))) for x in rgb)

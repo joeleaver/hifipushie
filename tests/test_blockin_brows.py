@@ -1,4 +1,4 @@
-"""The dressed brows from the picture (blockin_brows) and the iris by its limbus (blockin_eyes.limbus): gnmbrow,
+"""The dressed brows from the picture (blockin_brows) and the iris by its limbus (blockin_eyes_evidence.limbus): gnmbrow,
 2026-10-11. Incident: Tess's dressed brows sat 4-7 mm under hers, on the lid's fold (hand offsets carried over from an
 older head), and her drawn iris was 18 % too big (lids matched in iris radii opened the eye 18 % too tall).
 uv run python -m pytest -q tests/test_blockin_brows.py"""
@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from hifipushie import blockin_brows as bb, blockin_eyes as be, lidfold, store
+from hifipushie import blockin_brows as bb, lidfold, store
+from hifipushie import blockin_eyes_evidence
 
 REF = "fs_ge3"
 need_ref = pytest.mark.skipif(not (store.HOME / REF / "human_refs.json").exists(), reason=f"workspace model {REF} not present")
@@ -38,13 +39,13 @@ def test_limbus_reads_the_edge_not_the_detectors_ring():
         d.ellipse([c[0] - 45, c[1] - 22, c[0] + 45, c[1] + 22], fill=(235, 230, 225))      # the white
         d.ellipse([c[0] - 20, c[1] - 20, c[0] + 20, c[1] + 20], fill=(70, 62, 48))          # a 20 px iris
         d.ellipse([c[0] - 6, c[1] - 6, c[0] + 6, c[1] + 6], fill=(5, 5, 5))
-    lb = be.limbus(im, P)
+    lb = blockin_eyes_evidence.limbus(im, P)
     for e in lb:
         assert abs(e["r_px"] - 20.0) < 1.0, e
         assert np.allclose(np.array(e["rgb"]) * 255, (70, 62, 48), atol=6), e["rgb"]
-    assert abs(be.iris_scale(im, P) - 0.8) < 0.05
+    assert abs(blockin_eyes_evidence.iris_scale(im, P) - 0.8) < 0.05
     # a picture with no readable limbus (one flat colour): the detector's own radius is kept
-    assert be.iris_scale(Image.new("RGB", (600, 500), (128, 128, 128)), P) == 1.0
+    assert blockin_eyes_evidence.iris_scale(Image.new("RGB", (600, 500), (128, 128, 128)), P) == 1.0
 
 
 def test_band_reads_a_drawn_brow():
@@ -136,12 +137,12 @@ def test_small_iris_is_not_read():
     for s in (0, 1):
         c = P[lidfold.IRIS_C[s]]
         d.ellipse([c[0] - 4, c[1] - 4, c[0] + 4, c[1] + 4], fill=(40, 30, 25))
-    assert be.iris_scale(im, P) == 1.0
+    assert blockin_eyes_evidence.iris_scale(im, P) == 1.0
 
 
 @need_ref
 def test_iris_check_reports_or_declines():
-    r = be.iris_check(REF)       # fs_ge3's front picture is the full-figure concept: declined, with the reason
+    r = blockin_eyes_evidence.iris_check(REF)       # fs_ge3's front picture is the full-figure concept: declined, with the reason
     assert "IRIS" in r["text"] and 9.0 < r["model_mm"] < 16.0
     if r["photo_mm"] is None:
         assert r["eye_radius"] is None and "not readable" in r["text"]

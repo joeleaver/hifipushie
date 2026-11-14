@@ -6,10 +6,11 @@ import sys
 import numpy as np
 
 from hifipushie import blockin_eyes as be, blockin_lid as bl, store
+from hifipushie import blockin_eyes_evidence
 
 name = sys.argv[1]
 base = store.load(name)["base"]
-rv = be.ruler_evidence(name)
+rv = blockin_eyes_evidence.ruler_evidence(name)
 print("ruler fold line over the margin at", be.RULER_COLS.tolist(), "->", np.round(rv["crease"], 2).tolist(), "dark", round(rv["crease_dark"], 3))
 s = bl.lid_step(base, rv["crease"], be.RULER_COLS, (rv["inner"][0], rv["outer"][0]), donor_name=sys.argv[2] if len(sys.argv) > 2 else bl.DONOR)
 print(bl.text(s))

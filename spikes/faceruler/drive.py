@@ -25,6 +25,7 @@ import numpy as np
 import drv
 import gnmc
 from hifipushie import blockin as bi, gnm_controls as gcm, humanmacro as hm
+from hifipushie import gnm_controls_table
 
 PX = 240
 
@@ -174,9 +175,9 @@ if __name__ == "__main__":
     elif cmd == "log":
         logcmd(a[1])
     elif cmd == "atlas":
-        print(gcm.text(gcm.query(a[1], sort=a[2] if len(a) > 2 else "score", top=10)))
+        print(gnm_controls_table.text(gnm_controls_table.query(a[1], sort=a[2] if len(a) > 2 else "score", top=10)))
     elif cmd == "describe":
-        print(gcm.text(gcm.describe(a[1])))
+        print(gnm_controls_table.text(gnm_controls_table.describe(a[1])))
     elif cmd == "vocab":
         print(bi.vocabulary())
     elif cmd == "macros":

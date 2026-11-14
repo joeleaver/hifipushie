@@ -3,9 +3,10 @@ tongue's length) dy (- = forward) / dz (- = down), dorsum mid-line rise vs its s
 and the back's dz. Uses gnm_controls.field on the GNM mean head (expr_tongue family)."""
 import numpy as np
 from hifipushie import gnm_controls as gc
+from hifipushie import gnm_controls_latent
 Z = gc.zones(); g = gc.gnm()
 t = np.asarray(Z["tongue"]); t = np.flatnonzero(t) if t.dtype == bool else t
-V = gc.vertices()[t] if gc.vertices().ndim == 2 else gc.vertices()
+V = gnm_controls_latent.vertices()[t] if gnm_controls_latent.vertices().ndim == 2 else gnm_controls_latent.vertices()
 print("tongue verts", len(t), "bbox mm", (V.min(0) * 1000).round(1), (V.max(0) * 1000).round(1))
 # GNM frame: +y up, +z forward (front of the face)
 z0, z1 = V[:, 2].min(), V[:, 2].max(); L = z1 - z0
@@ -15,9 +16,9 @@ w = np.ptp(V[:, 0]); mid = top & (np.abs(V[:, 0]) < 0.12 * w) & ~tip & ~back
 side = top & (np.abs(V[:, 0]) > 0.28 * w) & ~tip & ~back
 print("tip n", tip.sum(), "mid n", mid.sum(), "side n", side.sum(), "back n", back.sum())
 rows = []
-for n in gc.names("expr_tongue"):
+for n in gnm_controls_latent.names("expr_tongue"):
     if n == "pupil": continue
-    D = gc.field(n)[t] * 1000
+    D = gnm_controls_latent.field(n)[t] * 1000
     r = (n, D[tip, 2].mean(), D[tip, 1].mean(), D[mid, 1].mean() - D[side, 1].mean(), D[back, 1].mean(), np.sqrt((D ** 2).sum(1)).max())
     rows.append(r)
 print(f"{'control':14s} {'tip fwd':>7s} {'tip up':>7s} {'bow':>7s} {'back up':>7s} {'max':>6s}")

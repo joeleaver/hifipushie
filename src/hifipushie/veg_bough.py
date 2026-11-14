@@ -14,6 +14,7 @@ import numpy as np
 from numba import njit
 
 from . import veg_leaf
+from . import veg_leaf_atlas, veg_leaf_cards, veg_leaf_place, veg_leaf_twig
 from .vegetation_kernels import _child, _u
 
 BOUGH = {"variants": 4, "size": 384, "size_limbs": 512, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
@@ -230,7 +231,7 @@ def subtrees(tree: dict) -> dict:
     -1 where it carries none)."""
     if "_boughs" in tree:
         return tree["_boughs"]
-    tw = veg_leaf.place(tree)
+    tw = veg_leaf_place.place(tree)
     P, par = tree["pos"], tree["parent"]
     n = len(P)
     seg = np.linalg.norm(P - P[par], axis=1)
@@ -378,7 +379,7 @@ def _mesh(tree: dict, pl: dict, b: int, Fr: np.ndarray, leaves: dict) -> dict:
     st = subtrees(tree)
     tw, P, par, rad = st["twigs"], tree["pos"], tree["parent"], tree["radius"]
     root = int(pl["roots"][b])
-    cs = veg_leaf.card_spec(leaves)
+    cs = veg_leaf_cards.card_spec(leaves)
     nv = int({**veg_leaf.TWIG, **cs["twig"]}["variants"])
     Vs, Fs, Ms, Cs, Gs = [], [], [], [], []
     base = 0
@@ -397,8 +398,8 @@ def _mesh(tree: dict, pl: dict, b: int, Fr: np.ndarray, leaves: dict) -> dict:
         V, F = veg_leaf._stem(np.array([P[par[i]], P[i]]), max(float(rad[par[i]]), 0.003), max(float(rad[i]), 0.002), sides=4)
         add(V, F, 0, 1.0)
     twm = {}
-    dp = veg_leaf.dead_part(leaves)
-    cs_d = veg_leaf.card_spec(dp) if dp is not None else None
+    dp = veg_leaf_place.dead_part(leaves)
+    cs_d = veg_leaf_cards.card_spec(dp) if dp is not None else None
     part = tw.get("part")
     for t in np.flatnonzero(pl["owner"] == b):
         v_ = int(tw["variant"][t]) % nv
@@ -408,7 +409,7 @@ def _mesh(tree: dict, pl: dict, b: int, Fr: np.ndarray, leaves: dict) -> dict:
         if isd:
             v_ = int(tw["card"][t]) if tw.get("card") is not None else v_
         if (v_, isd) not in twm:
-            m_ = veg_leaf.twig_mesh(cs_d if isd else cs, v_)
+            m_ = veg_leaf_twig.twig_mesh(cs_d if isd else cs, v_)
             if isd:
                 wc_ = np.asarray(dp.get("wood_color", [0.45, 0.42, 0.38]), float)
                 own_ = np.isnan(m_["rgb"][:, 0])  # (lichen keeps its colour; wood takes the part's grey x its own tone)
@@ -437,7 +438,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     import hashlib
     from pathlib import Path
     dkey = "bough" + hashlib.sha1(np.ascontiguousarray(tree["pos"]).tobytes() + Path(__file__).read_bytes() + key.encode()).hexdigest()
-    got = veg_leaf._disk_get(dkey)
+    got = veg_leaf_atlas._disk_get(dkey)
     if got is not None:
         if len(_CACHE) > 8:
             _CACHE.pop(next(iter(_CACHE)))
@@ -486,7 +487,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
         parts = []
         for side in range(BOUGH["cross"]):  # its face, then the same bough seen from its side on a card across the first
             V = mesh["V"] if side == 0 else np.c_[mesh["V"][:, 2], mesh["V"][:, 1], -mesh["V"][:, 0]]
-            R = veg_leaf.rasterize({**mesh, "V": V}, col, wood_color, size)
+            R = veg_leaf_cards.rasterize({**mesh, "V": V}, col, wood_color, size)
             r, c = divmod(BOUGH["cross"] * i + side, g)
             sl = (slice(r * size, (r + 1) * size), slice(c * size, (c + 1) * size))
             A["color"][sl][..., :3] = R["color"]
@@ -494,7 +495,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
             A["normal"][sl] = R["normal"]
             A["mask"][sl] = R["mask"]
             is_limb = i >= n_fine
-            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], fm_j["verts"], fm_j["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext_j[b]), 0.1),
+            cm = veg_leaf_cards.card_mesh(R["alpha"], R["frame"], fm_j["verts"], fm_j["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext_j[b]), 0.1),
                                     LIMB_STRIPS if is_limb and side == 0 else 0, centre=fm_j["centre"])
             if is_limb and side == 0:
                 # a limb seen from above is not a flat shelf: the card is a ladder along it, each rung at the height
@@ -544,7 +545,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
                    "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick],
                    "limb_first": limb_first if limb_extent else None, "limb_extent": limb_extent,
                    "apex_card": (limb_first + len(limb_extent)) if apex is not None else None, "apex_extent": apex}
-    veg_leaf._disk_put(dkey, _CACHE[key])
+    veg_leaf_atlas._disk_put(dkey, _CACHE[key])
     return _CACHE[key]
 
 

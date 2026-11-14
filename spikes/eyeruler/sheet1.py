@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin_brows as bb, eye_ruler as er
+from hifipushie import eye_ruler_compare
 
 G = os.environ["G"] + "/out/"
 R = json.load(open(G + "rule.json"))
@@ -57,7 +58,7 @@ for i, (tag, lab) in enumerate(TILES):
             p2 = to_shot(rd, s, *rd[s][key])           # this tile's own
             cx, cy = x0 + p2[0] - CROP[0], HEAD + p2[1] - CROP[1]
             d.ellipse([cx - 7, cy - 7, cx + 7, cy + 7], outline=(255, 235, 0), width=3)
-    m = er.mean(rd)
+    m = eye_ruler_compare.mean(rd)
     d.text((x0 + 10, 4), lab, fill=(0, 0, 0), font_size=26)
     d.text((x0 + 10, 36), f"fissure {m['fissure']:.1f} mm; inner canthus {m['inner'][0]:.1f}, outer {m['outer'][0]:.1f} mm from the iris centre; "
                           f"opening {m['mrd1'] + m['mrd2']:.1f}; iris {m['iris']:.1f}", fill=(0, 0, 0), font_size=19)
@@ -88,8 +89,8 @@ for i, (tag, lab) in enumerate(TILES):
     S.paste(t, (x0, HEAD + H + 8))
 # row 3: the table
 y = HEAD + H + 8 + H2 + 12
-a, b, c = (er.mean(R[t]["read"]) for t in ("photo", before, after))
-mb, mc = (er.mean(R[t]["model"]) if R[t].get("model") else None for t in (before, after))
+a, b, c = (eye_ruler_compare.mean(R[t]["read"]) for t in ("photo", before, after))
+mb, mc = (eye_ruler_compare.mean(R[t]["model"]) if R[t].get("model") else None for t in (before, after))
 rows = [("fissure length (inner canthus -> where the eyeball ends)", "fissure", None, 1.0),
         ("inner canthus, mm from the iris centre (- = toward the nose)", "inner", 0, 0.6),
         ("outer canthus", "outer", 0, 0.45),

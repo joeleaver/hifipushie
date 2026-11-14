@@ -5,6 +5,7 @@ WARNING over CREASE_ROUGH. LIGHT."""
 import copy, sys
 import numpy as np
 from hifipushie import blockin as bi, gnm_fold as gf, store
+from hifipushie import gnm_fold_mesh
 from hifipushie import blockin_models
 CREASE_ROUGH = (0.08, 0)
 SEATED_FLIPS = 2           # turning-direction flips allowed along the seated crease ring   # d2_rms mm, sign changes
@@ -18,14 +19,14 @@ for key in ("R", "L"):
         continue
     a = np.asarray(cba, float); a = a[np.argsort(a[:, 0])]
     xs = np.linspace(a[0, 0], a[-1, 0], 24)
-    before = gf.crease_roughness(np.interp(xs, a[:, 0], a[:, 1]))
-    f = gf.smooth_crease(cba)
-    after = gf.crease_roughness(f(xs))
+    before = gnm_fold_mesh.crease_roughness(np.interp(xs, a[:, 0], a[:, 1]))
+    f = gnm_fold_mesh.smooth_crease(cba)
+    after = gnm_fold_mesh.crease_roughness(f(xs))
     c["crease_by_angle"] = [[float(x), round(float(f(x)), 2)] for x in a[:, 0]]
     c["crease"] = [round(float(f(x)), 2) for x in (-60.0, 0.0, 90.0)]
     bad = after["d2_rms"] > CREASE_ROUGH[0] or after["sign_changes"] > CREASE_ROUGH[1]
     print(f"eye {key}: crease roughness before {before}, after {after}" + ("  WARNING: not one smooth arc" if bad else ""))
-sr = gf.seated_roughness(gf.vertices() / 1000.0, lf)
+sr = gnm_fold_mesh.seated_roughness(gf.vertices() / 1000.0, lf)
 for key, r in sr.items():
     print(f"eye {key}: SEATED crease line roughness {r}" + ("  WARNING: the seated crease wobbles" if r["sign_changes"] > SEATED_FLIPS else ""))
 rj = copy.deepcopy(blockin_models._refs(src))

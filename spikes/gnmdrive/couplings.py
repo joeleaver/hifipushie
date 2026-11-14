@@ -6,8 +6,9 @@ import numpy as np
 
 import drv
 from hifipushie import blockin as bi, gnm_controls as gcm, humanmacro as hm
+from hifipushie import gnm_controls_table
 
-t = gcm.table()
+t = gnm_controls_table.table()
 rows = {}
 lines = []
 F = None

@@ -155,7 +155,8 @@ def wood_depth(tree: dict, W: dict) -> tuple[np.ndarray, np.ndarray]:
 def drawn(tree: dict, triangles: int | None = None) -> dict:
     """What a look or an export of the plant draws at a budget: {"wood": mesh, "tw": placements, "cards", "var",
     "boughs": bool, "leaves"} (the same calls as veg_look and veg_export_glb.write_glb's LOD 0)."""
-    from . import veg_bark, veg_bough, veg_leaf, veg_mesh
+    from . import veg_bark, veg_bough, veg_mesh
+    from . import veg_leaf_atlas, veg_leaf_place
     from . import veg_export_parts
     s = tree["spec"]
     lf = s["leaves"]
@@ -164,11 +165,11 @@ def drawn(tree: dict, triangles: int | None = None) -> dict:
     sc = float(bark.get("scale", 1.0))
     tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
     twc = bark.get("twig_color") or [0.45, 0.4, 0.35]
-    tw = veg_leaf.place(tree)
+    tw = veg_leaf_place.place(tree)
     out = {"wood": veg_mesh.tubes(tree, tile=tile), "tw": tw, "cards": [], "var": np.zeros(0, int), "boughs": False, "leaves": lf}
     if not len(tw["pos"]):
         return out
-    at = veg_leaf.atlas(lf, twc)
+    at = veg_leaf_atlas.atlas(lf, twc)
     if triangles:
         bud = veg_export_parts.budget(tree, triangles, tile, at["triangles"])
         out["wood"] = bud["wood"]
@@ -179,13 +180,13 @@ def drawn(tree: dict, triangles: int | None = None) -> dict:
         else:
             lf, cap_c, back_c = veg_export_parts.cluster_leaves(lf, bud["keep"])
             if lf is not s["leaves"]:
-                at = veg_leaf.atlas(lf, twc)
+                at = veg_leaf_atlas.atlas(lf, twc)
             tw = veg_export_parts.pick_twigs(tree, bud["keep"], bud["min_radius"], bud["protect"], tw, cap=cap_c, back=back_c)[0]
-    var = veg_leaf.card_variant(tw, len(at["cards"]))
+    var = veg_leaf_atlas.card_variant(tw, len(at["cards"]))
     st = {}
     tw = clear(s, tw, at["cards"], var, stats=st) if CLEAR and not tree.get("clump") else tw
     out["cleared"] = st
-    out.update(tw=tw, cards=at["cards"], var=veg_leaf.card_variant(tw, len(at["cards"])), leaves=lf)
+    out.update(tw=tw, cards=at["cards"], var=veg_leaf_atlas.card_variant(tw, len(at["cards"])), leaves=lf)
     return out
 
 

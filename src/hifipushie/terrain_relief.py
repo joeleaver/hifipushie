@@ -333,7 +333,7 @@ def rock_config(T, cfg):
         0.3 * wa * 3 * (noise.fbm(np.c_[xy, np.full(len(xy), 5.0)], 7.0, 1, seed=4242 + 26) - 0.5)
     off = _gridded(lambda xy: wander(xy) + (base(xy) if base else 0.0), T)
     # bed steps ramp over 2 voxels either side of their plane (0.8 voxel meshed as a sawtooth that cast jagged
-    # shadows); the crisp notch at the bedding plane is in the maps (terrain_bake.micro_relief)
+    # shadows); the crisp notch at the bedding plane is in the maps (terrain_bake_maps.micro_relief)
     vox = float(cfg.get("voxel", terrain_mesh.DEFAULTS["voxel"]))
     out = {"size": size, "facets": fac, "bedding": bd, "bed": bed, "bed_offset": off, "seed": 4242,
            "reach": 1.4 * fac + 0.7 * bd + 1.0, "bed_edge": max(0.05, 2.0 * vox / bed)}

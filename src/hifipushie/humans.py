@@ -175,7 +175,7 @@ def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: f
             hd.pop("expression", None)
             hd["pose"] = {k: v for k, v in (hd.get("pose") or {}).items() if k not in ("lid_upper", "lid_lower")}
         if "mouth_gap" not in (head or {}):  # the rest mouth closed, lips in contact along their width
-            # (faceslide.seal_delta; GNM's own neutral parts them: a slit with the lower lip hanging)
+            # (faceslide_mouth.seal_delta; GNM's own neutral parts them: a slit with the lower lip hanging)
             hd.setdefault("lip_seal", 1.0)
         # (gnmnative, 2026-10-12) GNM's OWN eyeball (its 14.6 mm scleral sphere x the head's scale, its limbus and
         # cornea for the identity): no head.eye_radius. 2026-10-10 .. 12 every new human got eye_radius(age) written

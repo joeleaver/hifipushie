@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 from hifipushie import blockin as bi, gnm_fold as gf, humanfit, likeness as lk, store, base as basemod
+from hifipushie import gnm_fold_mesh
 from hifipushie import blockin_clay, blockin_expression, blockin_models, humanfit_views
 
 m, out = sys.argv[1:3]
@@ -56,7 +57,7 @@ for vi in VI:
         # OURS first: the fold's slit ring on the built head, projected (the wrap chains: round the outer corner too)
         cfg = spec["base"]["head"].get("lid_fold") or {}
         ka = int(cfg.get("ring", 5)) + 1
-        ch, _ang = gf.chains_wrap(float(cfg.get("reach", 15.5)), wrap_deg=float(cfg.get("wrap", gf.WRAP_DEG)))
+        ch, _ang = gnm_fold_mesh.chains_wrap(float(cfg.get("reach", 15.5)), wrap_deg=float(cfg.get("wrap", gf.WRAP_DEG)))
         ch = ch[_ang <= 90.0 + float(cfg.get("wrap", gf.WRAP_DEG)) - 0.5 * 30.0]   # only the chains the fold MOVES (weight > 0.5): the
         # rest of the ring sits unmoved on its own circle round the eye (drawn, it looked as if our crease turned down)
         tpl = st["tpl"]

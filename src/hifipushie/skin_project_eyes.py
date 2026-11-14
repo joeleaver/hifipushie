@@ -7,7 +7,7 @@ from . import skin_project
 from .skin_project import _lin, _srgb, lab
 
 def iris_profile(img, view: dict) -> dict | None:
-    """The irises of one picture as a radial read at the picture's OWN limbus (blockin_eyes.limbus: MediaPipe's ring
+    """The irises of one picture as a radial read at the picture's OWN limbus (blockin_eyes_evidence.limbus: MediaPipe's ring
     under-reads it), over the pixels INSIDE the lid margins' contour (the detector's own lid points, drawn in by a
     pixel: no lid skin, whatever the hooding; a fixed sector took lid skin on a hooded eye), both eyes pooled, the
     brightest 15 % of each ring (catch lights) and the darkest 10 % (lash shadow, the lid's edge) left out:
@@ -15,14 +15,14 @@ def iris_profile(img, view: dict) -> dict | None:
     pupil's edge (the steepest dark -> light step inside 0.15-0.6), "open": the share of the iris disc the lids leave};
     None without a detection or under IRIS_PX."""
     from PIL import Image, ImageDraw
-    from . import blockin_eyes as be
+    from . import blockin_eyes_evidence
     from . import blockin_clay
     P = blockin_clay.detect_view(img, view)
     if P is None or len(P) < 478:
         return None
     P = np.asarray(P, float)[:, :2]
     try:
-        lb = be.limbus(img, P)
+        lb = blockin_eyes_evidence.limbus(img, P)
     except Exception:  # noqa: BLE001
         return None
     a = _lin(np.asarray(img.convert("RGB"), float) / 255.0)

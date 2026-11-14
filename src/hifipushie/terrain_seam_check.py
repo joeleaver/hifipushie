@@ -227,7 +227,7 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                                                         for p, a, b in r.get("worst", {}).get(c, [])[:3])
                                             for c in r["bad"])
                                 + " (a visible seam in shading / ground layers along those borders at that LOD)")
-    # (7) steps in the baked surface on soft ground (terrain_bake.bake_texels' jumps): a sub-texel step in the field's
+    # (7) steps in the baked surface on soft ground (terrain_bake_maps.bake_texels' jumps): a sub-texel step in the field's
     # value, which the normal map draws as a thin dark line across the grass (pushieworld note 104: no other check saw it)
     jl = []
     for (i, j), e in tiles.items():

@@ -7,6 +7,7 @@ from scipy.spatial import cKDTree
 sys.path.insert(0, "tests")
 import test_faceslide as tf  # noqa: E402
 from hifipushie import faceslide  # noqa: E402
+from hifipushie import faceslide_fields
 
 T = faceslide.template()
 X = T["X"]
@@ -24,7 +25,7 @@ tree = cKDTree(X[rimL])
 lm = T["lm"]
 for name in ("lid_margin_upper", "lid_margin_lower"):
     for v in (0.5, 1.0, 1.5):
-        X1 = X + faceslide.delta({name: v})
+        X1 = X + faceslide_fields.delta({name: v})
         n1 = tf._normals(X1, Q)
         a1 = np.einsum("ij,ij->i", n1[pairs[:, 0]], n1[pairs[:, 1]])
         ang = lambda a: np.degrees(np.arccos(np.clip(a, -1, 1)))  # noqa: E731

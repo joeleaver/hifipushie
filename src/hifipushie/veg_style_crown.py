@@ -8,6 +8,7 @@ import numpy as np
 
 from . import veg_style
 from . import sdf, veg_leaf
+from . import veg_leaf_place
 from . import vegetation_kernels, vegetation_measures
 from .veg_style_wood import mesh_field
 
@@ -23,7 +24,7 @@ def in_leaf(tree: dict) -> dict:
 def leaf_points(tree: dict) -> tuple[np.ndarray, float]:
     """Where the foliage is: the middle of every living twig, and the twig's length (m)."""
     tree = in_leaf(tree)
-    tw = veg_leaf.place_live(tree)
+    tw = veg_leaf_place.place_live(tree)
     tl = float({**veg_leaf.TWIG, **(tree["spec"]["leaves"].get("twig") or {})}["length"])
     if not len(tw["pos"]):
         return np.zeros((0, 3)), tl

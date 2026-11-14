@@ -268,7 +268,7 @@ def landmarks_v3() -> dict:
     not hold) and the PHILTRUM ("philtrum": the upper-lip region between the nose and the border). Mirror pairs."""
     L2 = landmarks_v2()
     T, gr, present, g = _groups()
-    from . import faceslide
+    from . import faceslide_mouth
     ext, skin = gr["skin_exterior"], np.asarray(g["skin"], bool)
     Q = np.asarray(g["quads"], int)
     e = np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]]
@@ -292,7 +292,7 @@ def landmarks_v3() -> dict:
     for grp, reg in (("upper_lip", "lip_border_upper"), ("lower_lip", "lip_border_lower")):
         m = gr[grp] & ext
         add(e[m[e[:, 0]] & ~m[e[:, 1]] & ext[e[:, 1]] & skin[e[:, 1]], 0], BORDER_HALF, reg, "border")
-    R = faceslide._lip_rings()
+    R = faceslide_mouth._lip_rings()
     C = np.asarray(R["rings"][R["contact"]], int)
     up = np.asarray(R["upper"], bool)[C]
     add(C[up], BORDER_HALF, "lip_seam", "seam")

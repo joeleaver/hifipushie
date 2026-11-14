@@ -147,9 +147,10 @@ def no_effect(old: dict, new: dict, patch: dict) -> str:
 
 
 def stack_edit(spec: dict, arg) -> tuple[dict, str]:
-    """skin(stack_edit=...): skin_layers.edit by name ("blush", ["pale", "tired"]) or {layer: strength} (1 = as
+    """skin(stack_edit=...): skin_layers_stack.edit by name ("blush", ["pale", "tired"]) or {layer: strength} (1 = as
     measured). Returns the spec and the reply's line."""
     from . import skin_layers
+    from . import skin_layers_stack
     st = (spec.get("skin") or {}).get("stack")
     if not st:
         raise ValueError("skin: stack_edit needs skin.stack: skin_from_reference makes it")
@@ -161,7 +162,7 @@ def stack_edit(spec: dict, arg) -> tuple[dict, str]:
     bad = [n for n in names if n not in skin_layers.EDITS] + [k for k in strengths if k not in have]
     if bad:
         raise ValueError(f"skin: stack_edit: unknown {bad}: named edits {', '.join(skin_layers.EDITS)}; layers {', '.join(sorted(have))}")
-    return skin_layers.edit(spec, *names, **strengths), (f"stack_edit {arg}: every other layer back at its measured "
+    return skin_layers_stack.edit(spec, *names, **strengths), (f"stack_edit {arg}: every other layer back at its measured "
                                                          "strength (edits don't add up: pass them together)\n")
 
 

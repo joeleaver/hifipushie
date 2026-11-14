@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 
 from hifipushie import base as basemod
 from hifipushie import faceslide, likeness_eyes as le
+from hifipushie import faceslide_eyes
 from hifipushie import likeness_pair as lp
 from hifipushie import onemesh, store
 from hifipushie import onemesh_head
@@ -23,7 +24,7 @@ for name in sys.argv[2:]:
     X = T["X"]
     lm = T["lm"]
     c_in, c_out = lm[42], lm[45]
-    faceslide._left_fields(T)
+    faceslide_eyes._left_fields(T)
     Hc, H0, u, up_ = faceslide._CACHE["last_crease"]
     bands = [(a, a + 0.15) for a in (0.15, 0.3, 0.45, 0.6, 0.75)]
     print(name, "crease over the margin, mm (own | template) per u band:",

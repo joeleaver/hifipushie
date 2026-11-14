@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin_brows as bb, blockin_eyes as be, likeness, lidfold
+from hifipushie import blockin_eyes_evidence
 from hifipushie import likeness_detect
 
 G = os.environ["G"] + "/out"
@@ -20,7 +21,7 @@ for tag in sys.argv[1:]:
     P = likeness_detect.detect([im])[0]
     print(tag, "detected" if P is not None else "NOT detected")
     P = Pp if P is None else np.asarray(P, float)[:, :2]
-    lb = be.limbus(im, P)
+    lb = blockin_eyes_evidence.limbus(im, P)
     ex, ey = bb._frame(P)
     A = np.asarray(im, float) / 255
     for s in (0, 1):

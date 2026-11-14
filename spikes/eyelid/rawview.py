@@ -15,6 +15,7 @@ from matplotlib.collections import LineCollection, PolyCollection  # noqa: E402
 import lidmap as lm  # noqa: E402
 import lidstruct as ls  # noqa: E402
 from hifipushie import gnm_controls as gc  # noqa: E402
+from hifipushie import gnm_controls_latent
 
 out, cols = sys.argv[1], int(sys.argv[2])
 items = [a.split("=", 1) for a in sys.argv[3:]]
@@ -40,7 +41,7 @@ if photo:
 for i, (lab, src) in enumerate(items):
     r_, c_ = divmod(i + k0, cols)
     c = ls.ident(src)
-    V = gc.vertices(c) * 1000
+    V = gnm_controls_latent.vertices(c) * 1000
     ctr, r = lm.eye_frame_raw(c)
     X = V - ctr
     q = Q[ext[Q].all(1)]

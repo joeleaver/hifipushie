@@ -11,6 +11,7 @@ import numpy as np
 
 import perc
 from hifipushie import faceslide, store
+from hifipushie import faceslide_fields
 
 NOISE = float(os.environ.get("NOISE", "0.00005"))
 HC = [i for i, x in enumerate(perc.ID_NAMES) if x.startswith("head")]
@@ -22,7 +23,7 @@ for p in sys.argv[1:]:
     z = np.load(p)
     priors[os.path.basename(p).replace(".npz", "")] = z["cov"][:NC, :NC]
 Sinv = {k: np.linalg.inv(S) for k, S in priors.items()}
-fields = faceslide.fields()
+fields = faceslide_fields.fields()
 people = {}
 for who, m in (("tess", "f3_t1"), ("garrett", "fs_gj8")):
     h = store.load(m)["base"]["head"]

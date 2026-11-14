@@ -14,6 +14,7 @@ import math
 import numpy as np
 
 from . import veg_leaf
+from . import veg_leaf_cards
 from . import vegetation_kernels
 
 _DABS: dict = {}
@@ -97,7 +98,7 @@ def dab_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
         A[r_ * n: (r_ + 1) * n, c_ * n: (c_ + 1) * n, 3] = alp
         ys, xs = np.nonzero(alp > 100)
         pts = np.c_[np.r_[xs, xs + 1, xs, xs + 1], np.r_[ys, ys, ys + 1, ys + 1]].astype(float)
-        poly = np.clip(veg_leaf._enclose(pts[ConvexHull(pts).vertices], int(d["verts"])), 0, n)
+        poly = np.clip(veg_leaf_cards._enclose(pts[ConvexHull(pts).vertices], int(d["verts"])), 0, n)
         P = np.c_[poly[:, 0] / n * 2 - 1, 1 - poly[:, 1] / n * 2]
         if P[:, 0] @ np.roll(P[:, 1], -1) - P[:, 1] @ np.roll(P[:, 0], -1) < 0:
             P = P[::-1]

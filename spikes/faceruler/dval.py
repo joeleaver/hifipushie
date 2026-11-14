@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin as bi, eye_ruler as er, face_ruler as fr, gnm_mm, humanfit, likeness, store
+from hifipushie import eye_ruler_picture
 from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_features, face_ruler_outline, face_ruler_solve, likeness_detect, likeness_render
 
 G = os.environ["G"] + "/out"
@@ -43,7 +44,7 @@ for i, a in enumerate(names):
                         try:
                             P = np.asarray(likeness_detect.detect([img])[0], float)[:, :2] + BOX[:2]
                             mm = likeness_render._mm_per_px(cam, humanfit.state(specs[a]["base"])["L"][27:48])
-                            eyes = er.read(img, P, mm, scale=1.0, origin=BOX[:2])
+                            eyes = eye_ruler_picture.read(img, P, mm, scale=1.0, origin=BOX[:2])
                             v["extra"] = lambda h, vw, eyes=eyes: face_ruler_features._iris_obs(h, vw, eyes)
                         except Exception as e:  # noqa: BLE001
                             print("  no iris read:", b, e)

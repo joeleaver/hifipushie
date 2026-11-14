@@ -4,6 +4,7 @@ import copy
 import numpy as np
 
 from hifipushie import base, faceslide, gnmloops, humans, onemesh
+from hifipushie import faceslide_mouth
 from hifipushie import base_identity, onemesh_head
 
 g = base_identity._gnm_data()
@@ -25,7 +26,7 @@ def nrm(X):
 
 
 bad = np.flatnonzero(np.einsum("ij,ij->i", nrm(V[0.0]), nrm(V[1.0])) < 0)
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 ring_of = {int(v): k for k, r in enumerate(R["rings"]) for v in r}
 lm = np.array([sum(float(w) * V[0.0][int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]])
 c = 0.5 * (lm[62] + lm[66])

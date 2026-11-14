@@ -75,7 +75,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
     outline where the picture has one (a profile in front of a plain background: blockin_look.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
     from PIL import Image
-    from . import eye_ruler as er, humanfit, mpread, store
+    from . import humanfit, mpread, store
+    from . import eye_ruler_compare, eye_ruler_picture
     from . import likeness_detect, likeness_render, likeness_sides
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
@@ -177,10 +178,10 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
             try:
                 P = blockin_clay.detect_view(img, v)
                 mm = likeness_render._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
-                eyes = er.read(img, P, mm)
+                eyes = eye_ruler_picture.read(img, P, mm)
                 extras.append(lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes))
                 iris_mm = float(np.mean([e["iris"] for e in eyes]))
-                rv = er.mean(eyes)
+                rv = eye_ruler_compare.mean(eyes)
                 if lids and rv["iris"] / mm >= 30.0 and all(np.isfinite(rv[q]).sum() >= 5 for q in ("up", "lo")):
                     extras.append(lambda h, vw, rv=rv: _lid_obs(h, vw, rv))
                 elif lids:

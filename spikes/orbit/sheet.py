@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin as bi, eye_ruler as er, humanfit, likeness, store
+from hifipushie import eye_ruler_compare
 from hifipushie import blockin_models, humanfit_views, likeness_render
 
 G = os.environ["G"] + "/out"
@@ -74,6 +75,6 @@ for i, t in enumerate(tiles):
 W.save(f"{R}/ob_02_dressed_front.png")
 print("saved ob_01_orbit_side_views.png, ob_02_dressed_front.png")
 for m in (BEFORE, "el_a6", BEST):
-    c = er.compare(m)
+    c = eye_ruler_compare.compare(m)
     keep = [r for r in c["rows"] if any(k in r["measure"] for k in ("fissure", "inner canthus u", "outer canthus u", "upper margin at u +0", "upper margin at u -3", "upper margin at u +3", "lower margin at u +0", "iris hidden", "pupils", "tilt"))]
     print(m, "| " + "; ".join(f"{r['measure']}: model {r['model']:.2f} vs picture {r['photo']:.2f}{' *' if r['off'] else ''}" for r in keep))

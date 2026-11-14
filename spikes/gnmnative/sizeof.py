@@ -50,7 +50,8 @@ for name in sys.argv[2:]:
     txt += "size carried by " + ", ".join(f"head_{i:03d} {100 * g[i] * (c - c0)[i]:+.1f}%" for i in top) + f"; cameras {cams}"
     try:
         from hifipushie import blockin_eyes as be
-        ic = be.iris_check(name)
+        from hifipushie import blockin_eyes_evidence
+        ic = blockin_eyes_evidence.iris_check(name)
         if ic.get("photo_mm"):
             sp_ = store.load(name)
             e0 = float((sp_["base"]["head"].get("identity") or {}).get("eyes_000", 0.0))

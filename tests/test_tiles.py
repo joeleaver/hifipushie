@@ -264,8 +264,9 @@ def test_sunk_edge_reads_as_ground(cf, G):
     """Where the cliff front sinks toward the region's edge it dives under the heightmap; the few cm of the dive that
     show were baked as a steep dark crease (rock weights from a tipped 0.4 m normal, AO from metres down): a thin dark
     dashed line along every overlay edge (pushieworld note 104). Its maps read the true ground over it: the normal the
-    bake uses (terrain_bake._unsunk) is the ground's on both sides of SINK_EDGE."""
+    bake uses (terrain_bake_maps._unsunk) is the ground's on both sides of SINK_EDGE."""
     from hifipushie import terrain_bake as tb
+    from hifipushie import terrain_bake_maps
     R = cf.region
     lo, hi = G.bounds(0, 0)[0], G.bounds(3, 3)[1]
     xs, ys = np.arange(lo[0] + 1, hi[0] - 1, 0.5), np.arange(lo[1] + 1, hi[1] - 1, 0.5)
@@ -287,7 +288,7 @@ def test_sunk_edge_reads_as_ground(cf, G):
             P = P - (f / np.maximum((g * g).sum(1), 1e-9))[:, None] * g
         # (the normal map's normal: the front's at 3 cm, eased to the ground's; the true ground's over the same column)
         g0 = tb._unit(ff.value_gradient(P, 0.03)[1])
-        gu = tb._unsunk(ff, P, g0, 0.03)
+        gu = terrain_bake_maps._unsunk(ff, P, g0, 0.03)
         hq, _ = cf.base.column(P[:, 0], P[:, 1])
         gt = tb._unit(cf.base.value_gradient(np.c_[P[:, :2], hq], 0.03)[1])
         soft = gt[:, 2] > 0.85  # (gentle ground: where the line showed)

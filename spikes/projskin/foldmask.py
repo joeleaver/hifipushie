@@ -5,17 +5,18 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw
 from hifipushie import gnm_fold as gf, store
+from hifipushie import gnm_fold_mesh
 m, outp = sys.argv[1:3]
 cfg = store.load(m)["base"]["head"]["lid_fold"]
 V = gf.vertices() / 1000.0
 T = gf.gc.gnm()["T"] * 1000.0
 J = gf.gc.gnm()["J"][2] * 1000.0
 t = gf.topo()
-fill = gf._fill_rings
-gf._fill_rings = lambda *a, **k: None
-d0 = gf.mesh_delta(V, None, cfg) * 1000.0
-gf._fill_rings = fill
-d1 = gf.mesh_delta(V, None, cfg) * 1000.0
+fill = gnm_fold_mesh._fill_rings
+gnm_fold_mesh._fill_rings = lambda *a, **k: None
+d0 = gnm_fold_mesh.mesh_delta(V, None, cfg) * 1000.0
+gnm_fold_mesh._fill_rings = fill
+d1 = gnm_fold_mesh.mesh_delta(V, None, cfg) * 1000.0
 sel = (np.abs(T[:, 0] - J[0]) < 22) & (np.abs(T[:, 1] - J[1]) < 18) & (T[:, 0] > 0) & (t["ring"] >= 0) & (t["ring"] < 99)
 S, k = 700, 700 / 44.0
 img = Image.new("RGB", (2 * S, S), (15, 15, 15))

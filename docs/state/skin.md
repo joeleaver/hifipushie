@@ -14,7 +14,7 @@
   pores, roughness).
 - skin(): names the patch keys with NO EFFECT under a stack, by diffing what shows (checked on gp_h6c: zones.midface_red,
   variation and lips.blood are dead, tone is body only, lips.over_stack works). The diff has a 25 s budget.
-  stack_edit = skin_layers.edit. Fold relief is given in mm against 1 mm, and the reply warns when the head is not approved.
+  stack_edit = skin_layers_stack.edit. Fold relief is given in mm against 1 mm, and the reply warns when the head is not approved.
 - Every skin tool's reply ends with next:. The export refuses skin.projection.opacity > 0, and texture_from_reference
   refuses on skin.stack.
 - Code: src/hifipushie/skin_route.py (new), skin_look.beside, small hooks in server.py / next_steps.after_look(how=) /

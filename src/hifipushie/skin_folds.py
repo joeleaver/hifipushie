@@ -212,26 +212,26 @@ class _Surface:
     def __init__(self, spec: dict, part: str, J: dict):
         from scipy.interpolate import LinearNDInterpolator
         from scipy.spatial import cKDTree
-        from . import skin_marks as sm
-        self.sp = sm.sphere(J, (-62.0, 72.0), 220.0, PX)
-        V, Nn, _ = sm.head_mesh(spec, part, J)
+        from . import skin_marks_map
+        self.sp = skin_marks_map.sphere(J, (-62.0, 72.0), 220.0, PX)
+        V, Nn, _ = skin_marks_map.head_mesh(spec, part, J)
         V, Nn = np.asarray(V, float), np.asarray(Nn, float)
-        keep = sm.outward(self.sp, V, Nn, V)
+        keep = skin_marks_map.outward(self.sp, V, Nn, V)
         self.o = np.asarray(self.sp["fr"]["o"], float)
-        self._R = LinearNDInterpolator(sm.pix(self.sp, V[keep]), np.linalg.norm(V[keep] - self.o, axis=1))
+        self._R = LinearNDInterpolator(skin_marks_map.pix(self.sp, V[keep]), np.linalg.norm(V[keep] - self.o, axis=1))
         self._tree, self._N, self.V, self.Nall, self._Vk = cKDTree(V[keep]), Nn[keep], V, Nn, V[keep]
 
     def seat(self, P: np.ndarray, snap: bool = False) -> np.ndarray:
         """Points moved along their ray from the wrap's centre onto the skin (left where the wrap does not see).
         snap: first to the nearest point of the skin (a landmark offset floats a few mm off it, and the ray from a centre
         at the mouth's height would carry a point by the eye several mm up the lid)."""
-        from . import skin_marks as sm
+        from . import skin_marks_map
         P = np.asarray(P, float)
         if snap:
             P = self._Vk[self._tree.query(P)[1]]
         d = P - self.o
         r = np.linalg.norm(d, axis=1)
-        R = self._R(sm.pix(self.sp, P))
+        R = self._R(skin_marks_map.pix(self.sp, P))
         R = np.where(np.isfinite(R), R, r)
         return self.o + d / np.maximum(r, 1e-9)[:, None] * R[:, None]
 
@@ -319,8 +319,8 @@ def surface(spec: dict, part: str, J: dict) -> _FieldSurface:
 
 def map_surface(spec: dict, part: str, J: dict) -> _Surface:
     """The head's skin under the fold map (the mesh the map's pixels are laid on: with the folds' own relief)."""
-    from . import skin_marks as sm
-    V, _, _ = sm.head_mesh(spec, part, J)
+    from . import skin_marks_map
+    V, _, _ = skin_marks_map.head_mesh(spec, part, J)
     key = hashlib.sha1(json.dumps([np.asarray(V[:50]).round(5).tolist(), len(V)]).encode()).hexdigest()
     if key not in _MAPSURF:
         if len(_MAPSURF) > 3:
@@ -462,6 +462,7 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
     from scipy.ndimage import gaussian_filter
     from scipy.spatial import cKDTree
     from . import skin_marks as sm, store
+    from . import skin_marks_map, skin_marks_pores
     S = map_surface(spec, part, J)
     sp = S.sp
     geo = geometry_key(spec.get("skin") or {}) is not None
@@ -474,13 +475,13 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
     W, H = sp["W"], sp["H"]
     out = np.zeros((H, W, 3), np.float32)
     ps = paths(spec, part, J, cfg)
-    rows = sm._pixel_points(sp, S.V, S.Nall, step=2)
+    rows = skin_marks_pores._pixel_points(sp, S.V, S.Nall, step=2)
     stats = {"size": [W, H], "folds": {}}
     for (name, sd), q in ps.items():
         fd = FOLDS[name]
         if not (q["amount"] > 0).any():
             continue
-        x = sm.pix(sp, q["P"])
+        x = skin_marks_map.pix(sp, q["P"])
         reach = 0.001 * (max(q["width"] * 1.5 * 2.5, (fd["roll"][0] + 1.5 * fd["roll"][1]) if fd["roll"] else 0.0) + 2.0)
         pad = int(reach / PX * 1.6) + 4
         x0, x1 = max(int(np.nanmin(x[:, 0])) - pad, 0), min(int(np.nanmax(x[:, 0])) + pad, W)
@@ -531,7 +532,7 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
         stats["folds"][name + sd] = {"stations": int(len(q["P"])), "amount": round(float(q["amount"].max()), 3)}
     for k in range(3):
         out[..., k] = gaussian_filter(out[..., k], 1.0)
-    sm._save(path, out)
+    skin_marks_map._save(path, out)
     stats_f.write_text(json.dumps(stats))
     return str(path), sp["img"], stats
 

@@ -8,7 +8,8 @@ from pathlib import Path
 import numpy as np
 
 from . import veg_export
-from . import veg_bark, veg_bough, veg_cloud, veg_impostor, veg_leaf, veg_mesh, veg_style
+from . import veg_bark, veg_bough, veg_cloud, veg_impostor, veg_mesh, veg_style
+from . import veg_leaf_atlas, veg_leaf_place
 from . import veg_style_dress, veg_style_small
 from . import vegetation_grow
 from .veg_export import _normals, _png, _yup, veg_small_state
@@ -42,8 +43,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     sc = float(bark.get("scale", 1.0))
     tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
     twc = bark.get("twig_color") or [0.45, 0.4, 0.35]
-    has_leaves = any(len(veg_leaf.place(t)["pos"]) for t in trees)
-    at = veg_leaf.atlas(s["leaves"], twc) if has_leaves and not st else None
+    has_leaves = any(len(veg_leaf_place.place(t)["pos"]) for t in trees)
+    at = veg_leaf_atlas.atlas(s["leaves"], twc) if has_leaves and not st else None
     buf = bytearray()
     views, accessors, images, textures, materials, meshes, nodes = [], [], [], [], [], [], []
     ext_used = set()
@@ -372,7 +373,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 ck = (f"boughs_cut{cut_[0]}_{cut_[1]}" if cut_[0] else f"boughs{li}") if boughs else json.dumps(lf_c["card"], sort_keys=True)
                 if ck not in cluster_mats:
                     # (a set shares one bough atlas per LOD: baked from the first plant that needs it)
-                    make = (lambda lf_, twc_, t0=t, nb=bud["boughs"]: veg_bough.atlas(t0, lf_, twc_, nb)) if boughs else veg_leaf.atlas
+                    make = (lambda lf_, twc_, t0=t, nb=bud["boughs"]: veg_bough.atlas(t0, lf_, twc_, nb)) if boughs else veg_leaf_atlas.atlas
                     sp_c = {**s, "leaves": s["leaves"] if boughs else lf_c}
                     at_c = make(sp_c["leaves"], twc)
                     m_ = foliage_material(at_c, f"foliage_boughs{len(cluster_mats) + 1}")
@@ -396,7 +397,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 if boughs:
                     tw_c = veg_bough.place(t, bud["boughs"], at_c)
             L = foliage_mesh(t, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c, tw=tw_c) \
-                if at and len(veg_leaf.place(t)["pos"]) else None
+                if at and len(veg_leaf_place.place(t)["pos"]) else None
             pre = (f"{nm}_" if len(trees) > 1 else "") + (f"LOD{li}_" if n_lod > 1 or impostor is not None else "")
             kids = []
             wn_w = W["node"]

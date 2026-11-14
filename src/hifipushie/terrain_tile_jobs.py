@@ -241,7 +241,7 @@ def _job_prep_tile(ij):
 
 def build_field(T, cfg=None):
     """The 3D field of a terrain: (field, volume pieces, notes, caves)."""
-    from . import terrain_caves
+    from . import terrain_caves_build
     cfg = {**terrain_mesh.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     vols, notes = volumes(T)
     if cfg.get("stacks", True) and _sea(T) is not None:
@@ -250,7 +250,7 @@ def build_field(T, cfg=None):
         if sn:
             notes = notes + [sn]
     rock = rock_config(T, cfg)
-    caves = terrain_caves.build(T, rock)
+    caves = terrain_caves_build.build(T, rock)
     for cv in caves:
         vols = vols + cv.tubes
         notes = notes + cv.notes
@@ -272,10 +272,11 @@ def build_field(T, cfg=None):
 
 
 def _swatch(out, rock, macro_density=8.0, source="procedural"):
-    """terrain_swatch.write(out, rock, "rock"), or what the last export wrote when the swatch's inputs (the rock's seed,
+    """terrain_swatch_detail.write(out, rock, "rock"), or what the last export wrote when the swatch's inputs (the rock's seed,
     the swatch's code) and its files are the same."""
     import pickle
     from . import codehash, terrain_swatch
+    from . import terrain_swatch_detail
     from . import terrain_incremental as inc
     key = inc._h(codehash.digest("terrain_swatch"), int((rock or {}).get("seed", 4242)), terrain_swatch.SIZE,
                  terrain_swatch.RES, float(macro_density), str(source))
@@ -287,7 +288,7 @@ def _swatch(out, rock, macro_density=8.0, source="procedural"):
             return de
     except Exception:
         pass
-    de = terrain_swatch.write(out, rock, "rock", macro_density=float(macro_density), source=source)
+    de = terrain_swatch_detail.write(out, rock, "rock", macro_density=float(macro_density), source=source)
     p.parent.mkdir(exist_ok=True)
     p.write_bytes(pickle.dumps((key, de, inc.files_key(out, files(de)))))
     return dict(de)
