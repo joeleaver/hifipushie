@@ -37,7 +37,8 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
    the finder leads a feature job on a block-in head with the hand step. Whether fit_likeness stays: the legacy thread.
 8. DONE (C460): guide(topic="example") returns a whole fox and a whole chair, held to examples/ by a test. Still
    open: kit_reference is 49k characters with no section argument.
-9. guide(topic="traps") and "gates" serve developer notes from docs/notes (Garrett's collars, the machine).
+9. DONE (C461): guide(topic="traps") and "gates" are short packaged topics for an agent (guide_traps.md, guide_gates.md);
+   the developer notes stay in docs/notes. "tailoring" still serves a repo note (the garment thread's).
 10. DONE (C445): terrain views, plant looks and clutter looks run Blender inside resources.heavy(..., gpu=True);
     tests/test_gpu_lock.py holds it. The terrain view's 6 GB is a guess, not a measured peak.
 11. README.md's tool table has 12 rows.
@@ -54,6 +55,6 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: items 9, 11, then dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A
+NEXT: item 11, then dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A
 tool-description change runs tests/test_toolsets.py with -m "" (a slow-tier rule the suite skips); a new constant
 goes in its family's base module (tests/test_constants_address.py).

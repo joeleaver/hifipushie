@@ -14,7 +14,8 @@ from .tool_common import REPO
 
 @mcp.tool(structured_output=False)
 def guide(topic: str = "") -> str:
-    """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
+    """The playbook and reference. topic "" = modelling playbook (read before modelling); its parts: "spec", "blockout",
+    "props", "looking", "style", "story", "paint"; a domain: "hair", "cloth",
     "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
     "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference), "example" (two whole specs:
     a fox, a chair), "traps" (symptom -> real cause), "gates" (describe, measure, look, approve), "tailoring"; or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
@@ -81,8 +82,9 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "features": "guide_fe
                 "terrain_places": "terrain_places.md", "terrain_streams": "terrain_streams.md",
                 "terrain_styles": "terrain_styles.md", "terrain_running": "terrain_running.md",
                 "terrain_tools": "terrain_tools.md",
+                "traps": "guide_traps.md", "gates": "guide_gates.md",  # (packaged, for an agent: the developer's own
+                # lists, docs/notes/traps.md and gates.md, name machines and past rounds, and no install has them)
                 # repo docs (a source checkout): the rules the tools enforce, and their history
-                "traps": "docs/notes/traps.md", "gates": "docs/notes/gates.md",
                 "tailoring": "docs/notes/tailoring_principles.md",
                 "tailoring_principles": "docs/notes/tailoring_principles.md"}
 
