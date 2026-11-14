@@ -29,6 +29,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import gnm_controls as gc
+from . import gnm_controls_latent
 from . import moved
 
 NC = 170
@@ -100,7 +101,7 @@ def chains(umax: float = 7.0, k1: int = NR) -> np.ndarray:
 
 def vertices(c=None, e=None) -> np.ndarray:
     """GNM's head in mm (GNM frame) for identity c (<= 253) and expression e (383)."""
-    return gc.vertices(c, e) * 1000.0
+    return gnm_controls_latent.vertices(c, e) * 1000.0
 
 
 def read(V: np.ndarray, umax: float = 7.0) -> dict:

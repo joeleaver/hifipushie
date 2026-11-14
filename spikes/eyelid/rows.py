@@ -7,6 +7,7 @@ import numpy as np
 
 import lidmap as lm
 from hifipushie import blockin as bi, gnm_controls as gc, store
+from hifipushie import gnm_controls_latent
 
 g = gc.gnm()
 t = lm.topo()
@@ -21,7 +22,7 @@ def expr(spec):
 
 
 def show(label, c, e=None):
-    V = gc.vertices(c, e) * 1000
+    V = gnm_controls_latent.vertices(c, e) * 1000
     ctr, r = lm.eye_frame_raw(c)
     print(f"\n{label}: GNM's own ball r {r:.2f} mm, centre {np.round(ctr, 1)}")
     for u in (-5.0, 0.0, 5.0):

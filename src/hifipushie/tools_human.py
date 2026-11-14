@@ -361,6 +361,7 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
     cost x locality; control = one described; zones=True; families, sort, per_family, sign. Act: block_in_step
     {"mm:<measure>": mm}, {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details: guide(topic="gnm_controls")."""
     from . import gnm_controls as gcm
+    from . import gnm_controls_latent, gnm_controls_table
     if ruler:
         from . import blockin as bi, gnm_mm
         a, b = [x.strip() for x in ruler.split(",")][:2]
@@ -382,11 +383,11 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
         z = gcm.zones()
         return "\n".join(f"{k}: {d} ({len(z[k])} vertices)" for k, (d, _) in gcm.ZONES.items())
     if control:
-        return gcm.text(gcm.describe(control))
+        return gnm_controls_table.text(gnm_controls_table.describe(control))
     if not query:
         return ("gnm_controls: give query= (a feature) or control= (a name) or zones=True. Families: "
-                + ", ".join(f"{f} ({len(gcm.names(f))})" for f in gcm.FAMILIES))
-    return gcm.text(gcm.query(query, families=families, top=top, sort=sort, sign=sign, per_family=per_family))
+                + ", ".join(f"{f} ({len(gnm_controls_latent.names(f))})" for f in gcm.FAMILIES))
+    return gnm_controls_table.text(gnm_controls_table.query(query, families=families, top=top, sort=sort, sign=sign, per_family=per_family))
 
 
 @mcp.tool(structured_output=False)
@@ -431,10 +432,10 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
     model read against `name`'s picture. Returns the picture's eyes with the read and the model's lid outline drawn
     over them (save: the path) and the table. Sizes read by eye are 30-50 % off: read this before and after an eye
     step. Details: guide(topic="eye_ruler")."""
-    from . import eye_ruler as er
-    c = er.compare(name, model)
+    from . import eye_ruler_compare
+    c = eye_ruler_compare.compare(name, model)
     path = save or str(store.HOME / "human_renders" / f"eye_ruler_{model or name}.png")
-    im = er.overlay(c["image"], c["eyes"], c["mesh"], c["mm"])
+    im = eye_ruler_compare.overlay(c["image"], c["eyes"], c["mesh"], c["mm"])
     im.save(path)
     return [_png(im), c["text"] + f"\noverlay (picture; green = its margins, red = its canthi, blue = the model's ring / margins / "
                                   f"inner-corner landmark laid over by iris centre): {path}"]

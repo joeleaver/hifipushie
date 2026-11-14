@@ -150,8 +150,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             if nm in blockin.LOCAL_SD and abs(v) > 2.5 * blockin.LOCAL_SD[nm]:
                 big.append(f"{k} (population sd {blockin.LOCAL_SD[nm]})")
         elif k.startswith(("sculpt:", "relief:")):
-            from . import gnm_controls as gcm
-            sc = gcm.sculpt(**gcm.parse_sculpt(k))
+            from . import gnm_controls_sculpt
+            sc = gnm_controls_sculpt.sculpt(**gnm_controls_sculpt.parse_sculpt(k))
             c = c + v * sc["dc"]
             sculpts[k] = {"mm": v, "cost": round(abs(v) * sc["cost"], 2), "released": sc["released"],
                           "outside_mm": round(abs(v) * sc["outside_mm"], 3)}

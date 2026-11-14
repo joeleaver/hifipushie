@@ -15,6 +15,7 @@ from PIL import Image
 from scipy.ndimage import gaussian_filter1d
 
 from hifipushie import blockin_brows as bb, eye_ruler as er, likeness
+from hifipushie import eye_ruler_picture
 from hifipushie import likeness_detect
 
 G = os.environ["G"] + "/out"
@@ -65,7 +66,7 @@ res = json.load(open(G + "/prof.json")) if os.path.exists(G + "/prof.json") else
 for tag in sys.argv[1:]:
     if tag == "photo":
         img = q["img"]
-        eyes = er.read(img, q["P"], mm, debug=True)
+        eyes = eye_ruler_picture.read(img, q["P"], mm, debug=True)
         A = np.asarray(img.convert("RGB"), float) / 255
         res["photo"] = {"s": profiles(A, eyes).tolist()}
         continue
@@ -74,7 +75,7 @@ for tag in sys.argv[1:]:
     if P is None:
         P = (q["P"] - box[:2]) * K
     P = np.asarray(P, float)[:, :2] / K + box[:2]
-    eyes = er.read(im, P, mm, scale=K, origin=box[:2], debug=True)
+    eyes = eye_ruler_picture.read(im, P, mm, scale=K, origin=box[:2], debug=True)
     res[tag] = {"s": profiles(np.asarray(im, float) / 255, eyes).tolist()}
     if os.path.exists(f"{G}/k_{tag}.png"):
         res[tag]["k"] = profiles(np.asarray(Image.open(f"{G}/k_{tag}.png").convert("RGB"), float) / 255, eyes).tolist()

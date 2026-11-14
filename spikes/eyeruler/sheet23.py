@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin_brows as bb, eye_ruler as er
+from hifipushie import eye_ruler_compare
 
 G = os.environ["G"] + "/out/"
 OUT = os.environ["R"] + "/"
@@ -29,11 +30,11 @@ for i, (tag, lab) in enumerate(tiles):
     x, y = (i % 3) * W, (i // 3) * (H + HEAD)
     im = Image.open(f"{G}s_{tag}.png").convert("RGB").crop(C).resize((W, H), Image.LANCZOS)
     S.paste(im, (x, y + HEAD))
-    m = er.mean(R[tag]["read"])
+    m = eye_ruler_compare.mean(R[tag]["read"])
     t = R[tag].get("model")
     d.text((x + 10, y + 4), lab, fill=(0, 0, 0), font_size=28)
     if t:
-        mt = er.mean(t)
+        mt = eye_ruler_compare.mean(t)
         pl = np.nanmean([q["platform"] for q in t], 0)
         d.text((x + 10, y + 38), f"mesh: fold {float(np.nanmedian(mt['crease'][1:6])):.1f} mm over the margin (platform shown {float(np.nanmedian(pl[1:6])):.1f}), upper lid hides {mt['cover_up']:.1f} mm of iris; "
                                  f"fold line darkness read on this image {m['crease_dark']:.2f}", fill=(0, 0, 0), font_size=19)

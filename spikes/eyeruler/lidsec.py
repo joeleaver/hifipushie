@@ -15,6 +15,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin_eyes as be, eye_ruler as er, onemesh, store
+from hifipushie import eye_ruler_model
 from hifipushie import blockin_eyes_reader
 from hifipushie import onemesh_head
 
@@ -99,7 +100,7 @@ for name in sys.argv[1:]:
     c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)
     r = float(ht["eye_r"])
     fwd = np.asarray(ht["forward"], float)
-    _, tri = er._ring(ht, c)
+    _, tri = eye_ruler_model._ring(ht, c)
     res[name] = {"r": r * 1000, "sections": {}}
     for u in US:
         P = section(ht, tri, c, r, fwd, u)

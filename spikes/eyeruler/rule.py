@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from hifipushie import blockin_brows as bb, eye_ruler as er, likeness, store
+from hifipushie import eye_ruler_compare, eye_ruler_model, eye_ruler_picture
 from hifipushie import likeness_detect
 
 G = os.environ["G"] + "/out"
@@ -83,7 +84,7 @@ for a in sys.argv[1:]:
     tag, model = (a.split("=", 1) + [None])[:2]
     im = Image.open(f"{G}/s_{tag}.png").convert("RGB")
     if tag == "photo":
-        eyes = er.read(q["img"], q["P"], mm, debug=True)
+        eyes = eye_ruler_picture.read(q["img"], q["P"], mm, debug=True)
         im_o = q["img"]
     else:
         P = likeness_detect.detect([im])[0]
@@ -91,17 +92,17 @@ for a in sys.argv[1:]:
             print(tag, "NOT detected: the photo's points are used")
             P = (q["P"] - box[:2]) * K
         P = np.asarray(P, float)[:, :2] / K + box[:2]            # picture px
-        eyes = er.read(im, P, mm, scale=K, origin=box[:2], debug=True)
+        eyes = eye_ruler_picture.read(im, P, mm, scale=K, origin=box[:2], debug=True)
         im_o = im
     tru = None
     if model and os.environ.get("TRUTH", "1") != "0":
-        tru = er.model(store.load(model), cam)
+        tru = eye_ruler_model.model(store.load(model), cam)
     overlay(im_o, eyes, tru, f"{G}/o_{tag}.png")
     out[tag] = {"read": [clean(e) for e in eyes], "model": [clean(m) for m in tru] if tru else None}
-    r = er.mean(eyes)
+    r = eye_ruler_compare.mean(eyes)
     line = f"{tag}: fissure {r['fissure']:.1f} tilt {r['tilt']:.1f} inner {np.round(r['inner'], 1)} outer {np.round(r['outer'], 1)} caruncle {r['caruncle']:.1f} iris {r['iris']:.1f} mrd {r['mrd1']:.2f}/{r['mrd2']:.2f} peak_u {r['peak_u']:.1f}\n   up {np.round(r['up'], 1)} lo {np.round(r['lo'], 1)}\n   crease {np.round(r['crease'], 1)} dark {r['crease_dark']:.3f} brow {np.round(r['brow'], 1)}"
     print(line)
     if tru:
-        t = er.mean(tru)
+        t = eye_ruler_compare.mean(tru)
         print(f"   MODEL fissure {t['fissure']:.1f} tilt {t['tilt']:.1f} inner {np.round(t['inner'], 1)} outer {np.round(t['outer'], 1)} caruncle {t['caruncle']:.1f} iris {t['iris']:.1f} mrd {t['mrd1']:.2f}/{t['mrd2']:.2f} peak_u {t['peak_u']:.1f}\n   up {np.round(t['up'], 1)} lo {np.round(t['lo'], 1)}\n   crease {np.round(t['crease'], 1)} platform {np.round(np.nanmean([m['platform'] for m in tru], 0), 1)} brow {np.round(t['brow'], 1)}")
 json.dump(out, open(G + "/rule.json", "w"), indent=1)

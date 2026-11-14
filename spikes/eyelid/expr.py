@@ -8,6 +8,7 @@ import numpy as np
 
 import lidmap as lm
 from hifipushie import blockin as bi, gnm_controls as gc, gnm_sampler as gs, store
+from hifipushie import gnm_controls_latent
 
 name, cls = sys.argv[1], sys.argv[2]
 ts = [float(x) for x in sys.argv[3:]] or [-0.5, 0.0, 0.5, 1.0]
@@ -23,7 +24,7 @@ print(f"{cls}: |e| all {np.linalg.norm(e1):.2f}, left-eye comps {np.linalg.norm(
 ctr, r = lm.eye_frame_raw(c)
 cols = {}
 for t in ts:
-    V = gc.vertices(c, t * e1) * 1000
+    V = gnm_controls_latent.vertices(c, t * e1) * 1000
     up = {k: (v, w) for k, v, w in lm.column(V, ctr, 0.0)}
     lo = {k: (v, w) for k, v, w in lm.column(V, ctr, 0.0, upper=False)}
     cols[t] = (up, lo)

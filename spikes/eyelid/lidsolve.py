@@ -26,6 +26,7 @@ from scipy.spatial import cKDTree
 
 import lidmap as lm
 from hifipushie import blockin as bi, gnm_controls as gc, onemesh, store
+from hifipushie import gnm_controls_latent
 from hifipushie import onemesh_head
 
 g = gc.gnm()
@@ -131,7 +132,7 @@ def main():
     c0 = bi.identity(sp)
     cdn = bi.identity(store.load(donor))
     assert not sp["base"]["head"].get("expression"), "the source carries an eye expression: clear it first"
-    Vs, Vd = gc.vertices(c0) * 1000, gc.vertices(cdn) * 1000
+    Vs, Vd = gnm_controls_latent.vertices(c0) * 1000, gnm_controls_latent.vertices(cdn) * 1000
     cs, r = lm.eye_frame_raw(c0)
     cd, _ = lm.eye_frame_raw(cdn)
     # world mm per raw mm round the eye (the head's scale x the body's hook x eyes)
@@ -182,7 +183,7 @@ def main():
     if kw.get("margins"):   # the lid margins (ring 0, both lids, both eyes) put where ANOTHER model has them in its eye frame
         import lidstruct
         cm = lidstruct.ident(kw["margins"])
-        Vm = gc.vertices(cm) * 1000
+        Vm = gnm_controls_latent.vertices(cm) * 1000
         r0 = t["loops"][0]
         for ids0, grp in ((r0, "left_eye"), (MIR[r0], "right_eye")):
             m = g["groups"][grp] & g["groups"]["scleras"]
@@ -221,7 +222,7 @@ def main():
         AhA = Ah.T @ Ah
         dc = np.zeros(NC)
         for _ in range(3):
-            Nn = gc.normals(gc.vertices(c0 + dc))[ids]          # the surface's normals (first round: the source's)
+            Nn = gc.normals(gnm_controls_latent.vertices(c0 + dc))[ids]          # the surface's normals (first round: the source's)
             M = tw * np.eye(3)[None] + (1 - tw) * Nn[:, :, None] * Nn[:, None, :]
             At = (np.einsum("vij,cvj->cvi", M, IBt) * (wt / sig)[None, :, None]).reshape(NC, -1).T
             bt = (np.einsum("vij,vj->vi", M, D0) * (wt / sig)[:, None]).ravel()
@@ -234,7 +235,7 @@ def main():
               f"held moved rms {np.sqrt((mv ** 2).sum(1).mean()):.3f} mm, max {np.linalg.norm(mv, axis=1).max():.2f}; margins moved rms {np.sqrt((mv[m0] ** 2).sum(1).mean()):.3f}")
         print("   normal miss per ring (rms mm):", " ".join(f"{k}:{np.sqrt((rn[(rk == k) & full] ** 2).mean()):.2f}" for k in range(1, rt + 1)))
     c1 = c0 + dc
-    V1 = gc.vertices(c1) * 1000
+    V1 = gnm_controls_latent.vertices(c1) * 1000
     for lab, V, cc in (("source", Vs, c0), ("donor", Vd, cdn), ("result", V1, c1)):
         ctr, _ = lm.eye_frame_raw(cc)
         col = {k: (v, w) for k, v, w in lm.column(V, ctr, 0.0)}

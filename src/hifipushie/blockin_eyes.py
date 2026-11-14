@@ -67,7 +67,7 @@ SECTION_FR = (0.25, 0.5, 0.75)        # inner third, pupil, outer third (corner 
 SECTION_S = np.arange(0.5, 12.01, 0.5)  # mm of arclength from the lid margin (12: to 8 the lid matched but the fold's arc did not read)
 SOCKET = ("orbital_rim", "lower_orbit", "eye_depth")   # the socket's readings held (humanmacro, population sd, on the
 SIG_SOCKET = 0.15       # mesh WITH the expression): unheld, a fitted fold came with orbital_rim +1.1 / lower_orbit -0.9 sd
-# The RULER's evidence (eye_ruler.read on the front picture: mm at the model in each eye's frame, from the iris centre
+# The RULER's evidence (eye_ruler_picture.read on the front picture: mm at the model in each eye's frame, from the iris centre
 # found as a circle through the limbus). eyeruler, 2026-10-11: the detector's iris centre sits ~1 mm LOW on Tess's photo
 # and on our renders, its lid points are 1-1.5 mm off, and GNM's lm68 corners are not the visible opening's ends, so
 # "lids in iris radii at the pupil" matched an eye that was 1.3 mm too open at the top and 3 mm short.

@@ -5,6 +5,7 @@ import numpy as np
 
 import lidmap as lm
 from hifipushie import gnm_controls as gc
+from hifipushie import gnm_controls_latent
 
 g = gc.gnm()
 t = lm.topo()
@@ -52,7 +53,7 @@ def basis(ids, n=170, expr=False):
 
 
 def verts(c=None, e=None):
-    return gc.vertices(c, e) * 1000.0
+    return gnm_controls_latent.vertices(c, e) * 1000.0
 
 
 def profile(V, ch):

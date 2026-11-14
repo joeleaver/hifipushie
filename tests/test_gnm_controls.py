@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from hifipushie import gnm_controls as gcm
+from hifipushie import gnm_controls_latent, gnm_controls_sculpt, gnm_controls_table
 
 pytestmark = pytest.mark.skipif(not gcm.DATA.exists(), reason="gnm_controls.npz not built")
 
@@ -20,19 +21,19 @@ def test_zones_named_and_symmetric():
 
 def test_identity_field_is_the_basis():
     g = gcm.gnm()
-    D = gcm.field("head_005")
+    D = gnm_controls_latent.field("head_005")
     assert np.allclose(D, g["IB"][g["id_names"].index("head_005")], atol=1e-6)
-    c, e, rot = gcm.coefficients("both_eye_region_003", 2.0)
+    c, e, rot = gnm_controls_latent.coefficients("both_eye_region_003", 2.0)
     assert e[g["ex_names"].index("left_eye_region_003")] == 2.0 and e[g["ex_names"].index("right_eye_region_003")] == 2.0
 
 
 def test_query_finds_the_feature():
-    assert gcm.match_zones("alar crease") == ["alar_crease"]
-    assert set(gcm.match_zones("lip border")) == {"vermilion_border_upper", "vermilion_border_lower"}
-    r = gcm.query("jowl", top=5)
+    assert gnm_controls_table.match_zones("alar crease") == ["alar_crease"]
+    assert set(gnm_controls_table.match_zones("lip border")) == {"vermilion_border_upper", "vermilion_border_lower"}
+    r = gnm_controls_table.query("jowl", top=5)
     assert r["zones"] == ["jowls"] and len(r["rows"]) == 5
     assert all(row["family"] in gcm.SHAPE_FAMILIES for row in r["rows"])
-    d = gcm.describe("bridge_height")
+    d = gnm_controls_table.describe("bridge_height")
     assert d["macros"]["bridge_height"] == pytest.approx(1.0, abs=0.05)   # a block-in macro moves its own measure 1 sd
     assert "sheet" in d and d["sheet"].startswith("gnm_atlas/")
 
@@ -53,11 +54,11 @@ def test_sampler_decoders():
 
 
 def test_sculpt_holds_the_macros_and_moves_the_zone():
-    sc = gcm.sculpt("bridge_walls", hold_zones=("dorsum",))
+    sc = gnm_controls_sculpt.sculpt("bridge_walls", hold_zones=("dorsum",))
     dc = sc["dc"]
-    assert gcm.zone_row("bridge_walls") @ dc == pytest.approx(1.0, abs=1e-6)
-    assert gcm.zone_row("dorsum") @ dc == pytest.approx(0.0, abs=1e-6)
-    MJ = gcm._macro_jac()
+    assert gnm_controls_sculpt.zone_row("bridge_walls") @ dc == pytest.approx(1.0, abs=1e-6)
+    assert gnm_controls_sculpt.zone_row("dorsum") @ dc == pytest.approx(0.0, abs=1e-6)
+    MJ = gnm_controls_sculpt._macro_jac()
     assert np.abs(MJ @ dc).max() < 1e-6          # every macro held
     assert 1.0 < sc["cost"] < 6.0
     from hifipushie import blockin as bi

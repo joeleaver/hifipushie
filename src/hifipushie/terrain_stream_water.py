@@ -163,7 +163,7 @@ def cobble_swatch(size=2.0, res=256, seed=4251):
     """A tileable bed swatch (top view, periodic): rounded cobbles and pebbles packed on gravel, 3-22 cm (a few big,
     many small: no two rows alike), each its own tone (grey, buff, a few dark or pale), dark wet gaps between, grit on
     the stones. Returns what terrain_ground.grass_swatch returns."""
-    from .terrain_swatch import spectral
+    from .terrain_swatch_periodic import spectral
     L = float(size)
     n = int(round(L * res))
     rng = np.random.default_rng(seed)
@@ -225,7 +225,7 @@ def cobble_swatch(size=2.0, res=256, seed=4251):
 def silt_swatch(size=2.0, res=256, seed=4253):
     """A tileable silt / damp earth swatch: smooth fine sediment with faint current ripples in patches, a scatter of
     small pebbles half sunk, dark leaf and twig flecks."""
-    from .terrain_swatch import spectral
+    from .terrain_swatch_periodic import spectral
     L = float(size)
     n = int(round(L * res))
     rng = np.random.default_rng(seed)

@@ -7,6 +7,7 @@ import numpy as np
 from PIL import ImageDraw
 
 from hifipushie import blockin_brows as bb, eye_ruler as er, humanfit, likeness, store
+from hifipushie import eye_ruler_model
 from hifipushie import humanfit_views, likeness_render
 
 G = os.environ["G"] + "/out"
@@ -23,7 +24,7 @@ for name in sys.argv[1:]:
     box = (pc[0] - half, pc[1] - half * 0.7, pc[0] + half, pc[1] + half * 0.7)
     im, k = likeness_render.render(mesh, cam, box, px=1500, brows=False, ao=True, shadow=True)[:2]
     d = ImageDraw.Draw(im)
-    ring, _ = er._ring(ht, c)
+    ring, _ = eye_ruler_model._ring(ht, c)
     P = (humanfit_views.project(cam, np.asarray(ht["verts"])[ring]) - box[:2]) * k
     for p in P:
         d.ellipse([p[0] - 3, p[1] - 3, p[0] + 3, p[1] + 3], fill=(60, 110, 255))

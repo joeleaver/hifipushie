@@ -160,12 +160,13 @@ def photo_evidence(img, view: dict) -> dict:
 
 
 def ruler_evidence(name: str) -> dict:
-    """The eye ruler's read of the front picture, both eyes' mean, mm at the model (eye_ruler.read through the fitted
+    """The eye ruler's read of the front picture, both eyes' mean, mm at the model (eye_ruler_picture.read through the fitted
     camera): {"up", "lo" (margins at RULER_COLS), "inner", "outer" (canthi (u, v)), "iris", "crease" (the fold line
     over the margin at RULER_COLS), "crease_dark", "crease_cols" (at u -5 / 0 / +5: the eye step's three sections;
     None when the line is fainter than DARK_LINE), "eyes" (per eye), "mm" (mm per picture px)}."""
     from PIL import Image
-    from . import eye_ruler, humanfit, store
+    from . import humanfit, store
+    from . import eye_ruler_compare, eye_ruler_picture
     from . import likeness_render
     from . import blockin_clay, blockin_models
     rj = blockin_models._refs(name)
@@ -177,8 +178,8 @@ def ruler_evidence(name: str) -> dict:
         raise ValueError("eye ruler: the detector found no face on the front picture")
     st = humanfit.state(store.load(name)["base"])
     mm = likeness_render._mm_per_px(cam, st["L"][27:48])
-    eyes = eye_ruler.read(img, P, mm)
-    m = eye_ruler.mean(eyes)
+    eyes = eye_ruler_picture.read(img, P, mm)
+    m = eye_ruler_compare.mean(eyes)
     cr = np.asarray(m["crease"], float)
     cc = [float(np.interp(x, blockin_eyes.RULER_COLS[np.isfinite(cr)], cr[np.isfinite(cr)])) for x in (-5.0, 0.0, 5.0)] if np.isfinite(cr).sum() >= 3 else None
     m["crease_cols"] = cc if m["crease_dark"] >= 0.5 * blockin_eyes.DARK_LINE else None

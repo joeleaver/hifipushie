@@ -153,7 +153,7 @@ class Reader:
         outer corner, v = mm up, from the iris centre = the ball's forward pole; a level front view): the margin ring's
         top / bottom at cols ("up", "lo"; NaN outside the ring), its lateral end ("ring_out": (u, v)), the anatomical
         inner canthus = GNM's lm68 inner corner ("inner": (u, v)), the ring's medial end ("ring_in")."""
-        from .eye_ruler import _poly_cross
+        from .eye_ruler_model import _poly_cross
         V = np.asarray(ht["verts"], float)
         c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)
         fwd = np.asarray(ht["forward"], float)

@@ -179,7 +179,7 @@ def test_lip_open(T):
     the faces' step, but its slope correction was the grid's ramp (s 0.15 on crown_beck's 17 m fall), the field
     under-reported distance 6x up from the top, the AO rays found rock everywhere (ORM 10-47 / 255: a black slab), and
     the stream layers read dry bank / bare earth there (the level grid's cells straddle the drop)."""
-    from hifipushie import terrain_bake as tb
+    from hifipushie import terrain_bake_maps
     from hifipushie import terrain_field, terrain_materials, terrain_tile_jobs
     base = terrain_tile_jobs.build_field(T)[0]
     f = T.falls[1]
@@ -191,7 +191,7 @@ def test_lip_open(T):
     far = np.abs(np.array([u for u in (-2.5, -1.5, -0.8) for _ in range(3)])) >= 1.5
     assert (base.value(X[far] + [0, 0, 3.0]) > 2.4).all()
     assert (up > 2.4).all(), (up, s)  # (metres: 3 m up is ~3 m from the surface)
-    ao = tb.ambient(terrain_field.Metric(base), X, np.tile([0, 0, 1.0], (len(X), 1)))
+    ao = terrain_bake_maps.ambient(terrain_field.Metric(base), X, np.tile([0, 0, 1.0], (len(X), 1)))
     assert ao.min() > 0.4, ao  # (open flat ground reads ~0.54; it read 0 before)
     mats = terrain_materials.Materials(T, base)
     Wt, _ = mats.weights(X, np.tile([0, 0, 1.0], (len(X), 1)))

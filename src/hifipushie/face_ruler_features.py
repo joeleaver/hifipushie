@@ -8,10 +8,10 @@ from .face_ruler import _cam_points, _clay_crop, _gnm, _proj_jac_pt, clay
 from .face_ruler_outline import photo_masks
 
 def _iris_obs(head, view, eyes_pic):
-    """Iris centres: the picture's (eye_ruler.read: a circle through the limbus) against the model's (eye_ruler.model),
+    """Iris centres: the picture's (eye_ruler_picture.read: a circle through the limbus) against the model's (eye_ruler_model.model),
     moving with the model's eye centres."""
-    from . import eye_ruler as er
-    tru = er.model(head["spec"], view["cam"])
+    from . import eye_ruler_model
+    tru = eye_ruler_model.model(head["spec"], view["cam"])
     out = []
     xs = [float(e[0]) for e in head["eye_X"]]
     for s_ in (0, 1):           # eye_ruler: the subject's right eye first (world x smaller: the creature's left is +X)
@@ -26,7 +26,7 @@ def _iris_obs(head, view, eyes_pic):
 
 
 def _lid_obs(head, view, rv):
-    """THE LIDS IN THE SAME SOLVE (reruns, 2026-10-11): the eye ruler's read of the front picture (rv = eye_ruler.mean:
+    """THE LIDS IN THE SAME SOLVE (reruns, 2026-10-11): the eye ruler's read of the front picture (rv = eye_ruler_compare.mean:
     upper / lower margin at its columns, the canthi; mm at the model in the eye's own frame, from the iris centre)
     against the model's margin ring read the same way (blockin_eyes_reader.Reader.margins, the subject's left eye). Each
     moves with GNM's ring-0 vertices relative to the eye's centre. In the EYE's frame, so no camera column: its view

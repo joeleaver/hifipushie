@@ -252,8 +252,8 @@ def direction(name: str) -> np.ndarray:
         reg, k = name[3:].rstrip("0123456789"), name[3:][len(name[3:].rstrip("0123456789")):]
         return keep_size(region_pcs(reg)[int(k or 0)])
     if name.startswith(("sculpt:", "relief:")):   # (gnmcontrols) a zone moved the GNM way: per +1 mm, macros held
-        from . import gnm_controls as gcm
-        return gcm.sculpt(**gcm.parse_sculpt(name))["dc"]
+        from . import gnm_controls_latent, gnm_controls_sculpt
+        return gnm_controls_sculpt.sculpt(**gnm_controls_sculpt.parse_sculpt(name))["dc"]
     if name.startswith("mm:"):    # (gnmdrive) a measure you can see moved 1 mm, every other measure held in mm
         from . import gnm_mm
         return gnm_mm.direction(name)
@@ -261,8 +261,8 @@ def direction(name: str) -> np.ndarray:
         from . import gnm_fold_design
         return gnm_fold_design.hood_direction(5)["dc"]
     if name.startswith("gnm:"):   # (gnmcontrols) any identity-space control of the atlas, raw (its own unit)
-        from . import gnm_controls as gcm
-        d = gcm.identity_direction(name[4:])
+        from . import gnm_controls_latent, gnm_controls_sculpt
+        d = gnm_controls_latent.identity_direction(name[4:])
         if d is None:
             raise ValueError(f"{name}: an expression / pose control, not an identity move (block_in_expression fits a "
                              "picture's expression)")

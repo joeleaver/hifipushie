@@ -192,7 +192,7 @@ def test_eye_step_report_recommends_no_paint():
     """Decision 2026-10-11: nothing recommends a painted fold line, crease make-up or liner; the step is identity only
     by default and says when the orbit is unread."""
     import inspect
-    from hifipushie import eye_ruler as er
+    from hifipushie import eye_ruler_compare
     from hifipushie import blockin_eyes_solve
     assert inspect.signature(blockin_eyes_solve.solve).parameters["ne"].default == 0
     assert inspect.signature(blockin_eyes_solve.eye_step).parameters["expression"].default is False
@@ -203,4 +203,4 @@ def test_eye_step_report_recommends_no_paint():
     assert "identity only" in txt and "ORBIT: UNREAD" in txt
     for bad in ("eyeshadow", "skin.eyes.crease", "eyeliner"):
         assert bad not in txt, bad
-        assert bad not in inspect.getsource(er.compare), bad
+        assert bad not in inspect.getsource(eye_ruler_compare.compare), bad
