@@ -22,6 +22,8 @@ The terrain's report, measured on the built ground: the world kind and its compr
 rivers and their banks, basins and walls (how much of each edge is unclimbable, climbable spots), passes, sites
 (cut/fill), routes (grades, switchbacks, crossings: fords or bridges), cover shares, intent checks (sight lines,
 skyline, flood heights, grades), drainage, WARNINGS last. Questions for the designer come back as JSON.
+WARNINGS also name every key of the spec that no terrain code names (a misspelt key or section: it is
+ignored), with the key that was probably meant. A real key written in the wrong section is not caught.
 
 ### `look_terrain`
 

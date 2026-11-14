@@ -126,6 +126,72 @@ NAMED = ("peaks", "cols", "ridges", "rivers", "basins", "passes", "canyons", "me
          "sites", "routes", "walls", "cover", "rugged", "intent", "volcanoes", "lines")
 
 
+# The usual keys of each named section and of the spec itself: HINTS for "did you mean" only (read off the saved
+# terrains, 2026-11-14). They decide nothing: what is warned about is decided by unnamed_keys' own test.
+KEY_HINTS = {
+    "": ("world", "extent", "units", "cell", "sea", "tilt", "rock", "erosion", "border", "views", "export", "story", "notes",
+         "styles", "ground", "caves", "volumes", "detail", "divides", "ribs", "probe"),
+    "peaks": ("at", "h", "radius", "form", "base_radius", "arete", "flanks", "hollow", "faces"),
+    "cols": ("at", "h", "form"), "ridges": ("through", "crest", "closed", "wander"),
+    "basins": ("inside", "falls_to", "shape", "walls", "floor", "rises_toward", "opens"),
+    "passes": ("at", "width", "max_grade", "through", "sides"), "canyons": ("river", "width", "floor", "strata", "rim"),
+    "mesas": ("at", "top", "radius", "cliff", "talus"), "fords": ("on", "width", "depth"),
+    "landforms": ("type", "at", "radius", "depth", "dam", "lobes", "level", "freeboard", "toward", "across", "height", "width"),
+    "zones": ("polygon", "feather", "all", "any", "near", "radius", "inside"),
+    "sites": ("at", "radius", "shoulder", "prop", "facing", "overlooks", "above_water", "toward", "level", "flat", "fall"),
+    "routes": ("from", "to", "max_grade", "width", "max_fill", "via", "avoid", "leg", "max_break", "stay_in"),
+    "walls": ("around", "min_slope", "height"),
+    "cover": ("type", "in", "density", "slope", "color", "breakup", "elevation", "trees", "avoid", "near", "count", "gradient",
+              "rows", "along", "order"),
+    "rugged": ("in", "amount", "scale", "ledges", "gradient"),
+    "intent": ("from", "see", "min_prominence", "skyline", "min_visible", "at", "above_flood"),
+    "volcanoes": ("at", "h", "flows", "base_radius", "crater", "type", "collapses", "gullies", "caldera"),
+    "lines": ("type", "network", "follows", "side", "bank", "jitter", "trees", "along", "offset", "angle", "from", "to", "width",
+              "ditch", "height", "gates", "around")}
+_WORDS: set = set()  # every word of the modules a terrain spec can reach (filled on first use: code_words)
+
+
+def code_words() -> set:
+    """Every identifier-like word in the terrain, vegetation and clutter modules' source (code, strings, comments)."""
+    if not _WORDS:
+        import re
+        from pathlib import Path
+        for f in Path(__file__).parent.glob("*.py"):
+            if f.name.startswith(("terrain", "veg", "clutter", "blender_terrain", "blender_veg", "blender_clutter")):
+                _WORDS.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", f.read_text()))
+    return _WORDS
+
+
+def unnamed_keys(spec: dict) -> list[str]:
+    """One line per key that NO terrain code names: the top-level keys and the keys of every named entry (peaks,
+    sites, cover, ...; rivers have their own, stricter list in terrain_skeleton). A key whose name appears nowhere in
+    the modules a terrain spec reaches cannot be read by them, so it is certainly ignored (a misspelt key, a
+    misspelt section). Only a river's unknown key was ever said; everything else was dropped in silence (C456). No
+    list to keep: the test is the source itself, comments included (so no misspelling is written out here: it would
+    pass from then on). What it cannot see: a real key written in the wrong section ("height" on a peak, where "h"
+    is meant) is a word the code names, and passes."""
+    import difflib
+    words, out = code_words(), []
+
+    def odd(keys, where, hints):
+        for k in keys:
+            if isinstance(k, str) and not k.startswith("_") and k not in words:
+                near = difflib.get_close_matches(k, hints, n=1, cutoff=0.6)
+                out.append(f"{where}: key {k!r} is named nowhere in the terrain code, so it is IGNORED"
+                           + (f" (did you mean {near[0]!r}?)" if near else "") + ". "
+                           + (f"Usual keys here: {', '.join(hints)}" if hints else "guide(topic=\"terrain\") lists the keys"))
+    odd(spec, "the terrain spec", (*KEY_HINTS[""], *NAMED))
+    for sec in NAMED:
+        v = spec.get(sec)
+        if sec == "rivers" or not isinstance(v, (dict, list)):
+            continue
+        items = v.items() if isinstance(v, dict) else [(x.get("name", f"{sec}_{i}"), x) for i, x in enumerate(v, 1) if isinstance(x, dict)]
+        for name, e in items:
+            if isinstance(e, dict):
+                odd(e, f"{sec} {name!r}", KEY_HINTS.get(sec, ()))
+    return out
+
+
 def _named(spec):
     """Sections of named things are dicts; a list is accepted (items named by their "name" key, else "<section>_1"...).
     Anything else is an error that says what was expected."""
