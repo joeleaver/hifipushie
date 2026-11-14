@@ -29,7 +29,7 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 5. DONE for joints, bones, blobs and the elements inside prefabs (C442, C449: spec_keys.py; C442 wrongly refused
    "hollow" and "chips" on a bone, fixed) and for hair's solid-lock keys beside loose / tied hair (C449: groom_hair
    WARNS about each written key the grow did not read; a refusal would have stopped 301 current models).
-   Terrain (C450): the report WARNS about a key no terrain code names (terrain.unnamed_keys); a real key in the
+   Terrain (C456): the report WARNS about a key no terrain code names (terrain.unnamed_keys); a real key in the
    wrong section is NOT caught (no list per section: 19 sections across 67 modules).
 6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
    review_view call per region. Not run end to end by a blind agent yet.

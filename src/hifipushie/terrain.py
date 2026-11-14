@@ -166,7 +166,7 @@ def unnamed_keys(spec: dict) -> list[str]:
     """One line per key that NO terrain code names: the top-level keys and the keys of every named entry (peaks,
     sites, cover, ...; rivers have their own, stricter list in terrain_skeleton). A key whose name appears nowhere in
     the modules a terrain spec reaches cannot be read by them, so it is certainly ignored (a misspelt key, a
-    misspelt section). Only a river's unknown key was ever said; everything else was dropped in silence (C450). No
+    misspelt section). Only a river's unknown key was ever said; everything else was dropped in silence (C456). No
     list to keep: the test is the source itself, comments included (so no misspelling is written out here: it would
     pass from then on). What it cannot see: a real key written in the wrong section ("height" on a peak, where "h"
     is meant) is a word the code names, and passes."""

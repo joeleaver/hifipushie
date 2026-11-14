@@ -1,4 +1,4 @@
-"""terrain.unnamed_keys: a key no terrain code names is ignored, and the terrain report says so (C450)."""
+"""terrain.unnamed_keys: a key no terrain code names is ignored, and the terrain report says so (C456)."""
 import json
 from pathlib import Path
 
