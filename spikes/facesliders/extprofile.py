@@ -5,10 +5,11 @@ import sys
 import numpy as np
 
 from hifipushie import faceext, faceslide
+from hifipushie import faceslide_mouth
 
 T = faceslide.template()
 X, n, lm = T["X"], T["n"], T["lm"]
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 inner = np.zeros(len(X), bool)
 for r in R["rings"][:R["contact"] + 1]:
     inner[r] = True

@@ -5,6 +5,7 @@ import sys
 import numpy as np
 
 from hifipushie import faceslide, gnmloops
+from hifipushie import faceslide_fields
 
 nm, v = sys.argv[1], float(sys.argv[2])
 T = faceslide.template()
@@ -23,7 +24,7 @@ for qi, q in enumerate(Q):
     for k in range(4):
         ef.setdefault(tuple(sorted((int(q[k]), int(q[(k + 1) % 4])))), []).append(qi)
 pairs = np.array([p for p in ef.values() if len(p) == 2])
-n0, n1 = nrm(X), nrm(X + faceslide.delta({nm: v}))
+n0, n1 = nrm(X), nrm(X + faceslide_fields.delta({nm: v}))
 a0 = np.einsum("ij,ij->i", n0[pairs[:, 0]], n0[pairs[:, 1]])
 a1 = np.einsum("ij,ij->i", n1[pairs[:, 0]], n1[pairs[:, 1]])
 bad = np.flatnonzero((a1 < np.cos(np.radians(60))) & (a1 < a0 - 0.05))

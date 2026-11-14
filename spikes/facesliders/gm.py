@@ -38,11 +38,12 @@ def measure(name, base):
           **_oval(m["md"]["side"], m["md"]["mmpx"])}
     try:  # the nose's dorsal widths by shading (faceslide.nose_widths): the photo, and the render lit by its light
         from hifipushie import faceslide
-        ph.update(faceslide.nose_widths(m["ph"]["img"], m["ph"]["side"].P, m["ph"]["mmpx"]))
+        from hifipushie import faceslide_fit
+        ph.update(faceslide_fit.nose_widths(m["ph"]["img"], m["ph"]["side"].P, m["ph"]["mmpx"]))
         ren = (m.get("render") or m["clay"])
         k = ren.size[0] / (m["box"][2] - m["box"][0])
         Pm = (np.asarray(m["md"]["side"].P, float) - np.asarray(m["box"][:2])) * k
-        md.update(faceslide.nose_widths(ren, Pm, m["md"]["mmpx"] / k))
+        md.update(faceslide_fit.nose_widths(ren, Pm, m["md"]["mmpx"] / k))
     except Exception as e:  # noqa: BLE001
         print("nose widths:", e)
     return ph, md, m

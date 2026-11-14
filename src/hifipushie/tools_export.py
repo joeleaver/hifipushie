@@ -232,15 +232,16 @@ def judge_asset(glb: str, head: str | None = None, tag: str | None = None, again
     run (against = the approved build) / vs the head's photos. Refuses to report when a self-check fails. only: crop
     name filters; tag. Heavy (GPU, minutes). Details: guide(topic="judge_asset")."""
     from . import judge
+    from . import judge_measures
     ref = judge.shots(against, head=head) if against else None
     run = judge.shots(glb, head=head, tag=tag, boxes_from=ref)  # (the same crop boxes as the reference run)
-    rep = judge.report(run, ref, head=head, only=only)
+    rep = judge_measures.report(run, ref, head=head, only=only)
     crops = sorted(k for k, v in json.loads((run / "crops.json").read_text()).items() if "file" in v)
     nxt = ("next: judge_asset numbers are measures, not a verdict: review the crops ONE per review_view call, "
            "reference crop beside each" + ("" if against else "; give against=<approved GLB> to measure the change")
            + (f"; blind A/B with controls: bin/judge ab {ref} {run} <out dir> (--dry: one trio per reviewer turn)"
               if ref else ""))
-    return (judge.format_report(rep) + f"\n\nrun {run}: {len(crops)} crops in {run / 'crops'}\n" + nxt)
+    return (judge_measures.format_report(rep) + f"\n\nrun {run}: {len(crops)} crops in {run / 'crops'}\n" + nxt)
 
 
 @mcp.tool(structured_output=False)

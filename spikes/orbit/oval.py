@@ -18,6 +18,7 @@ import numpy as np
 from PIL import Image
 
 from hifipushie import blockin as bi, eye_ruler as er, face_ruler as fr, gnm_mm, humanfit, likeness, store
+from hifipushie import eye_ruler_picture
 from hifipushie import blockin_models, face_ruler_blockin, face_ruler_compare, face_ruler_features, face_ruler_orbit, face_ruler_outline, face_ruler_solve, humanfit_views, likeness_detect, likeness_render
 
 G = os.environ["G"] + "/out"
@@ -54,7 +55,7 @@ if mode == "limbus":
                     fimg = pic(b, "front")
                     Pd = np.asarray(likeness_detect.detect([fimg])[0], float)[:, :2] + BOX[:2]
                     fcam = rj["cameras"][kinds.index("front")]
-                    IRIS[b] = float(np.mean([e["iris"] for e in er.read(fimg, Pd, likeness_render._mm_per_px(fcam, humanfit.state(specs[b]["base"])["L"][27:48]), scale=1.0, origin=BOX[:2])]))
+                    IRIS[b] = float(np.mean([e["iris"] for e in eye_ruler_picture.read(fimg, Pd, likeness_render._mm_per_px(fcam, humanfit.state(specs[b]["base"])["L"][27:48]), scale=1.0, origin=BOX[:2])]))
                     print(b, "iris read on the front picture", round(IRIS[b], 2), "mm; model's", round(2000 * face_ruler_orbit.limbus_model(heads[b])[0]["r"], 2))
                 la, lb = face_ruler_orbit.limbus_model(heads[a], IRIS[b]), face_ruler_orbit.limbus_model(heads[b], IRIS[b])
                 part = likeness_render.render(heads[a]["mesh"], cam, tuple(BOX), px=int(BOX[2] - BOX[0]), brows=False, passes=True)[2]["part"]
@@ -117,7 +118,7 @@ for i, a in enumerate(names):
                     try:
                         P = np.asarray(likeness_detect.detect([img])[0], float)[:, :2] + BOX[:2]
                         mm = likeness_render._mm_per_px(cam2, humanfit.state(specs[a]["base"])["L"][27:48])
-                        eyes = er.read(img, P, mm, scale=1.0, origin=BOX[:2])
+                        eyes = eye_ruler_picture.read(img, P, mm, scale=1.0, origin=BOX[:2])
                         v["extra"] = lambda h, vw, eyes=eyes: face_ruler_features._iris_obs(h, vw, eyes)
                         iris_b = float(np.mean([e["iris"] for e in eyes]))
                     except Exception as e:  # noqa: BLE001

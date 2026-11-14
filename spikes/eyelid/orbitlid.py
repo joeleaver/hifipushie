@@ -14,6 +14,7 @@ import numpy as np
 import lidmap as lm
 import lidstruct as ls
 from hifipushie import gnm_controls as gc, gnm_mm
+from hifipushie import gnm_controls_latent
 
 D = "/mnt/data/hifipushie/gnmdrive"
 h = json.load(open(f"{D}/hidden/s5_04.json"))
@@ -26,13 +27,13 @@ rk = t["ring"][ids]
 
 
 def lid(c):
-    V = gc.vertices(c) * 1000
+    V = gnm_controls_latent.vertices(c) * 1000
     ctr, _ = lm.eye_frame_raw(c)
     return V[ids] - ctr
 
 
 def mm_of(c):
-    rd = gnm_mm.readers(gc.vertices(c))
+    rd = gnm_mm.readers(gnm_controls_latent.vertices(c))
     return {k: float(rd[k]) for k in gnm_mm.NAMES}
 
 

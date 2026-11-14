@@ -9,6 +9,7 @@ import copy, json, os, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from hifipushie import blockin as bi, skin_layers as sl, skin_project as sp, store
+from hifipushie import skin_layers_stack
 from hifipushie import blockin_models, skin_project_atlas, skin_project_make, skin_project_model
 
 OUT = "/mnt/data/hifipushie/projskin/out"
@@ -44,7 +45,7 @@ def maps_sheet(r, path, crop=(500, 330, 1700, 1530), T=560):
 if cmd == "apply":
     src, dst = sys.argv[2:4]
     os.makedirs(f"{OUT}/{dst}", exist_ok=True)
-    r = sl.apply(src, out=dst)
+    r = skin_layers_stack.apply(src, out=dst)
     print(r["text"])
     maps_sheet(r, f"{OUT}/{dst}/maps.png")
     np.savez_compressed(f"{OUT}/{dst}/amounts.npz", **{f"{k}_{a}": v.astype(np.float32) for k, l in r["layers"].items() for a, v in l["amount"].items()},
@@ -75,7 +76,7 @@ elif cmd == "compare":
         print(f"  {k:22s} {c:6.2f} {np.sqrt(np.mean((x - y) ** 2)):7.3f} {y.mean():11.3f} {x.mean():10.3f}")
 elif cmd == "edit":
     src, dst = sys.argv[2:4]
-    spec = sl.edit(store.load(src), *sys.argv[4:])
+    spec = skin_layers_stack.edit(store.load(src), *sys.argv[4:])
     rj = copy.deepcopy(blockin_models._refs(src))
     if rj.get("blockin"):
         rj["blockin"] = {**rj["blockin"], "root": dst}

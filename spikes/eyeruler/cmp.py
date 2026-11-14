@@ -2,5 +2,6 @@
 import sys
 
 from hifipushie import eye_ruler as er
+from hifipushie import eye_ruler_compare
 
-print(er.compare(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)["text"])
+print(eye_ruler_compare.compare(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)["text"])

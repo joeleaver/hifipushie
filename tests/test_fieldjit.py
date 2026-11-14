@@ -151,7 +151,8 @@ def test_blocks():
 
 
 def _fields(name):
-    from hifipushie import terrain_bake, terrain_cliffs
+    from hifipushie import terrain_cliffs
+    from hifipushie import terrain_bake_maps
     from hifipushie import terrain_model
     T = terrain_model.load(TERRAINS[name])
     cfg = {**tm.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {})}
@@ -160,7 +161,7 @@ def _fields(name):
     region = terrain_cliffs.Region(T, base, G, cfg)
     bf = copy.copy(base)
     if base.rock is not None:
-        bf.micro = terrain_bake.micro_relief(base.rock, float(cfg["micro"]), 1.0 / 16.0)
+        bf.micro = terrain_bake_maps.micro_relief(base.rock, float(cfg["micro"]), 1.0 / 16.0)
     front = terrain_cliffs.CliffField(bf, region).front_field()
     return T, base, front, terrain_materials.Materials(T, base)
 

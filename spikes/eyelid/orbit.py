@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 import lidmap as lm
 from hifipushie import blockin as bi, blockin_eyes as be, humanfit, likeness, store
+from hifipushie import blockin_eyes_reader
 from hifipushie import blockin_models, humanfit_views, likeness_render
 
 G = os.environ["G"] + "/out"
@@ -42,9 +43,9 @@ im = img.crop(tuple(int(round(x)) for x in box)).resize((int(2 * half) * K, int(
 d = ImageDraw.Draw(im)
 q = lambda X: (P(X) - box[:2]) * K   # noqa: E731
 # mid-sagittal profile of the skin
-F = be._tris(ht["faces"])
+F = blockin_eyes_reader._tris(ht["faces"])
 x0 = float(0.5 * (eyes[0][0] + eyes[1][0]))
-for Lc in be._chain(be._slice(W, F, x0)):
+for Lc in blockin_eyes_reader._chain(blockin_eyes_reader._slice(W, F, x0)):
     pts = q(Lc)
     ok = (Lc[:, 2] > c[2] - 0.06) & (Lc[:, 2] < c[2] + 0.06) & ((Lc - c) @ fwd > -0.02)
     for a, b, o1, o2 in zip(pts[:-1], pts[1:], ok[:-1], ok[1:]):
@@ -60,7 +61,7 @@ ap = q(apex)[0]
 d.line([(ap[0] - 12, ap[1]), (ap[0] + 12, ap[1])], fill=(255, 220, 0), width=3)
 d.line([(ap[0], ap[1] - 12), (ap[0], ap[1] + 12)], fill=(255, 220, 0), width=3)
 # the lid's sagittal section through the pupil (cyan)
-for Lc in be._chain(be._slice(W, F, float(c[0]))):
+for Lc in blockin_eyes_reader._chain(blockin_eyes_reader._slice(W, F, float(c[0]))):
     ok = (np.linalg.norm(Lc - c, axis=1) < 0.03) & ((Lc - c) @ fwd > 0)
     pts = q(Lc)
     for a, b, o1, o2 in zip(pts[:-1], pts[1:], ok[:-1], ok[1:]):
@@ -71,7 +72,7 @@ cf = max(eyes, key=lambda e: np.linalg.norm(e - eye_c))
 af = q(cf + r * fwd)[0]
 d.line([(af[0] - 12, af[1]), (af[0] + 12, af[1])], fill=(255, 255, 255), width=3)
 d.line([(af[0], af[1] - 12), (af[0], af[1] + 12)], fill=(255, 255, 255), width=3)
-for Lc in be._chain(be._slice(W, F, float(cf[0]))):
+for Lc in blockin_eyes_reader._chain(blockin_eyes_reader._slice(W, F, float(cf[0]))):
     ok = (np.linalg.norm(Lc - cf, axis=1) < 0.02) & ((Lc - cf) @ fwd > 0.004)
     pts = q(Lc)
     for a, b, o1, o2 in zip(pts[:-1], pts[1:], ok[:-1], ok[1:]):
@@ -86,6 +87,6 @@ d.line([(20, 20), (20 + 10 / mm * K, 20)], fill=(0, 0, 0), width=4)
 d.text((24, 26), "10 mm", fill=(0, 0, 0), font_size=22)
 im.save(f"{G}/orbit_{name}_{vi}.png")
 bl = L[24] if c[0] > 0 else L[19]
-ms = np.array([Lc for Lc in be._chain(be._slice(W, F, float(c[0]))) for Lc in [Lc]][0]) if False else None
+ms = np.array([Lc for Lc in blockin_eyes_reader._chain(blockin_eyes_reader._slice(W, F, float(c[0]))) for Lc in [Lc]][0]) if False else None
 print(f"{name} view {vi}: mm/px {mm:.3f}; cornea apex behind nasion {float((L[27] - apex) @ fwd) * 1000:.1f} mm; brow landmark over the pupil {float(bl[2] - c[2]) * 1000:.1f} mm, "
       f"forward of the cornea apex {float((bl - apex) @ fwd) * 1000:.1f} mm; nasion over the pupil {float(L[27][2] - c[2]) * 1000:.1f} mm; saved orbit_{name}_{vi}.png")

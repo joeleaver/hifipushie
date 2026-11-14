@@ -36,7 +36,7 @@ class Field:
         self.rock = rock
         self.floor_guard = None
         self.grain = None  # where the rock is cut up (gullies, concave, near the top of a face): finer facets
-        self.micro = None  # fine rock relief evaluated only when baking maps (terrain_bake.micro_relief)
+        self.micro = None  # fine rock relief evaluated only when baking maps (terrain_bake_maps.micro_relief)
         self.fall = None  # where fallen blocks lie (a grid, 0..1)
         for d in dolines or ():  # 2.5D ground edits (karst dolines: grassy funnels into a throat)
             self.H = dig_doline(T, self.H, d)

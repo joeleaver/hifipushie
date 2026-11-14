@@ -16,6 +16,7 @@ from pathlib import Path
 
 import gm
 from hifipushie import faceslide
+from hifipushie import faceslide_fit
 
 WS = Path("/home/joe/dev/hifipushie/workspace")
 SRC, DST = WS / "ll_garrett", WS / "fs_garrett"
@@ -70,7 +71,7 @@ elif stage == "jaw":  # the lower face against the photo's jaw contour (the dete
 
     def read(b):
         return gm.measure("fs_garrett", b)[1]
-    r = faceslide.fit(spec["base"], tg, names, read=read, on_base=True, log=print, iters=3, step=0.4)
+    r = faceslide_fit.fit(spec["base"], tg, names, read=read, on_base=True, log=print, iters=3, step=0.4)
     sl.update(r["sliders"])
     save(spec)
     print("SLIDERS", r["sliders"])
@@ -85,7 +86,7 @@ elif stage == "nose":  # the dorsal widths by shading under the photo's light (f
 
     def read(b):
         return gm.measure("fs_garrett", b)[1]
-    r = faceslide.fit(spec["base"], tg, ["nose_dorsum_width", "nose_radix_width"], read=read, on_base=True, log=print,
+    r = faceslide_fit.fit(spec["base"], tg, ["nose_dorsum_width", "nose_radix_width"], read=read, on_base=True, log=print,
                       iters=3, step=0.4)
     spec["base"]["head"].setdefault("sliders", {}).update(r["sliders"])
     save(spec)
@@ -148,7 +149,7 @@ elif stage in ("eyes", "lips"):
 
     def read(b):
         return gm.measure("fs_garrett", b)[1]
-    r = faceslide.fit(spec["base"], tg, names, read=read, on_base=True, log=print, iters=3, step=0.4)
+    r = faceslide_fit.fit(spec["base"], tg, names, read=read, on_base=True, log=print, iters=3, step=0.4)
     spec["base"]["head"].setdefault("sliders", {}).update(r["sliders"])
     save(spec)
     print("SLIDERS", r["sliders"])

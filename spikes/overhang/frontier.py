@@ -14,6 +14,7 @@ import numpy as np  # noqa: E402
 import foldopt as fo  # noqa: E402
 import lidstruct as ls  # noqa: E402
 from hifipushie import gnm_fold as gf  # noqa: E402
+from hifipushie import gnm_fold_design
 
 out = sys.argv[1]
 fig = plt.figure(figsize=(21, 12.5))
@@ -23,12 +24,12 @@ ax1, ax2, ax3 = fig.add_subplot(gs[0, 0:2]), fig.add_subplot(gs[0, 2:4]), fig.ad
 D = [0.0, 0.25, 0.5, 0.75, 1.0, 1.5]
 for hi, (lab, (c, H, col)) in enumerate(heads.items()):
     for brow, st in ((None, "-o"), (0.3, "--s")):
-        R = [gf.fold(c, crease=H, overhang=d, brow=brow) for d in D]
+        R = [gnm_fold_design.fold(c, crease=H, overhang=d, brow=brow) for d in D]
         hg = [r["after"]["hang_mean"] for r in R]
         ax1.plot([r["dc"] for r in R], hg, st, color=col, label=f"{lab}, crease {H} mm" + (", brows held 0.3 mm" if brow else ""))
         ax2.plot(hg, [r["brow_drop"] for r in R], st, color=col, label=lab + (", brows held 0.3 mm" if brow else ""))
         print(lab, brow, " ".join(f"d{d}: hang {h:.2f} |dc| {r['dc']:.1f} brow {r['brow_drop']:.1f}" for d, h, r in zip(D, hg, R)), flush=True)
-    r = gf.fold(c, crease=H)
+    r = gnm_fold_design.fold(c, crease=H)
     ax1.plot([r["dc"]], [r["after"]["hang_mean"]], "*", color=col, ms=16)
     ax1.annotate(f"crisp fold: turn {r['after']['turn_mean']:.0f} deg", (r["dc"], 0.0), textcoords="offset points", xytext=(-30, -16 - 13 * hi), fontsize=9, color=col)
 ax1.axvspan(12.3, 13.7, color="0.85", zorder=0)

@@ -10,6 +10,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin as bi, blockin_eyes as be, blockin_lid as bl, face_ruler as fr, gnm_mm, onemesh, store
+from hifipushie import blockin_eyes_reader
 from hifipushie import blockin_steps, blockin_table, face_ruler_solve, onemesh_head
 
 src, dst = sys.argv[1:3]
@@ -64,7 +65,7 @@ e0, e1 = np.asarray(h0["eyes"], float), np.asarray(h1["eyes"], float)
 f = np.asarray(h0["forward"], float)
 print(f"  our eyeballs moved against the face {1000 * np.linalg.norm(e1 - e0 - dd_, axis=1).round(5)} mm, along the face's forward {1000 * ((e1 - e0 - dd_) @ f).round(5)}")
 print(f"  lid over our eyeball: least stand-off {bl.ball_clearance(h0)['min']:.2f} -> {bl.ball_clearance(h1)['min']:.2f} mm")
-m0, m1 = be.Reader(h0).margins(h0), be.Reader(h1).margins(h1)
+m0, m1 = blockin_eyes_reader.Reader(h0).margins(h0), blockin_eyes_reader.Reader(h1).margins(h1)
 print(f"  eye ruler rows on the mesh: upper margin moved max {np.nanmax(np.abs(m1['up'] - m0['up'])):.2f} mm, lower {np.nanmax(np.abs(m1['lo'] - m0['lo'])):.2f}, "
       f"inner canthus {np.abs(m1['inner'] - m0['inner']).max():.2f}, ring's outer end {np.abs(m1['ring_out'] - m0['ring_out']).max():.2f}")
 s0, s1 = bl.mean_structure(c0), bl.mean_structure(c1)

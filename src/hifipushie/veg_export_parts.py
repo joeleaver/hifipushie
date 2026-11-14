@@ -8,6 +8,7 @@ import numpy as np
 
 from . import veg_export
 from . import veg_bough, veg_ground, veg_leaf, veg_mesh, veg_style
+from . import veg_leaf_atlas, veg_leaf_cards, veg_leaf_place
 from . import vegetation_kernels, vegetation_tree
 
 def wind_nodes(tree: dict) -> dict:
@@ -43,10 +44,10 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
                 "node": np.zeros(0, int), "flutter": np.zeros(0), "N": np.zeros((0, 3)), "reach": np.zeros(0), "phase": np.zeros(0)}
     nv = len(at["cards"])
     if not tree.get("clump") and veg_ground.CLEAR:  # no card reaches under the ground (turned up, shortened or left out)
-        tw = veg_ground.clear(tree["spec"], tw, at["cards"], veg_leaf.card_variant(tw, nv))
+        tw = veg_ground.clear(tree["spec"], tw, at["cards"], veg_leaf_atlas.card_variant(tw, nv))
         if not len(tw["pos"]):
             return foliage_mesh(tree, at, tw={**tw, "pos": np.zeros((0, 3))})
-    var = veg_leaf.card_variant(tw, nv)
+    var = veg_leaf_atlas.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation_kernels._u(tw["key"], 77)
     if "size_m" in tw:  # bough cards are big: a tone per card as wide as a twig's read as a crown of pale and dark leaves
         tint = 0.88 + 0.24 * vegetation_kernels._u(tw["key"], 77)
@@ -122,7 +123,7 @@ def cluster_leaves(leaves: dict, keep: float) -> tuple[dict, float, float]:
     if keep >= 0.25:
         return leaves, 2.5, 0.0
     K = float(np.clip(0.75 / np.sqrt(max(keep, 1e-4)), 1.3, 3.0))
-    tw = {**veg_leaf.TWIG, **veg_leaf.card_spec(leaves)["twig"]}
+    tw = {**veg_leaf.TWIG, **veg_leaf_cards.card_spec(leaves)["twig"]}
     card = dict(leaves.get("card") or {})
     card["twig"] = {**(card.get("twig") or {}), "length": round(tw["length"] * K, 3),
                     "leaves": int(tw["leaves"] * min(K * K, 5.0)), "side_shoots": int(round(max(tw["side_shoots"], 3) * min(K, 2.0)))}
@@ -135,7 +136,7 @@ def pick_twigs(tree: dict, keep: float, min_radius: float = 0.0, protect=None, t
     """The twigs a budget draws: `keep` of them, each larger by 1 / sqrt(keep). Those standing on drawn wood (or within
     a card's reach of it along the branch) go first: cards chosen by their hash alone were left floating round bare
     spars. Returns (twigs, the share of the kept ones farther than that from drawn wood)."""
-    tw = veg_leaf.place(tree) if tw is None else tw
+    tw = veg_leaf_place.place(tree) if tw is None else tw
     n = len(tw["pos"])
     if not n or keep >= 1:
         return tw, 0.0
@@ -195,7 +196,7 @@ def budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: fl
     for rp in (0.0, 0.01, 0.02, 0.04, 0.08, 1e9):
         out = _budget(tree, triangles, tile, card_triangles, cap, pr & (tree["radius"] >= rp))
         first = first or out
-        if not triangles or not pr.any() or out.get("boughs") or not len(veg_leaf.place(tree)["pos"]):
+        if not triangles or not pr.any() or out.get("boughs") or not len(veg_leaf_place.place(tree)["pos"]):
             return out
         if pick_twigs(tree, out["keep"], out["min_radius"], out["protect"], cap=cap)[1] <= 0.5:
             return out
@@ -207,7 +208,7 @@ def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: f
     out, except `protected` wood), "keep" (the share of twigs drawn, each larger by 1 / sqrt(keep)), "floating" (the
     share of drawn twigs with no drawn wood near them), "total", "over": triangles past the budget (the trunk alone can
     be more than a tiny budget)}. Half the budget is the wood's; two thirds when at half too many cards would float."""
-    tw = veg_leaf.place(tree)
+    tw = veg_leaf_place.place(tree)
     n_tw = len(tw["pos"])
     pr = protected(tree) if pr is None else pr
     W0 = veg_mesh.tubes(tree, tile=tile)
@@ -282,7 +283,7 @@ def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
     """The foliage atlas in a season: summer as specified; autumn = the same leaves in `leaves.autumn` (deciduous only;
     an evergreen keeps its colour); snow = the summer picture frosted. None = no leaves then (a deciduous winter)."""
     lf = spec["leaves"]
-    make = make or veg_leaf.atlas  # (bough cards: veg_bough.atlas of the tree)
+    make = make or veg_leaf_atlas.atlas  # (bough cards: veg_bough.atlas of the tree)
     if spec.get("plant") == "clump":  # a small plant: its own states (veg_small.SEASONS); layers out of season = their pictures blanked
         from . import veg_small
         stt = veg_small.season_state(spec, season)
@@ -294,7 +295,7 @@ def season_atlas(spec: dict, season: str, twig_color, make=None) -> dict | None:
         hid = veg_small.hidden_parts(spec, season)
         col = at["color"].copy()
         if hid:
-            pc = veg_leaf.part_cards(lf)
+            pc = veg_leaf_atlas.part_cards(lf)
             h, w = col.shape[:2]
             for p_ in hid:
                 for ci in pc.get(p_, ()):

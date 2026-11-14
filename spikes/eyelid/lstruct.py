@@ -11,6 +11,7 @@ import numpy as np
 import lidmap as lm
 import lidstruct as ls
 from hifipushie import gnm_controls as gc, gnm_mm
+from hifipushie import gnm_controls_latent
 
 MM = ("eyes_forward", "brows_over_eyes", "pupils_apart")
 K1 = ("margin_v", "crease_h", "platform_s", "roll", "tuck", "wall", "drape", "hang", "brow", "brow_v")
@@ -21,7 +22,7 @@ for a in sys.argv[1:]:
     c = ls.ident(src)
     q = ls.mean_structure(c)
     qi, qo = ls.structure(c, u=-8.0), ls.structure(c, u=8.0)
-    V = gc.vertices(c)
+    V = gnm_controls_latent.vertices(c)
     rd = gnm_mm.readers(V)
     ctr, _ = lm.eye_frame_raw(c)
     lo = {k: v for k, v, w in lm.column(V * 1000, ctr, 0.0, upper=False)}

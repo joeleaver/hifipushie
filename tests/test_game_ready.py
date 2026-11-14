@@ -1328,22 +1328,23 @@ def test_stack_lid_layers_follow_the_export_head():
     lid_fold drops the crease; a stack measured on the same head is left alone."""
     from unittest import mock
     import numpy as np
-    from hifipushie import skin_layers as sl, likeness_texture as lt
+    from hifipushie import likeness_texture as lt
+    from hifipushie import skin_layers_shade, skin_layers_stack, skin_project_atlas, skin_project_detail
     spec = {"base": {"head": {"identity": [0.1]}}, "skin": {"stack": {"head": "other", "occlusion": "o", "occlusion_lid": "ol",
                                                                        "crease": "c", "crease_strength": 1.6, "layers": []}}}
     at = {"shape": (4, 4), "ii": np.arange(4), "jj": np.arange(4)}
     blank = lambda at_, v, *a: np.zeros((4, 4) + np.shape(v)[1:], np.uint8)  # noqa: E731
-    with mock.patch.object(sl.skin_project_atlas, "atlas", return_value=at), \
-            mock.patch.object(sl.skin_project_atlas, "image", side_effect=blank), \
-            mock.patch.object(sl.skin_project_detail, "_bleed", side_effect=lambda a, v: a), \
-            mock.patch.object(sl, "occlusion", return_value=np.ones((4, 3))), \
-            mock.patch.object(sl, "crease_map", return_value=np.zeros(4)), mock.patch("hifipushie.images.ingest", return_value="new"):
+    with mock.patch.object(skin_project_atlas, "atlas", return_value=at), \
+            mock.patch.object(skin_project_atlas, "image", side_effect=blank), \
+            mock.patch.object(skin_project_detail, "_bleed", side_effect=lambda a, v: a), \
+            mock.patch.object(skin_layers_shade, "occlusion", return_value=np.ones((4, 3))), \
+            mock.patch.object(skin_layers_shade, "crease_map", return_value=np.zeros(4)), mock.patch("hifipushie.images.ingest", return_value="new"):
         log = []
-        out = sl.stack_on_head(spec, log)
+        out = skin_layers_stack.stack_on_head(spec, log)
         st = out["skin"]["stack"]
         assert st["occlusion"] == "new" and st["occlusion_lid"] == "new" and "crease" not in st and "crease_strength" not in st
         assert st["head"] == lt.head_key(spec["base"]) and "DROPPED" in log[0]
-        assert sl.stack_on_head(out, []) is out   # same head: untouched
+        assert skin_layers_stack.stack_on_head(out, []) is out   # same head: untouched
 
 
 def test_face_light_check_flags_a_dark_lid_band():

@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import faceslide, gnmloops, humanfit, humanfit_map as hm, onemesh, store
+from hifipushie import faceslide_eyes, faceslide_fields
 from hifipushie import humanfit_solve, humanfit_views
 from hifipushie import base as basemod
 from hifipushie import base_identity
@@ -41,7 +42,7 @@ def slider_basis(st, ev_rows, names):
     g = base_identity._gnm_data()
     c = st["head"]["carry"]
     R, s = np.asarray(c["R"], float), float(c["s"])
-    F = faceslide.fields()
+    F = faceslide_fields.fields()
     out = np.zeros((len(names), len(ev_rows), 3))
     for k, nm in enumerate(names):
         dR, dL = F[nm]
@@ -54,7 +55,7 @@ def slider_basis(st, ev_rows, names):
                 r = g["lm68"][row[1]]
                 out[k, i] = sum(float(w) * dw[int(v)] for v, w in zip(r[0::2], r[1::2]))
             else:
-                jd = faceslide.joint_delta({nm: 1.0})
+                jd = faceslide_eyes.joint_delta({nm: 1.0})
                 if jd is not None:
                     out[k, i] = s * jd[2 + row[1]] @ R.T
     return out

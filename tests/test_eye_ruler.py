@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from hifipushie import eye_ruler as er
+from hifipushie import eye_ruler_compare, eye_ruler_picture
 
 MM = 0.2          # mm per picture px
 SKIN = (205, 160, 135)
@@ -72,7 +73,7 @@ def draw(r_iris=5.5, pd=60.0, brow=12.0, crease=4.5, caruncle=3.0):
 
 def test_read_drawn_eye():
     im, P = draw()
-    for e in er.read(im, P, MM):
+    for e in eye_ruler_picture.read(im, P, MM):
         cols = er.COLS
         up, lo = lids(cols)
         assert abs(e["iris"] - 11.0) < 0.35, e["iris"]
@@ -99,7 +100,7 @@ def test_limbus_circle_under_a_lid():
     lum = np.full((N, N), 0.85)
     lum[np.hypot(x - 200, y - 190) < 60] = 0.25
     lum[y < 160] = 0.6                              # the lid
-    c, r, n = er.limbus_circle(lum, (203.0, 205.0), 52.0, np.array([1.0, 0.0]), np.array([0.0, 1.0]))
+    c, r, n = eye_ruler_picture.limbus_circle(lum, (203.0, 205.0), 52.0, np.array([1.0, 0.0]), np.array([0.0, 1.0]))
     assert n >= 8 and abs(r - 60) < 1.5 and np.linalg.norm(c - [200, 190]) < 1.5, (c, r, n)
 
 
@@ -114,9 +115,9 @@ def test_crease_path_and_picture(tmp_path, monkeypatch):
     from PIL import Image as _I
     from hifipushie import images, skin_swatch
     m = {"crease_dark": 0.2, "up": [0, 1.3, 2.0, 2.1, 1.8, 0.9, -0.9], "crease": [5.2, 4.5, 4.5, 4.7, 4.8, 5.0, 5.5]}
-    p = er.crease_path(m)
+    p = eye_ruler_compare.crease_path(m)
     assert len(p) == 7 and abs(p[3][1] - 6.8) < 1e-6 and p[0][0] == -9.0
-    assert er.crease_path({**m, "crease_dark": 0.02}) is None
+    assert eye_ruler_compare.crease_path({**m, "crease_dark": 0.02}) is None
     monkeypatch.setattr(images, "store_dir", lambda: tmp_path)
     f = skin_swatch.crease_image(p, 0.5)
     a = np.asarray(_I.open(f))[..., 3]

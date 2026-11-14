@@ -14,6 +14,7 @@ import numpy as np
 import col
 import gk
 from hifipushie import blockin as bi, blockin_eyes as be, store
+from hifipushie import blockin_eyes_evidence, blockin_eyes_reader
 
 SIG = float(os.environ.get("SIG", "0.3"))
 CI = (1, 3, 5)
@@ -44,12 +45,12 @@ def main(model, donor, out, iters=5):
     Ln, Rn = gk.LN, gk.RN
     ex_other = {k: v for k, v in (sp["base"]["head"].get("expression") or {}).items() if k not in set(Ln) | set(Rn)}
     ht0 = gk.head(c0, e0, model)
-    rd = be.Reader(ht0)
+    rd = blockin_eyes_reader.Reader(ht0)
     q0 = rd.read(ht0)
     L0 = np.asarray(ht0["lm68"], float)
 
     def sock(c, e):
-        return be.socket(c, {**ex_other, **{Ln[k]: e[k] for k in range(be.NE)}, **{Rn[k]: e[k] for k in range(be.NE)}})
+        return blockin_eyes_evidence.socket(c, {**ex_other, **{Ln[k]: e[k] for k in range(be.NE)}, **{Rn[k]: e[k] for k in range(be.NE)}})
     s0 = sock(c0, e0)
 
     def resid(x):

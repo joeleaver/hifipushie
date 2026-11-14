@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain_caves, terrain_mesh as tm
+from hifipushie import terrain_caves_early, terrain_caves_walk
 from hifipushie import terrain_model
 from hifipushie import terrain_field, terrain_relief, terrain_volumes
 
@@ -39,7 +40,7 @@ def _terrain(spec):
 def test_mouth_meets_the_ground(T):
     """A hillside mouth's floor is no higher than the ground where the door ended up, and the floor leaves it on the
     passage's plain grade (the beds' wander eased in): no step where the passage leaves the open ground."""
-    caves, field = terrain_caves.light_field(T)
+    caves, field = terrain_caves_early.light_field(T)
     cv = caves[0]
     m = cv.nodes["mouth"]
     assert m["z"] <= float(T.height(m["xy"])) + 1e-6, (m["z"], float(T.height(m["xy"])))
@@ -48,14 +49,14 @@ def test_mouth_meets_the_ground(T):
     near = s < 10.0
     rise = np.abs(np.diff(e["_floor"][near])) / np.maximum(np.diff(s[near]), 1e-6)
     assert rise.max() < terrain_caves.GRADE_WALK, rise
-    line = terrain_caves.check(caves, field, sea=terrain_volumes._sea(T))[0]
+    line = terrain_caves_walk.check(caves, field, sea=terrain_volumes._sea(T))[0]
     assert "PASSES" in line, line
 
 
 def test_door_floor_from_the_spec(T0):
     spec = json.loads(json.dumps(T0.source))
     spec["caves"]["grotto"]["entrances"]["mouth"]["z"] = -0.4
-    caves, _ = terrain_caves.light_field(_terrain(spec))
+    caves, _ = terrain_caves_early.light_field(_terrain(spec))
     assert abs(caves[0].nodes["mouth"]["z"] + 0.4) < 1e-9
 
 
@@ -72,13 +73,13 @@ def test_step_advice_names_the_lever():
         def height(xy):
             return -0.8
     p = {"from": "door", "to": "hall", "length": 100.0, "edge": {}}
-    at_door = terrain_caves._walk_fix(T, Cv, p, "a step over 0.6 m (0.70 m at [4, 0, 0.2], 6 m along); first at "
+    at_door = terrain_caves_early._walk_fix(T, Cv, p, "a step over 0.6 m (0.70 m at [4, 0, 0.2], 6 m along); first at "
                                                 "[4, 0, 0.2], 6 m along")
     assert "from the mouth door" in at_door and '"z": -0.8' in at_door, at_door
-    inside = terrain_caves._walk_fix(T, Cv, p, "a step over 0.6 m (0.70 m at [50, 0, 3], 50 m along); first at "
+    inside = terrain_caves_early._walk_fix(T, Cv, p, "a step over 0.6 m (0.70 m at [50, 0, 3], 50 m along); first at "
                                                "[50, 0, 3], 50 m along")
     assert "rising faster than it runs" in inside and "mouth" not in inside, inside
-    tight = terrain_caves._walk_fix(T, Cv, p, "too tight; first at [50, 0, 3], 50 m along")
+    tight = terrain_caves_early._walk_fix(T, Cv, p, "too tight; first at [50, 0, 3], 50 m along")
     assert '"width"' in tight, tight
 
 
@@ -92,7 +93,7 @@ def test_graded_lava_tube(C):
     spec = json.loads(json.dumps(C.source))
     spec["caves"]["tube"].update({"grade": 0.18, "swing": 80})
     G = _terrain(spec)
-    caves, field = terrain_caves.light_field(G)
+    caves, field = terrain_caves_early.light_field(G)
     cv = caves[0]
     assert any("switchbacks" in n for n in cv.notes), cv.notes
     e = cv.edges[0]
@@ -105,7 +106,7 @@ def test_graded_lava_tube(C):
     assert g10.max() <= 0.18 + 0.02, g10.max()
     cover = G.sample(xy) - (fl + e["_h"])
     assert cover.min() > 1.0, cover.min()
-    line = terrain_caves.check(caves, field, sea=terrain_volumes._sea(G))[0]
+    line = terrain_caves_walk.check(caves, field, sea=terrain_volumes._sea(G))[0]
     assert "PASSES" in line, line
 
 
@@ -118,7 +119,7 @@ def test_collision_floor():
     F = np.array([[0, 1, 3], [0, 3, 2], [4, 5, 7], [4, 7, 6], [8, 9, 10]])
     xy = np.array([[2.0, 5.0], [7.0, 5.0], [7.0, 5.0]])
     z = np.array([0.0, 0.1, -4.0])
-    cz = terrain_caves.collision_floor(xy, z, P, F)
+    cz = terrain_caves_early.collision_floor(xy, z, P, F)
     assert np.allclose(cz[:2], [0.0, 0.6]) and np.isnan(cz[2]), cz  # (the roof at 3 m is over the knee: not a floor)
 
 
@@ -146,7 +147,7 @@ def test_deep_cave_under_a_steep_face():
     got = {}
     for nm, F in (("plain", terrain_field.Field(T, [tube], None)), ("rock", full)):
         paths = []
-        line = terrain_caves.check([cv], F, paths=paths)[0]
+        line = terrain_caves_walk.check([cv], F, paths=paths)[0]
         assert "PASSES" in line, (nm, line)
         got[nm] = (np.nanmin(np.array(paths[0]["headroom_m"], float)), np.nanmin(np.array(paths[0]["width_m"], float)))
     (h0, w0), (h1, w1) = got["plain"], got["rock"]

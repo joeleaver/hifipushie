@@ -161,8 +161,8 @@ NOTE says so). model=<other>: that model against `name`'s picture and camera (sa
 picture's two eyes (nose side left) with its read drawn (green margins, red canthi, yellow limbus, cyan fold line,
 magenta brow edge) and the model's margin ring / margins / inner-corner landmark in blue, laid over by iris centre.
 MOVES name the tools: `lid_read(match=True)` (the eye step solves these margins and corners), `iris_mm` (GNM's limbus),
-`mm:pupils_apart`, `skin.eyes.caruncle`, `brow_read(match=True)`. Python: eye_ruler.read(img, P, mmpx) on any picture
-(a dressed render through the same camera reads the same way), eye_ruler.model(spec, cam), eye_ruler.compare(name).
+`mm:pupils_apart`, `skin.eyes.caruncle`, `brow_read(match=True)`. Python: eye_ruler_picture.read(img, P, mmpx) on any picture
+(a dressed render through the same camera reads the same way), eye_ruler_model.model(spec, cam), eye_ruler_compare.compare(name).
 
 ### `face_ruler`
 face_ruler(name, save=None): the block-in model against ALL its reference pictures, in millimetres. First the ORBIT

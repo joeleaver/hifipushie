@@ -7,6 +7,7 @@ corner), v up, w forward (GNM frame x, y, z)."""
 import numpy as np
 
 from hifipushie import gnm_controls as gc
+from hifipushie import gnm_controls_latent
 
 _C = {}
 NR = 14     # rings out from the margin
@@ -61,7 +62,7 @@ def topo():
 def eye_frame_raw(c=None):
     """GNM's own left eyeball: (centre, radius) in GNM's frame, mm (the sclera's sphere; the joint is its centre)."""
     g = gc.gnm()
-    V = gc.vertices(c, None) * 1000
+    V = gnm_controls_latent.vertices(c, None) * 1000
     m = g["groups"]["left_eye"] & g["groups"]["scleras"]
     P = V[m]
     A = np.c_[2 * P, np.ones(len(P))]

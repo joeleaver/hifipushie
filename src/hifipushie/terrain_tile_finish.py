@@ -171,23 +171,23 @@ def _textured_prep(P, N, W, F, k, origin, stem):
     material), a partial report, and a bake request ({"stem", "k", "n" texels}). Its texels, AO and atlas go to the
     work dir; `_job_bake` bakes the texels in pieces across the pool and `_job_finish` assembles the maps (base colour,
     ORM, normal embedded; height and layer-weight maps beside the GLB in maps/) and writes the GLB."""
-    from . import terrain_bake
+    from . import terrain_bake_maps, terrain_bake_unwrap
     c = terrain_mesh._CTX
     cfg, v0 = c["cfg"], c["v0"]
     dens = cfg["_density"][min(k, len(cfg["_density"]) - 1)]
     with _span("maps/unwrap"):
-        uvc, size, d, _ = terrain_bake.unwrap(P, F, dens, int(cfg["texture_max"]))
+        uvc, size, d, _ = terrain_bake_unwrap.unwrap(P, F, dens, int(cfg["texture_max"]))
     D = c.get("detail")
     with _span("maps/tangents"):
         bins = np.repeat(D.face_bins(P, F)[:, None], 3, 1) if D is not None else None
-        sp = terrain_bake.split_corners(P, _unit_rows(N), F, uvc, extra={"W": W}, ids=bins)
-        T4 = terrain_bake.tangents(sp["P"], sp["N"], sp["uv"], sp["F"])
+        sp = terrain_bake_unwrap.split_corners(P, _unit_rows(N), F, uvc, extra={"W": W}, ids=bins)
+        T4 = terrain_bake_unwrap.tangents(sp["P"], sp["N"], sp["uv"], sp["F"])
     with _span("maps/texels"):
-        tx = terrain_bake.texels(sp["uv"], sp["F"], size)
+        tx = terrain_bake_maps.texels(sp["uv"], sp["F"], size)
         # texels in space-filling-curve order of where they land (every map value is per texel, so the order is free):
         # a bake piece then covers a compact patch of rock, and its facet triangulations (terrain_facets, cached per
         # process) are few and reused; in atlas order every piece touched the whole tile
-        bary = terrain_bake._bary(sp["uv"], sp["F"], tx["size"], tx["t"], tx["xs"], tx["ys"])
+        bary = terrain_bake_maps._bary(sp["uv"], sp["F"], tx["size"], tx["t"], tx["xs"], tx["ys"])
         o = _morton(np.einsum("nk,nkc->nc", bary, sp["P"][sp["F"][tx["t"]]]), 2.0)
         for key in ("ys", "xs", "t", "inside"):
             tx[key] = tx[key][o]
@@ -197,7 +197,7 @@ def _textured_prep(P, N, W, F, k, origin, stem):
         # (a cliff shell's sunk edge takes the AO of the true ground over it: its vertices metres down read 0, and
         # interpolated up its dive, the strip that shows over the heightmap was black: pushieworld note 104)
         Pa, Na = terrain_cliffs_checks.lifted(c["field"], Pa, Na)
-    ao_v = terrain_bake.bake_ao(Metric(c["base"]), Pa, Na)
+    ao_v = terrain_bake_maps.bake_ao(Metric(c["base"]), Pa, Na)
     info = {}
     if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)
         fn_ = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
@@ -216,7 +216,7 @@ def _textured_prep(P, N, W, F, k, origin, stem):
         Nn = sq + 2 * mg
         Q = sp["P"] - origin
         attrs["TEXCOORD_1"] = np.c_[(Q[:, 0] / cfg["tile"] * sq + mg) / Nn, 1 - (Q[:, 1] / cfg["tile"] * sq + mg) / Nn]
-    if D is not None:  # the tiling detail's projection (terrain_swatch.DetailProjection)
+    if D is not None:  # the tiling detail's projection (terrain_swatch_detail.DetailProjection)
         with _span("maps/detail projection"):
             attrs[f"TEXCOORD_{1 + bool(sq)}"] = D.uv(sp["P"], sp["ids"])
             attrs["_DETAIL"] = D.attrs(sp["P"])
@@ -247,20 +247,20 @@ def _light(light):
 
 
 def _job_bake(args):
-    """One piece of a tile LOD's atlas: texels [a, b) baked (terrain_bake.bake_texels), saved for _job_finish."""
-    from . import terrain_bake
+    """One piece of a tile LOD's atlas: texels [a, b) baked (terrain_bake_maps.bake_texels), saved for _job_finish."""
+    from . import terrain_bake_maps
     stem, k, a, b = args
     c = terrain_mesh._CTX
     d = np.load(c["work"] / f"bake_{stem}.npz")
     reach = max(0.6, 4 * c["cfg"]["error"][k] + 0.5)
     bf = c["bakefield"][k]
-    surface = lambda Pl, Nl: terrain_bake._surface(bf, Pl, Nl, c["v0"], reach)
+    surface = lambda Pl, Nl: terrain_bake_maps._surface(bf, Pl, Nl, c["v0"], reach)
     lines = None
     if c.get("detail") is not None and c["cfg"].get("lines", True):
-        from . import terrain_swatch
+        from . import terrain_swatch_lines
         tx_ = 1.0 / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)]
-        lines = lambda Pl, Nl: terrain_swatch.structure_lines(c["base"], Pl, tx_, N=Nl)
-    vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
+        lines = lambda Pl, Nl: terrain_swatch_lines.structure_lines(c["base"], Pl, tx_, N=Nl)
+    vals = terrain_bake_maps.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines,
                                     texel=terrain_mesh.RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
@@ -270,7 +270,7 @@ def _job_bake(args):
 
 
 def _bake_border(c, stem, k):
-    """(lo, hi, fade m) for a cliff tile's LOD k bake (terrain_bake.bake_texels `border`), else None."""
+    """(lo, hi, fade m) for a cliff tile's LOD k bake (terrain_bake_maps.bake_texels `border`), else None."""
     import re
     m = re.match(r"tile_(\d+)_(\d+)_lod(\d+)$", stem)
     if not m or terrain_mesh.BORDER_FLAT <= 0:  # (LOD 0 too: eased at LOD 1-2 only, LOD 0 against LOD 2 read p50 7.3 deg (limit 6))
@@ -282,15 +282,15 @@ def _job_finish(stem):
     """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
     import pickle
     from PIL import Image
-    from . import terrain_bake
+    from . import terrain_bake_layers, terrain_bake_maps
     c = terrain_mesh._CTX
     out, work = c["out"], c["work"]
     d = np.load(work / f"bake_{stem}.npz")
     tx = {"size": tuple(int(x) for x in d["size"]), "ys": d["ys"], "xs": d["xs"], "t": d["t"], "inside": d["inside"],
           "fill_pct": float(d["fill"])}
     pieces = sorted(work.glob(f"baked_{stem}_*.npz"))
-    vals = terrain_bake.concat([dict(np.load(f)) for f in pieces])
-    maps, info = terrain_bake.assemble(tx, vals, d["ao"], d["uv"], d["F"])
+    vals = terrain_bake_maps.concat([dict(np.load(f)) for f in pieces])
+    maps, info = terrain_bake_maps.assemble(tx, vals, d["ao"], d["uv"], d["F"])
     with _span("maps/encode + save"):
         (out / "maps").mkdir(exist_ok=True)
         Image.fromarray(maps["height"], "I;16").save(out / "maps" / f"{stem}_height.png")
@@ -302,9 +302,9 @@ def _job_finish(stem):
         if "lines" in maps:
             Image.fromarray(maps["lines"], "RGBA").save(out / "maps" / f"{stem}_lines.png")
             info["lines"] = f"maps/{stem}_lines.png"
-        images = [(terrain_bake.jpeg(maps["basecolor"]), "image/jpeg"),
-                  (terrain_bake.png(maps["orm"], "RGB"), "image/png"),
-                  (terrain_bake.png(maps["normal"], "RGB"), "image/png")]
+        images = [(terrain_bake_layers.jpeg(maps["basecolor"]), "image/jpeg"),
+                  (terrain_bake_layers.png(maps["orm"], "RGB"), "image/png"),
+                  (terrain_bake_layers.png(maps["normal"], "RGB"), "image/png")]
     with open(work / f"glb_{stem}.pkl", "rb") as fh:
         glb = pickle.load(fh)
     de = c.get("detail_entry")
@@ -312,7 +312,7 @@ def _job_finish(stem):
         ext = {"recipe": "manifest.json detail.recipe", "texCoord_detail": de["texcoord"],
                "attribute": "_DETAIL (strike x, strike y, side share, bed coordinate m)", "size_m": de["size_m"]}
         if "lines" in maps:
-            images.append((terrain_bake.png(maps["lines"], "RGBA"), "image/png"))
+            images.append((terrain_bake_layers.png(maps["lines"], "RGBA"), "image/png"))
             ext["lines"] = {"index": len(images) - 1, "texCoord": 0, "range_m": de["line_d"],
                             "channels": "R bed planes, G joints: signed distance (0.5 = on the line, +-range_m); "
                                         "B, A: their strengths"}
@@ -325,7 +325,7 @@ def _job_finish(stem):
         write_glb(glb["path"], glb["name"], glb["prims"], glb["trans"], glb["mats"], extras=glb["extras"],
                   images=images)
     if os.environ.get("HIFIPUSHIE_KEEP_BAKE"):  # (debug: each atlas's texels kept in <out>/_bakes, to re-bake one map
-        # alone with terrain_bake.bake_lines while trying line variants)
+        # alone with terrain_bake_maps.bake_lines while trying line variants)
         (out / "_bakes").mkdir(exist_ok=True)
         import shutil
         shutil.copy(work / f"bake_{stem}.npz", out / "_bakes" / f"bake_{stem}.npz")

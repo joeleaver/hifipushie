@@ -3,21 +3,22 @@ uv run python tests/test_swatch.py"""
 import numpy as np
 
 from hifipushie import terrain_swatch as ts
+from hifipushie import terrain_swatch_detail, terrain_swatch_lines, terrain_swatch_make, terrain_swatch_periodic
 
 
 def test_periodic_facets():
     # facets on the torus: no step at the wrap seam
-    a = ts.periodic_facets(128, 2.0, 0.3, 11, stretch=1.4)
-    b = ts.periodic_facets(256, 4.0, 0.3, 11, stretch=1.4)
+    a = terrain_swatch_periodic.periodic_facets(128, 2.0, 0.3, 11, stretch=1.4)
+    b = terrain_swatch_periodic.periodic_facets(256, 4.0, 0.3, 11, stretch=1.4)
     assert a.shape == (128, 128) and np.isfinite(a).all()
-    assert max(ts.tileability(a)) < ts.TILE_LIMIT, ts.tileability(a)
+    assert max(terrain_swatch_make.tileability(a)) < ts.TILE_LIMIT, terrain_swatch_make.tileability(a)
     assert np.isfinite(b).all()
 
 
 def test_swatch_tiles():
-    S = ts.swatch(None, size=1.0, res=128)
+    S = terrain_swatch_make.swatch(None, size=1.0, res=128)
     for k in ("height", "normal", "albedo", "rough"):
-        t = ts.tileability(S[k])
+        t = terrain_swatch_make.tileability(S[k])
         assert max(t) < ts.TILE_LIMIT, (k, t)
     assert abs(S["albedo"].reshape(-1, 3).mean(0) - 1).max() < 1e-6
 
@@ -31,7 +32,7 @@ class _Plane:
 
 
 def test_projection():
-    D = ts.DetailProjection(_Plane())
+    D = terrain_swatch_detail.DetailProjection(_Plane())
     P = np.array([[10.0, 0.0, 5.0], [11.0, 0.0, 7.0]])
     det = D.attrs(P)
     # facing -y: the strike (to the right as one faces the wall from the south) is +x, all side, v = z
@@ -43,24 +44,24 @@ def test_projection():
 
 def test_cells_and_pits_tile():
     # the polygonal facets (soft-min over the K nearest seeds) and the pits are continuous on the torus
-    h, ids, e = ts.periodic_cells(256, 1.0, 0.2, 5, stretch=1.3)
-    assert max(ts.tileability(h)) < ts.TILE_LIMIT and (e >= 0).all()
-    d, inside = ts.periodic_pits(256, 1.0, 6)
-    assert max(ts.tileability(d)) < ts.TILE_LIMIT and d.min() >= 0
+    h, ids, e = terrain_swatch_periodic.periodic_cells(256, 1.0, 0.2, 5, stretch=1.3)
+    assert max(terrain_swatch_make.tileability(h)) < ts.TILE_LIMIT and (e >= 0).all()
+    d, inside = terrain_swatch_periodic.periodic_pits(256, 1.0, 6)
+    assert max(terrain_swatch_make.tileability(d)) < ts.TILE_LIMIT and d.min() >= 0
 
 
 def test_stats_and_repetition():
-    S = ts.swatch(None, size=1.0, res=128)
-    st = ts.swatch_stats(S)
+    S = terrain_swatch_make.swatch(None, size=1.0, res=128)
+    st = terrain_swatch_make.swatch_stats(S)
     assert st["slope_octaves"] and st["albedo"]["lum_std"] > 0
-    prof = ts.repetition_profile(S, ps=[0.01, 0.05])
+    prof = terrain_swatch_detail.repetition_profile(S, ps=[0.01, 0.05])
     assert len(prof) == 2 and all(0 <= c and -1 <= p <= 1 for _, c, p in prof)
 
 
 def test_scan_swatch():
     # (only where the optional rock_scans pack is present)
     try:
-        S = ts.scan_swatch("rock_face_03", n=128)
+        S = terrain_swatch_make.scan_swatch("rock_face_03", n=128)
     except FileNotFoundError:
         print("  (rock_scans not fetched: skipped)")
         return
@@ -86,7 +87,7 @@ def test_structure_lines_follow_the_rock():
         fd = field.face_dir(X[:, 0], X[:, 1])
         n = np.c_[fd[:, :2], np.zeros(len(z))]
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
-        sb, ab, sj, aj = ts.structure_lines(field, X, texel, N=n)
+        sb, ab, sj, aj = terrain_swatch_lines.structure_lines(field, X, texel, N=n)
         assert np.abs(np.diff(ab)).max() < 0.05 and np.abs(np.diff(aj)).max() < 0.05
         on = (ab[1:] > 0.2) & (ab[:-1] > 0.2)
         drawn += on.sum()

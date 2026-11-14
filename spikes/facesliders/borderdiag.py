@@ -5,6 +5,7 @@ import sys
 import numpy as np
 
 from hifipushie import faceext, faceslide
+from hifipushie import faceslide_mouth
 
 import os  # noqa: E402
 for k in ("CREASE_R", "HOLD_CREASES"):
@@ -13,7 +14,7 @@ for k in ("CREASE_R", "HOLD_CREASES"):
 names = sys.argv[1].split(",") if len(sys.argv) > 1 else [k for k, v in faceext.EXT.items() if v[0] == "mouth"]
 faceext._turned(np.zeros_like(faceslide.template()["X"]))
 X0, Q, pairs = faceext._C["fold"]
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 ring = np.full(len(X0), -1)
 for i, r in enumerate(R["rings"]):
     ring[r] = i

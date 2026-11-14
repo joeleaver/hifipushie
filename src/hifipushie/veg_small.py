@@ -14,7 +14,7 @@ import time
 
 import numpy as np
 
-from . import veg_leaf
+from . import veg_leaf_atlas
 from .vegetation_kernels import _child, _mix, _u
 
 LAYER = {"part": "main", "count": 12, "ring": [0.0, 0.1], "lean": [0, 25], "scale": [0.8, 1.2], "stem": [0.0, 0.0],
@@ -88,8 +88,8 @@ def _norm(v):
 def part_length(leaves: dict, part: str, wood=(0.45, 0.4, 0.35)) -> float:
     """How long a part's card is (m): measured on the cards cut for it (a tuft of basal blades is as tall as its
     blades, not as its twig)."""
-    at = veg_leaf.atlas(leaves, list(wood))
-    return float(np.mean([at["cards"][i]["V"][:, 1].max() for i in veg_leaf.part_cards(leaves)[part]]))
+    at = veg_leaf_atlas.atlas(leaves, list(wood))
+    return float(np.mean([at["cards"][i]["V"][:, 1].max() for i in veg_leaf_atlas.part_cards(leaves)[part]]))
 
 
 def validate(s: dict):
@@ -101,7 +101,7 @@ def validate(s: dict):
     for se, d in (cl.get("seasons") or {}).items():
         if se not in ("spring", "summer", "autumn", "winter", "snow") or set(d) - {"color", "flatten", "scale"}:
             raise ValueError(f'clump.seasons: {{"spring" | "summer" | "autumn" | "winter" | "snow": {{"color", "flatten", "scale"}}}}; got {se!r}: {sorted(d)}')
-    parts = veg_leaf.part_specs(s["leaves"])
+    parts = veg_leaf_atlas.part_specs(s["leaves"])
     names = {str(i) for i in range(len(layers))} | {L.get("name") for L in layers if L.get("name")}
     for i, L in enumerate(layers):
         bad_se = set(L.get("seasons") or ()) - {"spring", "summer", "autumn", "winter", "snow"}
@@ -122,7 +122,7 @@ def grow(s: dict) -> dict:
     validate(s)
     seed = _mix(np.uint64(int(s.get("seed", 1)) * 2654435761 % (1 << 62) + 777))
     lf = s["leaves"]
-    cards_of = veg_leaf.part_cards(lf)
+    cards_of = veg_leaf_atlas.part_cards(lf)
     layers = [{**LAYER, **L} for L in s["clump"]["layers"]]
     size = float(s["clump"].get("size", 1.0))  # the whole plant's scale (a set varies it)
     season = s.get("season", "summer") if not s.get("snow") else s.get("season", "summer")
@@ -252,7 +252,7 @@ def grow(s: dict) -> dict:
     tips = [P[:, 2].max()]
     if len(tw["pos"]):  # the plant's height: its stalks and the tips of its cards
         wood = (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35]
-        reach = np.array([part_length(lf, p_, wood) for p_ in veg_leaf.part_specs(lf)])
+        reach = np.array([part_length(lf, p_, wood) for p_ in veg_leaf_atlas.part_specs(lf)])
         owner = np.zeros(max(max(c) for c in cards_of.values()) + 1, int)
         for pi, (p_, cc) in enumerate(cards_of.items()):
             owner[cc] = pi

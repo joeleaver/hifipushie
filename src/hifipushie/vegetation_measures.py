@@ -21,7 +21,8 @@ def silhouette(tree: dict, azimuth: float = 0.0, px_per_m: float = 20.0, leaves:
     lx = lz = lr = np.zeros(0)
     if leaves:  # each twig as a disc of about its own size
         from . import veg_leaf
-        tw = veg_leaf.place_live(tree)
+        from . import veg_leaf_place
+        tw = veg_leaf_place.place_live(tree)
         if len(tw["pos"]):
             tl = {**veg_leaf.TWIG, **(tree["spec"]["leaves"].get("twig") or {})}["length"]
             cen = tw["pos"] + tw["frame"][:, :, 1] * (0.5 * tl * tw["scale"])[:, None]

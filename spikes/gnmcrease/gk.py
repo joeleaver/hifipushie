@@ -14,11 +14,12 @@ import copy
 import numpy as np
 
 from hifipushie import blockin as bi, blockin_eyes as be, humanmacro as hm, store
+from hifipushie import blockin_eyes_reader, blockin_eyes_solve
 
 _B = {}
 LN, RN, _ = be._names()
 _CAP = []
-_orig_profile = be._profile
+_orig_profile = blockin_eyes_reader._profile
 
 
 def _cap_profile(P, *a, **k):
@@ -26,7 +27,7 @@ def _cap_profile(P, *a, **k):
     return _orig_profile(P, *a, **k)
 
 
-be._profile = _cap_profile
+blockin_eyes_reader._profile = _cap_profile
 
 
 def base(model="gd_T12"):
@@ -47,7 +48,7 @@ _RD = {}
 
 
 def head(c, e=None, model="gd_T12"):
-    ht, _ = be._head(base(model), np.asarray(c, float), np.zeros(be.NE) if e is None else np.asarray(e, float), LN, RN)
+    ht, _ = blockin_eyes_solve._head(base(model), np.asarray(c, float), np.zeros(be.NE) if e is None else np.asarray(e, float), LN, RN)
     return ht
 
 
@@ -113,7 +114,7 @@ def geo(c, e=None, model="gd_T12"):
     ht = head(c, e, model)
     key = model
     if key not in _RD:
-        _RD[key] = be.Reader(ht)
+        _RD[key] = blockin_eyes_reader.Reader(ht)
     _CAP.clear()
     q = _RD[key].read(ht)
     ex = [extras(P) for P in _CAP]

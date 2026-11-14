@@ -4,10 +4,11 @@ heads have; the lips route kept as the head uses it. Drops the lips-only switch 
 LIGHT."""
 import sys
 from hifipushie import blockin as bi, skin_layers as sl, store
+from hifipushie import skin_layers_stack
 from hifipushie import blockin_models
 src, dst = sys.argv[1:3]
 kw = dict(a.split("=", 1) for a in sys.argv[3:])
-r = sl.apply(src, out=dst, lips=kw.get("lips", "texels"), log=print)
+r = skin_layers_stack.apply(src, out=dst, lips=kw.get("lips", "texels"), log=print)
 print(r["text"])
 s = store.load(dst)
 s["skin"].pop("only", None)

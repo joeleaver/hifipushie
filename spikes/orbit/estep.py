@@ -5,6 +5,7 @@ import json
 import sys
 
 from hifipushie import blockin as bi, blockin_eyes as be, store
+from hifipushie import blockin_eyes_solve
 from hifipushie import blockin_models, blockin_steps
 
 src, dst = sys.argv[1:3]
@@ -18,7 +19,7 @@ if (rj.get("blockin") or {}).get("root") != src:
     (store.HOME / src / "blockin_log.json").write_text(json.dumps([{"round": 0, "to": src, "start": {"adopted": "orbit scratch"}}]))
 donor = next((a.split("=")[1] for a in sys.argv[3:] if a.startswith("donor=")), None)
 lines = []
-rep = be.eye_step(src, out=dst, log=lambda s: (lines.append(s), print(s, flush=True)), expression="expression" in sys.argv,
+rep = blockin_eyes_solve.eye_step(src, out=dst, log=lambda s: (lines.append(s), print(s, flush=True)), expression="expression" in sys.argv,
                   donor=donor, orbit="noorbit" not in sys.argv)
 print(blockin_steps.step_text(rep))
-print(be.text(rep["eyes"]))
+print(blockin_eyes_solve.text(rep["eyes"]))

@@ -10,6 +10,7 @@ import numpy as np
 from hifipushie import base as basemod
 from hifipushie import base_identity
 from hifipushie import faceslide, gnmloops, humanmacro
+from hifipushie import faceslide_eyes
 
 n = int(sys.argv[1])
 seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
@@ -35,7 +36,7 @@ def band_width(X, n_, ext_, y, ylo, x_max=0.016, cos=0.8):
 def lid_attrs(Th):
     """crease height (the fold's turn over the margin, mm; nan = no turn: a smooth lid), its overhang (mm the skin
     2 mm over the turn stands in front of it), from faceslide's own lid coordinates, the left eye's middle band."""
-    faceslide._left_fields(Th)
+    faceslide_eyes._left_fields(Th)
     Hc, H0, u, up = faceslide._CACHE["last_crease"]
     X = Th["X"]
     lm = Th["lm"]

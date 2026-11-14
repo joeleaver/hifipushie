@@ -102,7 +102,8 @@ def season_tree(T: dict, season: str) -> dict:
 
 def drawn_points(T: dict) -> np.ndarray:
     """Every vertex the full export draws (styled: wood, crown, heads; realistic: stalks + cards), plant axes (z up)."""
-    from . import veg_leaf, veg_mesh, veg_style
+    from . import veg_mesh, veg_style
+    from . import veg_leaf_atlas, veg_leaf_place
     from . import veg_export_parts
     from . import veg_style_dress
     s = T["spec"]
@@ -114,8 +115,8 @@ def drawn_points(T: dict) -> np.ndarray:
             if D.get(k) is not None and len(D[k]["V"]):
                 P.append(np.asarray(D[k]["V"], float))
     else:
-        if len(veg_leaf.place(T)["pos"]):
-            at = veg_leaf.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
+        if len(veg_leaf_place.place(T)["pos"]):
+            at = veg_leaf_atlas.atlas(s["leaves"], (s.get("bark") or {}).get("twig_color") or [0.45, 0.4, 0.35])
             L = veg_export_parts.foliage_mesh(T, at)
             if len(L["V"]):
                 P.append(L["V"])

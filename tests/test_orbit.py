@@ -192,14 +192,15 @@ def test_eye_step_report_recommends_no_paint():
     """Decision 2026-10-11: nothing recommends a painted fold line, crease make-up or liner; the step is identity only
     by default and says when the orbit is unread."""
     import inspect
-    from hifipushie import blockin_eyes as be, eye_ruler as er
-    assert inspect.signature(be.solve).parameters["ne"].default == 0
-    assert inspect.signature(be.eye_step).parameters["expression"].default is False
+    from hifipushie import eye_ruler_compare
+    from hifipushie import blockin_eyes_solve
+    assert inspect.signature(blockin_eyes_solve.solve).parameters["ne"].default == 0
+    assert inspect.signature(blockin_eyes_solve.eye_step).parameters["expression"].default is False
     e = {"evidence": {"up": 0.6, "lo": 0.9, "tps": 4.0, "dark": 0.2}, "read0": {"up": 0.7, "lo": 0.9, "show": 3.0, "lsoft": 0.5, "hsoft": 4.0},
          "read": {"up": 0.6, "lo": 0.9, "show": 3.5, "lsoft": 0.6, "hsoft": 4.2}, "dc": 3.0, "e": 0.0, "crease": None, "identity_only": True,
          "orbit": {"state": "unread", "text": "ORBIT: UNREAD: ..."}, "lid": None}
-    txt = be.text(e)
+    txt = blockin_eyes_solve.text(e)
     assert "identity only" in txt and "ORBIT: UNREAD" in txt
     for bad in ("eyeshadow", "skin.eyes.crease", "eyeliner"):
         assert bad not in txt, bad
-        assert bad not in inspect.getsource(er.compare), bad
+        assert bad not in inspect.getsource(eye_ruler_compare.compare), bad

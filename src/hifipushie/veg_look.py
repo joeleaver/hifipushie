@@ -154,7 +154,8 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
 
 def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, triangles: int | None = None) -> tuple[dict, dict]:
     """One plant's arrays (an npz) and its part of the Blender job; also its counts."""
-    from . import veg_bark, veg_leaf, veg_style
+    from . import veg_bark, veg_style
+    from . import veg_leaf_atlas, veg_leaf_place as veg_leaf_place_mod, veg_leaf_twig
     from . import veg_export_parts
     s = tree["spec"]
     st = veg_style.sheet(s)
@@ -175,13 +176,13 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
     sc = float(bark.get("scale", 1.0))
     tile = [bm["tile"][0] * sc, bm["tile"][1] * sc]
     M = veg_mesh.tubes(tree, tile=tile)
-    tw = veg_leaf.place(tree)
+    tw = veg_leaf_place_mod.place(tree)
     at_b = None
     if triangles:  # the budgeted plant, exactly as export_plant(triangles=) writes it
         from . import veg_export_parts
         if foliage != "cards":
             raise ValueError("a triangle budget is for cards (what the export draws): foliage='cards'")
-        ct = veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
+        ct = veg_leaf_atlas.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])["triangles"] if len(tw["pos"]) else 0
         bud = veg_export_parts.budget(tree, triangles, tile, ct)
         M = bud["wood"]
         if bud.get("boughs"):  # cards of the tree's own boughs
@@ -197,13 +198,13 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
 
     if len(tw["pos"]):
         if foliage == "cards":
-            at = at_b or veg_leaf.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
+            at = at_b or veg_leaf_atlas.atlas(lf, bark.get("twig_color") or [0.45, 0.4, 0.35])
             nv = len(at["cards"])
             if not tree.get("clump"):  # no card reaches under the ground
                 gst = {}
-                tw = veg_ground.clear(s, tw, at["cards"], veg_leaf.card_variant(tw, nv), stats=gst)
+                tw = veg_ground.clear(s, tw, at["cards"], veg_leaf_atlas.card_variant(tw, nv), stats=gst)
                 info["ground"] = gst
-            var = veg_leaf.card_variant(tw, nv)
+            var = veg_leaf_atlas.card_variant(tw, nv)
             for i, c in enumerate(at["cards"]):
                 arrays.update({f"card{i}_V": c["V"], f"card{i}_F": c["F"], f"card{i}_uv": c["uv"]})
             info.update(leaf_triangles=int(len(tw["pos"]) * at["triangles"]), card_fill=round(at["fill"], 2),
@@ -216,10 +217,10 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
             var = tw["variant"]
             per = []
             if not tree.get("clump"):  # (twig meshes: the same rule on their own vertices)
-                tw = veg_ground.clear(s, tw, [{"V": veg_leaf.twig_mesh(lf, i)["V"]} for i in range(nv)], var)
+                tw = veg_ground.clear(s, tw, [{"V": veg_leaf_twig.twig_mesh(lf, i)["V"]} for i in range(nv)], var)
                 var = tw["variant"]
             for i in range(nv):
-                tm = veg_leaf.twig_mesh(lf, i)
+                tm = veg_leaf_twig.twig_mesh(lf, i)
                 arrays.update({f"twig{i}_V": tm["V"], f"twig{i}_F": tm["F"], f"twig{i}_mat": tm["mat"], f"twig{i}_col": tm["col"]})
                 per.append(len(tm["F"]))
             info["leaf_triangles"] = int(sum(per[v] for v in var))
@@ -232,7 +233,7 @@ def _plant_job(tree: dict, tmp: Path, out: Path, tag: str, foliage: str | None, 
         bark["base_maps"] = veg_bark.write(veg_bark.bark_maps(bark["base_kind"], 256, seed=7), str(out / f"bark_base{tag}"))
     pj = {"npz": str(npz), "bark": bark,
           "leaf": {k: lf[k] for k in ("color", "through", "translucency", "roughness", "alpha_cut", "card_normal", "round") if k in lf},
-          "cards": veg_leaf.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None,
+          "cards": veg_leaf_atlas.write_atlas(at, str(out / f"foliage{tag}")) if at is not None else None,
           "snow": float(s.get("snow") or 0.0), "wet": float(s.get("wet") or 0.0)}
     return pj, info
 
@@ -318,8 +319,8 @@ def near_distance(tree: dict, toward, least: float = 5.0) -> float:
 
 def closeup_focus(tree: dict, azimuth: float = 0.0):
     """A point on the crown's near side at about half height, with twigs: where a close-up shows the foliage."""
-    from . import veg_leaf
-    tw = veg_leaf.place(tree)
+    from . import veg_leaf_place as veg_leaf_place_mod
+    tw = veg_leaf_place_mod.place(tree)
     P = tw["pos"] if len(tw["pos"]) else tree["pos"][tree["ends"]]
     c, s_ = math.cos(math.radians(azimuth)), math.sin(math.radians(azimuth))
     depth = -P[:, 0] * s_ + P[:, 1] * c  # toward +y is away from the camera at azimuth 0
@@ -346,8 +347,8 @@ def overlay(ref_mask: np.ndarray, ours: np.ndarray, size: int = 420):
 
 
 def veg_leaf_place(T):
-    from . import veg_leaf
-    return veg_leaf.place(T)["pos"]
+    from . import veg_leaf_place as veg_leaf_place_mod
+    return veg_leaf_place_mod.place(T)["pos"]
 
 
 def reference_sheet(spec: dict, ref: dict | None, out: str, bare: bool = False, title: str = "", height: int = 520,

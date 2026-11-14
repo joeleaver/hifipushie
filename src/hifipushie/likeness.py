@@ -195,8 +195,8 @@ LEVERS["prof_cheek_line"] = ("shape.hollow", 0.002, (0.0, 0.008), 0.0)
 # (facesliders, 2026-10-09) the eye items on the one mesh's face sliders (faceslide.py: morph targets in [-1, 1]):
 # the corner tilt turns the fissure on the ball (it was a landmark nudge), the platform's show is the fold's edge,
 # the under-eye's depth the tear trough, the brow ridge the skin over the supraorbital rim (features.brow_ridge moved
-# the forehead's slope instead: likeloop). Crease height / depth are read by faceslide.read_eyes (the detector has no
-# crease point) and solved by faceslide.fit.
+# the forehead's slope instead: likeloop). Crease height / depth are read by faceslide_fit.read_eyes (the detector has no
+# crease point) and solved by faceslide_fit.fit.
 LEVERS["canthal_tilt"] = ("sliders.canthal_tilt", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["upper_lid_show"] = ("sliders.eye_platform", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["under_eye"] = ("sliders.eye_tear_trough", 0.25, (-1.0, 1.0), 0.0)

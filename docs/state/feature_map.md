@@ -48,7 +48,7 @@ and of fitting the block-in: "Doing it parts means we got... parts, not a solid,
 - Record (durable): /mnt/data/hifipushie/featuremap/record/ = SCULPT_PROJECT.md (the whole history, sections 1-25)
   and pictures 10-21, seam_s17.png, horn_marks.png. Models: featuremap/home (scraps_five = the best blind block-in,
   scraps_s23 = where it ended). Reader: /mnt/data/hifipushie/measuremodels/surface (venv + weights, 6 GB).
-- Ledger rows C447 to C452.
+- Ledger rows C448 to C453.
 
 NEXT: nothing queued. Open housekeeping: featuresee.py is 678 lines (split the footprints out). Reopen only with a
 way to make a character's surface WHOLE, as one thing: not from parts, and not by joining pictures.

@@ -152,8 +152,8 @@ class _TerrainMeasure:
                        + self._dam_report(name, lk) + self._bank_report(name, lk))
         out += terrain_design_report.report(self)
         if self.spec.get("caves"):  # (walked now: the tile export takes an hour on a big level)
-            from . import terrain_caves
-            cl, cw = terrain_caves.early(self)
+            from . import terrain_caves_early
+            cl, cw = terrain_caves_early.early(self)
             out += cl
             for w in cw:
                 if w not in self.warnings:
