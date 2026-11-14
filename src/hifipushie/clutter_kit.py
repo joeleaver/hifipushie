@@ -45,8 +45,10 @@ def look(folders, out: str, distances=(2.5, 10.0, 40.0), lods=(0, 1, 2), scale: 
         job["albedo"] = next((v_["baseColorTexture"]["file"] for v_ in tex.values() if isinstance(v_, dict) and v_.get("baseColorTexture")), None) if season != "summer" else None
         jp = tmp / f"j{fi}.json"
         jp.write_text(json.dumps(job))
-        subprocess.run([BLENDER, "-b", "--factory-startup", "-P", str(clutter.HERE / "blender_clutter.py"), "--", str(jp)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={**os.environ})
+        from . import resources
+        with resources.heavy(f"clutter look {Path(out).name}", gb=4, gpu=True):  # (C445: one GPU render at a time)
+            subprocess.run([BLENDER, "-b", "--factory-startup", "-P", str(clutter.HERE / "blender_clutter.py"), "--", str(jp)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={**os.environ})
         for d0, d, lod, png in meta:
             im = Image.open(png).convert("RGB")
             ppm = 640 / 0.4663 / (d * 1.06)
