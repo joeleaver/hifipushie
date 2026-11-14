@@ -84,6 +84,22 @@ def merge_patch(a, b):
     return copy.deepcopy(b)
 
 
+# the solid locks' groom keys, and where their job is done once `loose` or a tie makes the whole groom
+SOLID_KEYS = {"tiers": "the generated tiers are not grown beside loose or tied hair (nothing takes its place)",
+              "length": "use loose.length (a number, or per region)",
+              "flow": "use loose.flow (per region, a world direction)",
+              "volume": "use loose.lift and loose.body (loose hair), tied.volume or tie.gather.volume (a tie)"}
+
+
+def unread(written: dict, reads: set) -> list[str]:
+    """One line per solid-lock key the groom WRITES and the grow never READ (reads: hair_grow.grow's): what an agent
+    changed with no effect, and the key that does that job. 301 current models carry such keys (2026-11-14: a
+    refusal would have stopped every one at its next save, and `volume` beside a tie is written by a tool), so this
+    is a line in the answer, never a refusal."""
+    return [f"groom.{k} is written but was NOT READ when the locks were grown: {SOLID_KEYS[k]}"
+            for k in SOLID_KEYS if k in written and k not in reads]
+
+
 def groom(name: str, replace: bool = False, note: str = "", patch: dict | None = None,
           stage: str | None = None) -> dict:
     """Grow the first pass of locks from spec["hair"]["groom"] and save them. Locks a person or an edit changed
@@ -105,7 +121,9 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     if g.get("loose") or needs_body(g):
         from . import hair_loose
         col = hair_loose.collider(name, spec, sc)
-    new = grow(sc, g, col)
+    reads: set = set()
+    new = grow(sc, g, col, reads)
+    not_read = unread(h.get("groom") or {}, reads)
     old = h.get("locks") or {}
     if replace:
         h.pop("removed", None)
@@ -124,7 +142,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
         if n not in keep:  # (a kept lock of the same name wins)
             tiers[lk["tier"]] = tiers.get(lk["tier"], 0) + 1
     return {"version": v, "locks": len(h["locks"]), "grown": tiers, "kept": sorted(keep),
-            "not_regrown": sorted(set(h.get("removed") or []))}
+            "not_regrown": sorted(set(h.get("removed") or [])), "unread": not_read}
 
 
 def hierarchy(spec: dict, sc: Scalp) -> dict:

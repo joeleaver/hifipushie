@@ -26,9 +26,10 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 3. review_view, the only independent look, is worded for clothes (DETAIL_WORDS, the look_chain refusal, the "hang"
    checklist: tools_model.py:528-564). Garment trials call it: change with the garment thread.
 4. No pose while modelling (store ops: set, delete, rename, move, scale_r): "turn the head" has no tool.
-5. DONE for joints, bones and blobs (C442: spec_keys.py, refused in store.validate with the nearest key and the
-   list). Still open: the elements inside prefabs; terrain ignores unknown keys outside rivers; hair ignores
-   solid-lock keys once loose or tie is set.
+5. DONE for joints, bones, blobs and the elements inside prefabs (C442, C446: spec_keys.py; C442 wrongly refused
+   "hollow" and "chips" on a bone, fixed) and for hair's solid-lock keys beside loose / tied hair (C446: groom_hair
+   WARNS about each written key the grow did not read; a refusal would have stopped 301 current models).
+   Still open: terrain ignores unknown keys outside rivers.
 6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
    review_view call per region. Not run end to end by a blind agent yet.
 7. Old head route still handed over: likeness_guide.md:94-121 teaches fit_likeness, which refuses block-in models.
@@ -50,6 +51,6 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
 - A fresh measure: write 40-50 jobs in your own words with the tools you expect, count top-three hits with
   tests/test_find_jobs.py's `ranked`, fix by rule or keyword, then add them to FRESH.
 
-NEXT: what is left of item 5 (prefab elements, terrain keys, hair's solid-lock keys), then items 7, 8, 9, 11. Joe's:
-item 2 (approvals, the terrain designer's questions). A tool-description change runs tests/test_toolsets.py with
--m "" (a slow-tier rule the suite skips).
+NEXT: terrain's unknown keys (a WARNING per unknown key in each section; measure on saved terrains first), then
+items 7, 8, 9, 11 and dressed_export.md fault 4. Joe's or the coordinator's: items 2, 3, 4. A tool-description
+change runs tests/test_toolsets.py with -m "" (a slow-tier rule the suite skips).
