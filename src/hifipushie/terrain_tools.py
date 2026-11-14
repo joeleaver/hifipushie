@@ -135,5 +135,9 @@ def report(name: str) -> str:
         T = build(name)
     except Questions as q:
         return questions_data(q)
+    from . import terrain
+    for w in terrain.unnamed_keys(load(name)):  # (keys no terrain code names: ignored, and now said)
+        if w not in T.warnings:
+            T.warnings.append(w)
     head = "saved kind for next time: " + T.new_kind + "\n" if T.new_kind else ""
     return head + T.report()

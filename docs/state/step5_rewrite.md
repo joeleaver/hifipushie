@@ -6,7 +6,7 @@ Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2h -> N2i (this).
 ## Current code
 - `panel_start.starts`: each piece placed from its own tapes; `_ways`: a girth piece rolls the way its seams say.
 - `chain_lay.outside(net, X, contact)`: which side of F is each piece's outside (away from the body), read at the START.
-  `chain_lay.fold_way(fd, out)`: THE fold-direction rule (N2i, C456): the draft's turn (+ onto the outside, - under) x
+  `chain_lay.fold_way(fd, out)`: THE fold-direction rule (N2i, C457): the draft's turn (+ onto the outside, - under) x
   out. The draft's flap sign never enters. Used by `fold_rows` (solve folds), `Panels(cnet, plan, skip, out)` hinges
   (x the flat's winding) and `measures(..., out)` (each fold's measured way vs the plan's way).
 - `chain_panels.Panels` + `fit_start`: rolled panels; the driver still starts every hinge unturned (turn 0).
@@ -44,7 +44,7 @@ Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2h -> N2i (this).
 5. Not judged on Blender tubes (the quick drawing only).
 
 Run: `uv run pytest -q tests/test_chain_smooth.py tests/test_chain_solve.py tests/test_chain_panels.py tests/test_chain_lay.py tests/test_chain_plies.py`.
-Ledger C426-C433, C435, C438, C440, C444, C446, C448, C456.
+Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457.
 
 NEXT: N2j: the undercollar's roll line (step 4 draft) so the collar falls; the final restore reaching 1e-4; render
 Blender tubes and judge the V and collar beside the reference.
