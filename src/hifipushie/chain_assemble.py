@@ -221,10 +221,14 @@ def close(cnet, X, contact=None, iters=150, log=None):
 
 
 def links_pct(cnet, X) -> dict:
+    """% off cut: max / p99 over the pattern's chains (boundary, fold rows), lines_max over the lines across (N2j: their
+    ~30 mm links are chords of a rolled panel, (k L)^2 / 24 off its arc)."""
     a, b = cnet.chain_v[:, 0], cnet.chain_v[:, 1]
     ok = ~np.isnan(X[a, 0]) & ~np.isnan(X[b, 0])
-    e = np.abs(np.linalg.norm(X[b] - X[a], axis=1)[ok] / np.maximum(cnet.chain_L[ok], 1e-12) - 1) * 100
-    return {"max": round(float(e.max()), 4), "p99": round(float(np.percentile(e, 99)), 4)}
+    e = np.abs(np.linalg.norm(X[b] - X[a], axis=1) / np.maximum(cnet.chain_L, 1e-12) - 1) * 100
+    ln = np.asarray(cnet.chain_kind) >= 2
+    return {"max": round(float(e[ok & ~ln].max()), 4), "p99": round(float(np.percentile(e[ok & ~ln], 99)), 4),
+            "lines_max": round(float(e[ok & ln].max()), 4) if (ok & ln).any() else 0.0}
 
 
 __all__ = ["Fit", "assemble", "dress", "close", "reads", "seam_gaps", "nodes_of", "links_pct", "LAYER"]

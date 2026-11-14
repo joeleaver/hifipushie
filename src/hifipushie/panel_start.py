@@ -182,7 +182,8 @@ def starts(cnet, keep, body, skip=(), spin=None):
     """(Xs, edge pulls, read) (module doc). keep: the chain points' pattern vertex ids (chain_network); spin: {piece:
     radians} turning a girth-taped piece round its line."""
     idx = -np.ones(int(np.max(keep)) + 1, np.int64)
-    idx[keep] = np.arange(len(keep))
+    k_ = np.where(keep >= 0)[0]  # (N2j: a line across's lattice points are on no pattern vertex: keep -1)
+    idx[keep[k_]] = k_
     st = cnet.M.get("starts") or {}
     T = st.get("tapes") or {}
     spin = spin or {}

@@ -41,9 +41,12 @@ def _band_and_panel(stiff=False, fold=False):
 def test_the_network_is_chains_only_and_keeps_the_cut():
     net, _, _ = _band_and_panel(fold=True)
     c, keep = chain_network(net)
-    assert c.n < net.n / 2  # (no interior points)
-    assert np.allclose(c.link_L, net.link_L)
-    assert len(c.edges) > len(c.link_L)  # (lines across between the chains)
+    assert (keep >= 0).sum() < net.n / 2  # (no surface mesh: the pattern's chain points, then the lines' own points)
+    nL = len(net.link_L)
+    assert np.allclose(c.link_L[:nL], net.link_L)  # (the pattern's links first, at their cut)
+    k = np.asarray(c.chain_kind)
+    assert (k == 2).any() and (k == 3).any()  # (N2j: lines across both ways are chains of exact links)
+    assert (keep == -1).sum() == c.n - (keep >= 0).sum() and np.allclose(c.link_L[nL:], c.chain_L[k >= 2])
 
 
 
