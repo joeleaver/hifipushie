@@ -33,7 +33,7 @@ tools it listed then were deleted in the legacy cuts, C409 / C411). History: doc
    wrong section is NOT caught (no list per section: 19 sections across 67 modules).
 6. DONE (C443): the one-picture route is a row of the playbook's "Which path" table; feature_tiles answers with one
    review_view call per region. Not run end to end by a blind agent yet.
-7. DONE (C457): likeness_guide.md hands a block-in head to face_ruler and block_in_step (fit_likeness refuses it);
+7. DONE (C458): likeness_guide.md hands a block-in head to face_ruler and block_in_step (fit_likeness refuses it);
    the finder leads a feature job on a block-in head with the hand step. Whether fit_likeness stays: the legacy thread.
 8. No worked example a tool returns (kit_reference is 49k characters; examples/fox.json is 2.3k and unnamed).
 9. guide(topic="traps") and "gates" serve developer notes from docs/notes (Garrett's collars, the machine).

@@ -34,13 +34,15 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
     rs, R, C, V = [], [], [], []
     m = 0
 
-    def spring(i, j, L, wt, atmost):
+    def spring(i, j, L, wt, atmost, short=False):
         nonlocal m
         dv = Xn[j] - Xn[i]
         l = np.maximum(np.linalg.norm(dv, axis=1), 1e-12)
         c = (l - L) / L
         if atmost is not None:
             c = np.where(atmost, np.maximum(c, 0), c)
+        if short:  # (only a line SHORTER than flat: a stiff piece's resistance to crumpling)
+            c = np.minimum(c, 0)
         s = np.sqrt(wt)
         rs.append(s * c)
         if jac:
@@ -53,8 +55,9 @@ def residuals(Xn, t, w, ct, gap, jac: bool = True):
 
     li, lj, L, _ = t["links"]
     spring(li, lj, L, np.full(len(L), w["link"]), None)
-    ei, ej, eL, ex = t["edges"]
-    spring(ei, ej, eL, np.full(len(eL), w["edge"]), ~ex)
+    ei, ej, eL = t["edges"]
+    spring(ei, ej, eL, np.full(len(eL), w["edge"]), np.ones(len(eL), bool))
+    spring(ei, ej, eL, w["short"] * t["edge_stiff"], None, short=True)
     # bending (linear)
     Sb = sp.diags(np.sqrt(t["Wb"])) @ t["Sb"]
     rs.append(Sb @ Xn)  # (rows, 3): flattened below as 3 rows each
@@ -203,9 +206,9 @@ def retract(Xn, t, sweeps: int = None):
     position-based projection (each node moved by the mean of its constraints' halves) remove that second-order
     stretch; the step is then judged on the energy it actually changes."""
     li, lj, L, _ = t["links"]
-    ei, ej, eL, ex = t["edges"]
+    ei, ej, eL = t["edges"]
     I, J_, Ls = np.r_[li, ei], np.r_[lj, ej], np.r_[L, eL]
-    atmost = np.r_[np.zeros(len(L), bool), ~ex]
+    atmost = np.r_[np.zeros(len(L), bool), np.ones(len(eL), bool)]
     nn = len(Xn)
     cnt = np.bincount(np.r_[I, J_], minlength=nn).astype(float)[:, None]
     cnt = np.maximum(cnt, 1.0)

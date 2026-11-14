@@ -15,8 +15,10 @@ solve(net, X0, body, ties, folds, pulls, stiffness) -> (X, report)
 - plies: bindings of plies, floating layers and inside pieces to their host (chain_solve_plies.bind, N2): each point a
   LAYER off its host's surface, on its host's inner face, as a TERM of this solve (never a copied or held position).
 
-HARD: every link at its cut (reported past TOL_PCT), every other mesh edge exact where interfaced at both ends else at
-most its flat length, no point nearer the body than gap, every tie at its gap. SOFT: bending (each point towards its
+HARD: every link at its cut (reported past TOL_PCT), every other mesh edge at most its flat length (N2i: interfaced or
+not). SOFT, N2i: a line across SHORTER than flat costs W_SHORT x its ends' interfacing (net.stiff): a stiff piece does
+not crumple in its own plane (the bending stencils are affine: blind to it), yet it can wrap (exact lines across made
+a chains-only collar a flat board), no point nearer the body than gap, every tie at its gap. SOFT: bending (each point towards its
 flat neighbourhood's shape: chain_solve_terms' affine stencils, so a stiff piece keeps its flat shape), fold turns,
 pulls. When the soft terms ask for what the hard ones forbid (two pulls further apart than the cloth is long), the hard
 ones win and the soft residual is reported: never a stretched link.
@@ -79,7 +81,8 @@ CLOTH_B = 1e-5  # N m: plain cloth's bending rigidity (wool suiting, KES-B ~0.1 
 CLOTH_ES = 200.0  # N / m: plain cloth's tensile stiffness (KES-T initial modulus of a suiting, order of magnitude)
 CHAIN_STRAIGHT_DEG = 25.0  # a chain point turning less than this in the flat gets a second-difference row (rest straight)
 # the Levenberg-Marquardt pass's weights (chain_solve_gn): it linearises directions, so the hard terms may be stiff
-W_GN = {"link": 1e4, "edge": 1e3, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF, "ply": plies_.W_PLY}
+W_SHORT = 1e2  # a line across shorter than flat, per unit of its ends' interfacing (net.stiff): soft (N2i; module doc)
+W_GN = {"link": 1e4, "edge": 1e3, "short": W_SHORT, "fold": W_FOLD, "tie": W_TIE, "contact": gn.W_CONTACT, "ref": REF, "ply": plies_.W_PLY}
 
 
 def cloth_bend(net):
@@ -117,7 +120,7 @@ def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
     np.add.at(Xn, nid, np.asarray(X0, float))
     Xn /= cnt[:, None]
     li, lj, L, lp = terms.links(net, nid)
-    ei, ej, eL, ex = terms.edges(net, nid, li, lj)
+    ei, ej, eL = terms.edges(net, nid, li, lj)
     folds = list(folds)
     fq = terms.fold_quads(net, folds)
     row_v = np.unique(np.concatenate([q["quads"][:, :2].ravel() for q in fq])).astype(np.int64) if fq else []
@@ -131,7 +134,10 @@ def _blocks(net, X0, ties, folds, pulls, stiffness, ct, plies=()):
         ids = np.asarray(p["ids"], np.int64)
         P.append({"ids": ids, "to": np.asarray(p["to"], float).reshape(len(ids), 3), "w": float(p.get("weight", 1.0)),
                   "name": p.get("name", f"pull{k}")})
-    return {"nid": nid, "nn": nn, "Xn": Xn, "links": (li, lj, L, lp), "edges": (ei, ej, eL, ex), "folds": fq,
+    ns = np.zeros(nn)
+    np.maximum.at(ns, nid, np.asarray(net.stiff, float))
+    return {"nid": nid, "nn": nn, "Xn": Xn, "links": (li, lj, L, lp), "edges": (ei, ej, eL), "folds": fq,
+            "edge_stiff": np.minimum(ns[ei], ns[ej]),
             "Sb": Sb, "Wb": Wb, "Wb_pd": Wpd, "ties": T, "pulls": P, "ct": ct, "plies": plies_.blocks(plies, nid, nn)}
 
 
@@ -147,7 +153,7 @@ class _PD:
     def __init__(self, t):
         nn, nid = t["nn"], t["nid"]
         li, lj, L, _ = t["links"]
-        ei, ej, eL, ex = t["edges"]
+        ei, ej, eL = t["edges"]
         self.t = t
         self.stiff = 1.0
         self.F = None  # (CHOLMOD: analysed once, the pattern is the same at every stiffening; gn.Factor's notes)
@@ -207,7 +213,7 @@ class _PD:
         out = []
         fk = 0
         _, _, L, _ = t["links"]
-        _, _, eL, ex = t["edges"]
+        _, _, eL = t["edges"]
         pk = yk = 0
         for S, W, kind in self.B:
             D = S @ Xn
@@ -215,7 +221,7 @@ class _PD:
                 out.append(cn.unit(D) * L[:, None])
             elif kind == "edge":
                 l = np.linalg.norm(D, axis=1)
-                out.append(cn.unit(D) * np.where(ex, eL, np.minimum(l, eL))[:, None])
+                out.append(cn.unit(D) * np.minimum(l, eL)[:, None])
             elif kind == "bend":
                 out.append(np.zeros_like(D))
             elif kind == "pull":
@@ -302,7 +308,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     pd = _PD(t)
     pd.finish(net)
     Xn = _push_out(t["Xn"], near, gap)
-    passes, lm, nfac, convs = [], [], [], []
+    passes, lm, nfac, convs, hards = [], [], [], [], []
     tm = {"setup": time.time() - t0}
     t1 = time.time()
     for npd in range(pd_iters):
@@ -332,6 +338,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
         nfac.append(nf)
         passes.append(np_)
         convs.append(conv)
+        hards.append(frd)
         if log:
             log(f"round {rnd}: lm passes {k} ({nf} factors, E {E:.4g}), final passes {np_} (converged {conv})")
         Ep = float(np.sum(gn.residuals(Xn, t, W_GN, near, gap, jac=False)[0] ** 2))
@@ -345,6 +352,7 @@ def solve(net: cn.Network, X0, body=None, ties=(), folds=(), pulls=(), stiffness
     rep["points"] = int(net.n)
     rep["final_passes"] = passes
     rep["final_converged"] = convs
+    rep["final_hard"] = hards
     rep["chains"] = terms.smoothness(net, X)
     rep["lm_passes"] = lm
     rep["lm_factors"] = nfac
