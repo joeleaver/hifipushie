@@ -1,6 +1,7 @@
 import json, sys
 import numpy as np
 from hifipushie import store, sdf, images, skin_folds as sf
+from hifipushie import skin_folds_geometry
 from hifipushie.spec import expand_mirror, compile_prims
 spec = store.load(sys.argv[1])
 spec["skin"] = {**spec["skin"], "folds": json.load(open(sys.argv[2]))}
@@ -11,7 +12,7 @@ for p in prims:
         continue
     pr = p.params
     P = pr["pts"]
-    kt = sf._keep_tree(pr)
+    kt = skin_folds_geometry._keep_tree(pr)
     dk = kt.query(P)[0] * 1000
     db = np.min([np.linalg.norm(P - b[:3], axis=1) - b[3] for b in pr["balls"]], 0) * 1000
     print(f"{p.name:22s} n {len(P)} lip {p.lip:.2f} keep-dist mm {dk.min():.1f}..{dk.max():.1f}  ball clearance mm {db.min():.1f}..{db.max():.1f}  "

@@ -29,7 +29,7 @@ spec["skin"] = {
            lip's own colour, x the lips')}
   "features": {"freckles", "moles", "age_spots", "blemishes", "veins", "flush", "sunburn", "tan"}  (see FEATURES)
   "wrinkles": {"amount": null (from age) | 0..1, "<region>": 0..1}                                 (see WRINKLES)
-  "fold_relief": "geometry" (default: skin.folds reshape the surface, skin_folds.prims) | "paint" (bump only)
+  "fold_relief": "geometry" (default: skin.folds reshape the surface, skin_folds_geometry.prims) | "paint" (bump only)
   "fold_expressions": true (export: each fold's gain per face shape is baked into that shape's morph target,
                                   skin_folds.EXPRESSION: a lid's crease unfolds on a blink) | false (the folds ride the shapes rigidly)
   "folds": {name: amount | {"amount", "width", "depth", "roll", "L" / "R": {"amount", "shift", "extent"}}}   (see FOLDS: the
