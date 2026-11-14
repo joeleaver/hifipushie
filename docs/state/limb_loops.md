@@ -1,6 +1,6 @@
 # Limb loops (creature topology from the skeleton, no template): STATE 2026-11-05
 
-Branch limb-loops (worktree .claude/worktrees/limb-loops), from main 5d6f271e. Asked for by Baynard Racing (Puddles
+Branch limb-loops (worktree .claude/worktrees/limb-loops), from main 5d6f271e. Asked for by Braynard Racing (Puddles
 seated: fold / crotch / seat after C373 + C374). Not pushed; coordinator lands. Exploring run (no gate). Ledger C375.
 
 ## What the tools hold now (limbloops.py docstring = spec)
@@ -19,7 +19,7 @@ seated: fold / crotch / seat after C373 + C374). Not pushed; coordinator lands. 
 - No BUILD_VERSION bump: opt-in topology, no other output changes. joint_density (topodensity) skipped for "limbs".
 
 ## Proof (workspace pudrt = copy of pud2 + topology "limbs"; files /mnt/data/hifipushie/limbloops, renders also in
-the Baynard notes folder limb_loops/)
+the Braynard notes folder limb_loops/)
 - Puddles' hip (z 0.17) and knee (0.115) are INSIDE the belly; the leg leaves it at z 0.10. Rings closed: root ring
   (hip slid to z 0.10) L/R 16 edges on plane; knee L/R 16 edges 12 mm off (a junction ring); the anatomy's hip plane
   itself: none (it is inside the body). Today's decimation: 0/6. Field 0.1 / 0.7 mm; 11 turned tris (decimated: 1).

@@ -1,6 +1,6 @@
 # Face pose: shapes in a look, rest expression (STATE, 2026-11-04)
 
-For: Baynard Racing's racers (Puddles the pig, face kit + mouth interior); general to any face-kit model.
+For: Braynard Racing's racers (Puddles the pig, face kit + mouth interior); general to any face-kit model.
 
 ## Current best (branch face-pose)
 - `look(name, shapes={...} | "rest" | preset)`: the model meshed as export_asset meshes it (asset_split.split with

@@ -1,7 +1,7 @@
 # Sheet element (one seamless folded sheet): STATE 2026-11-10 (crush fold)
 
-Landed on main (sheet: C372; crush fold: C398). Asked for by Baynard Racing (Puddles the pig, gaps 25 and 32 in
-baynard-racing/workspace/puddles/hifipushie_gaps.md).
+Landed on main (sheet: C372; crush fold: C398). Asked for by Braynard Racing (Puddles the pig, gaps 25 and 32 in
+braynard-racing/workspace/puddles/hifipushie_gaps.md).
 
 ## What the tools hold now
 - `sheet.py` (docstring = spec), wired into spec._compile, sdf.SDF, spec.SHAPES, expand_mirror, server SOLIDS.
@@ -36,7 +36,7 @@ baynard-racing/workspace/puddles/hifipushie_gaps.md).
   VERDICT FAIL on likeness only: the reference fold is closed and compact, its tip resting on the head (ours an
   open hook with a gap under it), the reference flap blunter / broader at the tip, rims still read crisp.
 
-## Crush fold (landed 2026-11-10, C398; Baynard gap 32)
+## Crush fold (landed 2026-11-10, C398; Braynard gap 32)
 - `"fold": "crush"` on a sheet: a bend tighter than the half thickness is built instead of refused ("round", the
   default, still refuses, and its message now names crush). Each over-tight bend (+ 2 half thicknesses either side)
   is cut into pieces turning <= 20 deg; `_nearest` searches one piece's u range and reports how far a point lies past
@@ -47,7 +47,7 @@ baynard-racing/workspace/puddles/hifipushie_gaps.md).
   p1 > 0.85, p99 < 1.2 near the surface, no field jump within 8 mm of it, closed genus-0 mesh; the centre of the
   hardest bend is solid, the outside a half thickness out). Probe: jumps only >= 12 mm inside (the lens estimate
   deep inside, as on ordinary sheets at 29 mm).
-- Proof on Puddles (Baynard, not approved): a fat ear (half thickness 3.2 -> 1.6 cm, bend radius 2.7 cm) builds and
+- Proof on Puddles (Braynard, not approved): a fat ear (half thickness 3.2 -> 1.6 cm, bend radius 2.7 cm) builds and
   fits the concept's outlines as well as the thin ones (78 cm2 off). bin/suite PASS on the branch and after landing.
 
 ## Open / next
@@ -55,5 +55,5 @@ baynard-racing/workspace/puddles/hifipushie_gaps.md).
    against a sheet's inner fold reaches a little short.
 2. Station cup / twist are not fit parameters (only widths and spine).
 
-NEXT: Baynard models the fat ear with the crush fold (ear-only reference masks so the fit can't spread it over the head).
+NEXT: Braynard models the fat ear with the crush fold (ear-only reference masks so the fit can't spread it over the head).
 History: this page + commits on sheet / crush-fold; ledger rows C372, C398.
