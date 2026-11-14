@@ -561,12 +561,14 @@ def test_export_bakes_skin_detail_into_the_parts_maps():
     part's own normal / roughness / colour maps: a GLB can carry a tiling detail map only as a note in the shading json,
     which plain glTF viewers and blender_game don't apply. The export's Cycles bake keeps the detail on (hp_detail 1),
     the recipe marks every detail baked, and the shading notes say the tiling maps are an optional normal-only extra."""
-    import inspect
+    import re
     import tempfile
-    from hifipushie import asset, shading, store
+    from pathlib import Path
+    from hifipushie import asset, moved, shading, store
     assert asset.BAKE_SKIN_DETAIL is True
-    from hifipushie import asset_export
-    src = inspect.getsource(asset_export)  # (_export: asset.py was split; a constant is read as asset.NAME)
+    # (_export: asset.py was split, a constant is read as asset.NAME; its stages carry `ctx` as ex.ctx, C461)
+    src = re.sub(r"\bex\.", "", "".join((Path(asset.__file__).parent / f).read_text() for f in moved.files("asset")
+                                        if f.startswith("asset_export")))
     assert 'ctx["bake_detail"] = asset.BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)
     with tempfile.TemporaryDirectory() as d:
         home, store.HOME = store.HOME, __import__("pathlib").Path(d)

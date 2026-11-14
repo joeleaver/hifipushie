@@ -220,9 +220,17 @@ def test_weights_follow_the_rig_by_bone_name():
         ga.bone_weights({"p": (names, J, W)}, [{"name": "arm"}, {"name": "root"}])
 
 
+def _export_source() -> str:
+    """The export's code as one text (asset_export.py and its stages' modules), `ex.name` read as `name`."""
+    import re
+    from hifipushie import moved
+    return re.sub(r"\bex\.", "", "".join((Path(ga.__file__).parent / f).read_text() for f in moved.files("asset")
+                                         if f.startswith("asset_export")))
+
+
 def test_the_character_export_never_hands_a_chain_garment_to_the_old_simulation():
     """asset_export splits spec["cloth"] by garment record: cloth.export_part (which simulates) gets only the others."""
-    src = (Path(ga.__file__).parent / "asset_export.py").read_text()
+    src = _export_source()
     i, j = src.index("chain = garment_asset.records(name, spec)"), src.index("clothmod.export_part(")
     assert i < j and 'old_ = {g_: v_ for g_, v_ in spec["cloth"].items() if g_ not in chain}' in src[i:j]
     assert 'clothmod.export_part(name, {**spec, "cloth": old_}' in src and ") if old_ else []" in src[j:j + 200]
@@ -231,7 +239,7 @@ def test_the_character_export_never_hands_a_chain_garment_to_the_old_simulation(
 
 def test_the_character_export_never_decimates_a_chain_garment_that_has_its_own_lod_files():
     """asset_export's LOD loop keeps the parts with an own LOD file away from lods_part and takes the files instead."""
-    src = (Path(ga.__file__).parent / "asset_export.py").read_text()
+    src = _export_source()
     i = src.index("own_ = {pn: v for pn, v in chain_lods.get(k, {}).items() if pn in parts}")
     j = src.index("garment_asset.take_lods(own_, parts, lp, lr, rep_l")
     assert i < src.index("if pn not in pf_of and pn not in own_}", i) < j < src.index("write_glb(lg, aname, lp", j)
