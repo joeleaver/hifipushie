@@ -258,8 +258,8 @@ def direction(name: str) -> np.ndarray:
         from . import gnm_mm
         return gnm_mm.direction(name)
     if name == "hooding":         # (overhang) GNM's one overhang direction: the brow and drape down over a deeper-set eye
-        from . import gnm_fold
-        return gnm_fold.hood_direction(5)["dc"]
+        from . import gnm_fold_design
+        return gnm_fold_design.hood_direction(5)["dc"]
     if name.startswith("gnm:"):   # (gnmcontrols) any identity-space control of the atlas, raw (its own unit)
         from . import gnm_controls as gcm
         d = gcm.identity_direction(name[4:])

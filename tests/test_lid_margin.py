@@ -3,11 +3,12 @@ from it, upper / lower split, mirrored, one-sided, 0 by default (a face without 
 import numpy as np
 
 from hifipushie import faceslide as fs
+from hifipushie import faceslide_fields
 
 
 def test_margin_fields():
     T = fs.template()
-    F = fs.fields()
+    F = faceslide_fields.fields()
     X, rim = T["X"], T["rim"]
     for k, unit in (("lid_margin_upper", 0.9e-3), ("lid_margin_lower", 0.8e-3)):
         dR, dL = F[k]
@@ -34,8 +35,8 @@ def test_margin_fields():
 
 def test_margin_values():
     assert fs.values({"lid_margin_upper": -1})["lid_margin_upper"] == (0.0, 0.0)  # one-sided
-    assert fs.delta({}) is None and fs.delta({"lid_margin_lower": 0}) is None
-    D = fs.delta({"lid_margin_upper": 1.0, "lid_margin_lower": [0.0, 1.0]})
+    assert faceslide_fields.delta({}) is None and faceslide_fields.delta({"lid_margin_lower": 0}) is None
+    D = faceslide_fields.delta({"lid_margin_upper": 1.0, "lid_margin_lower": [0.0, 1.0]})
     assert D is not None and D[:, 2].max() > 0.85e-3
 
 

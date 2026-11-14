@@ -8,11 +8,12 @@ import numpy as np
 from hifipushie import base as basemod
 from hifipushie import base_identity
 from hifipushie import faceslide, humans, onemesh, store
+from hifipushie import faceslide_mouth
 from hifipushie import onemesh_head
 
 b0 = store.load(sys.argv[1])["base"] if len(sys.argv) > 1 else humans.spec(age=40, sex=1.0, seed=None, skin=False,
                                                                            source="human")["base"]
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 C = R["rings"][R["contact"]]
 
 
@@ -41,6 +42,6 @@ for seal, expr in ((0.0, None), (0.5, None), (1.0, None), (1.0, "jaw")):
     ht = onemesh_head.head_template(b)
     gp = gaps(np.asarray(ht["carry"]["V"], float))
     print(f"seal {seal} {expr or ''}: gap mm min {gp.min():.2f} max {gp.max():.2f} mean {gp.mean():.2f}")
-D = faceslide.seal_delta(X0, 1.0)
+D = faceslide_mouth.seal_delta(X0, 1.0)
 print("template alone: before", gaps(X0).round(2).tolist())
 print("template alone: after ", gaps(X0 + D).round(2).tolist())

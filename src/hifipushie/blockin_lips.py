@@ -4,7 +4,7 @@ shapes"). Like the eye step (blockin_eyes.py): one MAP solve over GNM's identity
 the rest of the face held. Result: base.head.identity + the lower-face comps in base.head.expression; lip_seal and
 mouth_gap cleared (GNM's own expression closes the lips).
 
-Why (gnm_atlas.md "## gnmdetail"): the lip seal (faceslide.seal_delta on the head + base_surface._sealed_field for the field)
+Why (gnm_atlas.md "## gnmdetail"): the lip seal (faceslide_mouth.seal_delta on the head + base_surface._sealed_field for the field)
 closes a parted neutral by moving the lips whole and fading the move out across the vermilion border: on Tess the
 rendered border's turn fell from 24 deg (the one mesh) to 11 deg (the dressed stage), the upper vermilion came forward
 instead of turning down, and the lips read as a flat painted pad. Closed by GNM's expression instead the border keeps
@@ -77,12 +77,12 @@ SIG_BOW = 0.1           # mm: the picture's Cupid's bow (Tess 1.44: none 0.70 mm
 
 
 def ring_rows(k: int | None = None):
-    """Head rows of GNM's lip ring k (rings out from the skin's open mouth loop, faceslide._lip_rings; default the
+    """Head rows of GNM's lip ring k (rings out from the skin's open mouth loop, faceslide_mouth._lip_rings; default the
     CONTACT ring, base.LIP_RING: landmarks 61-63 / 65-67 sit on it), its upper and lower halves (GNM's upper_lip /
     lower_lip groups)."""
-    from . import faceslide
+    from . import faceslide_mouth
     from . import base_identity
-    R = faceslide._lip_rings()
+    R = faceslide_mouth._lip_rings()
     C = R["rings"][R["contact"] if k is None else k]
     up = R["upper"][C]
     g = base_identity._gnm_data()

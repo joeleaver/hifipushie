@@ -733,14 +733,14 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                   "2^k, hole cells left out, vertical skirts on shared borders)"}
     if caves:  # a person walked through every passage
         t0 = time.time()
-        from . import terrain_caves
+        from . import terrain_caves_early, terrain_caves_walk
         with prof.stage("cave walk (parent)"):
             manifest["cave_paths"] = []
-            manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T), paths=manifest["cave_paths"])
+            manifest["caves"] = terrain_caves_walk.check(caves, base, sea=_sea(T), paths=manifest["cave_paths"])
             # the same walk's floor on what an engine collides with (the collision meshes): its steps can be taller
             # than the field's (decimation at the collision LOD's error, a pile of blocks simplified to a riser)
             try:
-                for ln in terrain_caves.collision_steps(manifest["cave_paths"], out, manifest_tiles,
+                for ln in terrain_caves_early.collision_steps(manifest["cave_paths"], out, manifest_tiles,
                                                         int(cfg["collision"])):
                     manifest["caves"].append(ln)
             except Exception as ex_:  # (a measure, never the export's failure)

@@ -241,7 +241,7 @@ def _job_prep_tile(ij):
 
 def build_field(T, cfg=None):
     """The 3D field of a terrain: (field, volume pieces, notes, caves)."""
-    from . import terrain_caves
+    from . import terrain_caves_build
     cfg = {**terrain_mesh.DEFAULTS, **((T.spec.get("export") or {}).get("tiles") or {}), **(cfg or {})}
     vols, notes = volumes(T)
     if cfg.get("stacks", True) and _sea(T) is not None:
@@ -250,7 +250,7 @@ def build_field(T, cfg=None):
         if sn:
             notes = notes + [sn]
     rock = rock_config(T, cfg)
-    caves = terrain_caves.build(T, rock)
+    caves = terrain_caves_build.build(T, rock)
     for cv in caves:
         vols = vols + cv.tubes
         notes = notes + cv.notes

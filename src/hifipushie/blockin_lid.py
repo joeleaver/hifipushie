@@ -332,14 +332,15 @@ def lid_step(base: dict, heights=None, cols=None, corners=None, donor_name: str 
 def fold_step(base: dict, heights=None, cols=None, corners=None, brow: float | None = FOLD_BROW,
               hold_mm: float | None = FOLD_MM, guard: float = GUARD, log=print) -> dict:
     """The eye step's shape term, RECIPE A (overhang, 2026-10-11; Joe: "recipe A is as good as it has to get"):
-    gnm_fold.fold's crisp fold, a designed lid (platform on the ball up to the fold line, the turn, the drape; no donor
+    gnm_fold_design.fold's crisp fold, a designed lid (platform on the ball up to the fold line, the turn, the drape; no donor
     head) fitted in the identity alone with the brows held `brow` mm, gnm_mm's measures held (`hold_mm`: a weight, not
     a tolerance; the hollow under the brow is left free: the fold IS that) and every other skin vertex at 1 mm. heights
     / cols as lid_step (the picture's fold line over the margin, mm at the model; None = 4.7 mm). Then the BALL GUARD:
     while the upper lid on the shipped head stands under `guard` mm off OUR eyeball the platform's stand-off is raised
-    FOLD_STEP. -> gnm_fold.fold()'s dict + "kind": "crisp", "structure0" / "structure", "ball0" / "ball", "standoff",
+    FOLD_STEP. -> gnm_fold_design.fold()'s dict + "kind": "crisp", "structure0" / "structure", "ball0" / "ball", "standoff",
     "tries", "scale", "guarded", "heights", "crease" (raw mm at the pupil), "mm" (largest held measure's drift)."""
     from . import blockin as bi, gnm_fold as gf, gnm_mm, onemesh
+    from . import gnm_fold_design
     from . import onemesh_head
 
     def head(c):
@@ -363,7 +364,7 @@ def fold_step(base: dict, heights=None, cols=None, corners=None, brow: float | N
     b0 = ball_clearance(ht0)
     standoff, tries, best = FOLD_STANDOFF, 0, None
     while True:
-        s = gf.fold(c0, crease=crease, brow=brow, hold_mm=hold_mm, standoff=standoff)
+        s = gnm_fold_design.fold(c0, crease=crease, brow=brow, hold_mm=hold_mm, standoff=standoff)
         s["ball"], s["standoff"] = ball_clearance(head(s["c"])), standoff
         tries += 1
         a = s["after"]

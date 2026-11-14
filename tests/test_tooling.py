@@ -341,16 +341,17 @@ def test_mesh_quality():
 def test_lid_fold_slit_designed():
     import numpy as np
     from hifipushie import gnm_fold
+    from hifipushie import gnm_fold_mesh
     from hifipushie import asset_quality
     from hifipushie.base_identity import _gnm_data
     n = len(_gnm_data()["groups"]["skin_exterior"])
     cfg = {"amount": 1.0}
-    ids = set(gnm_fold.slit_ids(cfg))
+    ids = set(gnm_fold_mesh.slit_ids(cfg))
     m = asset_quality._slit_mask(cfg, n)
     assert len(ids) > 20 and set(np.flatnonzero(m).tolist()) == ids, (len(ids), int(m.sum()))
     t = gnm_fold.topo()
     ka = 5
-    ch, ang = gnm_fold.chains_wrap(15.5, 12, gnm_fold.WRAP_MAX)
+    ch, ang = gnm_fold_mesh.chains_wrap(15.5, 12, gnm_fold.WRAP_MAX)
     roll = ch[ang <= 90.0][:, [ka + 1, ka + 2]].reshape(-1)
     assert m[roll].all() and m[t["mir"][roll]].all()   # the folding rings, both sides
     assert not asset_quality._slit_mask(None, n).any()

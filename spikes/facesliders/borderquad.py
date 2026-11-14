@@ -2,10 +2,11 @@
 import numpy as np
 
 from hifipushie import faceext, faceslide
+from hifipushie import faceslide_mouth
 
 faceext._turned(np.zeros_like(faceslide.template()["X"]))
 X0, Q, pairs = faceext._C["fold"]
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 ring = np.full(len(X0), -1)
 for i, r in enumerate(R["rings"]):
     ring[r] = i

@@ -2,6 +2,7 @@ import sys, pathlib, tempfile
 import numpy as np
 sys.path.insert(0, "tests")
 from hifipushie import skin, skin_folds as sf, skin_marks as sm, store
+from hifipushie import skin_marks_map
 from hifipushie import skin_zones
 from test_skin import head_spec
 store.HOME = pathlib.Path(tempfile.mkdtemp())
@@ -11,7 +12,7 @@ cfg = sf.options(spec["skin"]["folds"])
 ps = sf.paths(spec, "body", J, cfg)
 S = sf.map_surface(spec, "body", J)
 for k, q in ps.items():
-    x = sm.pix(S.sp, q["P"])
+    x = skin_marks_map.pix(S.sp, q["P"])
     d = S._tree.query(q["P"])[0] * 1000
     print(k, len(q["P"]), "amount", q["amount"].max(), "pix", np.nanmin(x, 0), np.nanmax(x, 0), "W H", S.sp["W"], S.sp["H"], "dist to mesh mm", d.min(), d.max(),
           "P", q["P"][0].round(4), q["P"][-1].round(4))

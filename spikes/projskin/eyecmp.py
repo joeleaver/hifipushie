@@ -44,6 +44,7 @@ for d in sys.argv[1:]:
         # the crease's SMOOTHNESS on the image: 11 columns along each eye, the read heights' rms second difference
         # (misreads > 2 mm off the median dropped)
         from hifipushie import gnm_fold as _gf
+        from hifipushie import gnm_fold_mesh
         rd11 = lidfold.read_lid(img, P, fractions=tuple(np.linspace(0.2, 0.8, 11)))
         rgh = []
         for eye in rd11:
@@ -51,7 +52,7 @@ for d in sys.argv[1:]:
             ok_ = np.isfinite(h_)
             if ok_.sum() >= 6:
                 med = np.nanmedian(h_); ok_ &= np.abs(h_ - med) < 2.0
-            rgh.append(_gf.crease_roughness(h_[ok_]) if ok_.sum() >= 6 else None)
+            rgh.append(gnm_fold_mesh.crease_roughness(h_[ok_]) if ok_.sum() >= 6 else None)
         row[nm + "_rough"] = rgh
     res[d] = row
     for nm in ("photo", "ours"):

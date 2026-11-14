@@ -35,7 +35,7 @@ COUPLED = {
     "ramus_angle": "ramus_angle",
 }
 # (the nose's widths stay local morphs: no geometric reader of them was smooth in the identity (R2 ~ 0 for the
-# slope's turn and for a fixed depth behind the crest, 2000 heads); faceslide.nose_widths reads them by shading)
+# slope's turn and for a fixed depth behind the crest, 2000 heads); faceslide_fit.nose_widths reads them by shading)
 # sliders whose attribute the identity explains only partly: the coupled direction + the local morph for the rest
 # (x the share the identity leaves, 1 - R2)
 HYBRID = {"eye_hood"}
@@ -95,11 +95,12 @@ def _nose_width(X, n, ext, lm, y, ylo):
 def attributes(V, J) -> dict:
     """Every attribute of a head (GNM's raw vertices V and joints J, its frame): humanmacro's macros and ours."""
     from . import faceslide, humanmacro
+    from . import faceslide_eyes
     w = np.stack([V[:, 0], -V[:, 2], V[:, 1]], -1)
     a = dict(humanmacro.measures(w))
     Th = faceslide.head_template(V)
     X, n, lm, ext = Th["X"], Th["n"], Th["lm"], Th["ext"]
-    faceslide._left_fields(Th)
+    faceslide_eyes._left_fields(Th)
     Hc, H0, u, up = faceslide._CACHE["last_crease"]
     mid = up & (u > 0.35) & (u < 0.65)
     c_in, c_out = lm[42], lm[45]

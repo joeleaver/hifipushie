@@ -14,6 +14,7 @@ import numpy as np
 
 import gk
 from hifipushie import blockin as bi, blockin_eyes as be, store
+from hifipushie import blockin_eyes_reader
 
 FR = (0.12, 0.25, 0.37, 0.5, 0.63, 0.75, 0.88)
 _RD = {}
@@ -31,7 +32,7 @@ def columns(c, e=None, model="gd_T12"):
     PROF.clear()
     ht = gk.head(c, e, model)
     if model not in _RD:
-        _RD[model] = be.Reader(ht)
+        _RD[model] = blockin_eyes_reader.Reader(ht)
     rd = _RD[model]
     V = np.asarray(ht["verts"], float)
     cen = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)
@@ -46,7 +47,7 @@ def columns(c, e=None, model="gd_T12"):
     for f in FR:
         x0 = xi + f * (xo - xi)
         best = None
-        for Lc in be._chain(be._slice(V, rd.tri, x0)):
+        for Lc in blockin_eyes_reader._chain(blockin_eyes_reader._slice(V, rd.tri, x0)):
             d = np.linalg.norm(Lc - cen, axis=1)
             ok = (d > r + 0.0003) & ((Lc - cen) @ up > -0.004) & ((Lc - cen) @ fwd > -0.004) & ((Lc - cen) @ up < 0.03)
             runs, cur = [], []
@@ -68,7 +69,7 @@ def columns(c, e=None, model="gd_T12"):
             P = P[::-1]
         # start at the margin: the lowest point that is in front of the globe's equator
         PROF.append(P.copy())
-        q = be._profile(P)
+        q = blockin_eyes_reader._profile(P)
         x = gk.extras(P)
         out.append({"h": q["hsoft"], "depth": q["lsoft"], "narrow": x["narrow"], "lip": x["lip"], "krad": x["krad"],
                     "show": q["show"], "drop": q["drop"], "margin_z": float(P[0, 1] * 1000), "brow": float((brow_z - cen[2]) * 1000 - P[0, 1] * 1000)})

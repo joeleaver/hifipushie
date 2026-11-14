@@ -209,13 +209,13 @@ def stubble_options(o: dict, age: float = 35) -> dict:
 
 
 def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
-    """Stubble as a unique map on the head (skin_marks.stubble_map): the shadow of hair in the skin (per vertex,
+    """Stubble as a unique map on the head (skin_marks_beard.stubble_map): the shadow of hair in the skin (per vertex,
     from the dark roots' count) + dark and white hairs as cut strokes along the growth direction, with relief."""
-    from . import skin_marks
+    from . import skin_marks_beard
     t = p["tone"]
     a = float(o["amount"])
     q = stubble_options(o, p["age"])
-    path, place, _ = skin_marks.stubble_map(spec, p["part"], J, q)
+    path, place, _ = skin_marks_beard.stubble_map(spec, p["part"], J, q)
     col = _hex(o["color"]) if "color" in o else hair_default(t, p["age"])
     im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
     lips = {"zone": {"name": "lips", "grow": 0.6}, "blend": "subtract"}   # (a crisp border: no bald halo round the lips)

@@ -63,8 +63,8 @@ def approved_head(spec: dict, log: list, approved_path: Path | None = None) -> d
     out["base"] = {**spec["base"], "head": head}
     approved_folds = (json.loads(sp_.read_text()).get("skin") or {}).get("folds") or {}
     out = fold_form_gate(out, log, approved_folds)
-    from . import skin_layers   # (s9) the stack's lid shading / blink map re-baked on the head that ships
-    return skin_layers.stack_on_head(out, log)
+    from . import skin_layers_stack
+    return skin_layers_stack.stack_on_head(out, log)
 
 
 def _lstar(a: np.ndarray) -> np.ndarray:

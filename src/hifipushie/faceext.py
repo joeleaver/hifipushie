@@ -449,10 +449,10 @@ def hold_rolls(d: np.ndarray) -> np.ndarray:
     unsheared (faceslide's seal moves the rolls whole by the same rule)."""
     if not HOLD_ROLLS:
         return d
-    from . import faceslide
+    from . import faceslide_mouth
     if "rolls" not in _C:   # per ring inward: each vertex's sources = its neighbours one ring further out (its
         # own lip's where it has any): the move carried down the roll's columns, not across them
-        R = faceslide._lip_rings()
+        R = faceslide_mouth._lip_rings()
         up = np.asarray(R["upper"], bool)
         steps = []
         for k in range(R["contact"] - 1, -1, -1):

@@ -7,6 +7,7 @@ import tempfile
 import numpy as np
 
 from hifipushie import images, paint, skin_marks as mk, store
+from hifipushie import skin_marks_beard, skin_marks_freckles, skin_marks_map, skin_marks_pores
 from hifipushie import skin_zones
 from hifipushie import images_frame, images_project
 from hifipushie.skin_features_hair import stubble_options
@@ -37,9 +38,9 @@ def test_beard_zones_from_landmarks():
     the chin, and moving the chin landmark moves the beard."""
     spec = head_spec(hair={"stubble": {"style": "short"}})
     J = skin_zones._joints(spec)
-    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
-    d = mk.beard_density(J, stubble_options({"amount": 1.0, "style": "short"}))(V, N)
+    d = skin_marks_beard.beard_density(J, stubble_options({"amount": 1.0, "style": "short"}))(V, N)
     io = skin_zones.interocular(J)
     at = lambda name, off=(0, 0, 0): d[_near(V, J[name] + io * np.asarray(off))]  # noqa: E731
     assert at("lm_chin", (0, 0, 0.15)) > 0.6
@@ -50,7 +51,7 @@ def test_beard_zones_from_landmarks():
     # trimmed: the cheek line is sharper than grown-out
     o_t = stubble_options({"amount": 1.0, "style": "designer"})
     o_n = stubble_options({"amount": 1.0, "style": "heavy", "trim": 0.0})
-    dt, dn = mk.beard_density(J, o_t)(V, N), mk.beard_density(J, o_n)(V, N)
+    dt, dn = skin_marks_beard.beard_density(J, o_t)(V, N), skin_marks_beard.beard_density(J, o_n)(V, N)
     mid = lambda x: np.mean((x > 0.05) & (x < 0.5 * x.max()))  # noqa: E731  share of the half-tone edge
     assert mid(dt) < mid(dn)
     # untrimmed: no edge but a taper, and a few stragglers out past it (density < 0.1 where trimmed has none)
@@ -65,8 +66,8 @@ def test_stubble_count_adds_hairs():
     spec = head_spec()
     J = skin_zones._joints(spec)
     assert "count" not in stubble_options({"amount": 1.0}) and stubble_options({"amount": 1.0, "count": 9})["count"] == 4.0
-    n1 = mk.stubble_map(spec, "body", J, stubble_options({"amount": 1.0}))[2]["hairs"]
-    n2 = mk.stubble_map(spec, "body", J, stubble_options({"amount": 1.0, "count": 2.0}))[2]["hairs"]
+    n1 = skin_marks_beard.stubble_map(spec, "body", J, stubble_options({"amount": 1.0}))[2]["hairs"]
+    n2 = skin_marks_beard.stubble_map(spec, "body", J, stubble_options({"amount": 1.0, "count": 2.0}))[2]["hairs"]
     assert 1.8 < n2 / n1 < 2.2, (n1, n2)
 
 
@@ -79,7 +80,7 @@ def test_stubble_map_deterministic_and_styles():
 
     def mapped(**kw):
         o = stubble_options({"amount": 1.0, **kw})
-        path, place, st = mk.stubble_map(spec, "body", J, o)
+        path, place, st = skin_marks_beard.stubble_map(spec, "body", J, o)
         return path, images.pixels(pathlib.Path(path)), st, place
     p1, a1, s1, place = mapped(style="short")
     h1 = hashlib.sha1(pathlib.Path(p1).read_bytes()).hexdigest()
@@ -112,10 +113,10 @@ def test_fade_band_never_darker_than_full():
     spec = head_spec(hair={"stubble": {"style": "short"}})
     J = skin_zones._joints(spec)
     o = stubble_options({"amount": 1.0, "style": "short"})
-    path, place, _ = mk.stubble_map(spec, "body", J, o)
-    V, N, _ = mk.head_mesh(spec, "body", J)
+    path, place, _ = skin_marks_beard.stubble_map(spec, "body", J, o)
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
-    d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
+    d = skin_marks_beard.beard_density(J, o, skin_marks_map.curvature_at(spec, "body", J))(V, N)
     fr = images_frame.frame(spec, {"file": path, **place, "channel": "b"}, parts=["body"])
     u, v, w = images_project.project(fr, V, N)
     # (the shadow channel carries the under-skin shafts' grain: compared as the eye takes it from a step back, ~1.5 mm)
@@ -143,22 +144,22 @@ def test_stubble_fade_is_fine_and_light():
     rng = np.random.default_rng(0)
     n = 20000
     for f in (0.2, 1.0):
-        tone, ew = mk.hair_tones(np.full(n, f), np.zeros(n, bool), rng)
+        tone, ew = skin_marks_beard.hair_tones(np.full(n, f), np.zeros(n, bool), rng)
         if f == 0.2:
             edge = float(np.mean((1 - tone) * ew))
         else:
             full = float(np.mean((1 - tone) * ew))
     assert edge < 0.15 * full, (edge, full)
-    tone, _ = mk.hair_tones(np.ones(n), np.ones(n, bool), rng)
+    tone, _ = skin_marks_beard.hair_tones(np.ones(n), np.ones(n, bool), rng)
     assert tone.min() >= 0.55 and tone.std() > 0.1
     from scipy.ndimage import gaussian_filter
     spec = head_spec(hair={"stubble": {"style": "short"}})
     J = skin_zones._joints(spec)
     o = stubble_options({"amount": 1.0, "style": "short", "grey": 0.5})
-    path, place, _ = mk.stubble_map(spec, "body", J, o)
-    V, N, _ = mk.head_mesh(spec, "body", J)
+    path, place, _ = skin_marks_beard.stubble_map(spec, "body", J, o)
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
-    d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
+    d = skin_marks_beard.beard_density(J, o, skin_marks_map.curvature_at(spec, "body", J))(V, N)
     fr = images_frame.frame(spec, {"file": path, **place, "channel": "r"}, parts=["body"])
     u, v, w = images_project.project(fr, V, N)
     pix = np.array(images.pixels(pathlib.Path(path)), dtype=np.float32)
@@ -176,7 +177,7 @@ def test_freckles_no_repeat_and_sun():
     spec = head_spec(features={"freckles": 1.0})
     J = skin_zones._joints(spec)
     o = freckle_options({"amount": 1.0})
-    path, place, st = mk.freckle_map(spec, "body", J, o)
+    path, place, st = skin_marks_freckles.freckle_map(spec, "body", J, o)
     a = images.pixels(pathlib.Path(path))[..., 0]
     assert st["freckles"] > 50
     H, W = a.shape
@@ -186,8 +187,8 @@ def test_freckles_no_repeat_and_sun():
     v = a[H // 2 - 150:H // 2 + 150, W // 2 + s // 2 - 150:W // 2 + s // 2 + 150]
     if w.std() > 0 and v.std() > 0:
         assert abs(np.corrcoef(w.ravel(), v.ravel())[0, 1]) < 0.3
-    V, N, _ = mk.head_mesh(spec, "body", J)
-    d = mk.freckle_density(J, {**o, "clump": 0.0})(V.astype(float), N.astype(float))
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
+    d = skin_marks_freckles.freckle_density(J, {**o, "clump": 0.0})(V.astype(float), N.astype(float))
     io = skin_zones.interocular(J)
     nose = d[_near(V, J["lm_nose_bridge"] + io * np.array([0, 0, -0.3]))]
     under = d[_near(V, J["lm_chin"] + io * np.array([0, 0.5, -0.2]))]
@@ -202,10 +203,10 @@ def test_patchy_is_missing_hair_and_freckles_fade_out():
     spec = head_spec(hair={"stubble": {"style": "patchy"}})
     J = skin_zones._joints(spec)
     io = skin_zones.interocular(J)
-    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N, _ = skin_marks_map.head_mesh(spec, "body", J)
     V, N = V.astype(float), N.astype(float)
     o = stubble_options({"amount": 1.0, "style": "patchy"})
-    d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
+    d = skin_marks_beard.beard_density(J, o, skin_marks_map.curvature_at(spec, "body", J))(V, N)
     def front(field, p, r=0.003, ny=-0.3):   # the most a field reaches on skin facing forward within r of p, seen from the front
         p = np.asarray(p, float)
         m = (np.linalg.norm(V[:, [0, 2]] - p[[0, 2]], axis=1) < r) & (N[:, 1] < ny)
@@ -213,7 +214,7 @@ def test_patchy_is_missing_hair_and_freckles_fade_out():
     mous = front(d, np.asarray(J["lm_lip_upper"]) + [0.006, 0, 0.004])
     cheek = front(d, np.asarray(J["lm_mouth_corner.L"]) + io * np.array([0.3, 0.0, 0.2]))
     assert mous > 0.3 and cheek < 0.25 * mous, (mous, cheek)
-    fd = mk.freckle_density(J, {**freckle_options({"amount": 1.0}), "clump": 0.0})(V, N)
+    fd = skin_marks_freckles.freckle_density(J, {**freckle_options({"amount": 1.0}), "clump": 0.0})(V, N)
     up = front(fd, np.asarray(J["lm_lid_lower.L"]) + io * np.array([0.0, 0.0, -0.35]))
     out = front(fd, np.asarray(J["lm_lid_lower.L"]) + io * np.array([0.3, 0.0, -0.35]), ny=0.0)   # (this test head is narrow)
     assert up > 0.3 and 0.05 * up < out < up, (up, out)
@@ -228,12 +229,12 @@ def test_base_map_pores_by_zone_and_per_pixel():
     spec = head_spec(age=30)
     J = skin_zones._joints(spec)
     io = skin_zones.interocular(J)
-    W = mk.base_zones(J)
+    W = skin_marks_pores.base_zones(J)
     pts = np.array([J["lm_nose_tip"] + io * np.array([0.05, 0.02, 0.05]), [0.0, J["lm_nose_bridge"][1] + 0.2 * io, J["lm_nose_bridge"][2] + 0.75 * io],
                     J["lm_lip_lower"]])
-    den, rad = mk._pore_field(W(pts))
+    den, rad = skin_marks_pores._pore_field(W(pts))
     assert den[0] > 1.3 * den[1] and rad[0] > 1.2 * rad[1] and den[2] == 0, (den, rad)
-    path, place, st = mk.base_map(spec, "body", J, {"pore_size": 1.0, "seed": 0})
+    path, place, st = skin_marks_pores.base_map(spec, "body", J, {"pore_size": 1.0, "seed": 0})
     a = images.pixels(pathlib.Path(path))[..., :3].astype(float)
     H, Wd = a.shape[:2]
     mid = a[H // 2 - 200:H // 2 + 200, Wd // 2 - 600:Wd // 2 - 200]   # (a cheek's worth of the face's front)

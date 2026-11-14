@@ -6,6 +6,7 @@ import sys
 import numpy as np
 
 from hifipushie import faceslide, humanfit, onemesh, store
+from hifipushie import faceslide_mouth
 
 b0 = store.load(sys.argv[1])["base"]
 P = {}
@@ -19,7 +20,7 @@ for s in (0.0, 1.0):
     Q = np.asarray(st["tpl"]["L"]).reshape(-1, 4)
     L = np.asarray(st["L"])
 gid = np.asarray(onemesh.asset()["gnm_exact"], int)[np.asarray(st["tpl"]["fid"])]
-R = faceslide._lip_rings()
+R = faceslide_mouth._lip_rings()
 ring_of = {int(v): k for k, r in enumerate(R["rings"]) for v in r}
 E = np.unique(np.sort(np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]], 1), axis=0)
 l0 = np.linalg.norm(P[0.0][E[:, 0]] - P[0.0][E[:, 1]], axis=1)

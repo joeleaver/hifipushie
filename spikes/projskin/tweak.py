@@ -3,6 +3,7 @@
   brows.<k>=<json> eyes.<k>=<json>. LIGHT."""
 import copy, json, sys
 from hifipushie import blockin as bi, skin_layers as sl, store
+from hifipushie import skin_layers_stack
 from hifipushie import blockin_models
 src, dst = sys.argv[1:3]
 s = copy.deepcopy(store.load(src))
@@ -27,7 +28,7 @@ for a in sys.argv[3:]:
     else:
         ed[k] = float(v)
 if ed:
-    s = sl.edit(s, **ed)
+    s = skin_layers_stack.edit(s, **ed)
 rj = copy.deepcopy(blockin_models._refs(src))
 if rj.get("blockin"):
     rj["blockin"] = {**rj["blockin"], "root": dst}

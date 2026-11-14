@@ -31,7 +31,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
    1. the OPENING: the identity for the picture's lid margins and corners in mm (the eye ruler's rows, 7a), with every
       millimetre measure (incl. the orbit's), the socket readings and the landmarks off the eyes held;
    2. the LID: margin, platform lying on the ball, ONE turn, the drape to the brow, solved on GNM's own lid rings,
-      the turn put on the picture's fold line (per column), the margins of 1 held. Default `fold="crisp"` (RECIPE A, gnm_fold.fold): a DESIGNED lid (no donor head) fitted with the
+      the turn put on the picture's fold line (per column), the margins of 1 held. Default `fold="crisp"` (RECIPE A, gnm_fold_design.fold): a DESIGNED lid (no donor head) fitted with the
       brows held 0.3 mm and the mm measures held (the hollow under the brow is left free: the fold IS that). On one
       head: turn 16 -> 44 deg on its line (the donor solve: 24), brow ring 0.7 mm down, measures within 0.35 mm,
       eye ruler and brow_read rows still pass; the price is |dc| ~15-17 and ~0.6 mm rms over the rest of the face

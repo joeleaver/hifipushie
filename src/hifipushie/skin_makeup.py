@@ -112,8 +112,8 @@ class _Seat:
         self.ok = False
         try:
             from scipy.spatial import cKDTree
-            from . import skin_marks
-            V, N, _ = skin_marks.head_mesh(spec, part, J)
+            from . import skin_marks_map
+            V, N, _ = skin_marks_map.head_mesh(spec, part, J)
             V, N = np.asarray(V, float), np.asarray(N, float)
             keep = N[:, 1] < 0.35       # what faces the front or the sides
             self.V = V[keep]

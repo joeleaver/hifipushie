@@ -28,13 +28,14 @@ def _iris_obs(head, view, eyes_pic):
 def _lid_obs(head, view, rv):
     """THE LIDS IN THE SAME SOLVE (reruns, 2026-10-11): the eye ruler's read of the front picture (rv = eye_ruler.mean:
     upper / lower margin at its columns, the canthi; mm at the model in the eye's own frame, from the iris centre)
-    against the model's margin ring read the same way (blockin_eyes.Reader.margins, the subject's left eye). Each
+    against the model's margin ring read the same way (blockin_eyes_reader.Reader.margins, the subject's left eye). Each
     moves with GNM's ring-0 vertices relative to the eye's centre. In the EYE's frame, so no camera column: its view
     is "eye frame". The eye step solved these alone and later steps undid them (lips 0.2 -> 1.8 mm, brows 1.8 mm)."""
     from . import blockin_eyes as be, lidrings
+    from . import blockin_eyes_reader
     from . import onemesh_head
     ht = onemesh_head.head_template(head["spec"]["base"])
-    mg = be.Reader(ht).margins(ht)
+    mg = blockin_eyes_reader.Reader(ht).margins(ht)
     gg = _gnm()["sp"]
     T = gg["T"]
     r0 = np.asarray(lidrings.topo()["loops"][0], int)

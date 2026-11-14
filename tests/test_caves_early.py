@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from hifipushie import terrain_caves, terrain_mesh as tm
+from hifipushie import terrain_caves_early, terrain_caves_walk
 from hifipushie import terrain_model
 from hifipushie import terrain_tile_jobs, terrain_volumes
 
@@ -32,7 +33,7 @@ def _terrain(spec):
 
 def _place(T):
     """Chambers' z for this build: `low` a gentle climb from the mouth, `high` a steep one from `low`."""
-    caves, _ = terrain_caves.light_field(T)
+    caves, _ = terrain_caves_early.light_field(T)
     mouth = caves[0].nodes["mouth"]
     spec = json.loads(json.dumps(T.source))
     spec["caves"]["grotto"]["chambers"]["low"] = {"at": [80, 120], "z": round(mouth["z"] + 2.0, 1), "size": [8, 5]}
@@ -59,8 +60,8 @@ def test_report_walks_the_caves(T):
 
 
 def test_survey_numbers(T):
-    caves, _ = terrain_caves.light_field(T)
-    sv = {(p["from"], p["to"]): p for p in terrain_caves.survey(T, caves)}
+    caves, _ = terrain_caves_early.light_field(T)
+    sv = {(p["from"], p["to"]): p for p in terrain_caves_early.survey(T, caves)}
     hi = sv[("low", "high")]
     assert abs(hi["rise"] - 14.0) < 3.0, hi["rise"]  # (karst floors snap to the rock's beds)
     assert hi["grade"] > terrain_caves.GRADE_WALK
@@ -69,10 +70,10 @@ def test_survey_numbers(T):
 
 def test_same_verdict_as_the_full_field(T):
     """The light field (no rock character) walks to the same verdicts as the export's field."""
-    caves, light = terrain_caves.light_field(T)
-    a = terrain_caves.check(caves, light, sea=terrain_volumes._sea(T))
+    caves, light = terrain_caves_early.light_field(T)
+    a = terrain_caves_walk.check(caves, light, sea=terrain_volumes._sea(T))
     full, _, _, caves2 = terrain_tile_jobs.build_field(T, dict(tm.DEFAULTS))
-    b = terrain_caves.check(caves2, full, sea=terrain_volumes._sea(T))
+    b = terrain_caves_walk.check(caves2, full, sea=terrain_volumes._sea(T))
     assert [("PASSES" in x) for x in a] == [("PASSES" in x) for x in b], (a, b)
 
 

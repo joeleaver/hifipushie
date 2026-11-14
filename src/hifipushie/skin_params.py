@@ -97,8 +97,8 @@ def params(spec: dict) -> dict:
             raise SpecError(f"skin {k} is a list")
     from . import skin_project_model
     p["projection"] = skin_project_model.check(sk.get("projection"))
-    from . import skin_layers
-    p["stack"] = skin_layers.check(sk.get("stack"))
+    from . import skin_layers_stack
+    p["stack"] = skin_layers_stack.check(sk.get("stack"))
     only = sk.get("only")
     if only is not None:
         only = [only] if isinstance(only, str) else list(only)

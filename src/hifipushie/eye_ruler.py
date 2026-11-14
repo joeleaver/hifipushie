@@ -141,11 +141,11 @@ def read(img, P, mmpx: float, scale: float = 1.0, origin=(0.0, 0.0), debug: bool
     """The measures on a picture, per eye (subject's right, left). P: the detector's 478 points in PICTURE pixels; the
     image may be a crop / enlargement of the picture (image px = (picture px - origin) * scale); mmpx: mm per PICTURE
     pixel at the eyes. Each eye: the module docstring's measures + "c" (the iris centre, picture px), "frame"."""
-    from . import blockin_eyes as be
+    from . import blockin_eyes_evidence
     Pi = (np.asarray(P, float)[:, :2] - np.asarray(origin, float)) * scale
     k = scale / mmpx                                  # image px per mm
     A = np.asarray(img.convert("RGB"), float) / 255.0
-    lb = be.limbus(img, Pi)
+    lb = blockin_eyes_evidence.limbus(img, Pi)
     fr2 = frames(lb[0]["centre"], lb[1]["centre"])
     lum = 0.2126 * A[..., 0] + 0.7152 * A[..., 1] + 0.0722 * A[..., 2]
     for s in (0, 1):   # the detector's iris centre sits low / high by up to a mm (it follows the visible part): a circle
@@ -424,11 +424,11 @@ def _brow(lum, uu, upc, a, b, cb) -> dict:
 
 def _ring(ht, c):
     """The lid margin ring's vertex rows around the eye centred at c (skin rows next to the socket lining)."""
-    from . import blockin_eyes as be
+    from . import blockin_eyes_reader
     from . import base_identity
     g = base_identity._gnm_data()
     Vh = np.asarray(ht["verts"], float)
-    F = be._tris(ht["faces"])
+    F = blockin_eyes_reader._tris(ht["faces"])
     sk = np.flatnonzero(np.asarray(g["skin"]))
     sock = np.zeros(len(Vh), bool)
     sock[:len(sk)] = np.asarray(g["groups"]["eye_sockets"])[sk] > 0.5
@@ -537,7 +537,7 @@ def _poly_cross(poly, x):
 def _model_crease(ht, tri, c, r, fwd, s) -> dict:
     """The fold's height over the margin (blockin_eyes' sagittal profile reader: the deepest narrow valley 2-12 mm up)
     and the platform visible from the front, at COLS (world x = the eye centre's + u toward the outer corner)."""
-    from . import blockin_eyes as be
+    from . import blockin_eyes_reader
     Vh = np.asarray(ht["verts"], float)
     up = np.array([0, 0, 1.0]) - fwd * fwd[2]
     up /= np.linalg.norm(up)
@@ -545,7 +545,7 @@ def _model_crease(ht, tri, c, r, fwd, s) -> dict:
     cr, show, dep = [], [], []
     for x in COLS:
         best = None
-        for L in be._chain(be._slice(Vh, tri, float(c[0] + sg * x * 0.001))):
+        for L in blockin_eyes_reader._chain(blockin_eyes_reader._slice(Vh, tri, float(c[0] + sg * x * 0.001))):
             d = np.linalg.norm(L - c, axis=1)
             ok = (d > r + 0.0003) & ((L - c) @ up > -0.001) & ((L - c) @ fwd > 0) & ((L - c) @ up < 0.03)
             runs, cur = [], []
@@ -569,7 +569,7 @@ def _model_crease(ht, tri, c, r, fwd, s) -> dict:
         P = np.c_[(L[rr] - c) @ fwd, (L[rr] - c) @ up]
         if P[0, 1] > P[-1, 1]:
             P = P[::-1]
-        q = be._profile(P)
+        q = blockin_eyes_reader._profile(P)
         cr.append(float(q["height"]))
         show.append(float(q["show"]))
         dep.append(float(q["local"]))

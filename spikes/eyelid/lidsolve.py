@@ -148,7 +148,8 @@ def main():
     hc = kw.get("hc", "ruler")
     if hc == "ruler":
         from hifipushie import blockin_eyes as be
-        rv = be.ruler_evidence(src)
+        from hifipushie import blockin_eyes_evidence
+        rv = blockin_eyes_evidence.ruler_evidence(src)
         cr = np.asarray(rv["crease"], float)
         okc = np.isfinite(cr)
         inner, outer = rv["inner"][0], rv["outer"][0]

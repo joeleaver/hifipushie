@@ -10,6 +10,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from hifipushie import assets, base, faceatlas, faceslide, gnmloops, humanfit, humans  # noqa: E402
+from hifipushie import faceslide_fit
 
 
 def _ok():
@@ -85,13 +86,13 @@ def test_coupled_sliders_fold_nothing():
 
 
 def test_coupled_slider_recovered_from_a_render():
-    """lip_upper_roll in coupled mode, read back from a render's depth (faceslide.read_mouth) by faceslide.fit."""
+    """lip_upper_roll in coupled mode, read back from a render's depth (faceslide_fit.read_mouth) by faceslide_fit.fit."""
     if not _ok():
         return
     b = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")["base"]
     b["head"]["slider_mode"] = "coupled"
     bt = copy.deepcopy(b)
     bt["head"]["sliders"] = {"lip_upper_roll": 0.6}
-    m = faceslide.read_mouth(humanfit.state(bt))
-    r = faceslide.fit(b, {"upper_proj": (m["upper_proj"], 0.1)}, ["lip_upper_roll"], read=faceslide.read_mouth)
+    m = faceslide_fit.read_mouth(humanfit.state(bt))
+    r = faceslide_fit.fit(b, {"upper_proj": (m["upper_proj"], 0.1)}, ["lip_upper_roll"], read=faceslide_fit.read_mouth)
     assert abs(r["sliders"]["lip_upper_roll"] - 0.6) < 0.1, r

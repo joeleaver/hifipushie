@@ -404,14 +404,14 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
         return blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(name))
     if match == "pose":
         raise ValueError('lid_read: match="pose" is retired; match=True is the eye step')
-    from . import blockin_eyes as be
+    from . import blockin_eyes_solve
     lines = []
-    rep = be.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor, fold=fold)
+    rep = blockin_eyes_solve.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor, fold=fold)
     to = rep["entry"]["to"]
     path = save or str(store.HOME / "human_renders" / f"blockin_{to}_eyes.png")
     blockin_focus.focus(to, "eyes", path, before=name)
     e = rep["eyes"]
-    txt = (blockin_steps.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(to))
+    txt = (blockin_steps.step_text(rep) + "\n" + "\n".join(lines) + "\n" + blockin_eyes_solve.text(e) + "\n" + blockin_lid_measure.lid_text(blockin_lid_measure.lid_read(to))
            + f"\nfocus=eyes sheet (before | after, raking light): {path}")
     c0_, c1_ = bi.identity(store.load(name)), bi.identity(store.load(to))   # NOTHING FORCED is the solve's rule, not yet
     big = int((abs(c1_) > 3.0).sum())                                       # this step's: say it when the step breaks it

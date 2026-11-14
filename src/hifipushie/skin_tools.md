@@ -33,7 +33,7 @@ Then look_skin (fast cropped close-ups + measurements), or sync + look for the w
 Returns the tone's colours and the layers the description made; under a stack it names the patch's keys with no effect
 on the face and the ones that move only the body. With folds it gives their relief in mm (skin carries <= 1 mm), and it
 warns when the head isn't approved.
-stack_edit: a measured stack's layer strengths (skin_layers.edit): a name (blush, pale, tan, older, no_stubble, rested,
+stack_edit: a measured stack's layer strengths (skin_layers_stack.edit): a name (blush, pale, tan, older, no_stubble, rested,
 tired), a list of names, or {layer: strength}, 1 = as measured. Each call sets all of them: edits don't add up.
 
 ### `look_skin`
@@ -79,7 +79,7 @@ freckle DENSITY map that confines the freckle generator. Each map is a multiply 
 base (the lightest skin), filled where no picture saw: mirror image, then the layer's own neighbourhood, then its
 mean (a provenance image marks measured / mirrored / inferred). The reply gives the RECOMPOSITION's error against the
 atlas by zone and band: what the stack does not carry is the fine band (our generators' job) and the residual.
-Editing one cause = one layer's strength (skin_layers.edit: blush, pale, tan, older, no_stubble, rested, tired). The
+Editing one cause = one layer's strength (skin_layers_stack.edit: blush, pale, tan, older, no_stubble, rested, tired). The
 export bakes the stack like any paint. The photo's pixels do not ship; the decomposition does.
 EYE FORMS AND THE BAKE: the head's forms come first (base.head.lid_fold with its crease tail, head.shape
 eye_bag / cheek_flat), THEN the atlas is projected on that head (its de-lighting sees their shading, so the photo's crease

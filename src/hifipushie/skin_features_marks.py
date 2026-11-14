@@ -158,15 +158,15 @@ def freckle_options(o: dict) -> dict:
 
 
 def _freckle_map(spec, p, J, o, layer, T, ctx) -> None:
-    """Freckles on the face as a unique map (skin_marks.freckle_map: irregular macules, clustered, where the sun falls),
+    """Freckles on the face as a unique map (skin_marks_freckles.freckle_map: irregular macules, clustered, where the sun falls),
     on the body (shoulders, forearms, the chest's V) from the freckle swatch at two sizes mixed (vary: no repeat)."""
-    from . import skin_marks
+    from . import skin_marks_freckles
     t = p["tone"]
     dark = t["melanin"]
     show = ctx["show"]
     a = float(o["amount"])
     q = freckle_options(o)
-    path, place, _ = skin_marks.freckle_map(spec, p["part"], J, q)
+    path, place, _ = skin_marks_freckles.freckle_map(spec, p["part"], J, q)
     im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
     # ephelides: more melanin in the same skin (light tan to brown on fair skin; on dark skin hardly a change)
     # (one layer: each freckle's darkness is its value in the map, faint tan to brown)

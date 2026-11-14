@@ -15,6 +15,7 @@ import sys
 import numpy as np
 
 from hifipushie import blockin_eyes as be, eye_ruler as er, onemesh, store
+from hifipushie import blockin_eyes_reader
 from hifipushie import onemesh_head
 
 G = os.environ["G"] + "/out"
@@ -26,7 +27,7 @@ def section(ht, tri, c, r, fwd, x):
     up = np.array([0, 0, 1.0]) - fwd * fwd[2]
     up /= np.linalg.norm(up)
     best = None
-    for L in be._chain(be._slice(Vh, tri, float(c[0] + x * 0.001))):
+    for L in blockin_eyes_reader._chain(blockin_eyes_reader._slice(Vh, tri, float(c[0] + x * 0.001))):
         d = np.linalg.norm(L - c, axis=1)
         ok = (d > r - 0.0015) & ((L - c) @ up > -0.002) & ((L - c) @ fwd > 0) & ((L - c) @ up < 0.03)
         runs, cur = [], []
@@ -74,7 +75,7 @@ def measure(P, r_mm):
     Q = np.c_[np.interp(s, d, P[:, 0]), np.interp(s, d, P[:, 1])] - P[0]
     i1 = int(np.argmin(np.abs(Q[:, 1] - 1.0) + 1e3 * (s < 0.3)))
     out["margin"] = float(Q[:i1 + 1, 0].max())
-    q = be._profile(P / 1000)
+    q = blockin_eyes_reader._profile(P / 1000)
     h = float(q["height"]) if np.isfinite(q["height"]) else float("nan")
     out["crease_h"], out["crease_d"], out["show"] = h, float(q["local"]), float(q["show"])
     out["crease_narrow"] = narrow(P, 0.75)

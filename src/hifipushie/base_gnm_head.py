@@ -46,6 +46,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     slide = None
     if head.get("shape"):  # (faceslide.py) the older shape ops still work, but say what replaces them
         from . import faceslide
+        from . import faceslide_eyes, faceslide_fields, faceslide_mouth
         for msg in faceslide.deprecated(head["shape"]):
             if msg not in base._WARNED:
                 base._WARNED.add(msg)
@@ -54,10 +55,11 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
         # added like an identity component (everything after rides on them)
         from . import faceslide, gnmloops
-        slide = faceslide.delta(local_sliders, V)  # (V: the crease on this head's own fold)
+        from . import faceslide_eyes, faceslide_fields, faceslide_mouth
+        slide = faceslide_fields.delta(local_sliders, V)  # (V: the crease on this head's own fold)
         if slide is not None:
             V = V + slide[:gnmloops.N_RAW]
-            jd = faceslide.joint_delta(local_sliders)  # (eye_setback: the eye joints go back with the balls)
+            jd = faceslide_eyes.joint_delta(local_sliders)  # (eye_setback: the eye joints go back with the balls)
             if jd is not None:
                 J = J + jd
             par = gnmloops.plan()["parents"]
@@ -91,9 +93,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             V, Vg, En = V + dp, Vg + dp, En + dp
             a = np.array([gap(V + 1e-3 * g["expression_basis"][i]) - gap(V) for i in lower]) / 1e-3
     if head.get("lid_fold"):  # (projskin) the upper lid's fold in MESH space: GNM's own lid rings re-sectioned (platform,
-        # slit, roll), local by construction; a blink unfolds it (gnm_fold.mesh_delta)
-        from . import gnm_fold
-        V = V + gnm_fold.mesh_delta(V - En, En, head["lid_fold"])
+        # slit, roll), local by construction; a blink unfolds it (gnm_fold_mesh.mesh_delta)
+        from . import gnm_fold_mesh
+        V = V + gnm_fold_mesh.mesh_delta(V - En, En, head["lid_fold"])
     k_eye = float(head.get("eyes", 1.0))
     r_eye = [float(np.median(np.linalg.norm(V[m] - J[2 + i], axis=1))) for i, m in enumerate(g["eye"])]
     esc = np.ones(len(V))  # how much the eye scaling magnifies each vertex's neighbourhood (face shapes carry deltas)
@@ -119,16 +121,17 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         from . import onemesh_head, onemesh_native
         V, J = onemesh_head.hook(V, J, head, R, np.asarray(eye_mid, float), s, mid)
         r_eye = [r * float(head["bound"].get("head_size", 1.0)) for r in r_eye]  # (a style's bigger head: its eyeballs too)
-    if head.get("lip_seal") and head.get("mouth_gap") is None:  # (faceslide.seal_delta) the rest mouth closed: the
+    if head.get("lip_seal") and head.get("mouth_gap") is None:  # (faceslide_mouth.seal_delta) the rest mouth closed: the
         # lips in contact along their width, by this share (0..1). On the head as it is now (after the body's hook,
         # which carries GNM's template lips at their own gap) but WITHOUT its expression, so a jaw or mouth expression
         # (and the face shapes, GNM's deltas by index) still open it. An explicit mouth_gap wins (it parts them)
         from . import faceslide
+        from . import faceslide_eyes, faceslide_fields, faceslide_mouth
         E = np.tensordot(ce, g["expression_basis"], 1)
         if head.get("bound"):
             from . import onemesh_head, onemesh_native
             E = E * onemesh_native.head_fade(head)[:, None]
-        V = V + faceslide.seal_delta(V - E, float(np.clip(head["lip_seal"], 0.0, 1.0)))
+        V = V + faceslide_mouth.seal_delta(V - E, float(np.clip(head["lip_seal"], 0.0, 1.0)))
     elif head.get("lip_close") and head.get("mouth_gap") is None:  # GNM's own closing (lip_close_delta), where the
         # seal goes: after the body's hook (it carries the template lips at their own gap) and on the head WITHOUT
         # its expression, so a picture's smile or an open-mouth expression on top still opens it (a closing solved

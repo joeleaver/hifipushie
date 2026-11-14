@@ -65,14 +65,14 @@ def seam_steps(p: dict, img: np.ndarray, per_texel: int = 2) -> dict | None:
 
 
 def _slit_mask(lid_fold, n: int) -> np.ndarray:
-    """(n,) bool over GNM's vertices: the lid fold's slit and crease tail (gnm_fold.slit_ids). The fold re-sections the
+    """(n,) bool over GNM's vertices: the lid fold's slit and crease tail (gnm_fold_mesh.slit_ids). The fold re-sections the
     upper lid's rings into platform, slit and roll: the roll's lower edge undercuts the slit by design (the hood), so its
     edges fold against their neighbours (Garrett ~50 / Tess ~37 exterior folded edges after the wrap clamp WRAP_MAX,
     2026-10-18 r12, all on rings ring+1 / ring+2). Those are the crease, not a tear."""
     m = np.zeros(n, bool)
     if lid_fold:
-        from . import gnm_fold
-        ids = np.array([v for v in gnm_fold.slit_ids(lid_fold) if 0 <= v < n], int)   # (every key: the tapered ends
+        from . import gnm_fold_mesh
+        ids = np.array([v for v in gnm_fold_mesh.slit_ids(lid_fold) if 0 <= v < n], int)   # (every key: the tapered ends
         # carry weight 0 for the cavity paint but are the same rings, and fold the same)
         m[ids] = True
     return m
