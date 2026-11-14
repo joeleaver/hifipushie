@@ -209,8 +209,8 @@ def build_forms(name: str, how: dict, view: str | None = None, save: str | None 
 @mcp.tool(structured_output=False)
 def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176,
                 save: str | None = None):
-    """See the model beside its reference, view by view, and what to change: for each flat reference view (front,
-    side, back; read_reference first) one picture: the reference | the model with the reference's outline and inside
+    """Compare the model with its reference pictures, view by view, and see what to change: the model beside each
+    flat reference view (front, side, back; read_reference first), one picture a view: the reference | the model with the reference's outline and inside
     lines in red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists
     those places biggest first, each with the grab call that would move that outline to the reference's, and the
     reference's inside lines the model has no line near (an outline can match round the wrong figure). Seconds, no
