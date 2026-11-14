@@ -27,7 +27,7 @@ def _grow(monkeypatch, groom):
 def test_beside_loose_or_tied_hair_the_solid_keys_are_not_read_and_the_answer_says_so(monkeypatch):
     written = {"loose": {"length": 0.3}, "volume": {"top": 0.05}, "length": {"top": 0.2}, "tiers": {"big": {"width": 0.06}}}
     locks, reads = _grow(monkeypatch, written)
-    assert list(locks) == ["l0"] and "loose" in reads and not reads & set(hair_spec.SOLID_KEYS)
+    assert list(locks) == ["l0"] and "loose" in reads and not reads & set(hair.SOLID_KEYS)
     lines = hair_spec.unread(written, reads)
     assert [ln.split(" ")[0] for ln in lines] == ["groom.tiers", "groom.length", "groom.volume"]  # (flow was not written)
     assert all("NOT READ" in ln for ln in lines) and "use loose.length" in lines[1] and "loose.lift and loose.body" in lines[2]
@@ -41,4 +41,4 @@ def test_beside_loose_or_tied_hair_the_solid_keys_are_not_read_and_the_answer_sa
 def test_a_key_the_grow_read_is_never_reported():
     assert hair_spec.unread({"volume": {}, "length": {}, "flow": {}, "tiers": {}}, {"volume", "length", "flow", "tiers"}) == []
     assert hair_spec.unread({"parting": {}, "seed": 3}, set()) == []  # (only the solid locks' keys are this check's)
-    assert set(hair_spec.SOLID_KEYS) <= set(hair.GROOM)
+    assert set(hair.SOLID_KEYS) <= set(hair.GROOM)
