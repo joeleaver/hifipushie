@@ -1,7 +1,7 @@
 # STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2j: LINES ACROSS ARE REAL CHAINS)
 
 Step 5 lays out the CHAINS (boundary + fold rows + lines across), lengths given, only bends chosen, nothing held.
-Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2i -> N2j (this; stopped at the call budget, jacket unproven).
+Step 6 fills surfaces between them. Runs N1 -> ... -> N2j -> D1 (diagnosis: the pattern is consistent, contact makes the stretch).
 
 ## Current code
 - `chain_lines.lines` (N2j, new): per piece a LATTICE along / across the grain every SPACING 30 mm; each lattice line cut
@@ -23,24 +23,32 @@ Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2i -> N2j (this; st
 - stiff strip pulled onto a curve: lines across straight (chord > 0.99 of flat).
 - tests/test_chain_*.py + test_codified: 156 passed. The old full-mesh stiff-strip test (W_SHORT's) removed.
 
-## Jacket (n2j/run1, INCOMPLETE: killed at the budget after stage 2 of 3 + sewn)
-- Points 5,920 (4,588 nodes; N2i 4,326 / 2,994). Setup 62 s. Load ~80-98.
-- Unsewn stages are WORSE than N2i: stage 2 links over 2 % 300 of 7,755, max 36 % (N2i 0, max 0.02 %); seams still
-  98 mm apart at the sleeve caps (N2i 38-40 mm). Pieces can no longer squash, and that is how N2i's seams met: the
-  continuation now asks the hard terms for what they can't give; the final step leaves links off. Not diagnosed: which
-  kind of link is off (script /tmp/.../scratchpad/n2j/lk.py not run) and the sewn solve's numbers.
-- N2i's baseline measured (scratchpad meas.py on n2i/run1): face edges > 15 % short 5-45 % per piece; outline wave
-  (50 mm window, minus the flat outline's) 0.9-1.0 % back, 2.7-2.9 % fronts, 4.4-6 % sleeves, 7.3-8.2 % collars;
-  sleeve_top.L fold row wave 22 %.
+## D1 diagnosis (2026-11-14, spikes/d1_where.py; out /mnt/data/hifipushie/d1/out): WHERE the stretch comes from
+N2j's sewn network solved straight from N2j's panel start (n2j/run1 cnet.pkl, X_start.npy), terms added one at a time.
+| run | links > 2 % of 6,437 | worst | s |
+|---|---|---|---|
+| solver check: 1 piece / 2 sewn pieces, 5 mm noise | 0 / 0 | 0.01 % | 15 / 23 |
+| E1 pattern alone (no body, tapes, fold targets, plies) | 0 | 1.65 % | 661 |
+| E1 + fold targets (collar fall -83 / -87 of -90 deg) | 0 | 1.89 % | 630 |
+| E4 E1 + plies (canvas on fronts, mean 2.2 mm) | 0 | 0.63 % | 1225 |
+| E5 E4 + body contact | 354 (edges 222, across 80, along 52) | 44 % | 650 |
+| N2j full (+ tapes, folds, ties; continuation) | 1,224 | 82 % | 1407 |
+E2 / E3 not run: E1 has no stretch to remove and the collar group folds clean. Verdict: NOT the pattern, NOT the
+declarations, NOT the solver's links: CONTACT makes the stretch (tapes add more). Evidence: L / R unequal on a mirrored
+garment (sleeve_top.L 61 vs .R 41, back.R 59 vs .L 39), 243 of 400 stretched-link ends off the body, 13 points still
+21 mm inside; the start has 1,749 points up to 51 mm inside the body and the solve pushes each point out on its own.
+Pattern's one real contradiction: EASE, 130 of 754 seam links differ > 2 % between their sides (caps 5 %, elbow
+locally 29 %, collar to front 18 %), hidden by the merged link at the mean. Sew pairs are in order on every seam.
+E6 straight from the start (no continuation) not run: killed at the budget; the N2j row is the full-terms reference.
 
 ## Open faults (ranked)
-1. The jacket with exact lines: seams don't close in the unsewn stages (sleeve caps 98 mm) and links stay off.
-   Read which links (kind, piece) are off at X_stage2; try the sewn solve straight from the start, or a looser SPACING
-   on caps; the cap ease may simply need the sleeve to bulge (a cone panel at the start).
-2. Collar fall (undercollar has no roll row: step 4), sleeves thin, facing crossing CF (from N2i, unchanged).
+1. Contact: a start outside the body (no point inside) and contact that keeps a piece whole (not per-point push-out);
+   then check E5 again. Is the pattern big enough for the body (girths + GAP vs the cut) is unmeasured: do it first.
+2. Ease as a declaration: a seam's longer side must give up its extra length somewhere (gathered / shrunk), not hidden.
+3. Collar fall, sleeves thin, facing crossing CF (from N2i, unchanged).
 
 Run: `uv run pytest -q tests/test_chain_lines.py tests/test_chain_solve.py tests/test_chain_lay.py tests/test_chain_panels.py`.
-Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457, C462.
+Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457, C462, C465.
 
-NEXT: N2j-b: finish the jacket proof with exact lines: diagnose why the unsewn stages leave links 36 % off (lk.py on
-n2j/run1/X_stage2.npy), get the sewn solve to TOL, then measure squash + wave (meas.py) vs N2i and render.
+NEXT: D2: measure the pattern's girths against the body's (+ GAP); then a start with no point inside the body and
+rerun E5 (d1_where.py E5): links must stay under 2 % with contact before tapes come back.
