@@ -1,5 +1,5 @@
 """N2b / N2c renders: the chains ALONE (links as tubes, coloured by piece) on the body, 4 sides, beside the reference.
-  capped uv run python spikes/n2c_render.py <run dir> <loaded.pkl> <reference.png> [X.npy] [quick] [thin]
+  capped uv run python spikes/n2c_render.py <run dir> <loaded.pkl> <reference.png> [X.npy] [quick] [thin] [lines]
 quick: a PIL line drawing (no GPU) for a fast look; else Blender tubes via cloth.render. thin: on the thin frame the
 garment was assembled round (<run>/thin_V.npy) instead of the body."""
 import pickle
@@ -24,8 +24,9 @@ base = sorted({n[:-2] if n[-2:] in (".L", ".R") else n for n in c.names})
 col = {n: PAL[base.index(n[:-2] if n[-2:] in (".L", ".R") else n) % len(PAL)] for n in c.names}
 segs = {}
 fin = ~np.isnan(X).any(1)  # (a ply bound afterwards has no start: not drawn)
-for (a, b), p in zip(c.chain_v, c.chain_piece):
-    if fin[a] and fin[b]:
+kinds = np.asarray(c.chain_kind)
+for (a, b), p, k in zip(c.chain_v, c.chain_piece, kinds):  # (N2j: the lines across drawn only with "lines")
+    if fin[a] and fin[b] and (k < 2 or "lines" in sys.argv[5:]):
         segs.setdefault(c.names[p], []).append((a, b))
 VIEWS = [("front", [0, -1, 0.05]), ("left", [1, 0, 0.05]), ("back", [0, 1, 0.05]), ("right", [-1, 0, 0.05])]
 R = Image.open(ref).convert("RGB")
