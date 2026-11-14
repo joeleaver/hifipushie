@@ -2,12 +2,12 @@
 placement (each piece sewn onto what was placed, then bent as rigidly as possible: links 300-2,900 % off their cut before
 any bend) is gone: the garment is assembled from rolled panels (chain_panels, chain_assemble), no point ever free.
 
-- node_links(cnet): every chain link over nodes at its cut, then the lines across (exact where interfaced, else at most).
+- node_links(cnet): every chain link over nodes at its cut, then the lines across (each at most its flat length).
 - measures(cnet, X, plan, contact): links % off cut per piece, loops that don't close (named, mm), each side of a seam
   against its own cut, fold turns, points inside.
-- fold_rows / tie_pairs: chain_solve's folds (step 2's turn per planned fold over the draft's rows, the way the draft's
-  sign says in the flat's winding) and ties (closures, a LAYER apart). _draft_fold / _uv_wind: the draft's fold entry and
-  a piece's flat winding.
+- outside / fold_way: which side of F is each piece's outside, and THE one rule for which way a fold turns (N2i).
+- fold_rows / tie_pairs: chain_solve's folds (step 2's turn per planned fold over the draft's rows, the way fold_way
+  says) and ties (closures, a LAYER apart). _draft_fold / _uv_wind: the draft's fold entry and a piece's flat winding.
 Nothing here knows a garment, a piece's role or a wear state.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ def _draft_fold(net, f, bid):
 
 def node_links(cnet):
     """(i, j, L, exact) over nodes: every chain link at its cut (a seam's two sides: one link at their mean), then the
-    lines across at their flat length (exact where interfaced at both ends, else at most)."""
+    lines across, each AT MOST its flat length (exact False)."""
     r = cnet.root
     a, b = np.sort(r[cnet.chain_v], axis=1).T
     k = a != b
@@ -44,16 +44,17 @@ def node_links(cnet):
     L = np.bincount(inv.ravel(), cnet.chain_L[k]) / np.bincount(inv.ravel())
     e = np.sort(r[cnet.edges], axis=1)
     m = e[:, 0] != e[:, 1]
-    ex = (cnet.stiff[cnet.edges[:, 0]] > 0) & (cnet.stiff[cnet.edges[:, 1]] > 0)
     return (np.r_[key[:, 0], e[m, 0]], np.r_[key[:, 1], e[m, 1]], np.r_[L, cnet.flat[m]],
-            np.r_[np.ones(len(key), bool), ex[m]])
+            np.r_[np.ones(len(key), bool), np.zeros(int(m.sum()), bool)])
 
 
-def _fold_turns(cnet, X, plan) -> dict:
+def _fold_turns(cnet, X, plan, out=None) -> dict:
     """Measured turn (deg) of each planned fold: per row the median angle between the faces either side of its links,
     SUMMED over the draft's rows (N2e: a fold split over two rows turns half at each; the per-row median read against
-    the whole fold's turn read it at half)."""
-    out = {}
+    the whole fold's turn read it at half). With out (outside() at the start): which WAY it turned ("outward": the
+    plies closed on the piece's outside) against the way the draft asks (fold_way)."""
+    from .chain_solve_terms import fold_quads, turn_of
+    res = {}
     for bid, f in sorted((plan.get("folds") or {}).items()):
         fd = _draft_fold(cnet, f, bid)
         rows = []
@@ -71,14 +72,24 @@ def _fold_turns(cnet, X, plan) -> dict:
                 rows.append(float(np.median(got)))
         if rows:
             tot = float(np.sum(rows))
-            out[bid] = {"planned": float(f["turn_deg"]), "median": round(tot, 1), "rows": [round(r, 1) for r in rows],
+            res[bid] = {"planned": float(f["turn_deg"]), "median": round(tot, 1), "rows": [round(r, 1) for r in rows],
                         "off": round(abs(tot - float(f["turn_deg"])), 1)}
-    return out
+            if out is not None and f["on"] in out:
+                o = out[f["on"]]
+                fr = [{"row": np.asarray(r, np.int64), "turn_deg": 0.0, "name": bid} for r in fd.get("rows") or []]
+                Q = np.concatenate([q["quads"] for q in fold_quads(cnet, fr)])
+                t = turn_of(X, *(Q[:, i].astype(np.int64) for i in range(4)), Q[:, 4])[0]
+                say = lambda w: "outward" if w > 0 else "inward"
+                res[bid]["way"] = say(float(np.median(t)) * o)
+                res[bid]["plan_way"] = say(fold_way(fd, o) * o)
+    return res
 
 
-def measures(cnet, X, plan=None, contact=None) -> dict:
+def measures(cnet, X, plan=None, contact=None, out=None) -> dict:
     """Links % off cut per piece (per point: each side of a seam at its own cut), the loops that don't close (links past
-    CLOSE_TOL, by piece pair, gap mm), seam gaps (0 by construction: a check), fold turns, points inside."""
+    CLOSE_TOL, by piece pair, gap mm), seam gaps (0 by construction: a check), fold turns (and ways, with out), points
+    inside."""
+    outs = out
     a, b = cnet.chain_v[:, 0], cnet.chain_v[:, 1]
     ln = np.linalg.norm(X[b] - X[a], axis=1)
     e = np.abs(ln / np.maximum(cnet.chain_L, 1e-12) - 1) * 100
@@ -115,7 +126,7 @@ def measures(cnet, X, plan=None, contact=None) -> dict:
            "loops_open": len(loops), "seam_gap_mm": round(gap, 3),
            "sides_differ_mm": sides}
     if plan:
-        out["folds"] = _fold_turns(cnet, X, plan)
+        out["folds"] = _fold_turns(cnet, X, plan, outs)
     if contact is not None:
         sd, _ = contact.query(X)
         out["inside"] = int((sd < 0).sum())
@@ -123,28 +134,43 @@ def measures(cnet, X, plan=None, contact=None) -> dict:
     return out
 
 
-def _out_sign(net, piece, X, contact) -> float:
-    """+1 when the piece's F normals point away from the body at the start (area weighted), else -1."""
-    v = net.verts(piece)
-    F = net.F[np.isin(net.F, v).all(1)]
-    c = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
-    _, nb = getattr(contact, "contact", contact).query(X[F].mean(1))
-    return 1.0 if float((c * nb).sum()) >= 0 else -1.0
+def outside(net, X, contact, pieces=None) -> dict:
+    """{piece: +1 when its F normals point away from the body at X (area weighted), else -1}: which side of F is the
+    piece's OUTSIDE (the draft's own word: "the face placed away from the body"; one flat cuts a pair, so a flat may
+    show either face). Read at the START, before any fold turns (a fold turned 180 makes half a piece face back)."""
+    out = {}
+    for piece in pieces if pieces is not None else net.names:
+        v = net.verts(piece)
+        F = net.F[np.isin(net.F, v).all(1)]
+        c = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+        _, nb = getattr(contact, "contact", contact).query(X[F].mean(1))
+        out[piece] = 1.0 if float((c * nb).sum()) >= 0 else -1.0
+    return out
 
 
-def fold_rows(net, plan, sign) -> list:
-    """chain_solve folds: step 2's turn per planned fold, split over the draft's rows. Which way: the draft's fold sign
-    read in the flat's own winding (sign x uv winding: +1 = onto the side the flat's +z faces), then into F's normals
-    on the body by the piece's out sign."""
-    out = []
+def fold_way(fd: dict, out: float) -> float:
+    """THE fold-direction rule (N2i, one function for the solve's folds, the panels' hinges and the reports): +1 when
+    the plies close on the side F's normals face, -1 the other side. The draft's turn says over onto the OUTSIDE
+    (+, angle below 180: a lapel, a fall, a cuff turned back) or under onto the inside (-, a hem, a facing); `out`
+    (outside()) says which side of F is the outside. The draft's "sign" (the flap's side of its line) never enters:
+    it picks the side that turns, not the way (N2h: x sign turned one of a mirrored pair of lapels in, onto the body)."""
+    return (1.0 if float(fd.get("turn", 1.0)) >= 0 else -1.0) * (1.0 if out >= 0 else -1.0)
+
+
+def fold_rows(net, plan, out) -> list:
+    """chain_solve folds: step 2's turn per planned fold, split over the draft's rows, the way fold_way says (out:
+    outside() at the start)."""
+    res = []
     for bid, f in sorted((plan.get("folds") or {}).items()):
         fd = _draft_fold(net, f, bid)
         rows = [np.asarray(r, np.int64) for r in fd.get("rows") or []]
-        way = float(fd.get("sign", 1.0)) * _uv_wind(net, f["on"]) * sign.get(f["on"], 1.0)
+        if f["on"] not in out:
+            raise ChainRefused(f"fold {bid}: no outside read for {f['on']}: place it first (chain_lay.outside)")
+        way = fold_way(fd, out[f["on"]])
         for k, r in enumerate(rows):
-            out.append({"row": r, "turn_deg": float(f["turn_deg"]) / len(rows), "toward": way, "weight": 1.0,
+            res.append({"row": r, "turn_deg": float(f["turn_deg"]) / len(rows), "toward": way, "weight": 1.0,
                         "name": f"{bid}#{k}"})
-    return out
+    return res
 
 
 def tie_pairs(net, plan) -> list:

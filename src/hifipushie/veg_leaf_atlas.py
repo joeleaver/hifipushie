@@ -47,7 +47,7 @@ def _disk_path(key: str):
     from pathlib import Path
     root = Path(os.environ.get("HIFIPUSHIE_VEG_CACHE") or Path.home() / ".cache" / "hifipushie" / "veg_atlas")
     from . import moved
-    here = Path(__file__).parent  # (C457: veg_leaf.py with every module it was split into; this file alone left the
+    here = Path(__file__).parent  # (C459: veg_leaf.py with every module it was split into; this file alone left the
     # cache blind to a change in the twig or the card it rasterises)
     code = hashlib.sha1(b"".join((here / f).read_bytes() for f in moved.files("veg_leaf"))).hexdigest()[:10]
     return root / f"{hashlib.sha1((code + key).encode()).hexdigest()[:24]}.npz"

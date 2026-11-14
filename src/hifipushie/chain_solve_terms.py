@@ -3,10 +3,10 @@ lists; and the residual report. Nothing here moves a point; chain_solve.py is th
 
 - NODES: one per sewn group (Network.root); a vertex's position is its node's.
 - LINKS: Network's links (every boundary edge and fold row at its cut; a seam's two sides one link).
-- EDGES: every other mesh edge of the pattern: exact where interfaced at both ends (EXACT_INTERFACED), else at most
-  its flat length. N2h: on the chains-only network the lines across are long Delaunay rulings, and exact ones made each
-  interfaced piece a flat board that could not wrap the neck (the jacket's collar: links stuck 27-43 % off; at most,
-  0.3 %), so the jacket driver sets EXACT_INTERFACED False; on a fine grid exact edges still bend along their lines.
+- EDGES: every other mesh edge of the pattern: AT MOST its flat length, interfaced or not (N2i, one behaviour: on the
+  chains-only network the lines across are long Delaunay rulings, and exact ones made each interfaced piece a flat
+  board that could not wrap the neck: the jacket's collar links stuck 27-43 % off; at most, 0.3 %). A stiff piece keeps
+  its shape by its BENDING stiffness (cloth_bend x the piece's bend), never by exact lines across.
 - BEND STENCILS: per vertex, the affine weights of its flat neighbours that reproduce its flat position (sum w = 1,
   sum w uv_j = uv_i, least norm). X_i - sum w_j X_j is zero for ANY rigid (indeed affine) placement of a flat
   neighbourhood and grows with the bend: a linear, rotation-free bending row (so the solve's matrix is constant).
@@ -20,8 +20,6 @@ import numpy as np
 import scipy.sparse as sp
 
 from . import chain_net as cn
-
-EXACT_INTERFACED = True  # (EDGES above; a knob: the chains-only proof sets it False)
 
 
 def nodes_of(net: cn.Network):
@@ -38,20 +36,19 @@ def links(net, nid):
 
 
 def edges(net, nid, li, lj):
-    """(i, j, L, exact) for every mesh edge that is not a link (node ids, deduplicated)."""
+    """(i, j, L) for every mesh edge that is not a link (node ids, deduplicated): each AT MOST its flat length."""
     e = net.edges
     a, b = nid[e[:, 0]], nid[e[:, 1]]
     ok = a != b
     a, b, L = a[ok], b[ok], net.flat[ok]
-    ex = (net.stiff[e[ok, 0]] > 0.5) & (net.stiff[e[ok, 1]] > 0.5) & EXACT_INTERFACED
     lo, hi = np.minimum(a, b), np.maximum(a, b)
     nn = int(max(nid.max() + 1, 1))
     key = lo * nn + hi
     lkey = np.minimum(li, lj) * nn + np.maximum(li, lj)
     keep = ~np.isin(key, lkey)
-    key, L, ex = key[keep], L[keep], ex[keep]
+    key, L = key[keep], L[keep]
     uk, first = np.unique(key, return_index=True)
-    return uk // nn, uk % nn, L[first], ex[first]
+    return uk // nn, uk % nn, L[first]
 
 
 def bend_rows(net, nid, nn, weight, skip=()):
@@ -172,9 +169,9 @@ def report(net, X, rep: dict, cts, tol_pct: float) -> dict:
     out["links"] = {"n": len(pct), "worst_pct": round(float(pct.max()), 4) if len(pct) else 0.0,
                     "worst_piece": net.names[int(lp[k])] if len(pct) else None,
                     "over_tol": int((pct > tol_pct).sum()), "by_piece": {a: round(b, 4) for a, b in by.items()}}
-    ei, ej, eL, ex = rep["edges"]
+    ei, ej, eL = rep["edges"]
     le = np.linalg.norm(Xn[ej] - Xn[ei], axis=1) / np.maximum(eL, 1e-12) - 1
-    over = np.where(ex, np.abs(le), np.maximum(le, 0)) * 100
+    over = np.maximum(le, 0) * 100
     out["edges"] = {"n": len(le), "worst_over_pct": round(float(over.max()), 4) if len(le) else 0.0,
                     "over_tol": int((over > tol_pct).sum())}
     ties = rep["ties"]

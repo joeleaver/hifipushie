@@ -26,7 +26,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7. 8 (C427) rig, retopo, hair_cards, hair_flow, veg_style, asset,
     lods, paint, terrain_style, humanfit, hair_read, images (19.5k) -> 71; asset.export stays (the export scripts call it).
   9 (landed 2026-11-12; C428) skin, skin_features, terrain_cliffs, onemesh, scene, veg_export, terrain_stream,
-    hair_strands, veg_tools, assemble (11.4k) -> 43 modules. 10 (2026-11-14; C447) veg_leaf, skin_layers, faceslide, judge, blockin_eyes, terrain_caves, skin_marks, gnm_fold, terrain_swatch, terrain_bake, gnm_controls, eye_ruler (10.7k) -> 54. 11 (C457) hair_loose, terrain_ground, terrain_sea, skin_folds (3.4k) -> 14.
+    hair_strands, veg_tools, assemble (11.4k) -> 43 modules. 10 (2026-11-14; C447) veg_leaf, skin_layers, faceslide, judge, blockin_eyes, terrain_caves, skin_marks, gnm_fold, terrain_swatch, terrain_bake, gnm_controls, eye_ruler (10.7k) -> 54. 11 (C459) hair_loose, terrain_ground, terrain_sea, skin_folds (3.4k) -> 14.
 - CONSTANTS STAY (C422): scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET, assembly_garrett/s15/
   sh4t.py, haircards/t47/r47.sh). A family's base holds every constant and alone runs code at import (rule test).
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
@@ -57,4 +57,4 @@ repoint, the proof, same_comments and same_order (a rehome plan needs MID_IMPORT
 faceext 376 lines, terrain_seams 201 of 308 (its measure side), flipfit 137, faceatlas 105, gnm_controls 90. NOT unreachable: blender_cards, blender_lashes (blender_scene imports both inside functions).
 
 Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: reports in /mnt/data/hifipushie/review_20261112/; its fixes: docs/state/mcp_rules.md.
-NEXT: the long files still whole outside clothes, Blender scripts and the giant functions are resources (908), sdf (904) and spec (781): sdf and spec are the core (check every code key first); then the giant functions. A split-off module reads no bare __doc__ and hashes no file of its own alone (C457, tests/test_moved.py). The clothes files wait for the chain-build cut.
+NEXT: the long files still whole outside clothes, Blender scripts and the giant functions are resources (908), sdf (904) and spec (781): sdf and spec are the core (check every code key first); then the giant functions. A split-off module reads no bare __doc__ and hashes no file of its own alone (C459, tests/test_moved.py). The clothes files wait for the chain-build cut.

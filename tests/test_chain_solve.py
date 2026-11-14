@@ -88,7 +88,10 @@ def test_compressed_strip_relaxes_without_crossing():
     assert np.all(n @ n.mean(0) > 0)  # no face turned over
 
 
-def test_stiff_strip_on_a_curve_keeps_its_flat_width():
+def test_stiff_strip_on_a_curve_keeps_its_shape_by_bending():
+    """N2i: lines across are AT MOST their flat length, interfaced or not (exact ones made a chains-only collar a board);
+    a stiff strip keeps its shape by BENDING stiffness: its lines across stay straight (no crease across the width),
+    none longer than flat, its chains at their cut, the pulled edge on the curve."""
     nx, ny, L, w, R = 41, 6, 0.4, 0.05, 0.1
     uv, F = grid(nx, ny, L, w)
     net = Network(pattern([("collar", uv, F)])[0], stiff=np.ones(len(uv)))
@@ -103,13 +106,15 @@ def test_stiff_strip_on_a_curve_keeps_its_flat_width():
     assert rep["pulls"]["neck edge"]["max_mm"] < 5.0 and rep["pulls"]["neck edge"]["mean_mm"] < 2.0
     G = X.reshape(nx, ny, 3)
     dev = []
-    for col in G:  # each line across the width stays straight and full width
+    wid = []
+    for col in G:  # each line across the width stays straight, never longer than flat
         a, b = col[0], col[-1]
         t = np.clip(((col - a) @ (b - a)) / ((b - a) @ (b - a)), 0, 1)
         dev.append(np.linalg.norm(col - (a + t[:, None] * (b - a)), axis=1).max())
-        assert abs(np.linalg.norm(b - a) - w) < 0.02 * w
-    print("width line worst off straight mm", max(dev) * 1e3)
-    assert max(dev) < 1.5e-3 and np.median(dev) < 1e-4  # (the free corners curl ~1 mm; the rest is straight)
+        wid.append(np.linalg.norm(b - a))
+    print("width line worst off straight mm", max(dev) * 1e3, "width min / max mm", min(wid) * 1e3, max(wid) * 1e3)
+    assert max(wid) < w * 1.002 and min(wid) > 0.99 * w  # (no crumple: N2i's at-most lines alone, 12 of 50 mm)
+    assert max(dev) < 1.5e-3 and np.median(dev) < 5e-4  # (a bow under 0.5 mm across 50 mm; the free corners curl)
 
 
 def test_tube_closes_round_a_cylinder_without_entering():
