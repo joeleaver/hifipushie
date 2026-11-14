@@ -52,20 +52,24 @@ IN_FRONT = (0.005, 0.015)  # m inside the AGREED outline: a front / back skin's 
 #                            skin spread out to it as an overhanging shell)
 SIDE_ROUND = 0.015  # m: the side skin meets the front and back layers over this much (two pictures' versions of
 #                     one eye surround never end at the same place: a sharp meeting leaves a lip)
+NEVER, ALWAYS = (1e3, 1e3 + 1.0), (-1e3, -1e3 + 1.0)   # (as IN_FRONT / IN_SIDE: a layer that is nobody's own, a side
+#                                                        skin that rules everywhere)
 AWAY = 0.06         # m: how far the side skin stands away where the front or the back skin rules
 SLACK = 0.012       # m: how far the side outline stands back where a skin rules
 
 
-def put(frame: dict, maps: dict, side: dict | None = None) -> str:
+def put(frame: dict, maps: dict, side: dict | None = None, agreed: bool = False) -> str:
     """Store a skin pair; returns its name (a hash of its content). side = {"foot", "o", "U", "V", "px"}: the side
-    view's outline as a signed distance over that view's plane."""
+    view's outline as a signed distance over that view's plane. agreed: the skins were made to agree where they
+    meet (twoskin_agree.py): the solid is plainly what all of them leave, and no skin stands away for another."""
     arrs = {k: np.asarray(maps[k], np.float32) for k in MAPS}
     if len({a.shape for a in arrs.values()}) != 1 or arrs["front"].ndim != 2:
         raise ValueError(f"a skin's maps {MAPS} are 2-D arrays of one shape")
     for k in ("o", "U", "V", "F"):
         arrs[k] = np.asarray(frame[k], np.float64)
     arrs["px"] = np.float64(frame["px"])
-    arrs["rule"] = np.array([NEAR[0], NEAR[1], AWAY, SLACK, ROUND, *IN_FRONT, *IN_SIDE, *FRINGE, SIDE_ROUND], np.float64)   # a solid is its data: the measures
+    arrs["rule"] = np.array([NEAR[0], NEAR[1], AWAY, SLACK, ROUND, *(NEVER if agreed else IN_FRONT),
+                             *(ALWAYS if agreed else IN_SIDE), *FRINGE, SIDE_ROUND], np.float64)   # a solid is its data: the measures
     for k in ("wall", "foot_b", "front_s", "back_s"):                               # it was made with travel with it
         if maps.get(k) is not None:
             arrs[k] = np.asarray(maps[k], np.float32)

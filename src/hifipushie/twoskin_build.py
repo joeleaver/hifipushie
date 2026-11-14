@@ -31,7 +31,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from . import featuremap, featuresee, relief_press as rp, surfaceread, twoskin
+from . import featuremap, featuresee, relief_press as rp, surfaceread, twoskin, twoskin_agree
 from .spec import compile_prims
 
 GRID = 0.00045     # m: the solid's grid (a reference picture rarely holds more; the reads are blown up to it)
@@ -147,6 +147,9 @@ def _read(name: str, fm: dict, group, main: str, view: str, seat=()) -> dict:
             into |= grid(featuremap.mask(name, up, view), soft=False)
         seen_up.add(up)
         up = feats[up].get("on")
+    for fo, c in feats.items():                         # and the forms on those (a forelock at a horn's root)
+        if c.get("kind") == "form" and view in c["marks"] and featuresee._mass_of(fm, fo) in seen_up:
+            into |= grid(featuremap.mask(name, fo, view), soft=False)
     seat_m = np.zeros(full.shape, bool)
     for f in seats:
         seat_m |= grid(featuremap.mask(name, f, view))
@@ -310,8 +313,16 @@ def deepen(T: np.ndarray, full: np.ndarray, px: float, fine: float = FINE, detai
 
 
 def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=(), front: str | None = None,
-          back: str | None = None, detail: float = DETAIL, hold: str = "rows", side: str | None = None) -> tuple[dict, dict]:
-    """The spec with the group built as one two-skin solid in place of its block-in clay, and what was done."""
+          back: str | None = None, detail: float = DETAIL, hold: str = "rows", side: str | None = None,
+          hem: float | None = None, root: float = 0.0) -> tuple[dict, dict]:
+    """The spec with the group built as one two-skin solid in place of its block-in clay, and what was done.
+    front / back: the views the two skins are read from (default the front and the back picture). A part whose
+    broad faces are seen from the side (a horn curling back) is built on the side picture's plane: front = the side
+    view, back = "mirror" (its far face is no picture's: the near face's mirror image), hold = "pins".
+    hem (hold "pins"): how wide a band along the outline the two skins are held together in: a flap has a hem (the
+    default, 4 mm), a round part only a seam (1 mm: a hem on a horn is a flange round a cushion).
+    root: how far the solid runs on into what the group stands on (a horn into the head): its outline is carried
+    that far into the other's, the skins as they are at the edge."""
     group = list(group)
     main = main or group[0]
     views = {r.get("kind"): v for v, r in fm["views"].items()}
@@ -319,15 +330,33 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     if not front or not back:
         raise ValueError("a two-skin solid needs a front and a back view of the reference")
     f = _read(name, fm, group, main, front, seat)
-    braw = _read(name, fm, group, main, back, seat)
-    b = _onto(braw, f)
+    mirror = back == "mirror"
+    if mirror:  # no picture shows the far face (the inner face of a horn, seen from the side): it is taken to be
+        braw = f    # the near face's mirror image
+        b = {"normals": f["normals"], "seen": f["seen"], "seats": f["seats"], "full": f["full"], "seen_all": f["seen"]}
+    else:
+        braw = _read(name, fm, group, main, back, seat)
+        b = _onto(braw, f)
+    profile = lambda view, *more: None if view == "mirror" else rp.profile(name, fm, main, view, *more)
     full, px, za = f["full"], f["px"], f["za"]
     H, W = full.shape
     Ff, U, V = f["F"], f["U"], np.array([0.0, 0.0, -1.0])
     o = U * f["u0"] + np.array([0.0, 0.0, f["z0"]])
     zrow = f["z0"] - (np.arange(H) + 0.5) * px * za
-    # the block-in clay along the grid's rays, from the front and from the back: where each part sits in depth
-    prims = compile_prims(spec)
+    # the group's OWN block-in clay along the grid's rays, from the front and from the back: where it sits in depth
+    # and how thick it is. (All the clay will not do: seen from the far side, the first clay a ray through a left
+    # horn meets is the right horn, and the horn came out as one slab across the head.)
+    gone = {e for g in group for e in (fm["features"][g].get("built") or [])}
+    gone |= {featuremap.twin(e) for e in list(gone) if featuremap.twin(e)}
+    own_clay = {**spec, "symmetry": bool(spec.get("symmetry", True)) and main[-2:] not in (".L", ".R"),
+                "bones": {k: v for k, v in spec.get("bones", {}).items() if k in gone},
+                "blobs": {k: v for k, v in spec.get("blobs", {}).items() if k in gone}}
+    try:
+        prims = compile_prims(own_clay)
+        if not any(p.op == "add" for p in prims):
+            raise ValueError("no clay of its own")
+    except ValueError:                  # (SpecError is one): no block-in of its own to go by
+        prims = compile_prims(spec)
     adds = [p for p in prims if p.op == "add"]
     ys = sorted(float(c @ Ff) for c in (np.min([p.lo for p in adds], 0), np.max([p.hi for p in adds], 0)))
     st = max(1, int(round(0.0025 / px)))
@@ -346,7 +375,8 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     # hides it: the surface still ends there), both skins are held to ONE depth: the clay's mid-depth, carried
     # along the outline where no clay stood and eased along it. Where the group runs on into what it stands on
     # (a head into its neck), the outline is left open.
-    rim = full & (ndimage.distance_transform_edt(full) * px < rp.RIM) \
+    hem = hem or rp.RIM
+    rim = full & (ndimage.distance_transform_edt(full) * px < hem) \
         & ~ndimage.binary_dilation(f["into"], iterations=max(2, round(2 * rp.RIM / px)))
     edge = np.where(rim & hit, mid, np.nan)
     if np.isfinite(edge).any():
@@ -373,7 +403,7 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
         own = full if key == "front" else b["full"]
         seen = seen if key == "front" else b["seen_all"]
         T0 = READ * surfaceread.height(nm, both, px, data=seen & own).astype(np.float64)
-        prof = rp.profile(name, fm, main, view, (), [g for g in group if g != main])
+        prof = profile(view, (), [g for g in group if g != main])
         shift, n_rows = _rows(T0, zrow, prof, fm["views"][prof[2]] if prof else {}, px, own, B, hit)
         T = deepen(T0 + shift[:, None], both, px, detail=detail)
         # at the very outline a read is seen edge-on and its last pixels drop by noisy centimetres: from TRIM
@@ -386,12 +416,12 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
         # together best so far; its faults: a slight ridge along the middle line, and local shape scaled by the gain)
         sign = 1.0 if key == "front" else -1.0
         pin, pw = np.full(full.shape, np.nan), np.zeros(full.shape)
-        prof = rp.profile(name, fm, main, view)
+        prof = profile(view)
         mid_m, mid_v = _middle(np.zeros(full.shape), zrow, prof, fm["views"][prof[2]] if prof else {}, c0, px, full)
         pin[mid_m], pw[mid_m] = mid_v[mid_m], PIN_MIDDLE * per
         m = seats & seen & hit & ~rim
         pin[m], pw[m] = B[m], PIN_SEAT * per
-        pin[rim], pw[rim] = sign * edge[rim], PIN_OUTLINE * per
+        pin[rim], pw[rim] = sign * edge[rim], PIN_OUTLINE * per * rp.RIM / hem     # (a narrower band, held as hard)
         pw[~np.isfinite(pin)] = 0.0
         T, gain = surfaceread.height(nm, full, px, pin=pin, pin_w=pw, data=seen, gain=rp.GAIN)
         out[key] = rp._fill(np.where(full, deepen(T.astype(np.float64), full, px, detail=detail), np.nan))
@@ -400,7 +430,7 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     for key, nm, seen, seats, B, view in sides if hold == "bend" else ():
         nm = turned_away(nm, full, rim, px)
         T0[key] = READ * surfaceread.height(nm, full, px, steep=EDGE_Z, data=seen).astype(np.float64)
-        prof = rp.profile(name, fm, main, view)
+        prof = profile(view)
         mid_m, mid_v = _middle(T0[key], zrow, prof, fm["views"][prof[2]] if prof else {}, c0, px, full)
         m = seats & seen & hit & ~rim
         holds[key] = [(mid_m, mid_v, MIDDLE_W), (m, B - T0[key], SEAT_W)]
@@ -429,13 +459,19 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
         gy, gx = np.gradient(t, px * za, px)
         return np.clip(1.0 / np.sqrt(1.0 + gx ** 2 + gy ** 2), 0.25, 1.0)
 
-    foot = (ndimage.distance_transform_edt(~full) - ndimage.distance_transform_edt(full)) * px
+    # where the group stands on another part, the solid runs on into it
+    rooted = ndimage.binary_dilation(full, iterations=max(1, round(root / px))) & f["into"] if root else np.zeros(full.shape, bool)
+    foot = (ndimage.distance_transform_edt(~(full | rooted)) - ndimage.distance_transform_edt(full | rooted)) * px
     # map pixel (c, r) sits at o + (c + 0.5, r + 0.5): the frame's origin is half a pixel back
     o_map = o + 0.5 * px * U + 0.5 * px * za * V
     # the side picture's outline of the group cuts the solid too: its profile and its crown are that picture's
-    side = side or views.get("side") or views.get("side_r")
-    cut = None
-    if side and any(side in fm["features"][g]["marks"] for g in group):
+    # (for a solid built on the side picture's plane, the picture at right angles is the front one)
+    across = ("front",) if fm["views"][front].get("kind") in ("side", "side_r") else ("side", "side_r")
+    side = side or next((views[k] for k in across if k in views), None)
+    cut, agreed, looks = None, False, None
+    # (not for a solid whose far face is a mirror image: the picture at right angles sees a horn end-on, and its
+    # outline of the lump sliced the horn's faces flat)
+    if side and not mirror and any(side in fm["features"][g]["marks"] for g in group):
         sr = _read(name, fm, group, main, side, ())
         # (a part standing on the group, an ear on the side of a head, notches the group's own mark: closed first)
         sf = _plain(ndimage.binary_fill_holes(_closed(sr["full"], sr["px"], NOTCH)), sr["px"])
@@ -454,6 +490,16 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
             if s_rows:
                 S = deepen(S0 + sshift[:, None], sfull, spx, detail=detail)
                 S = rp._fill(np.where(ndimage.distance_transform_edt(sfull) * spx >= TRIM, S, np.nan))
+                # the three skins are two or three pictures' accounts of one surface: made to agree where they meet
+                # the front and the back picture each rule a layer under their own skin: there the side skin
+                # yields (twoskin_agree.py). Everything else is the side picture's, and the solid is what all leave
+                both_ok = _plain(full & b["full"], px)
+                inside = lambda m: ndimage.distance_transform_edt(m) * px       # metres inside a region
+                S, abouts["agreed"], looks = twoskin_agree.agree(
+                    Tf, Tb, both_ok, inside(both_ok & f["seen"]), inside(both_ok & b["seen_all"]),
+                    {"u0": f["u0"], "z0": f["z0"], "px": px, "za": za, "U": U, "F": Ff},
+                    S, sf, {"u0": sr["u0"], "z0": sr["z0"], "px": spx, "za": sr["za"], "U": sr["U"], "F": sr["F"]})
+                agreed = True
                 gy, gx = np.gradient(S, spx * sr["za"], spx)
                 cut.update(top=S, cos=np.clip(1.0 / np.sqrt(1.0 + gx ** 2 + gy ** 2), 0.25, 1.0), F=sr["F"])
                 abouts["side"] = {"view": side, "profile_rows": s_rows,
@@ -461,15 +507,13 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     signed = lambda a: (ndimage.distance_transform_edt(~a) - ndimage.distance_transform_edt(a)) * px
     wall = foot_b = None
     if hold == "rows":      # between the skins the solid is what BOTH pictures show of it, without the fringe
-        wall, foot_b = signed(_plain(full & b["full"], px)), signed(b["full"])
+        wall, foot_b = signed(_plain(full & b["full"], px) | rooted), signed(b["full"] | rooted)
     broad = lambda t: ndimage.gaussian_filter(t, BROAD / px) if hold == "rows" else None
     fs, bs = broad(Tf), broad(Tb)
     sha = twoskin.put({"o": o_map, "U": U, "V": V / za, "F": Ff, "px": px},
                       {"front": Tf, "back": Tb, "foot": foot, "cf": cos(Tf), "cb": cos(Tb), "wall": wall, "foot_b": foot_b,
-                       "front_s": fs, "back_s": bs}, cut)
+                       "front_s": fs, "back_s": bs}, cut, agreed)
     # the block-in under the group was scaffolding: out of the clay (its joints stay: other parts hang on them)
-    gone = {e for g in group for e in (fm["features"][g].get("built") or [])}
-    gone |= {featuremap.twin(e) for e in list(gone) if featuremap.twin(e)}
     new = {**spec, "bones": {k: v for k, v in spec.get("bones", {}).items() if k not in gone},
            "blobs": {k: v for k, v in spec.get("blobs", {}).items() if k not in gone}}
     base_, side_ = (main[:-2], main[-2:]) if main[-2:] in (".L", ".R") else (main, "")
@@ -477,8 +521,9 @@ def build(name: str, spec: dict, fm: dict, group, main: str | None = None, seat=
     new["blobs"][bname] = {"shape": "twoskin", "skins": sha, "blend": JOIN}
     thick = (Tf + Tb)[full]
     about = {"blob": bname, "skins": sha, "group": group, "map": [int(W), int(H)], "px_mm": round(px * 1e3, 2),
-             "front": abouts["front"], "back": abouts["back"], "side": abouts.get("side"), "edge_gap_mm": abouts["edge_gap_mm"],
+             "front": abouts["front"], "back": abouts["back"], "side": abouts.get("side"), "agreed": abouts.get("agreed"),
+             "edge_gap_mm": abouts["edge_gap_mm"],
              "thick_mm": [round(float(np.percentile(thick, q)) * 1e3, 1) for q in (2, 50, 98)],
              "taken_out": sorted(e for e in gone if e in spec.get("bones", {}) or e in spec.get("blobs", {}))}
-    return new, {"about": about, "front": {"normals": f["normals"], "full": full, "T": Tf},
+    return new, {"about": about, "agreed": looks, "front": {"normals": f["normals"], "full": full, "T": Tf},
                  "back": {"normals": b["normals"], "full": full, "T": Tb}}

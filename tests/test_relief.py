@@ -228,3 +228,30 @@ def test_a_nudge_moves_the_surface_it_was_taken_from_and_no_other(home):
     assert f(0.215, -(R - 0.001), ZC) < 0 < f(0.215, -(R + 0.001), ZC)   # its neighbour, 1.5 cm away, is not
     with pytest.raises(ValueError):
         meshclay.put(pts, np.zeros(3))
+
+
+def test_the_side_skin_yields_under_the_front_and_back_skins_and_nowhere_else():
+    from hifipushie import twoskin_agree as ta
+    px = 0.002
+    xs = (np.arange(121) - 60) * px                                  # the front grid: 24 cm across, 20 cm tall
+    agreed = np.broadcast_to(np.abs(xs) < 0.1, (100, 121)).copy()   # the solid is 20 cm wide in the front picture
+    Tf = np.full((100, 121), 0.08)                                   # flat front and back skins, 8 cm either way
+    Tb = np.full((100, 121), 0.08)
+    d = ndimage.distance_transform_edt(agreed) * px
+    fr = {"u0": xs[0] - px / 2, "z0": 0.5, "px": px, "za": 1.0, "U": [1, 0, 0], "F": [0, -1, 0]}
+    sfr = {"u0": xs[0] - px / 2, "z0": 0.5, "px": px, "za": 1.0, "U": [0, 1, 0], "F": [1, 0, 0]}
+    own = np.broadcast_to(np.abs(xs) < 0.085, (100, 121)).copy()    # the side picture shows it 17 cm deep
+    S = np.full((100, 121), 0.03)                                    # and the side skin has it far too narrow
+    new, about, look = ta.agree(Tf, Tb, agreed, d, d, fr, S, own, sfr)
+    y = lambda t: int(np.argmin(np.abs(-xs - t)))                    # the side grid's column at depth t towards the front
+    r = 50
+    assert new[r, y(0.075)] > 0.085                                  # just under the front skin: as wide as its surface, and clear
+    assert new[r, y(-0.075)] > 0.085                                 # the same under the back skin
+    assert new[r, y(0.0)] < 0.04                                     # deep inside: the side picture's own word stands
+    assert np.all(np.diff(new[r, y(0.075):y(0.0)]) >= -1e-9) or np.all(np.diff(new[r, y(0.075):y(0.0)]) <= 1e-9)
+    assert np.abs(np.diff(new[r, y(0.07):y(-0.07)])).max() < 0.012   # and inside the solid it gets there without a step
+    assert about["yields"] > 0.1
+    wide = np.full((100, 121), 0.2)                                  # a side skin that is nowhere inside the others
+    assert np.array_equal(ta.agree(Tf, Tb, agreed, d, d, fr, wide, own, sfr)[0], wide)      # is left as it is
+    # a rim the front picture is not to be believed at says nothing: only the believed middle is as wide as it is
+    assert look["says"][r, y(0.075)] < 0.1 + ta.CLEAR - 0.015
