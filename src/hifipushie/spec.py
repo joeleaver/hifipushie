@@ -207,7 +207,7 @@ class Prim:
     inert: float = 0.0  # where its own value is at least this, it leaves the blended field unchanged
     group: str | None = None  # consecutive members are joined first (by `join`), then blended in once
     join: float = 0.0
-    lip: float = 1.0  # modifiers: how much steeper than a distance field they can make the field
+    lip: float = 1.0  # modifiers and grabbed masses: how much steeper than a distance their field can be
     part: str = "body"  # which separate mesh it belongs to; parts are fields of their own, hard-unioned
     instance: str | None = None  # the prefab instance it came from (assemble); export shares their meshes
     cut_boxes: tuple = ()  # (fingerprint, lo, hi) of each targeted cut folded into it: where a moved cut changes it
@@ -598,7 +598,9 @@ def _grabs(s: dict, prims: list[Prim]) -> list[Prim]:
             if p.kind != "csg":
                 p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
                 p.kind = "csg"
-            p.params["warp"] = (ops, lip * (prev[1] if prev else 1.0))
+            # the field is not divided by the grab's stretch (deform.py says why): the mesher's band takes it
+            p.params["warp"] = (ops, prev[1] if prev else 1.0)
+            p.lip = max(float(p.lip), lip)
             p.lo, p.hi = p.lo - reach, p.hi + reach
             p.reach = np.asarray(p.reach, float) * lip
     return prims

@@ -385,10 +385,7 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     for op, kind, params, k in pr["cuts"]:
         c = SDF[kind](p, params)
         d = -smin(-d, c, k) if op == "subtract" else -smin(-d, -c, k)
-    if wp is None:
-        return d
-    from .deform import grab_lip
-    return d / grab_lip(wp[0], p, wp[1])
+    return d if wp is None else d / wp[1]
 
 
 def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
@@ -610,7 +607,7 @@ class PartGrid:
         B = BLOCK
         b_lo = lo + voxel * B * idx
         centre = field_at(prims, b_lo + voxel * (B - 1) / 2, margin=2 * half_diag)
-        # modifiers make the field steeper than 1 (by up to lip), so the surface can be further from a centre
+        # modifiers and grabs make the field steeper than 1 (by up to lip), so the surface can be further from a centre
         lip = max([p.lip for p in prims] + [1.0])
         act = np.abs(centre) <= lip * 1.5 * half_diag + voxel
         self.blocks[tuple(idx[~act].T)] = centre[~act, None, None, None]
@@ -670,7 +667,8 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             margin = p.reach + voxel
             hit = np.flatnonzero(np.all((a_hi >= p.lo - margin) & (a_lo <= p.hi + margin), axis=1))
             # AABBs of slanted bones are loose: also drop blocks this primitive can't reach
-            hit = hit[SDF[p.kind](a_lo[hit] + voxel * (B - 1) / 2, p.params) <= p.inert + 1.5 * half_diag]
+            # (a grabbed primitive's field is up to p.lip steeper than a distance: allow for it)
+            hit = hit[SDF[p.kind](a_lo[hit] + voxel * (B - 1) / 2, p.params) <= p.inert + p.lip * 1.5 * half_diag]
             if len(hit):
                 hits.append(hit)
                 ds.append(_sd(p, a_lo[hit, None, None, None, :] + local, und, hit).astype(np.float32))

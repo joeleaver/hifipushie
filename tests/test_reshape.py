@@ -247,3 +247,35 @@ def test_a_third_mass_is_fused_in_with_its_own_fill_by_the_tool(tmp_path, monkey
     server.fuse("fig", "head", "jaw", fill=0)  # the jaw comes out; head and torso stay fused
     b = store.load("fig")["blobs"]
     assert "fuse" not in b["jaw"] and b["head"]["fuse"] == b["torso"]["fuse"]
+
+
+def _fused_with(grab):
+    s = _figure()
+    for n in ("head", "torso"):
+        s["blobs"][n].update(fuse="h", fill=0.25)
+    before = compile_prims(copy.deepcopy(s))
+    s["grabs"] = {"g": grab}
+    return before, compile_prims(s)
+
+
+def test_a_grab_pushed_into_a_fused_mass_raises_no_ring_round_it():
+    # (the back pushed in 2.3 cm stood out as a ring round the dent: the grabbed mass's field was scaled where it bent)
+    before, after = _fused_with({"of": ["torso"], "view": "side", "at": [0.17, 0.3], "to": [0.147, 0.3], "radius": 0.07})
+    y = np.linspace(0.0, 0.5, 2001)
+    moved = []
+    for z in np.linspace(0.18, 0.42, 13):
+        f0, f1 = (field_at(p, np.stack([np.zeros_like(y), y, np.full_like(y, z)], 1), clip=False) for p in (before, after))
+        moved.append(y[np.nonzero(f1 < 0)[0].max()] - y[np.nonzero(f0 < 0)[0].max()])
+    assert max(moved) < 0.001 and min(moved) < -0.015  # in at the middle, and nowhere out
+
+
+def test_a_grabbed_model_is_meshed_whole():
+    # the grabbed field is steeper than a distance: the mesher's band has to allow for it, or blocks go missing
+    from hifipushie import sdf
+    _, prims = _fused_with({"of": ["head"], "view": "side", "at": [-0.15, 0.6], "to": [-0.2, 0.6], "radius": 0.105})
+    g = sdf.evaluate(prims, resolution=72)
+    lo, voxel, shape = sdf.frame(prims, 72)
+    pts = lo + voxel * np.stack(np.meshgrid(*[np.arange(n) for n in shape], indexing="ij"), -1).reshape(-1, 3)
+    exact = field_at(prims, pts, clip=False).reshape(shape)
+    sure = np.abs(exact) > 1e-6  # (a voxel exactly on the surface rounds either way)
+    assert np.array_equal((g.field < 0)[sure], (exact < 0)[sure])
