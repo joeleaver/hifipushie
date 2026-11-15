@@ -158,12 +158,11 @@ def test_the_chest_at_the_underarm_is_read_at_one_underarm_after_a_move():
     from hifipushie import draft_girths as dg, draft_moves, pattern
     pcs, ix, stops, seams = _three()
     B = {"pieces": pcs, "seams": [["front.L:sideHem>armpit", "back.L:sideHem>armpit"]]}
-    holes = {p: ["armpit>shoulder"] for p in ("front.L", "back.L")}
+    holes = {p: [("armpit>shoulder", {"sleeve.L"})] for p in ("front.L", "back.L")}
 
-    def chest():  # (as place reads it: each piece lowered to its armhole's lowest point, then one underarm)
-        lines = {p: (np.array([0.0, float(np.asarray(pcs[p]["P"])[ix(p + ":arm"), 1].min()) - 1e-4]),
-                     np.array([1.0, 0.0])) for p in holes}
-        dg.one_underarm(B, lines, list(holes), holes)
+    def chest():  # (as place reads it: levels above the armholes: taken at one underarm)
+        lines = {p: (np.array([0.0, 0.5]), np.array([1.0, 0.0])) for p in (*holes, "sleeve.L")}
+        dg.at_underarm(B, lines, holes)
         return sum(dg.width(np.asarray(pcs[p]["P"], float), *lines[p])[0] for p in holes), lines
     g0, _ = chest()
     LA = 1000 * pattern.length(np.asarray(pcs["front.L"]["P"])[ix("front.L:side")])
@@ -173,3 +172,66 @@ def test_the_chest_at_the_underarm_is_read_at_one_underarm_after_a_move():
     assert lines["front.L"][0][1] < top - 0.005, (top, lines)  # (read per piece, the front at its raised corner:
     # s4-29 chest +19 mm)
     assert abs(g1 - g0) < 3e-3, (g0, g1, lines)  # (within the corner's own few mm: the strip turns with the seam)
+
+
+def _torso3():
+    """Front, side body, back (F5c, s4-29's jacket): the front's and back's armholes end at corners 30 mm above the side
+    body's, which dips in a U between them (its lowest point the underarm); a sleeve sewn into all three."""
+    from hifipushie import pattern
+    U = [(0.25 + 0.12 * t, 0.45 - 0.03 * np.sin(np.pi * t)) for t in np.linspace(0, 1, 13)]
+    pcs = {"front.L": [(0.0, 0.0), (0.25, 0.0), (0.25, 0.225), (0.25, 0.45), (0.21, 0.52), (0.17, 0.56), (0.0, 0.60)],
+           "side.L": [(0.25, 0.0), (0.37, 0.0), (0.37, 0.225), (0.37, 0.45)] + U[::-1][1:-1] + [(0.25, 0.45),
+                                                                                                    (0.25, 0.225)],
+           "back.L": [(0.37, 0.0), (0.62, 0.0), (0.62, 0.62), (0.45, 0.58), (0.41, 0.52), (0.37, 0.45), (0.37, 0.225)],
+           "sleeve.L": [(0.0, 0.0), (0.3, 0.0), (0.3, -0.5), (0.0, -0.5)]}
+    nm = {"front.L": {"hem": 0, "side": 1, "armpit": 3, "shoulder": 5, "cf": 6},
+          "side.L": {"fhem": 0, "bhem": 1, "barm": 3, "farm": 15},
+          "back.L": {"bhem": 0, "cb": 1, "cbTop": 2, "shoulder": 3, "armpit": 5},
+          "sleeve.L": {"a": 0, "b": 1, "c": 2, "d": 3}}
+    for k in pcs:
+        pcs[k] = {"name": k, "P": np.asarray(pcs[k], float), "names": nm[k],
+                  "wrap": {"to": "arm.L" if k == "sleeve.L" else "torso"}}
+    arcs = {"front.L:side": "side>armpit", "side.L:front": "fhem>farm", "side.L:back": "bhem>barm",
+            "back.L:side": "bhem>armpit", "front.L:arm": "armpit>shoulder", "side.L:arm": "barm>farm",
+            "back.L:arm": "shoulder>armpit"}
+    ix = lambda e: pattern.arc_indices(pcs[e.split(":")[0]], arcs[e])
+    B = {"pieces": pcs, "seams": [["front.L:side>armpit", "side.L:fhem>farm"], ["side.L:bhem>barm", "back.L:bhem>armpit"],
+                                  ["front.L:armpit>shoulder", "sleeve.L:a>b"], ["side.L:barm>farm", "sleeve.L:b>c"],
+                                  ["back.L:shoulder>armpit", "sleeve.L:c>d"]]}
+    return B, ix
+
+
+def _chest3(B, own):
+    """{piece: level} as place reads it from each piece's own length-tape level `own`, and the chest round them."""
+    from hifipushie import draft_girths as dg
+    lines = {p: (np.array([0.0, y]), np.array([1.0, 0.0])) for p, y in own.items()}
+    dg.at_underarm(B, lines, dg.holes(B))
+    pcs = B["pieces"]
+    return ({p: float(lines[p][0][1]) for p in own},
+            sum(dg.width(np.asarray(pcs[p]["P"], float), *lines[p])[0] for p in ("front.L", "side.L", "back.L")))
+
+
+def test_a_spiked_armhole_corner_is_read_at_the_loops_underarm_not_its_corner():
+    B, _ = _torso3()
+    # the front's tape level cuts its armhole; the side body's and back's own levels sit below their armholes (as in
+    # s4-29's unmoved draft, where F5b read the front at its corner, 34 mm loose)
+    lv, _ = _chest3(B, {"front.L": 0.47, "side.L": 0.41, "back.L": 0.43, "sleeve.L": -0.1})
+    for p in ("front.L", "side.L", "back.L"):
+        assert abs(lv[p] - 0.42) < 1e-3, lv  # (all three at the side body's underarm, 30 mm below the corners)
+    lv, _ = _chest3(B, {"front.L": 0.30, "side.L": 0.30, "back.L": 0.30, "sleeve.L": -0.1})
+    assert all(abs(lv[p] - 0.30) < 1e-9 for p in ("front.L", "side.L", "back.L")), lv  # (a girth below every armhole
+    # (a waist) keeps each piece's own level)
+
+
+def test_the_same_draft_reads_the_same_chest_before_and_after_a_zero_length_move():
+    from hifipushie import draft_moves
+    B, ix = _torso3()
+    own = {"front.L": 0.47, "side.L": 0.41, "back.L": 0.43, "sleeve.L": -0.1}
+    _, g0 = _chest3(B, own)
+    stops = {p: {i for i in B["pieces"][p]["names"].values()} for p in ("front.L", "side.L", "back.L")}
+    draft_moves.apply(B["pieces"], ix, [{"a": "front.L:side", "b": "side.L:front"}],
+                      [{"seam": ["front.L:side", "side.L:front"], "at": [[0, 0], [450, 0]]}], stops)
+    _, g1 = _chest3(B, own)
+    _, g2 = _chest3(B, dict(own, **{"side.L": 0.425}))  # (a move that raised the side body's top raises its own
+    # level above its armhole (s4-29's moved draft): the side lowered too, the chest the same)
+    assert abs(g1 - g0) < 1e-6 and abs(g2 - g0) < 1e-6, (g0, g1, g2)
