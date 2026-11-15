@@ -21,8 +21,8 @@ Rows (`rows(B, decl, step1)`; B = draft_own_block.block + cloth.pieces, its piec
     the neck seam at CB, read off the collar's roll fold (or its band); the outer edge against the line there on the
     garment's flat pieces, + lift, within 4 %: too long = straighten the collar, too short = spread it (C408).
   shape_cap: a SLEEVE cap (a seam joining pieces placed on an arm to pieces on the torso): cap height (grain-wise span
-    of the cap edges; a two-piece sleeve's parts share FreeSewing's frame) over the armhole depth (the deepest body
-    piece's armhole span): brian 0.52 (a shirt block), bent 0.72 (a two-piece jacket sleeve) -> [0.47, 0.79].
+    of the cap edges; a two-piece sleeve's parts share FreeSewing's frame) over the armhole depth (the body side's whole
+    armhole, read along its whole chain: armhole_depth): brian 0.52 (a shirt block), bent 0.72 (a two-piece jacket sleeve) -> [0.47, 0.79].
   shape_seam_curve: a seam whose one side is curved (sagitta / chord > CURVED: simon's stand neck edge, the least
     curved neck edge in the pack, is 0.021) and the other straight (< STRAIGHT: a FreeSewing `line`, 0) fails, naming
     the straight edge (a curved neckline sewn to a straight edge). Known false alarm: a straight waistband on a skirt.
@@ -327,6 +327,21 @@ def fall_rows(B: dict, decl: dict, step1: dict) -> dict:
             "change": "; ".join(w.split("change: ", 1)[-1] for w in why), "back_to": "4"}
 
 
+def armhole_depth(B: dict, body: list) -> float:
+    """The armhole depth along the body side of a cap seam, a chain of edges in order (front, side body, back: any
+    number): each edge's grain-wise span joined on where the one before it ended (F5, t s4-29: read per piece, a side
+    body taking the underarm left the front and back armholes stopping short of it, the depth read 165 mm, and the
+    agent started its side-body seams low in the armhole to pass). Each piece has its own frame, so each edge is
+    lifted to start at the height the last one ended; the depth is the chain's grain-wise span (shoulder to
+    underarm: on a two-piece body, the deeper of the front and back armholes, as before)."""
+    y, ys = 0.0, []
+    for e in body:
+        Y = _pts(B, e)[:, 1]
+        ys.append(Y - Y[0] + y)
+        y = float(ys[-1][-1])
+    return float(np.ptp(np.concatenate(ys)))
+
+
 def cap_rows(B: dict, decl: dict, step1: dict) -> dict:
     """shape_cap, ONE row per sleeve (C361): the arm pieces sewn to each other are one sleeve (a two-piece sleeve's top +
     under), its cap = every edge of them sewn to the torso, its height over the deepest of their torso partners' armhole
@@ -359,7 +374,7 @@ def cap_rows(B: dict, decl: dict, step1: dict) -> dict:
         ce = [e for c, _ in mine for e in c]
         be = [e for _, b in mine for e in b]
         h = float(np.ptp(np.concatenate([_pts(B, e) for e in ce])[:, 1]))
-        dep = max(float(np.ptp(np.concatenate([_pts(B, e) for e in be if pc(e) == q])[:, 1])) for q in {pc(e) for e in be})
+        dep = max(armhole_depth(B, b) for _, b in mine)
         r = h / dep
         nm = "+".join(sorted(g))
         vals.append(f"{nm}: cap {1000 * h:.0f} / armhole depth {1000 * dep:.0f} mm = {r:.2f}")
