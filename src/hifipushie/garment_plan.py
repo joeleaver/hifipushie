@@ -64,8 +64,10 @@ STEP 2 "style": {ties, bends, pose, rows, traces, panels?, layers?, drape?}
           compares the build's outline in that view with them in mm (T15, C299, C351)
   panels [{girth, shares: {piece base name: {source: reference, view, at, what} | {source: convention}}}]  where the
           seams round the body fall (three or more panels a side: front, side body, back), pieces from the centre front to
-          the centre back; each share read off the reference or filled from the one named convention, never typed (F4,
-          panel_shares.py; the look draws the seams round the body; step 4's row panels FAILs without it)
+          the centre back; reference: at = where its seams cross that level on one side of the view; convention =
+          body_panels: N pieces round a girth, front to back: 2 = .50/.50, 3 = .40/.22/.38, 4 = .28/.22/.22/.28, scaled
+          to what the read ones leave; never typed, never inferred / block (F4, panel_shares.py; the look draws the
+          seams round the body; step 4's row panels FAILs without it)
   body_marks [{view, at: {landmark: [u,v]}, source}]  only for a view step 0 didn't fit: the fit view is placed by step
           0's own landmarks (C351)
 """

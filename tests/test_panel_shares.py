@@ -76,7 +76,8 @@ def test_look_puts_each_seam_at_its_share():
     e2 = dict(e, placed=ps.place(R, [("front", .46), ("side", .08), ("back", .46)]))
     tk = psl.ticks(e2, READ, 0, "front")
     t0 = e2["placed"]["seams"][0]["t"]
-    assert [round(u) for u, _, _ in tk] == [round(628 - abs(t0) * 178), round(628 + abs(t0) * 178)]
+    assert [round(u) for u, _, lb in tk if lb == "front / side"] == [round(628 - abs(t0) * 178), round(628 + abs(t0) * 178)]
+    assert {lb for _, _, lb in tk} == {"front / side", "side / back"}  # (a 0.08 side body: both seams at the silhouette)
     side = next(p for p in e2["placed"]["pieces"] if p["piece"] == "side")
     assert side["share"] == .08
     lines = "\n".join(ps.text_lines({"panels": [e]}))

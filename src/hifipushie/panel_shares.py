@@ -218,7 +218,7 @@ def _read(v: dict, w: str, g: str, j: int, n: int, R, read: dict, views: list, b
 
 def place(R: dict, shares: list) -> dict:
     """The seams round the ring where the shares put them (one side; the other mirrors): {seams: [{between, s_mm, t,
-    seen_from, xy}], pieces: [{piece, share, mid_t, seen_from, xy}], ring: [[x, y] mm, a top view of the half ring]}."""
+    seen_from, xy}], pieces: [{piece, share, mid_t, seen_from, xy}], ring: [[x, y, s] mm, a top view of the half ring]}."""
     half, s, seams, pcs = R["round_mm"] / 2, 0.0, [], []
     for k, (p, sh) in enumerate(shares):
         mid = s + sh * half / 2
@@ -230,7 +230,8 @@ def place(R: dict, shares: list) -> dict:
             seams.append({"between": [p, shares[k + 1][0]], "s_mm": round(s, 1), "t": round(t, 3), "seen_from": vw,
                           "xy": _xy(R, s)})
     step = max(1, len(R["xy"]) // 40)
-    return {"seams": seams, "pieces": pcs, "ring": [[round(float(x)), round(float(y))] for x, y in R["xy"][::step]]}
+    return {"seams": seams, "pieces": pcs, "ring": [[round(float(x)), round(float(y)), round(float(s_))] for (x, y), s_ in
+                                                    zip(R["xy"][::step], R["s"][::step])]}
 
 
 def _xy(R: dict, s_mm: float) -> list:

@@ -10,8 +10,10 @@ from __future__ import annotations
 from .panel_shares import width_row
 
 ORANGE, WHITE = (255, 150, 40), (240, 240, 240)
+PIECE = [(255, 150, 40), (60, 230, 255), (120, 255, 140), (255, 120, 200)]  # (the inset's pieces, front to back)
+SIDE_T = 0.97  # a seam this near the side is at the silhouette: drawn on the front and the back view
 LEGEND = [("orange tick = a panel seam at its girth's level,", ORANGE), ("   where step 2's shares put it", ORANGE),
-          ("orange inset = that girth from above, front", ORANGE), ("   down: every seam a spoke, pieces named", ORANGE)]
+          ("inset = that girth from above, front down:", ORANGE), ("   each piece its own colour, seams ticked", ORANGE)]
 
 
 def ticks(e: dict, read: dict, vi: int, side: str) -> list:
@@ -21,7 +23,7 @@ def ticks(e: dict, read: dict, vi: int, side: str) -> list:
         return []
     out = []
     for sm in pl["seams"]:
-        if sm["seen_from"] == side:
+        if sm["seen_from"] == side or abs(sm["t"]) >= SIDE_T:
             out += [(wr["centre"] + k * abs(sm["t"]) * wr["half"], wr["v"], " / ".join(sm["between"])) for k in (-1, 1)]
     return out
 
@@ -40,7 +42,7 @@ def draw(d, s: float, vi: int, plan: dict, read: dict, label, line) -> list:
         for u, v, _ in ticks(e, read, vi, side):
             d.line([(u * s, (v - 45) * s), (u * s, (v + 45) * s)], fill=ORANGE, width=5)
         for pc in pl["pieces"]:
-            if pc["seen_from"] == side:
+            if pc["seen_from"] == side or abs(pc["mid_t"]) >= SIDE_T:
                 label(d, ((wr["centre"] + abs(pc["mid_t"]) * wr["half"]) * s - 30, (wr["v"] - 80) * s),
                       f"{pc['piece']} {pc['share']:.2f}", ORANGE)
         _inset(d, e, corner, label, line)
@@ -50,24 +52,30 @@ def draw(d, s: float, vi: int, plan: dict, read: dict, label, line) -> list:
 
 def _inset(d, e: dict, k: int, label, line):
     """The girth from above in the picture's lower-left corner (the k-th entry above the one before)."""
+    from .garment_plan_look import FONT_LEG
     pl = e["placed"]
     R = pl["ring"]
-    xm = max(abs(x) for x, _ in R) or 1.0
-    ys = [y for _, y in R]
-    box = 300
+    xm = max(abs(r[0]) for r in R) or 1.0
+    ys = [r[1] for r in R]
+    box = 380
     sc = 0.36 * box / xm
     cx, cy = 20 + box / 2, d.im.size[1] - 40 - box / 2 - k * (box + 20)
     ym = (max(ys) + min(ys)) / 2
     P = lambda x, y: (cx + x * sc, cy - (y - ym) * sc)  # noqa: E731  (front, -Y, down)
     d.rectangle([cx - box / 2, cy - box / 2 - 30, cx + box / 2, cy + box / 2 + 10], fill=(0, 0, 0), outline=ORANGE)
-    d.text((cx - box / 2 + 8, cy - box / 2 - 26), f"{e['girth']} from above, front down", fill=ORANGE)
+    d.text((cx - box / 2 + 8, cy - box / 2 - 26), f"{e['girth']} from above, front down", fill=ORANGE, font=FONT_LEG)
+    bounds = [sm["s_mm"] for sm in pl["seams"]]
+    col = lambda s_: PIECE[sum(s_ > b for b in bounds) % len(PIECE)]  # noqa: E731
     for sg in (1, -1):
-        line(d, [P(sg * x, y) for x, y in R], WHITE, 2, None)
+        for a_, b_ in zip(R, R[1:]):
+            d.line([P(sg * a_[0], a_[1]), P(sg * b_[0], b_[1])], fill=col((a_[2] + b_[2]) / 2), width=7)
         for sm in pl["seams"]:
             x, y = sm["xy"]
-            d.line([P(0, ym), P(sg * x * 1.25, ym + (y - ym) * 1.25)], fill=ORANGE, width=3)
-    for pc in pl["pieces"]:
+            d.line([P(sg * x * 0.8, ym + (y - ym) * 0.8), P(sg * x * 1.2, ym + (y - ym) * 1.2)], fill=WHITE, width=3)
+    for j, pc in enumerate(pl["pieces"]):
         x, y = pc["xy"]
         u, v = P(x * 1.45, ym + (y - ym) * 1.45)
         txt = f"{pc['piece']} {pc['share']:.2f}"
-        d.text((min(u, cx + box / 2 - 8 * len(txt)), v - 7), txt, fill=ORANGE)
+        w = d.textlength(txt, font=FONT_LEG)
+        d.text((min(max(u - w / 2, cx - box / 2 + 4), cx + box / 2 - w - 4), v - 9), txt, fill=PIECE[j % len(PIECE)],
+               font=FONT_LEG)
