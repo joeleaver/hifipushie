@@ -401,13 +401,25 @@ the difference (red = only the reference has clay there: add; blue = only the mo
 numbered. Look at each picture: an outline can match round the wrong figure (a bean where the reference has a head
 on a body), and the red lines inside it are what show that.
 The text lists, per view, the numbered places biggest first: how far the outline is off, where (in the view's own
-axes: front and back x, z; side y, z), on which mass, and the `grab` call that would move that outline to the
-reference's (a mirrored model is off the same way on both sides: it is said once, for the ".L" mass). Then the
+axes: front and back x, z; side y, z), on which mass, and the points a `grab` would move if the mass itself is
+right (a mirrored model is off the same way on both sides: it is said once, for the ".L" mass). Then the
 reference's inside lines that the model has no line near: one mass standing in front of another, a crease, an
 opening; some are paint (an eye, a patch of colour).
+The painting's own angle (view "painting"): once `fit_concept_camera(name, image=<the concept painting>)` has found
+the camera the painting was made from, look_beside shows the model from there as well, with the flat views or
+alone (views=["painting"]). Its picture: the painting with the model's outline and inside lines over it in blue |
+the model with the painting's outline and inside lines (snout, eyes, mouth, folds) in red | the difference. This
+is the view where a figure reads as itself and where a mass in the wrong place shows: a blue shape sitting beside
+the painted thing it stands for, a red line crossing bare clay. Its places are given by the painting's own pixel,
+the mass they are on (the nearer limbs are as often the ".R" twins: the text says which side the camera stands
+on) and which way the model's outline would move to meet the painting's. Kept on purpose:
+on_purpose=[{"view": "painting", "at": [px, py] as listed, "why": "..."}].
 What to do with it: fix the BIGGEST difference on the whole figure first. A mass in the wrong place or of the
-wrong size is its own joint or size; an outline off on a mass that is otherwise right is the grab given; two
-masses that should be one form are a `fuse`; a red line with nothing under it is form still to make.
+wrong size is its own joint or size (most differences are); an outline off on a mass that is otherwise right is a
+`grab`; two masses that should be one form are a `fuse`; a folded ear is a `flap`; a face that should be flat is a
+`trim`; a red line with nothing under it is form still to make. The overlap is not the goal: it rises when clay is
+piled wherever an outline is short, and the figure gets worse. After every change look at the clay itself.
+Pieces that touch nothing are listed (FLOATS): an outline can't show one.
 These are differences, not faults. A modeller departs from a concept on purpose: a limb held away from the body
 for the rig, a choice between two pictures that disagree, something left for a later pass. Record such a place:
 on_purpose=[{"view": "front", "at": [x, z] as the list gives it, "why": "arms held out for the rig"}]. From then on
@@ -416,8 +428,8 @@ the mirrored side and for the view that shares the plane (front and back). A rea
 place no longer differs is said, with the call that takes it back ("remove": true). The record is kept beside the
 reference's views, not in the spec, so a new spec does not lose it.
 ignore: masses left out of the model (a limb held away from the body for the rig, which the picture shows
-hanging); the reference's own limb still shows where the picture has it. views: which of the flat views (default
-all). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one
+hanging); the reference's own limb still shows where the picture has it. views: which views (default: every flat
+view, and the painting when its camera is fitted). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one
 number among these, never the verdict.
 
 ### `mark_features`

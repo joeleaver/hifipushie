@@ -210,14 +210,17 @@ def build_forms(name: str, how: dict, view: str | None = None, save: str | None 
 def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | None = None,
                 on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None):
     """Compare the model with its reference pictures, view by view, and see what to change: the model beside each
-    flat reference view (front, side, back; read_reference first), one picture a view: the reference | the model with the reference's outline and inside
-    lines in red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists
-    those places biggest first, each with the grab call that would move that outline to the reference's, and the
-    reference's inside lines the model has no line near (an outline can match round the wrong figure). Seconds, no
-    render: use it after every change. These are differences, not faults: where you differ ON PURPOSE (a limb held
-    out for the rig, a choice between pictures that disagree) record it with on_purpose=[{"view", "at": [u, v] as
-    listed, "why"}]: it is then shown apart with its reason and left out of the list and the overlap. ignore:
-    masses to leave out. save: a folder for the pictures. Details: guide(topic="look_beside")."""
+    flat reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
+    "painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
+    outline over it (the painting) | the model, its parts tinted, with the reference's outline and inside lines in
+    red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists those
+    places biggest first, with the mass each is on, and the pieces that touch nothing. Seconds, no render: use it
+    after every change. LOOK at the pictures: the painting's view is where a figure reads as itself, and where a
+    mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
+    differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures
+    that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
+    its reason and left out of the list and the overlap. ignore: masses to leave out. save: a folder for the
+    pictures. Details: guide(topic="look_beside")."""
     from pathlib import Path
 
     from . import beside

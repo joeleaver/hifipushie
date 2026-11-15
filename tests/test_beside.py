@@ -119,3 +119,52 @@ def test_a_piece_that_touches_nothing_is_said_to_float(home):
     s["joints"]["tail"]["pos"] = [0, 0.2, 0.2]  # sunk into the back
     store.save("fig", s, "a tail on the body")
     assert beside.compare("fig", resolution=144)["floating"] == []
+
+
+@pytest.fixture()
+def painted(home):
+    """`fig` with a concept picture of its own shape from the front right, and that picture's camera."""
+    import json
+
+    from hifipushie import matched
+    _, whole = beside._model("ref", 144)
+    cam = {"az": -30.0, "el": 7.0, "roll": 0.0, "f_px": 900.0, "aim": [0.0, 0.0, 0.4], "dist": 3.0, "size": [400, 480],
+           "iou": 0.99, "label": "concept"}
+    hit = np.isfinite(depth_image(whole, cam))
+    rgba = np.zeros((480, 400, 4), np.uint8)
+    rgba[hit] = (220, 150, 140, 255)
+    Image.fromarray(rgba, "RGBA").save(home / "painting.png")
+    cam["image"] = str(home / "painting.png")
+    p = matched.cam_path("fig", "concept")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cam))
+    return home
+
+
+def test_the_painting_is_a_view_of_its_own_and_says_which_side_the_camera_is_on(painted):
+    res = beside.compare("fig", resolution=144)
+    assert list(res["views"]) == ["front", "painting"]
+    r = res["views"]["painting"]
+    assert r["iou"] > 0.96 and r["places"] == [] and "front right" in r["side"] and '".R" ones' in r["side"]
+    assert r["picture"].width > 2.2 * r["picture"].height  # three panels
+    assert "painting (the concept's own angle): outline overlap" in beside.text("fig", res)
+
+
+def test_a_short_ear_shows_in_the_painting_on_the_ear_and_can_be_kept_on_purpose(painted):
+    s = store.load("fig")
+    s["blobs"]["ear.L"]["size"] = [0.045, 0.025, 0.04]
+    store.save("fig", s, "short ears")
+    r = beside.compare("fig", views=["painting"], resolution=144)["views"]["painting"]
+    ears = [p for p in r["places"] if p["mass"] == "ear.L" and p["kind"] == "short"]
+    assert ears and "up" in ears[0]["way"] and len(ears[0]["at"]) == 2
+    beside.set_on_purpose("fig", [{"view": "painting", "at": ears[0]["at"], "why": "short ears, on purpose for this test"}])
+    res = beside.compare("fig", views=["painting"], resolution=144)
+    after = res["views"]["painting"]
+    assert len([p for p in after["places"] if p["mass"] == "ear.L"]) < len(ears) + len([p for p in r["places"] if p["mass"] == "ear.L" and p["kind"] != "short"])
+    assert after["on_purpose"] and after["iou"] > r["iou"] and "round pixel" in beside.text("fig", res)
+
+
+def test_the_painting_without_a_camera_is_asked_for_by_name(home):
+    with pytest.raises(ValueError, match="fit_concept_camera"):
+        beside.compare("fig", views=["painting"])
+    assert "fit_concept_camera" in beside.text("fig", beside.compare("fig", resolution=144))

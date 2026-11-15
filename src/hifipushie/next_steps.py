@@ -25,8 +25,11 @@ def after_save(name: str, spec: dict) -> str:
         return ""
     from . import store
     if any((store._dir(name) / "cameras" / f"{v}.json").exists() for v in ("front", "side", "side_r", "back")):
+        from . import beside_painting
+        paint = ("" if beside_painting.has_camera(name) else " A concept painting too? fit_concept_camera(name, image) "
+                 "once, and look_beside shows the model from the painting's own angle as well.")
         return (f'next: look_beside("{name}"): the model beside each reference view, the biggest differences first '
-                "(seconds; after every change). Then look from three_quarter: what the flat views can't show.")
+                f"(seconds; after every change). Then look from three_quarter: what the flat views can't show.{paint}")
     plan = "" if spec.get("plan") else " No plan yet: set_plan (the blockout that check measures against) before detail."
     return f'next: look("{name}") from front, side and three_quarter before the next change.{plan}'
 
