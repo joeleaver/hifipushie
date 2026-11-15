@@ -298,3 +298,26 @@ def test_girth_piece_rolls_the_way_its_seams_say():
     after = ps._seam_cost(c, Xs, mine)
     assert sorted(rd[n].get("way", 1.0) for n in "ab") == [-1.0, 1.0]  # (one of them turned: the seams are relative)
     assert after < 0.15 * before  # (2.3 -> 0.25 m summed over its sew pairs)
+
+
+def test_start_inside_a_body_moved_out_by_panel_numbers_then_contact_keeps_links_exact():
+    """D2: a tube started INSIDE a cylinder body (rolled at 0.75 of the body's radius) is moved out by its panels' own
+    numbers (Panels.outside): every point at least the gap off, every link at its cut (a panel is isometric); then the
+    sewn solve with contact on keeps every link within 2 % and no point inside."""
+    from hifipushie import chain_solve as cs
+    from hifipushie.chain_core import GAP
+    from test_chain_solve import cylinder
+    c = _net(_tube())
+    body = cylinder(0.05, -0.15, 0.35, seg=96)
+    X0 = _tube_start(c) * [0.75 * 0.05 / R, 0.75 * 0.05 / R, 1.0]
+    pan = Panels(c)
+    TH0 = pan.fit_start(X0)
+    assert (body.query(pan.positions(TH0))[0] < 0).sum() > 0.5 * c.n  # (the start is inside)
+    TH, left = pan.outside(TH0, body)
+    X = pan.positions(TH)
+    d = body.query(X)[0]
+    assert not left and d.min() >= GAP - 1e-5, (left, d.min())
+    assert ca.links_pct(c, X)["max"] < 0.05
+    Xf, rep = cs.solve(c, X, body=body)
+    assert rep["contact"]["inside"] == 0, rep["contact"]
+    assert rep["links"]["worst_pct"] < 2.0, rep["links"]

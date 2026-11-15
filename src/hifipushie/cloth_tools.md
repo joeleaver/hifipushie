@@ -153,7 +153,11 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   covers both sides); step 5 starts the piece on them, never from a rule. An edge map names the tape an edge laid on the
   body lies along: a STIFF piece sewn to soft cloth names one for each sewn edge (a collar's neck edge on the tape of
   the line it sits on: a jacket's runs back neck, via the shoulder, down the gorge; measure that line in step 3 with
-  body_tape if it isn't there). Row piece_tapes FAILs a piece with none, or a name step 3 hasn't taken (back to step 3);
+  body_tape if it isn't there). Row piece_tapes FAILs a piece with none, or a name step 3 hasn't taken (back to step 3).
+  Row girths (G1) walks every girth the tapes name round the pieces it crosses, each level placed by a LENGTH tape the
+  piece names (so name both: its girths and a length from its top past them), and holds the pattern to the body +
+  step 0's ease for that girth (15 mm or 15 % of the ease); a closure's lap comes off by its marks; a piece in the ring
+  whose tapes miss the girth FAILs. Draft the ease the plan asks for: step 5 can't add cloth;
   `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
   the piece step 1 puts it on): a
   mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
