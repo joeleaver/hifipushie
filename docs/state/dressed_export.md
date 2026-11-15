@@ -3,7 +3,7 @@
 Goal: one character with its clothes out the far end as one game-ready GLB, by tools alone (the area re-review's first
 move: /mnt/data/hifipushie/review_20261112/export.md). Code: garment_export.py + garment_export_tool.py (step 10 and its
 LOD files), garment_asset.py (the hand-over), asset_export.py (the clothes branch, the rig block, the LOD loop),
-garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_garment_export.py. Ledger C434, C439, C441.
+garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_garment_export.py. Ledger C434, C439, C441, C464.
 
 ## Current best
 - export_asset ships a chain garment (a garment with a garment record) AS export_garment WROTE IT at step 10: its mesh,
@@ -34,8 +34,8 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
    face's corners along the body's normal until its points clear the skin (to 50 mm) bloats the shirt.
 2. Skin through both sleeves at the forearm at LOD0: the build's own cloth is under the skin there (garment thread).
 3. Approvals: a blind agent still cannot get a garment into a character (step 9 needs Joe or the coordinator). Joe's call.
-4. asset_export.preview cannot draw a character's LOD GLB (no .json / _shading.json beside it: LOD0's copied by hand
-   for the sheets); find_tool("export the dressed character as one GLB") still leads with export_garment.
+4. DONE (C464): asset_export.preview draws a character's LOD GLB with its asset's notes (asset_budget.notes_of);
+   find_tool leads "export the dressed character" with export_asset.
 5. Not proven: the bend check at the LODs; a head + skin + hair AND a chain garment; one garment over another (an
    under garment's LOD0 cull is not applied to its own LOD file); an alpha-cut base map; read()'s maps by file name.
 
@@ -55,5 +55,5 @@ garment_game.boundaries (seams). Tests: tests/test_garment_asset.py, tests/test_
 - Equal to the garment's files: garment_asset.read(<garment LOD glb>) against garment_asset.read(<character LOD glb>),
   matched on position + uv together (seam vertices share a position); the character's meshes are "<asset>_cloth_<g>".
 
-NEXT: docs/state/mcp_rules.md items 5, 6, 10. Here: fault 2 is the build's (the garment thread); fault 4's two
-items are small and cheap.
+NEXT: fault 2 is the build's (the garment thread): forearm skin through the sleeves at LOD0. Fault 3 is Joe's
+(approvals for blind agents). Fault 5's cases have no model to prove them on yet.

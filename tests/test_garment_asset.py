@@ -220,9 +220,17 @@ def test_weights_follow_the_rig_by_bone_name():
         ga.bone_weights({"p": (names, J, W)}, [{"name": "arm"}, {"name": "root"}])
 
 
+def _export_source() -> str:
+    """The export's code as one text (asset_export.py and its stages' modules), `ex.name` read as `name`."""
+    import re
+    from hifipushie import moved
+    return re.sub(r"\bex\.", "", "".join((Path(ga.__file__).parent / f).read_text() for f in moved.files("asset")
+                                         if f.startswith("asset_export")))
+
+
 def test_the_character_export_never_hands_a_chain_garment_to_the_old_simulation():
     """asset_export splits spec["cloth"] by garment record: cloth.export_part (which simulates) gets only the others."""
-    src = (Path(ga.__file__).parent / "asset_export.py").read_text()
+    src = _export_source()
     i, j = src.index("chain = garment_asset.records(name, spec)"), src.index("clothmod.export_part(")
     assert i < j and 'old_ = {g_: v_ for g_, v_ in spec["cloth"].items() if g_ not in chain}' in src[i:j]
     assert 'clothmod.export_part(name, {**spec, "cloth": old_}' in src and ") if old_ else []" in src[j:j + 200]
@@ -231,7 +239,7 @@ def test_the_character_export_never_hands_a_chain_garment_to_the_old_simulation(
 
 def test_the_character_export_never_decimates_a_chain_garment_that_has_its_own_lod_files():
     """asset_export's LOD loop keeps the parts with an own LOD file away from lods_part and takes the files instead."""
-    src = (Path(ga.__file__).parent / "asset_export.py").read_text()
+    src = _export_source()
     i = src.index("own_ = {pn: v for pn, v in chain_lods.get(k, {}).items() if pn in parts}")
     j = src.index("garment_asset.take_lods(own_, parts, lp, lr, rep_l")
     assert i < src.index("if pn not in pf_of and pn not in own_}", i) < j < src.index("write_glb(lg, aname, lp", j)
@@ -279,3 +287,16 @@ def test_covered_at_lod0_reads_a_loose_sleeve_as_cover_and_keeps_what_a_pose_unc
     un = P0[:, 0] < 0.4
     _, kept = ga.covered_at_lod0(skin, [cover], (P0, un, 0.0, None, un, un & (P0[:, 0] > 0.2)))  # x <= 0.2 shows in a pose
     assert not kept[P0[:, 0] < 0.18].any() and kept[(P0[:, 0] > 0.22) & (P0[:, 0] < 0.38)].all()
+
+
+def test_a_characters_lod_is_drawn_with_its_assets_notes(tmp_path):
+    """asset_export.preview read <glb>.json for its cameras and blender_game.py <stem>_shading.json for its materials;
+    a character's LOD GLB has neither (one json and one shading file per asset), so a LOD could not be previewed."""
+    from hifipushie import asset_budget
+    for f in ("hero.glb", "hero.json", "hero_shading.json", "hero_LOD2.glb", "shirt_LOD1.glb", "shirt_LOD1.json", "lone_LOD3.glb"):
+        (tmp_path / f).write_text("{}")
+    assert asset_budget.notes_of(tmp_path / "hero.glb") == (tmp_path / "hero.json", {})
+    assert asset_budget.notes_of(tmp_path / "hero_LOD2.glb") == (
+        tmp_path / "hero.json", {"json": str(tmp_path / "hero.json"), "shading": str(tmp_path / "hero_shading.json")})
+    assert asset_budget.notes_of(tmp_path / "shirt_LOD1.glb") == (tmp_path / "shirt_LOD1.json", {})  # (a garment's LOD has its own)
+    assert asset_budget.notes_of(tmp_path / "lone_LOD3.glb") == (tmp_path / "lone_LOD3.json", {})    # (no asset json: as before)

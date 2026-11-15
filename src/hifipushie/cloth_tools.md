@@ -134,7 +134,8 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   error comes back as `design.mjs line N: message` with the line.
 - declarations (step 1's names): `pieces` {piece: {"part", "fold": "x0" (cut on the fold at x 0: mirrored points are
   "<name>.m"), "pair": true (a piece worn on both sides, step 1's X.L + X.R: declared ONCE as pieces.X with edges.X,
-  cut as a mirrored pair; "mirror" only flips one piece and copies no edges), "mirror", "cut", "grain", "place": {"to": "torso" | "arm.L" | "neck", "side", ...}}}; `edges` {piece:
+  cut as a mirrored pair; "mirror" only flips one piece and copies no edges), "mirror", "cut", "grain" (degrees, or "lengthwise" / "crosswise" / "bias"), "place": {"to": "torso" | "arm" | "neck",
+  "side": "front" | "back" | "side"}}} (row place reads each piece's place off its own length tapes and FAILs a contradiction); `edges` {piece:
   {edge: "a>b" | "a>via>b" (outline points) | {"path": a path of the part}}}; `seams` [{"a": "piece:edge" | [chain in
   order], "b": ..., "ease": [lo, hi] (a over b - 1), "why"}] (every step-1 seam; a seam sewn to several edges is one
   chain: a two-piece sleeve's cap edges against the armhole's front, side and back as ONE seam [cap chain] = [armhole
@@ -143,7 +144,9 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   "under": edge}, "at": [[hole, button]]}] (holes on `over`, the piece that laps on top: a man's left front; buttons on
   `under`; each a SNIPPET's name, `snippets.btn1 = new Snippet('button', p)` -> "btn1", or a
   point ON the outline; a point inside the piece isn't a mark: C376) (an edge: a declared edge name, or "pointA>pointB" /
-  "a>via>b" along the piece's outline); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
+  "a>via>b" along the piece's outline); `vents` [{"name", "over": "piece:edge", "under": "piece:edge"}]: a vent's two
+  sides (cut WITH their extensions), each edge from the hem up to the vent top where the seam starts; open below it, the
+  seam sewn only above; the girths row counts the overlap once (draft_vents.py); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other; a dart drawn INSIDE the piece (a fish dart, a dart ending in a pocket
   mouth) is declared as drawn, never cut open by hand: {"piece", "inside": <its closed path of the part>, "release":
@@ -153,7 +156,16 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   covers both sides); step 5 starts the piece on them, never from a rule. An edge map names the tape an edge laid on the
   body lies along: a STIFF piece sewn to soft cloth names one for each sewn edge (a collar's neck edge on the tape of
   the line it sits on: a jacket's runs back neck, via the shoulder, down the gorge; measure that line in step 3 with
-  body_tape if it isn't there). Row piece_tapes FAILs a piece with none, or a name step 3 hasn't taken (back to step 3);
+  body_tape if it isn't there). Row piece_tapes FAILs a piece with none, or a name step 3 hasn't taken (back to step 3).
+  Row girths (G1) walks every girth the tapes name round the pieces it crosses, each level placed by a LENGTH tape the
+  piece names (so name both: its girths and a length from its top past them), and holds the pattern to the body +
+  step 0's ease for that girth (15 mm or 15 % of the ease); a closure's lap comes off by its marks; a piece in the ring
+  whose tapes miss the girth FAILs; where step 3's girth is another definition than step 0's (hips: FreeSewing's iliac
+  crest vs the tape's own), the row checks on step 0's, at its level, and says both. Draft the ease the plan asks for:
+  step 5 can't add cloth. Row panels: each piece's share of a girth as step 2 placed it (each share read off the reference or the convention body_panels, never typed; seams where
+  the style wants them, not where the block put them). Row caught: an edge step 1 catches in a seam (a canvas) is
+  drawn out to that seam's edge, the piece inside its host. Row turned_width: a lapel / cuff turned along a traced fold
+  is as wide as the traces show. A seam far off its ease names the points its long side should end at;
   `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
   the piece step 1 puts it on): a
   mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
@@ -179,7 +191,9 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   `role` (optional; else its name decides) is one of garment_kb's roles (collar_stand, collar_fall, ...); a layer sewn
   edge to edge onto a piece by the same edge names (its canvas, inner collar) takes that piece's shape: no role needed. An outline seen in the reference
   is TRACED from it: corners stay corners (a stepped cutaway is `line`s meeting square), curves stay curves (a stand's
-  rounded front top corner), never approximated by one arc; judge the sheet's outlines beside the photo. The sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
+  rounded front top corner), never approximated by one arc; a lapel's gorge and its width at the notch are read off
+  the reference, not kept from the block (a block's square gorge, down then across, makes a notched collar a deep U where
+  the reference shows one sloping line from the neck point to the notch); judge the sheet's outlines beside the photo. The sheet is shape only (one big name per piece, each seam pair one colour, legend S<n> = the
 text's S<n>); the text lists every piece (size, cut, stiff) and every seam pair (both edges, both lengths, ease,
 PASS/FAIL); step 4 written; pattern_check re-reads it.
 

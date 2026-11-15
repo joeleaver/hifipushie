@@ -30,7 +30,10 @@ face's keep paint, the lip floor, and `bake`. asset_quality: checks on the resul
 mesh quality, defect regions. asset_scene: the bake's scene: whether it needs OSL, the cage and its clearance, scene
 maps, FBX. asset_glb: GLB: vertices, transforms, the bend / corrective / twist recipes, garment stacks, write_glb,
 head and body meshes, texel sizes. asset_gates: gates at the export: cloth decimation, the approved head, the face's
-light, fold form, the default hair tier. asset_export: `_export`: the export itself (one function), and `preview`.
+light, fold form, the default hair tier. asset_export: `_export`: the export as
+thirteen stages over one context (`Export`), and `preview`; the stages: asset_export_parts (split and mesh, texel density,
+the low poly, the bake), asset_export_wear (hair, clothes, lashes, each part's look), asset_export_rig (the rig, face
+shapes, pose correctives), asset_export_lods, asset_export_finish.
 """
 from __future__ import annotations
 
@@ -243,5 +246,6 @@ FOLD_FORM_MAX_MM = 1.0  # (coordinator, Garrett s8) skin.folds up to this much r
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("asset_budget", "asset_parts", "asset_split", "asset_hidden", "asset_raster", "asset_bake",
-           "asset_quality", "asset_scene", "asset_glb", "asset_gates", "asset_export")
+           "asset_quality", "asset_scene", "asset_glb", "asset_gates", "asset_export", "asset_export_parts",
+           "asset_export_wear", "asset_export_rig", "asset_export_lods", "asset_export_finish")
 __getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

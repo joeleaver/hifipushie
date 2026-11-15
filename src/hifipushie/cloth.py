@@ -323,8 +323,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         seam_notes = dict(blk.get("seam_notes") or {})
         pat = None
     if pat and pat.get("from") == "own":  # the agent's own FreeSewing draft + its declarations (draft_own, step 4)
-        from . import draft_own
-        blk = draft_own.block(pat)
+        from . import draft_own_block
+        blk = draft_own_block.block(pat)
         out, seams, interfaced = dict(blk["pieces"]), list(blk["seams"]), list(blk["interfaced"])
         draft_info, seam_notes = blk["draft"], dict(blk["seam_notes"])
         folds_tbl += blk["folds"]
@@ -819,7 +819,9 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         arcs = sorted(fixed[nm].items(), key=lambda kv: kv[0][0])
         for (ix, _), (ix2, _) in zip(arcs, arcs[1:] + arcs[:1]):
             if len(arcs) > 1 and ((ix2[0] - ix[0]) % n) < ((ix[-1] - ix[0]) % n):
-                raise ValueError(f"{nm}: two sewn edges overlap ({ix[0]}..{ix[-1]} and {ix2[0]}..{ix2[-1]})")
+                raise ValueError(f"two sewn edges overlap: {nm}:{_arc_name(pc, ix)} (seam {owner[nm][ix] + 1}) and "
+                                 f"{nm}:{_arc_name(pc, ix2)} (seam {owner[nm][ix2] + 1}): end one where the other "
+                                 f"starts, or sew them as one chain")
         ring, rkeys, pending = [], [], []
 
         def emit(p, key):

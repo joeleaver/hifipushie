@@ -34,7 +34,8 @@ LANDMARKS: below. A torso level's width is the torso section's across the view; 
 limb, across it in the view; the girth is body_tape's at the same place. Ease = body girth x (ratio - 1): the garment's
 section taken as the body's scaled by the ratio (stated in every source). Heights: the fraction between the two marked
 landmarks either side (extrapolated beyond the outermost two, said so) on the model's own landmark heights.
-OUTPUT (step 0's record): fit {landmark: {ratio, ease_mm, body_girth_mm, garment_girth_mm, body_width_mm,
+OUTPUT (step 0's record): fit {landmark: {ratio, ease_mm, body_girth_mm, level_z_m (a torso level's height, model m:
+  step 4's girths row checks the girth where its ease was read, F2), garment_girth_mm, body_width_mm,
   garment_width_mm, body: seen|inferred, garment: seen|inferred, source}}, heights {name: {z_mm (above the floor),
   fraction, between, source}}, fit_read (the marks as given). Refusals name the item and what to write instead.
 """
@@ -377,6 +378,7 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
         out[w["at"]] = dict(ratio=round(r, 3), ease_mm=round(m["girth_mm"] * (r - 1), 1),
                             body_girth_mm=round(m["girth_mm"], 1), garment_girth_mm=round(m["girth_mm"] * r, 1),
                             body_width_mm=round(m["width_mm"], 1), garment_width_mm=round(m["width_mm"] * r, 1),
+                            **({"level_z_m": m["z_m"]} if m.get("z_m") is not None else {}),
                             body=w["body"], garment=w["garment"], source=src, **({"why": w["why"]} if w.get("why") else {}),
                             **({"measured": w["measured"]} if w.get("measured") else {}),
                             **({"section": {k: heights[w["at"]].get(k) for k in ("on", "z_mm", "along")}}
@@ -401,7 +403,9 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
 
 def text(fit: dict, heights: dict) -> list:
     L = [f"  fit {k}: ratio {e['ratio']} (body {e['body']}, garment {e['garment']}) -> ease {e['ease_mm']:+.0f} mm "
-         f"(girth {e['body_girth_mm']:.0f} -> {e['garment_girth_mm']:.0f} mm; width {e['body_width_mm']:.0f} -> "
+         f"(girth {e['body_girth_mm']:.0f}" + (f" at z {e['level_z_m']:.3f} m, the model's own section there (the tape's "
+         "own definition; a step-3 girth of the same name in a FreeSewing definition can differ: step 4 checks on this "
+         "one)" if e.get("level_z_m") is not None else "") + f" -> {e['garment_girth_mm']:.0f} mm; width {e['body_width_mm']:.0f} -> "
          f"{e['garment_width_mm']:.0f} mm)" + "".join(
              f"; {w} edges moved to the picture's {x['moved_px'][0]:.0f} / {x['moved_px'][1]:.0f} px"
              + (f" ({'; '.join(x['notes'])})" if x["notes"] else "")

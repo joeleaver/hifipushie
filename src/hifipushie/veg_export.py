@@ -8,8 +8,11 @@ are embedded. extras carry the plant's name, stats and counts.
 Where the code is (split by responsibility, as C424): this module is the family's base and holds EVERY constant (set
 and read at veg_export.NAME: C422). veg_export_parts: what goes into a plant's GLB: wind nodes, the foliage mesh, kept
 wood and twigs, budgets, the season atlas, collision, snow numbers, impostor frames and maps. veg_export_glb:
-`write_glb`: the plant's GLB (one function), and write_impostor. veg_export_files: the files beside the GLB:
-seasons_json, write_collision.
+`write_glb`: the plant's GLB, as nine stages over one context (PlantGlb): the context, the stages in order, what is
+written, the buffer and its builders, the file's end; and write_impostor. veg_export_glb_materials: its materials
+(bark, a style's foliage, the leaf atlas per season, wet, forks, the impostor's: five stages). veg_export_glb_plants:
+every plant's meshes and nodes per LOD (one stage). veg_export_files: the files beside the GLB: seasons_json,
+write_collision.
 """
 from __future__ import annotations
 
@@ -157,5 +160,5 @@ SNOW = {"color": [0.9, 0.92, 0.95], "coverage": 0.8}  # (the looks' snow: blende
 
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
-MODULES = ("veg_export_parts", "veg_export_glb", "veg_export_files")
+MODULES = ("veg_export_parts", "veg_export_glb", "veg_export_glb_materials", "veg_export_glb_plants", "veg_export_files")
 __getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)

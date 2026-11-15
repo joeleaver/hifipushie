@@ -27,12 +27,18 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.spatial.transform import Rotation
 
-from .chain_core import ChainRefused
+from .chain_core import GAP, ChainRefused
 from .chain_lay_net import _side
 
 NP = 9  # numbers per panel: rotation vector (3), translation (3), roll axis angle in the flat, curvature, taper
 G0 = 1e-3  # a start's taper: a cylinder to the eye, but the fit's differences see the cone (at 0 they don't)
 G_MAX = 0.95  # |taper| (the cone's sin half-angle over its curvature ratio) is clipped here
+W_OUT = 100.0  # Panels.outside: weight of a point nearer the body than the gap (per m) against the panel's mean move
+OUT_MARGIN = 0.0005  # m: outside aims this far past the gap, so the penalty's last bit leaves no point under it
+OUT_NFEV = 100  # least-squares evaluations per panel in outside (analytic-normal jacobian: one body query each)
+OUT_SCALE = np.array([0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.1, 1.0, 0.01])  # each number's typical step (rad, m, rad, 1/m, -)
+OUT_BOUND = np.array([0.35, 0.35, 0.35, 0.08, 0.08, 0.08, 0.2, 0.0, 0.05])  # how far outside may move each number (curvature: below)
+# (D2: unbounded, the side piece curled into a cone 15 mm round and left 28 cm: a panel keeps near its place, opens only)
 
 
 def _cyl(s, t, kappa):
@@ -297,3 +303,63 @@ class Panels:
                         best = r
             TH[k] = best.x
         return self.resolve(TH)
+
+    def outside(self, TH, contact, gap=GAP, log=None):
+        """TH with every panel moved out of the body BY ITS OWN NUMBERS (D2): no point nearer `contact` than gap (+
+        OUT_MARGIN), each panel as little moved as that allows (its points' move from TH is the soft term, a point nearer
+        than gap a hard-weighted one). A panel stays isometric, so no link leaves its cut; a ruled panel moves with its
+        base (its roll its own). D1: N2j's start had 1,749 points up to 51 mm inside the body and the solve's per-point
+        push-out dragged pieces (354 links > 2 % from contact alone). Returns (TH, {panel's piece: points still under gap})."""
+        TH = self.resolve(np.array(TH, float))
+        cols = self.free_cols()
+        order = [k for k in range(self.n) if k not in self.ruled] + [self.hinges[i]["turned"] for i in self.rule]
+        left = {}
+        for k in order:
+            grp = [j for j in range(self.n) if k in self.ancestors(j)]
+            ids = [self.panels[j]["ids"] for j in grp]
+            P0 = np.concatenate([self.place(TH[j], j, self.cnet.uv[i]) for j, i in zip(grp, ids)])
+            if (contact.query(P0)[0] >= gap).all():
+                continue
+
+            def at(x):
+                T2 = TH.copy()
+                T2[k, cols[k]] = x
+                T2 = self.resolve(T2) if self.rule else T2
+                return T2, np.concatenate([self.place(T2[j], j, self.cnet.uv[i]) for j, i in zip(grp, ids)])
+
+            memo = {}
+
+            def ev(x):  # (one body query per point set: the jacobian moves the map, not the body, so it reuses the
+                # normals: d(distance) = normal . d(position))
+                key = x.tobytes()
+                if key not in memo:
+                    memo.clear()
+                    P = at(x)[1]
+                    memo[key] = (P, *contact.query(P))
+                return memo[key]
+
+            def res(x):
+                P, d, _ = ev(x)
+                return np.r_[(P - P0).ravel() / np.sqrt(len(P)), W_OUT * np.minimum(d - gap - OUT_MARGIN, 0.0)]
+
+            def jac(x):
+                P, d, nrm = ev(x)
+                J = np.empty((len(P), 3, len(x)))
+                for c_ in range(len(x)):
+                    e = np.zeros(len(x))
+                    e[c_] = 1e-6 * OUT_SCALE[cols[k]][c_] / 0.01
+                    J[:, :, c_] = (at(x + e)[1] - at(x - e)[1]) / (2 * e[c_])
+                act = (d < gap + OUT_MARGIN)[:, None]
+                return np.r_[J.reshape(-1, len(x)) / np.sqrt(len(P)), W_OUT * act * np.einsum("pi,pic->pc", nrm, J)]
+            x0 = TH[k, cols[k]]
+            lo, hi = x0 - OUT_BOUND[cols[k]], x0 + OUT_BOUND[cols[k]]
+            c7 = cols[k].index(7)  # (a roll may only OPEN (its curvature towards 0), never curl tighter)
+            lo[c7], hi[c7] = min(0.0, x0[c7]) - 1e-9, max(0.0, x0[c7]) + 1e-9
+            r = least_squares(res, x0, jac=jac, bounds=(lo, hi), x_scale=OUT_SCALE[cols[k]], max_nfev=OUT_NFEV)
+            TH = at(r.x)[0]
+            under = int((contact.query(at(r.x)[1])[0] < gap).sum())
+            if log:
+                log(f"outside: panel {k} ({self.panels[k]['piece']}) {r.nfev} evaluations, {under} under the gap")
+            if under:
+                left[self.panels[k]["piece"]] = left.get(self.panels[k]["piece"], 0) + under
+        return TH, left

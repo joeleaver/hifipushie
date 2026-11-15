@@ -427,7 +427,8 @@ class Tape:
         v = vals.get(fs, mm[fs])
         how = f"tailor.measure's {fs} (its docstring)"
         if fs in (info.get("definitions") or {}):
-            how += f", in {consumer}'s definition (measure_defs adapter {info['definitions'][fs][0]}; the tape's own: {mm[fs]})"
+            how += (f", in {consumer}'s definition (measure_defs adapter {info['definitions'][fs][0]}; the tape's own: "
+                    f"{mm[fs]}, the one step 0's fit reads its ease on and step 4's girths row checks on)")
         src = fs  # (the tape the value came from: an adapter that takes another tape's value draws ITS line, C356:
         if float(v) != float(mm[fs]):  # t s3-2's hips was the iliac crest's 805 mm drawn at the hip joint's 942.8)
             src = next((k for k in mm if k != fs and float(mm[k]) == float(v)), fs)

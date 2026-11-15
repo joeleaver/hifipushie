@@ -42,7 +42,7 @@ STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
             body name | "piece:edge" | [step-0 height/landmark, another], source}} | {style: {value_mm, fixed: why it is
             the same on every wearer, source}}, why?}] (never mm read off the picture: garment_parts_lengths; a body
             length is checked against its edge as drawn at the step-0 scale; why keeps one the check refuses)
-STEP 2 "style": {ties, bends, pose, rows, layers?, drape?}
+STEP 2 "style": {ties, bends, pose, rows, traces, panels?, layers?, drape?}
   drape  {piece: {falls: down|up, source}}  (T13: a step-1 hang "draped" piece's start: a hood worn up falls up; chain_drape)
   layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
           full fits all of it inside, for a reason: chain_press.py, T12)
@@ -62,6 +62,12 @@ STEP 2 "style": {ties, bends, pose, rows, layers?, drape?}
           edge turns sharply: a lapel's notch, a cutaway's tip], source}]  REQUIRED: the reference's key edges (hem, front
           edges, collar, sleeve ends, a roll line...) traced on a view, what = a trace kind (listed on a refusal); step 6
           compares the build's outline in that view with them in mm (T15, C299, C351)
+  panels [{girth, shares: {piece base name: {source: reference, view, at, what} | {source: convention}}}]  where the
+          seams round the body fall (three or more panels a side: front, side body, back), pieces from the centre front to
+          the centre back; reference: at = where its seams cross that level on one side of the view; convention =
+          body_panels: N pieces round a girth, front to back: 2 = .50/.50, 3 = .40/.22/.38, 4 = .28/.22/.22/.28, scaled
+          to what the read ones leave; never typed, never inferred / block (F4, panel_shares.py; the look draws the
+          seams round the body; step 4's row panels FAILs without it)
   body_marks [{view, at: {landmark: [u,v]}, source}]  only for a view step 0 didn't fit: the fit view is placed by step
           0's own landmarks (C351)
 """
@@ -366,7 +372,7 @@ def write(model: str, garment: str, step: str, plan: dict, look: bool = True) ->
         return held[0]
     try:
         p = check_read(plan, body=body) if sid == "0" else check_parts(plan, out["0"], body) if sid == "1" else \
-            check_style(plan, out["0"], out["1"])
+            check_style(plan, out["0"], out["1"], body)
     except PlanRefused as e:
         if sid == "0" and "fit" in str(e):  # (the model's landmarks, drawn and in words, before the marks: C338)
             raise PlanRefused(f"{e}\n{gf.landmark_help(model, garment, body)}") from None
@@ -447,6 +453,8 @@ def text(model: str, garment: str, r: dict) -> str:
               for r_ in p["rows"]]
         L += [f"  trace {t['id']} ({t['what']}) on view {t.get('view', 0)}: {len(t['points'])} points, corners at "
               f"{t.get('corners') or 'none'}" for t in p.get("traces") or []]
+        from . import panel_shares
+        L += panel_shares.text_lines(p)
         L += [f"  body marks on view {m.get('view', 0)}: {', '.join(m['at'])}" for m in p.get("body_marks") or []]
     L += [f"  look: {x}" for x in r["look"]]
     nxt = {"0": "judge the look against the picture (are the samples on the right cloth), then garment_plan step='parts'",

@@ -69,7 +69,7 @@ def test_hair_budget_refuses_drawn_over_max_and_counts_card_faces():
     g = asset_budget.budget_check(rb, rep, {})
     assert g["fail"] and g["hair"]["card_faces"] == 850 and g["hair"]["vertices"] == 900
     assert hair.BUDGET_UNIT == "card_faces"  # the cards are fitted to card faces, not drawn triangles
-    src = (ROOT / "src/hifipushie/asset_export.py").read_text()  # (_export: asset.py was split)
+    src = _export_source()
     assert 'if budget_gate["fail"]:' in src and "vertices=len(hpart[\"verts\"])" in src
 
 
@@ -218,6 +218,15 @@ def test_claude_md_under_8_kb():
     assert (ROOT / "CLAUDE.md").stat().st_size < 8 * 1024
 
 
+def _export_source() -> str:
+    """The export's code as one text: asset_export.py and the modules its stages live in, `ex.name` read as `name`
+    (the stages carry the function's variables on one context, C468)."""
+    import re
+    from hifipushie import moved
+    return re.sub(r"\bex\.", "", "".join((ROOT / "src/hifipushie" / f).read_text() for f in moved.files("asset")
+                                         if f.startswith("asset_export")))
+
+
 def test_state_pages_at_most_60_lines():
     long = {p.name: n for p in (ROOT / "docs/state").glob("*.md") if (n := len(p.read_text().splitlines())) > 60}
     assert not long, f"STATE pages over 60 lines: {long}"
@@ -299,7 +308,7 @@ def test_export_gates_on_the_approved_head_and_fold_form():
     if not hasattr(asset_gates, "approved_head") or not hasattr(asset, "FOLD_FORM_MAX_MM"):
         pytest.skip("asset_gates.approved_head / FOLD_FORM_MAX_MM not on this branch yet (export branches; coordinator merges)")
     assert asset.FOLD_FORM_MAX_MM <= 1.0
-    src = (ROOT / "src/hifipushie/asset_export.py").read_text()  # (_export: asset.py was split)
+    src = _export_source()
     assert "is not the approved head" in src and "skin.folds change the head's form" in src
     with tempfile.TemporaryDirectory() as d:
         Path(d, "approved.json").write_text(json.dumps({"approved": {}}))

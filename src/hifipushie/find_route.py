@@ -53,6 +53,21 @@ KEYWORDS = {
 
 
 SAME_VERB = {"render": "look", "view": "look", "see": "look", "preview": "look"}  # ("render the hair" asks for look_hair)
+# "export the dressed character": the whole character's export, not a garment's (pin_dressed_export)
+OUT_WORDS = {"export", "glb", "fbx", "file"}
+WHOLE_WORDS = {"character", "person", "figure", "npc", "hero", "body", "model"}
+WORN_WORDS = {"dressed", "clothed", "clothes", "clothing", "outfit", "garments", "wearing"}
+
+
+def pin_dressed_export(query: str, scores: dict) -> dict:
+    """The CHARACTER with its clothes out as a file is export_asset's job: an out word + a whole-character word + a
+    worn word pins it. The clothes' subject words made it a clothes job, and export_garment (one garment's file, a
+    step before) led with the pattern steps behind it. "export the shirt" names no character and stays the garment's."""
+    import re
+    w = set(re.findall(r"[a-z]+", query.lower()))
+    if w & OUT_WORDS and w & WHOLE_WORDS and w & WORN_WORDS and scores:
+        return {**scores, "export_asset": 1.01 * max(scores.values()) + 1.0}
+    return scores
 
 
 def subjects(groups: dict, words) -> dict[str, set]:

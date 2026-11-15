@@ -10,7 +10,7 @@ the steps after it stay as they were. The first step that no longer validates st
 stale with `stale_why`, the reason garment_record shows.
 
 Validators (CHECKS): step 1 = garment_plan.check_parts on step 0; step 2 = check_style on steps 0 + 1; step 3 = every
-measurement step 1 names (its `measurements`) is among step 3's taken rows; step 4 = draft_own.validate (the saved
+measurement step 1 names (its `measurements`) is among step 3's taken rows; step 4 = draft_own_validate.validate (the saved
 declarations against step 1, and the drafted parts) AND its flat gate as pattern_check would run it now (C404: a check
 added since, or a step-2 fold the draft doesn't declare, FAILs it: carried as "PASS" it would hide that); later steps are never carried past a changed step 1 (they're builds:
 rebuild). A step whose own inputs already match (step 3 after a carried step 2) is still checked: when it fails it is
@@ -32,7 +32,8 @@ def _check(sid: str, out: dict, rec: dict) -> str:
         if sid == "1":
             gp.check_parts(out, o["0"])
         elif sid == "2":
-            gp.check_style(out, o["0"], o["1"])
+            from .garment_fit import body_for  # (a reference panel share is walked round the body: F4)
+            gp.check_style(out, o["0"], o["1"], lambda: body_for(rec.get("model") or ""))
         elif sid == "3":
             took = {r.get("name") for r in out.get("measurements") or []}
             miss = [m for m in o["1"].get("measurements") or [] if m not in took]
@@ -40,13 +41,14 @@ def _check(sid: str, out: dict, rec: dict) -> str:
                 return f"step 1 now needs measurements step 3 hasn't taken: {', '.join(miss)} (body_tape them by name)"
         elif sid == "4":
             from . import draft_own as do
+            from . import draft_own_validate
             from pathlib import Path
             dd = Path(out.get("dir") or "")
             if not (dd / "declarations.json").exists():
                 return "step 4's declarations aren't on disk: draft_pattern again"
             decl = json.loads((dd / "declarations.json").read_text())
             parts = json.loads((dd / "draft.json").read_text()).get("parts") if (dd / "draft.json").exists() else None
-            bad = do.validate(decl, o["1"], parts)
+            bad = draft_own_validate.validate(decl, o["1"], parts)
             if bad:
                 return "the draft's declarations don't match step 1 now: " + "; ".join(bad[:3])
             # (C404: the flat gate itself, as pattern_check would run it now: trial s2-6's step-2 retake carried step 4

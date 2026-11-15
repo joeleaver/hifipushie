@@ -114,6 +114,11 @@ class TapeBody:
             self._c[key] = self._section(it, f"{bone}@{where:.3f}", view)
         return self._c[key]
 
+    def torso_loop(self, z_mm):
+        """The torso's girth loop (n, 3) m at a height (mm above the floor): step 2's panel shares walk it."""
+        self.section_on("body", z_mm)
+        return np.asarray(self.tape.lines[f"fit:body@{z_mm:.3f}"], float)
+
     def _section(self, item, name, view):
         from . import body_tape as bt
         t = self.tape
@@ -132,6 +137,7 @@ class TapeBody:
         d = np.array([n2[1], -n2[0]])  # (across the limb in the view)
         P = L[:, ax]
         return {"p3": L.mean(0).tolist(), "girth_mm": m["mm"], "width_mm": float(np.ptp(P @ d)) * 1000,
+                **({"z_m": round(float(L[:, 2].mean()), 4)} if sq == "body" else {}),  # (a torso level: girths row)
                 "z_mm": (float(L[:, 2].mean()) - t.zmin) * 1000, "centre": P.mean(0).tolist(), "dir": d.tolist()}
 
 

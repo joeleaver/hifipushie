@@ -1,46 +1,46 @@
 # STATE: step 5 rewritten (docs/proposals/step5_rewrite.md; CHAINS ONLY; N2j: LINES ACROSS ARE REAL CHAINS)
 
 Step 5 lays out the CHAINS (boundary + fold rows + lines across), lengths given, only bends chosen, nothing held.
-Step 6 fills surfaces between them. Runs N1 -> N2 -> ... -> N2i -> N2j (this; stopped at the call budget, jacket unproven).
+Step 6 fills surfaces between them. Runs N1 -> ... -> N2j -> D1 (contact makes the stretch) -> D2 (start outside: not enough).
 
 ## Current code
-- `chain_lines.lines` (N2j, new): per piece a LATTICE along / across the grain every SPACING 30 mm; each lattice line cut
-  into the intervals the outline and fold rows leave; interior points = lattice points MARGIN 0.4 x S clear of outline /
-  rows; ends snapped to the nearest chain point (SNAP 0.6 S); any link > SPLIT 1.25 S gets its own evenly spaced points
-  (a single straight link held a strip end flat). `walk(cnet, kind)` the lines in order; `wave(P, window)` waviness.
-- `chain_lay_net.chain_network`: the lines are chains (chain_kind 2 along grain, 3 across), links EXACT (appended after
-  the pattern's links); lattice points keep -1, stiff / bend from the nearest pattern vertex. Faces: Delaunay over all
-  points, still the bending stencils / ply hosts; face edges stay AT MOST flat (removing them scalloped a pulled edge
-  0.7 mm between line ends: cloth doesn't stretch). W_SHORT (N2i's soft shortening term) deleted.
-- panel_start.starts maps keep >= 0 only; chain_settle.girth_pulls reads the pattern's chains only (kind < 2);
-  chain_assemble.links_pct: max / p99 over pattern chains, lines_max apart (a 30 mm link is a chord of a rolled panel).
-- Proof script `spikes/n2j_jacket.py <out> <loaded.pkl> [measure]` (renamed from n2i); render `spikes/n2c_render.py
-  <run> <pkl> <ref> X.npy quick [lines]` (lines across drawn only with `lines`). ws /mnt/data/hifipushie/n2j/ws.
+- `chain_lines.lines` (N2j): per piece a lattice every 30 mm, cut by outline / fold rows; real chains, links exact.
+- `chain_lay_net.chain_network`: lines are chains (kind 2 along, 3 across); faces Delaunay, edges at most flat.
+- `panel_start.starts` + `chain_panels.Panels.fit_start`: the rolled-panel start from each piece's own tapes.
+- NEW (D2) `Panels.outside(TH, contact, gap, log)`: every panel moved out of the body by its OWN numbers (least squares:
+  mean move soft, a point under the gap hard, analytic-normal jacobian), bounded: rigid motion within OUT_BOUND, a roll
+  may only OPEN (curvature towards 0), taper +-0.05. Unbounded, the side piece curled into a 15 mm cone and left 28 cm.
+- Proof scripts: `spikes/d2_girths.py` (girths, flat vs tapes), `spikes/d2_start.py <out> <pkl> <n2j run>` (outside on
+  N2j's start, writes a run dir for `spikes/d1_where.py`), render `spikes/n2c_render.py <run> <pkl> <ref> X.npy quick`.
 
-## Tests (synthetic, tests/test_chain_lines.py, all pass)
-- soft strip round a cylinder: every line across arc = flat (to 1e-4), chord 0.81 of flat (curved), long edges wave 0.
-- strip pulled into 80 % of its width: bulges, a single hump 28 mm high, arcs exact (N2i-style lines would narrow).
-- stiff strip pulled onto a curve: lines across straight (chord > 0.99 of flat).
-- tests/test_chain_*.py + test_codified: 156 passed. The old full-mesh stiff-strip test (W_SHORT's) removed.
-
-## Jacket (n2j/run1, INCOMPLETE: killed at the budget after stage 2 of 3 + sewn)
-- Points 5,920 (4,588 nodes; N2i 4,326 / 2,994). Setup 62 s. Load ~80-98.
-- Unsewn stages are WORSE than N2i: stage 2 links over 2 % 300 of 7,755, max 36 % (N2i 0, max 0.02 %); seams still
-  98 mm apart at the sleeve caps (N2i 38-40 mm). Pieces can no longer squash, and that is how N2i's seams met: the
-  continuation now asks the hard terms for what they can't give; the final step leaves links off. Not diagnosed: which
-  kind of link is off (script /tmp/.../scratchpad/n2j/lk.py not run) and the sewn solve's numbers.
-- N2i's baseline measured (scratchpad meas.py on n2i/run1): face edges > 15 % short 5-45 % per piece; outline wave
-  (50 mm window, minus the flat outline's) 0.9-1.0 % back, 2.7-2.9 % fronts, 4.4-6 % sleeves, 7.3-8.2 % collars;
-  sleeve_top.L fold row wave 22 %.
+## D2 (2026-11-14; out /mnt/data/hifipushie/d2/{out,run}, ws d2/ws)
+GIRTHS (pattern at its level, CF to CF, darts out, seam lines; vs tape + 2 pi GAP 28 mm): chest just under the
+armhole 1035 vs 997 (+38; at the hollow's own vertex -19); waist 894 vs 811 (+83); hips at body height 1007 vs 993
+(+15); seat at body height 1003 vs 1027 (-25), hem 984 (-44); biceps at the cap's foot 339 vs 345 (-6; +22 over the
+bare arm); elbow +57; wrist +48; armhole 460 vs 431 (+29); back neck 176 vs body 193. Planned ease (garment_plan) is far
+larger (chest 1108, waist 988, hips 1103): the draft has 70-130 mm less than the plan. Short of body + gap: seat / hem
+(open, cut-away front: not a closed loop), biceps by 6 mm (sleeve 3.5 mm off instead of 4.5). Judged not the cause of
+44-75 % stretch, but a step-4 question: the draft's ease vs the plan's.
+START: inside 1,561 -> 20 points (deepest 50.6 -> 11.4 mm), under gap 2,112 -> 61 (sleeve_top 18 + 18, collar 12,
+canvas 11, side 1 + 1); panels moved mean 32, max 119 mm; L / R now equal. BUT seams' start distance 68 -> 87 mm mean,
+317 max, and the start already holds links across panel boundaries far off (collar 5,128 %, p99 25 %; N2j's own: 618 %).
+E5 (contact, no tapes, sewn solve from that start): 873 of 6,437 links > 2 % (D1: 354), worst 75 %, collar 250,
+undercollar 145, back.R 125 / back.L 117, sleeves 40-61; 20 points inside (22 mm), 1,518 under gap; not converged.
+Render: d2/run/E5_X_quick_sheet.png (start: X_start_quick_sheet.png). Beside the reference: a boxy tube, sleeves crumpled
+at the shoulder ending above the elbow, collar a stand-up band round the neck with no fall. Far from the reference.
+Reading: inside points were not the whole story. Now symmetric, the stretch follows the SEAMS (pieces started 87 mm apart
+and merged at once by the sewn solve) and the collar's broken start. E6 not run (E5 failed its bar first).
+Seam ease (D1, unchanged): 130 of 754 seam links differ > 2 % between sides: sleeve caps ~5 %, under the elbow to 29 %
+locally, collar to front to 18 %.
 
 ## Open faults (ranked)
-1. The jacket with exact lines: seams don't close in the unsewn stages (sleeve caps 98 mm) and links stay off.
-   Read which links (kind, piece) are off at X_stage2; try the sewn solve straight from the start, or a looser SPACING
-   on caps; the cap ease may simply need the sleeve to bulge (a cone panel at the start).
-2. Collar fall (undercollar has no roll row: step 4), sleeves thin, facing crossing CF (from N2i, unchanged).
+1. A start whose SEAMS meet: panels fitted with contact AND their seams (rigid + roll per panel, seam pairs as residuals,
+   contact a hard inequality) instead of outside() alone; or N2j's continuation (unsewn stages) from the outside start.
+2. The collar's start: links across its panels thousands of % off before any solve (hinge rows / ruled panels at 0 turn).
+3. Ease as a declaration; draft ease vs plan (girths above); collar fall, sleeves thin (from N2i).
 
-Run: `uv run pytest -q tests/test_chain_lines.py tests/test_chain_solve.py tests/test_chain_lay.py tests/test_chain_panels.py`.
-Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457, C462.
+Run: `uv run pytest -q tests/test_chain_panels.py tests/test_chain_lines.py tests/test_chain_solve.py`.
+Ledger C426-C433, C435, C438, C440, C444, C446, C448, C457, C462, C465, C466.
 
-NEXT: N2j-b: finish the jacket proof with exact lines: diagnose why the unsewn stages leave links 36 % off (lk.py on
-n2j/run1/X_stage2.npy), get the sewn solve to TOL, then measure squash + wave (meas.py) vs N2i and render.
+NEXT: D3: start with seams closed and contact together (panels' numbers fitted to seam pairs + contact), fix the collar's
+cross-panel links at the start; then rerun d1_where E5 from it: links < 2 %, 0 inside, before tapes (E6).
