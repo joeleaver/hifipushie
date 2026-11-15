@@ -488,11 +488,37 @@ def test_a_dart_inside_the_piece_is_cut_through_and_sewn(home):  # (t s4-23: a f
     bad["darts"] = [{"piece": "panel.L", "inside": "nodart", "release": ["bm"], "legs": ["x", "y"]}]
     why = " ".join(do.validate(bad, STEP1, out["parts"]))
     assert "no legs" in why and "not a path of the part" in why, why
-    bad["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pk", "tl"]}]
-    bad["edges"]["panel.L"]["back"] = "tr>tl>bl"  # (an edge running past the cut's outline point)
-    (d / "declarations.json").write_text(json.dumps(bad))
-    with pytest.raises(do.DraftRefused, match="runs past"):
-        do.block({"dir": str(d)})
+    run = copy.deepcopy(decl)  # (the release lands partway along a sewn edge: t s4-25, through a pocket to the side seam)
+    run["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pr", "lm"]}]
+    (d / "declarations.json").write_text(json.dumps(run))
+    blk = do.block({"dir": str(d)})
+    pc, ea = blk["pieces"]["panel.L"], blk["edge_arcs"]["panel.L"]
+    assert "back" not in ea and dcut._simple(np.asarray(pc["P"]))
+    b1, b2 = (pattern.length(pc["P"][pattern.arc_indices(pc, ea[e])]) for e in ("back.1", "back.2"))
+    assert abs(b1 - 0.2) < 0.002 and abs(b2 - 0.1) < 0.002, (b1, b2)  # (each half keeps its length)
+    chain = [s_ for s_ in blk["seams"] if any(isinstance(x, list) for x in s_)]
+    assert len(chain) == 1 and chain[0][0] == [f"panel.L:{ea['back.1']}", f"panel.L:{ea['back.2']}"], blk["seams"]
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    B["edge_arcs"], B["darts"] = blk["edge_arcs"], blk["darts"]
+    rows = {r["id"]: r for r in do.gate(B, run, STEP1)}
+    for r in ("darts", "seams", "sewn"):
+        assert rows.get(r, {"status": "PASS"})["status"] == "PASS", rows.get(r)
+    M = cloth.mesh(B)
+    k = B["seams"].index(chain[0])
+    assert len(set(int(x) for x in M["sew_seam"])) == len(B["seams"]), "every seam sewn"
+    sw, P = np.asarray(M["sew"]).reshape(-1, 2), M["points"]
+    mate = lambda v: {int(b) for a, b in sw if a == v} | {int(a) for a, b in sw if b == v}
+    assert mate(P["panel.L:dart.cut_a"]) & mate(P["panel.L:dart.cut_b"]) == {P["panel.R:lm"]}  # (one partner vertex)
+    assert abs(np.linalg.norm(M["uv"][P["panel.R:lm"]] - M["uv"][P["panel.R:tl"]]) - 0.2) < 0.002  # (0.2 m down its back)
+    lap = copy.deepcopy(decl)  # (two sewn edges overlapping: said by piece and point names, never indices; t s4-25)
+    lap.pop("darts")
+    for p in ("panel.L", "panel.R"):
+        lap["edges"][p]["low"] = "lm>bl"
+    lap["seams"].append({"a": "panel.L:low", "b": "panel.R:low"})
+    (d / "declarations.json").write_text(json.dumps(lap))
+    with pytest.raises(ValueError, match=r"overlap: panel\.\w:tl>bl \(seam 2\) and panel\.\w:lm>bl \(seam 3\)"):
+        cloth.mesh(cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800}))
+
 
 
 def test_s4_2_gaps_options_exports_edges_blocks(home):  # (C362)
