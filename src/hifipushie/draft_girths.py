@@ -14,8 +14,9 @@ THE LEVEL on a piece: from the declared LENGTH tape of that piece that crosses t
 several, the one whose top is highest, as piece_start's panel start): its surface length from its top end (the end
 highest and nearest the centre line: an hps, a shoulder point, an armpit) to the plane is the drop from the piece's top
 (its highest flat point; flat y runs up the grain). A level above the lowest point of the piece's edges sewn to a piece
-of another body part (an armhole, a sleeve cap) is taken there: a tailor's chest line runs through the underarm. A
-piece with no such tape gets the level over its seams at the same share of the seam's length (sewn end to end).
+of another body part (an armhole, a sleeve cap) is taken there: a tailor's chest line runs through the underarm, one
+underarm round the ring (one_underarm). A piece with no such tape gets the level over its seams at the same share of the
+seam's length (sewn end to end).
 THE RING: pieces linked where the level crosses both sides of a seam (a closure links its over and under pieces);
 pieces with fewer than two links are pruned (a facing or canvas lying on another is not round the body). A piece in
 the ring whose `tapes` don't name the girth FAILs as a missing declaration (its numbers still shown).
@@ -70,6 +71,47 @@ def _share(E: np.ndarray, i: int, t: float) -> float:
 def _at_share(E: np.ndarray, f: float) -> np.ndarray:
     L = np.r_[0, np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))]
     return np.array([np.interp(f * L[-1], L, E[:, k]) for k in range(2)])
+
+
+def one_underarm(B: dict, lines: dict, under: list, holes: dict) -> None:
+    """Pieces lowered to the underarm, sewn to each other by a seam running down from their armholes' ends, are read
+    at ONE underarm: the deeper of the two, measured along the seam from its top (as sewn: points that far down meet;
+    flat drops differ where the two pieces' grains meet at an angle), on both (F5b). Read per piece, each at its own
+    armhole's lowest point, s4-29's front was read at its spiked corner 19.5 mm above the side body's underarm, and a
+    seam moved toward the front raised the front's corner and its reading (8 mm), so a move that kept every level's
+    width read the chest 19 mm looser."""
+    pcs = B["pieces"]
+    lv = {p: float(lines[p][0][1]) for p in under if p in lines}
+    ends = {p: [x for a in holes.get(p, []) for x in _edge(pcs, p, a)[[0, -1]]] for p in lv}
+
+    def down(E):  # (the seam from its top end down, with its arc lengths)
+        E = E if E[-1, 1] >= E[0, 1] else E[::-1]
+        E = E[::-1]
+        return E, np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))])
+    pairs = []
+    for pa, ea, pb, eb in _seam_pairs(B):
+        if pa in lv and pb in lv and pa < pb:
+            (E, LE), (F, LF) = down(_edge(pcs, pa, ea)), down(_edge(pcs, pb, eb))
+            if (any(np.linalg.norm(E[0] - x) < 1e-6 for x in ends[pa]) and any(np.linalg.norm(F[0] - x) < 1e-6
+                                                                               for x in ends[pb])):
+                pairs.append(((pa, E, LE), (pb, F, LF)))
+
+    def arc_at(E, LE, y):  # (arc from the top where the level y first crosses the seam; None: it doesn't)
+        c = _cross(E, np.array([0.0, y]), np.array([1.0, 0.0]), closed=False)
+        return None if not c else LE[c[0][1]] + c[0][2] * (LE[c[0][1] + 1] - LE[c[0][1]])
+    for _ in range(len(lv)):
+        moved = False
+        for sides in pairs:
+            arcs = [arc_at(E, LE, lv[p]) for p, E, LE in sides]
+            if None in arcs:
+                continue
+            for (p, E, LE), a in zip(sides, arcs):
+                if max(arcs) > a + 1e-7:
+                    lv[p], moved = float(np.interp(max(arcs), LE, E[:, 1])), True
+        if not moved:
+            break
+    for p, y in lv.items():
+        lines[p] = (np.array([0.0, y]), lines[p][1])
 
 
 def width(P: np.ndarray, q: np.ndarray, u: np.ndarray) -> tuple[float, float, float]:
@@ -177,6 +219,7 @@ def place(B: dict, loop: np.ndarray, T: dict, decl: dict) -> tuple[dict, list, l
             under.append(p)
         lines[p] = (np.array([0.0, y]), np.array([1.0, 0.0]))
         own.append(p)
+    one_underarm(B, lines, under, holes)
     pairs = _seam_pairs(B)
     for _ in range(len(pcs)):  # carry the level over seams to pieces with no length tape of their own there
         got = {}
