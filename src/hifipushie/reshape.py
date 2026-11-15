@@ -18,8 +18,10 @@ fuse: two (or more) masses worked into one. Elements that carry the same "fuse" 
 
 grab: the move brush. spec["grabs"] = {label: {"of": [element names], "view": "front" | "side" | "top",
     "at": [u, v], "to": [u, v], "radius": metres}}. In that flat view (front: u, v = x, z; side: y, z, the figure
-    facing -y; top: x, y) the clay of the masses `of` at `at` goes to `to`; clay within `radius` of `at` in the
-    view follows by (1 - t^2)^2, all the way through the depth, so an outline is moved whole. Only the named
+    facing -y; top: x, y) the clay of the masses `of` at `at` goes to `to`; clay within `radius` of the point
+    taken hold of follows by (1 - t^2)^2: a ball, centred in depth at the middle of the named clay on the view's
+    ray through `at` (the outline's own depth when `at` is on the outline). Through the whole depth instead, a pull
+    on a chin drew a shelf across the face and a push on a back cut a trench across it (p5, p6). Only the named
     masses move; they blend with their neighbours as before, so the surface stays one smooth piece. A grab moves
     clay by at most MOVE of its radius (further would fold the clay): a bigger move takes a bigger radius, or is
     a move of the mass itself. With symmetry on, a grab on a ".L" mass is made on its ".R" twin, and a grab made
@@ -88,8 +90,10 @@ def effective(grabs: dict, symmetry: bool, names: list[str]) -> list[tuple[dict,
                             f"{', '.join(sorted(known)[:30])})")
         op = {k: g[k] for k in ("view", "at", "to", "radius")}
         twins = {mirror_name(n) for n in of if mirror_name(n) in known} if symmetry and g["mirror"] else set()
-        if g["view"] == "side":  # the view looks along x: the same grab holds both sides
-            out.append((op, of | twins))
+        if g["view"] == "side":  # the view looks along x: the same grab holds both sides, each at its own depth
+            out.append((op, of))
+            if twins - of:
+                out.append((dict(op), twins - of))
             continue
         out.append((op, of))
         centre = of - {n for n in of if mirror_name(n) in known}
@@ -107,7 +111,15 @@ def stretch(ops: list[dict], names: list[str]) -> tuple[float, float]:
     ds = [float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1])) for g in gs]
     reach = max(ds, default=0.0)
 
-    def meet(a, b):  # two grabs bend the same clay unless they are discs apart in one view (a grab and its mirror)
+    def centre(g):  # where the grab's ball is, once spec._grabs has found its depth
+        dep, i, j = GRAB_AXES[g["view"]]
+        c = np.zeros(3)
+        c[i], c[j], c[dep] = g["at"][0], g["at"][1], g["depth"]
+        return c
+
+    def meet(a, b):  # two grabs bend the same clay unless their balls are apart (a grab and its mirror image)
+        if a.get("depth") is not None and b.get("depth") is not None:
+            return float(np.linalg.norm(centre(a) - centre(b))) < a["radius"] + b["radius"]
         return a["view"] != b["view"] or np.hypot(a["at"][0] - b["at"][0], a["at"][1] - b["at"][1]) < a["radius"] + b["radius"]
     bend = max((sum(STEEP * ds[j] / gs[j]["radius"] for j in range(len(gs)) if j == i or meet(gs[i], gs[j]))
                 for i in range(len(gs))), default=0.0)

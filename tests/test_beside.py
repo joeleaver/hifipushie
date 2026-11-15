@@ -106,3 +106,16 @@ def test_a_difference_kept_on_purpose_is_shown_apart_and_not_counted(home):
     assert res["stale"] and "nothing differs there now" in beside.text("fig", res)
     beside.set_on_purpose("fig", [{"view": "front", "at": p["at"], "remove": True}])
     assert beside.on_purpose("fig") == []
+
+
+def test_a_piece_that_touches_nothing_is_said_to_float(home):
+    s = store.load("fig")
+    s["joints"]["tail"] = {"pos": [0, 0.26, 0.2]}
+    s["blobs"]["tail"] = {"at": "tail", "size": [0.02, 0.03, 0.02]}  # 5 cm clear of the torso's back
+    store.save("fig", s, "a tail in the air")
+    res = beside.compare("fig", resolution=144)
+    assert [f["mass"] for f in res["floating"]] == ["tail"] and 0.03 < res["floating"][0]["gap"] < 0.07
+    assert "FLOATS: tail touches nothing" in beside.text("fig", res)
+    s["joints"]["tail"]["pos"] = [0, 0.2, 0.2]  # sunk into the back
+    store.save("fig", s, "a tail on the body")
+    assert beside.compare("fig", resolution=144)["floating"] == []

@@ -589,6 +589,21 @@ def _grabs(s: dict, prims: list[Prim]) -> list[Prim]:
             if hit:
                 prev = p.params.get("warp") if p.kind == "csg" else None
                 sets.setdefault((id(prev[0]) if prev else 0, hit), []).append(i)
+    from .deform import GRAB_AXES
+    from .sdf import SDF
+    for op, of in eff:  # each grab's depth: the middle of its clay on its view's ray through `at`
+        mine_p = [p for p in prims if p.name in of and p.instance is None and p.op in ("add", "subtract", "intersect")
+                  and p.kind in SHAPES]
+        if not mine_p:
+            continue
+        dep, a, b = GRAB_AXES[op["view"]]
+        r = float(op["radius"])
+        ts = np.linspace(min(p.lo[dep] for p in mine_p) - r, max(p.hi[dep] for p in mine_p) + r, 257)
+        ray = np.zeros((len(ts), 3))
+        ray[:, a], ray[:, b], ray[:, dep] = op["at"][0], op["at"][1], ts
+        f = np.min([SDF[p.kind](ray, p.params) for p in mine_p], 0)
+        inside = np.nonzero(f < 0)[0]  # through the clay: its middle; a ray that only grazes it: the nearest point
+        op["depth"] = float((ts[inside[0]] + ts[inside[-1]]) / 2) if len(inside) else float(ts[int(np.argmin(f))])
     for (_, hit), idx in sets.items():
         prev = prims[idx[0]].params.get("warp") if prims[idx[0]].kind == "csg" else None
         mine = [{"grab": eff[j][0]} for j in hit]
@@ -919,7 +934,9 @@ def _set_reach(prims: list[Prim]) -> None:
             p.reach, p.inert = 0.0, 0.0
             continue
         for q in prims[i + 1:]:
-            kq = blend(q)
+            # (a fuse's fill rounds its own fellows only: the fused mass meets everything else by its blend. Taken
+            # for every neighbour, a folded ear beside a fused head and body reached 0.8 m and a 0.2 s build took 6 s)
+            kq = blend(q) if q.group == p.group else q.blend
             if q.op != "modify" and kq * 1.25 > k and np.all(p.lo - scale[i] * kq * 1.25 <= q.hi + q.reach) \
                     and np.all(q.lo - q.reach <= p.hi + scale[i] * kq * 1.25):
                 k = kq * 1.25

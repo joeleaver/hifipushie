@@ -382,3 +382,43 @@ def test_trim_and_carve_tools_cut_and_put_back(fig):
     assert field_at(compile_prims(store.load(fig)), at, clip=False)[0] < 0
     with pytest.raises(ValueError, match="not a cutter"):
         server.carve(fig, "mouth", of=[], back=True)
+
+
+def test_a_grab_moves_a_ball_of_clay_not_the_whole_depth_of_its_view():
+    # (a chin pulled forward in the side view drew a shelf across the whole face: everything at that height came too)
+    before = compile_prims(_figure())
+    s = _figure()
+    s["grabs"] = {"chin": {"of": ["head"], "view": "side", "at": [-0.15, 0.55], "to": [-0.19, 0.55], "radius": 0.09}}
+    after = compile_prims(s)
+
+    def front(prims, x, z=0.55):  # the foremost y at (x, z)
+        y = np.linspace(-0.4, 0.0, 1601)
+        f = field_at(prims, np.stack([np.full_like(y, x), y, np.full_like(y, z)], 1), clip=False)
+        return float(y[np.nonzero(f < 0)[0].min()])
+    assert front(before, 0.0) - front(after, 0.0) > 0.03  # the chin came forward on the centre line
+    assert abs(front(before, 0.12) - front(after, 0.12)) < 0.002  # and the cheek 12 cm to the side stayed
+
+
+def test_the_grab_tool_says_when_it_is_made_on_both_sides(fig):
+    from hifipushie import server
+    out = server.grab(fig, of=["torso"], view="front", at=[0.19, 0.25], to=[0.22, 0.25], radius=0.12)
+    assert "MADE ON BOTH SIDES" in out
+    out = server.grab(fig, of=["torso"], view="side", at=[0.17, 0.25], to=[0.2, 0.25], radius=0.12, label="grab1")
+    assert "MADE ON BOTH SIDES" not in out  # (on the centre line, seen from the side: one grab)
+
+
+def test_a_flap_says_which_views_show_it_broad(fig):
+    from hifipushie import server
+    out = server.flap(fig, "ear.L", root=[0.12, 0.0, 0.72], over=[0.12, -0.02, 0.82], tip=[0.12, -0.1, 0.76], width=0.09)
+    assert "left to right (x)" in out and "broad in the front and back views" in out and "edge-on, in the side view" in out
+    out = server.flap(fig, "ear.L", root=[0.12, 0.0, 0.72], over=[0.17, 0.0, 0.82], tip=[0.24, 0.0, 0.76], width=0.09)
+    assert "front to back (y)" in out and "broad in the side view" in out
+
+
+def test_a_fuse_does_not_make_its_neighbours_reach_far():
+    # (the fill counted for every neighbour: an ear beside a fused head and body was evaluated over the whole figure)
+    s = _figure()
+    for n in ("head", "torso"):
+        s["blobs"][n].update(fuse="h", fill=0.25)
+    prims = {p.name: p for p in compile_prims(s)}
+    assert float(np.max(prims["ear.L"].reach)) < 0.12 and float(np.max(prims["head"].reach)) > 0.25

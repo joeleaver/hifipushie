@@ -612,8 +612,16 @@ class PartGrid:
         B = BLOCK
         b_lo = lo + voxel * B * idx
         centre = field_at(prims, b_lo + voxel * (B - 1) / 2, margin=2 * half_diag)
-        # modifiers and grabs make the field steeper than 1 (by up to lip), so the surface can be further from a centre
-        lip = max([p.lip for p in prims] + [1.0])
+        # modifiers and grabs make the field steeper than 1 (by up to lip), so the surface can be further from a
+        # centre: only in the blocks such a primitive can reach (over the whole part, one grabbed hoof made every
+        # block of a figure's band 3x wider and a 2 s build 17 s)
+        cpts = b_lo + voxel * (B - 1) / 2
+        lip = np.ones(len(idx))
+        for p in prims:
+            if p.lip > 1.0:
+                m = (0.0 if p.op == "modify" else float(np.max(p.reach))) + 2 * half_diag + 2 * voxel
+                near = np.all((cpts >= p.lo - m) & (cpts <= p.hi + m), axis=1)
+                lip[near] = np.maximum(lip[near], p.lip)
         act = np.abs(centre) <= lip * 1.5 * half_diag + voxel
         self.blocks[tuple(idx[~act].T)] = centre[~act, None, None, None]
         a_idx, a_lo = idx[act], b_lo[act]

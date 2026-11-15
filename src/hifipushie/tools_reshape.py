@@ -133,8 +133,9 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
 def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], radius: float, label: str = "",
          remove: bool = False, note: str = ""):
     """Take hold of clay that is already there and move it, as a modeller's move brush does: in a flat view, the clay
-    of the masses `of` at the point `at` goes to `to`, and the clay within `radius` of `at` follows, less the
-    further out it is, so the surface stays smooth and the outline moves whole. view "front" (points are [x, z]),
+    of the masses `of` at the point `at` goes to `to`, and the clay within `radius` of it follows, less the
+    further out it is (a ball of clay round where you took hold, not the whole depth of the view), so the surface
+    stays smooth and the form stays round. view "front" (points are [x, z]),
     "side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres, read off look's rulers. Use it wherever an
     outline is off against the reference: a round end pulled to a point, a cheek out, a face pushed flatter. A grab
     moves clay by at most half its radius. label names it: the same label replaces it, remove=True takes it off.
@@ -159,7 +160,12 @@ def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], 
         d = float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1]))
         ax = {"front": "x, z", "side": "y, z", "top": "x, y"}[view]
         what = (f"grab {label!r}: the clay of {', '.join(of)} at {g['at']} ({view} view: {ax}) moved {d * 100:.1f} cm to "
-                f"{g['to']}, with everything within {g['radius'] * 100:.1f} cm following.")
+                f"{g['to']}, with the clay within {g['radius'] * 100:.1f} cm of it following.")
+        names = list(_elements(spec))
+        made = reshape.effective({label: grabs[label]}, bool(spec.get("symmetry", True)), names)
+        if len(made) > 1:
+            what += (" MADE ON BOTH SIDES: the model is symmetric, so the same grab is made mirrored on the other side. "
+                     "Do not add one there yourself (it would pull that side twice).")
     if grabs:
         spec["grabs"] = grabs
     else:
@@ -264,12 +270,14 @@ def flap(name: str, mass: str, root: list[float], over: list[float], tip: list[f
              f"arches over {[round(float(x), 3) for x in o]} and its tip is at {[round(float(x), 3) for x in tp]} (it turns "
              f"{turn:.0f} degrees on the way); {width * 100:.1f} cm across at the root, {thick * 100:.1f} cm thick. It rides on "
              f"joint {at!r}" + (f" and is mirrored as {twin}." if twin and bool(spec.get("symmetry", True)) else ".")]
-    seen = {0: "the side view (it is edge-on from the front)", 1: "the front and back views (it is edge-on from the side)",
-            2: "from above (it lies flat)"}[int(np.argmax(np.abs(axis)))]
-    lines.append(f"A flap bends about its own width, so its width runs square to the plane the three points make: here its "
-                 f"broad face shows most in {seen}. For a broad face that shows from the front, keep root, over and tip at "
-                 "about the same x (over above the root, tip in front of and below over); to turn the face, move the tip or "
-                 "over sideways.")
+    k = int(np.argmax(np.abs(axis)))  # a flap is thin only when seen along its width
+    runs, thin, broad = (("left to right (x)", "the side view", "the front and back views"),
+                         ("front to back (y)", "the front and back views", "the side view"),
+                         ("up and down (z)", "from above", "the front and side views"))[k]
+    lines.append(f"A flap bends about its own width, and its width runs square to the plane the three points make: here "
+                 f"mostly {runs} (width axis {[round(float(x), 2) for x in axis]}), so it shows broad in {broad} and thin, "
+                 f"edge-on, in {thin}. For an ear that is broad from the front, keep root, over and tip at about the same "
+                 "x (over above the root, tip in front of and below over); moving the tip or over sideways turns the face.")
     if out > 0.002:
         lines.append(f"ITS ROOT IS {out * 100:.1f} cm OUTSIDE the clay it should grow from: it floats. Move root that far "
                      "(and a little more) into the mass.")

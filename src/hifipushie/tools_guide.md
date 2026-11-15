@@ -286,9 +286,11 @@ can't be fused. In the spec it is two keys on each mass: "fuse": "<tag>", "fill"
 `grab(name, of, view, at, to, radius, label='', remove=False, note='')`
 
 Take hold of clay that is already there and move it: a modeller's move brush. In a flat view, the clay of the
-masses `of` at the point `at` goes to `to`; the clay within `radius` of `at` (in that view) follows, all of it at
-`at`, less the further out, none at `radius`, all the way through the depth, so the outline moves whole and the
-surface stays smooth. Only the named masses move; they blend with their neighbours as before.
+masses `of` at the point `at` goes to `to`; the clay within `radius` of the point taken hold of follows, all of it
+there, less the further out, none at `radius`: a ball of clay, as a brush has, not the whole depth of the view (so
+a chin pulled forward from the side stays a chin and does not become a shelf across the face). The surface stays
+smooth. Only the named masses move; they blend with their neighbours as before. On a symmetric model a grab off
+the centre line is made on both sides: never add the other side's yourself.
 view: "front" (at, to are [x, z]), "side" ([y, z]; the figure faces -y, so its front is the lower y) or "top"
 ([x, y]): metres, read off the rulers of `look` (grid=True helps). of: names of bones or blobs (the centre or the
 ".L" one).

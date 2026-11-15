@@ -176,6 +176,27 @@ def set_on_purpose(name: str, entries: list[dict]) -> list[dict]:
     return have
 
 
+def _floating(prims) -> list[dict]:
+    """Masses that touch nothing: [{"mass", "gap" (m of air to the nearest other clay)}]. An outline can't show one
+    (p4's ear and p6's tail floated through every comparison)."""
+    from .sdf import SDF
+    adds = [p for p in prims if p.op == "add" and p.instance is None and p.kind in SDF]
+    out = {}
+    for p in adds:
+        rest = [q for q in adds if q.name != p.name]  # (whatever its part: a hoof sits on a leg)
+        if not rest:
+            continue
+        g = np.stack(np.meshgrid(*[np.linspace(p.lo[k], p.hi[k], 9) for k in range(3)], indexing="ij"), -1).reshape(-1, 3)
+        own = SDF[p.kind](g, p.params)
+        g = g[own < 0.004]  # in the mass or just off its surface
+        if not len(g):
+            continue
+        gap = float(np.min([SDF[q.kind](g, q.params) for q in rest]))
+        if gap > 0.003:
+            out[p.name] = max(out.get(p.name, 0.0), gap)
+    return [{"mass": n, "gap": g} for n, g in sorted(out.items())]
+
+
 def compare(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176) -> dict:
     """{"views": {view: {"iou", "places": [...], "on_purpose": [...], "lines": [...], "picture": PIL image}},
     "ignored": [...], "stale": [on-purpose records with no difference at their place any more]}."""
@@ -197,7 +218,7 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
     prims, whole = _model(name, resolution)
     meant = on_purpose(name)
     used: set = set()
-    out = {"views": {}, "ignored": sorted(ig)}
+    out = {"views": {}, "ignored": sorted(ig), "floating": _floating(prims)}
     for v in todo:
         rec, cam = refread.view_record(name, v), matched.load_camera(name, v)
         k = float(rec["m_per_px"])
@@ -353,8 +374,9 @@ def text(name: str, res: dict) -> str:
             what = "SHORT (add clay)" if p["kind"] == "short" else "STICKS OUT (take away)"
             ax = "x, z" if GRAB_VIEW[v][0] == "front" else "y, z"
             lines.append(f"  {i}. the model {what} by up to {p['off'] * 100:.1f} cm round ({ax}) {p['at']}, {p['area'] * 1e4:.0f} cm2"
-                         + (f", on {p['mass']}" if p["mass"] else "")
-                         + f". If the outline alone is off there: {p['grab']}")
+                         + (f", on {p['mass']}: its size or place first. Only if the mass is right and this stretch of its "
+                            f"outline alone is off: a grab from {p['at']} to {p['to']}, radius {p['radius']:.2f} or more"
+                            if p["mass"] else ""))
         for o in r.get("on_purpose", []):
             lines.append(f"  on purpose (kept on record with the model: no need to give it again), not listed and not "
                          f"counted: {o['why']} (round {o['at']}, {o['area'] * 1e4:.0f} cm2, up to {o['off'] * 100:.1f} cm)")
@@ -363,6 +385,9 @@ def text(name: str, res: dict) -> str:
                          "show: a mass in front of another, a crease; some are paint):")
             ax = "x, z" if GRAB_VIEW[v][0] == "front" else "y, z"
             lines += [f"    a line {m['length'] * 100:.0f} cm long running {m['run']}, round ({ax}) {m['where']}" for m in r["lines"]]
+    for fl in res.get("floating", []):
+        lines.append(f"FLOATS: {fl['mass']} touches nothing ({fl['gap'] * 100:.1f} cm of air to the nearest clay): move it "
+                     "into the mass it belongs to, or it is a loose piece on purpose.")
     if res["ignored"]:
         lines.append(f"left out of the model: {', '.join(res['ignored'])}. The reference's own still shows where the picture has it.")
     for e in res.get("stale", []):
@@ -370,11 +395,11 @@ def text(name: str, res: dict) -> str:
                      f"back with on_purpose=[{{\"view\": \"{e['plane']}\", \"at\": {e['at']}, \"remove\": true}}]")
     lines.append("next: one picture per view: look at each. Fix the BIGGEST difference on the whole figure first: a mass in "
                  "the wrong place or of the wrong size is its own joint or size (most differences are); an outline that is off "
-                 "on a mass that is otherwise right is the grab given; two masses that should be one are a fuse; a "
-                 "folded ear is a flap; a face that should be flat is a trim. A grab moves the clay through "
-                 "the whole depth of its view, and a small one dents the form: after any grab look at the clay from a "
-                 "three-quarter view. If the overlap rose and the clay looks worse, the clay is right: take the grab off "
-                 "(grab with remove=true) and change the mass or the fuse instead. A red line with no line of "
+                 "on a mass that is otherwise right is a grab; two masses that should be one are a fuse; a "
+                 "folded ear is a flap; a face that should be flat is a trim. The overlap is NOT the goal: it "
+                 "rises when clay is piled wherever the outline is short, and the figure gets worse (lumps, shelves, "
+                 "saddlebags). After every change look at the clay from three-quarter; if the overlap rose and the clay "
+                 "looks worse, the clay is right: undo it and change the mass or the fuse instead. A red line with no line of "
                  "the model under it is form still to make (one mass standing in front of another, a crease), unless it is "
                  "paint. Then look_beside again. These are differences, not faults: the reference is yours to interpret. "
                  "Where you differ ON PURPOSE (a limb held away for the rig, a choice between two pictures that disagree, "

@@ -83,9 +83,12 @@ def displacement(ops: list, x: np.ndarray) -> np.ndarray:
                     k *= 2 * np.pi / sc / np.linalg.norm(k)
                     D[..., i] += amp / 3 * np.sin(x @ k + rng.uniform(0, 2 * np.pi))
         elif kind == "grab":  # the move brush (reshape.py): the clay at `at` goes to `to`, what lies within
-            _, i, j = GRAB_AXES[p["view"]]  # `radius` of it in the view follows by (1 - t^2)^2, all through the depth
+            dep, i, j = GRAB_AXES[p["view"]]  # `radius` of the point taken hold of follows by (1 - t^2)^2
             c, t, r = p["at"], p["to"], float(p["radius"])
-            w = np.clip(1.0 - ((x[..., i] - c[0]) ** 2 + (x[..., j] - c[1]) ** 2) / (r * r), 0.0, None) ** 2
+            q = (x[..., i] - c[0]) ** 2 + (x[..., j] - c[1]) ** 2
+            if p.get("depth") is not None:  # a ball round the clay taken hold of (spec._grabs finds its depth)
+                q = q + (x[..., dep] - p["depth"]) ** 2
+            w = np.clip(1.0 - q / (r * r), 0.0, None) ** 2
             D[..., i] += (t[0] - c[0]) * w
             D[..., j] += (t[1] - c[1]) * w
     return D
