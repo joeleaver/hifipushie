@@ -53,7 +53,7 @@ def test_caught_fits_without_shared_names():
 def test_panels_sliver_side_body_fails_with_mm(monkeypatch):
     ring = {"front.L", "front.R", "side.L", "side.R", "back.L", "back.R"}
     w = {"front.L": .277, "front.R": .277, "side.L": .046, "side.R": .046, "back.L": .248, "back.R": .248}
-    monkeypatch.setattr(draft_panels, "_widths", lambda B, d, T, g: [(ring, w, {"front": .029})])
+    monkeypatch.setattr(draft_panels, "_widths", lambda B, d, T, g: [(ring, w, {"front": .029}, {})])
     monkeypatch.setattr("hifipushie.tape_geom.tapes", lambda s3: {"chest": {"kind": "loop"}})
     monkeypatch.setattr(draft_panels, "_neighbours", lambda B, p, r: {"front.L", "back.L"} if "side" in p else {"side.L"})
     plan = {"panels": [{"girth": "chest", "shares": {k: {"source": "convention", "share": v} for k, v in
@@ -66,7 +66,7 @@ def test_panels_sliver_side_body_fails_with_mm(monkeypatch):
 
 def test_panels_required_for_three_panels(monkeypatch):
     ring = {"front.L", "side.L", "back.L", "front.R", "side.R", "back.R"}
-    monkeypatch.setattr(draft_panels, "_widths", lambda B, d, T, g: [(ring, {p: .1 for p in ring}, {})])
+    monkeypatch.setattr(draft_panels, "_widths", lambda B, d, T, g: [(ring, {p: .1 for p in ring}, {}, {})])
     monkeypatch.setattr("hifipushie.tape_geom.tapes", lambda s3: {"chest": {"kind": "loop"}})
     monkeypatch.setattr("hifipushie.draft_tapes.names_of", lambda d, p: ["chest"])
     r = draft_panels.rows({"pieces": {p: {} for p in ring}}, {}, {}, {})[0]

@@ -27,7 +27,8 @@ def base(p: str) -> str:
 
 
 def _widths(B: dict, decl: dict, T: dict, g: str) -> list:
-    """[(ring, {piece: width m}, {base: lap m off})] of girth g on the flat, placed as the girths row places it."""
+    """[(ring, {piece: width m}, {base: lap m off}, {piece: level line (q, u)})] of girth g on the flat, placed as the
+    girths row places it."""
     from . import draft_girths as dg, draft_tapes, draft_vents
     loop = np.asarray(T[g]["loop"], float)
     lines, _, _ = dg.place(B, loop, T, decl)
@@ -47,13 +48,13 @@ def _widths(B: dict, decl: dict, T: dict, g: str) -> list:
         vs = [v for v in decl.get("vents") or [] if isinstance(v, dict) and str(v.get("under", "")).split(":")[0] in ring]
         for v in vs:
             off[base(v["under"].split(":")[0])] = off.get(base(v["under"].split(":")[0]), 0.0) + vl / len(vs)
-        out.append((ring, w, off))
+        out.append((ring, w, off, lines))
     return out
 
 
 def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = None) -> list:
     """Row `panels` (module docstring); [] when there is nothing to check."""
-    from . import draft_tapes, tape_geom
+    from . import draft_moves, draft_tapes, tape_geom
     decl = decl or B.get("decl") or {}
     T = tape_geom.tapes(step3)
     plan = [e for e in ((step2 or {}).get("output") or step2 or {}).get("panels") or [] if isinstance(e, dict)]
@@ -62,7 +63,7 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
     named = sorted({n for p in B["pieces"] for n in draft_tapes.names_of(decl, p) if (T.get(n) or {}).get("kind") == "loop"})
     if not plan:
         for g in named:
-            for ring, w, _ in _widths(B, decl, T, g):
+            for ring, w, _, _ in _widths(B, decl, T, g):
                 bs = {base(p) for p in ring}
                 if len(bs) >= 3:
                     return [dict(rid, status="FAIL", back_to="2", value=f"{g}: {len(bs)} pieces round it ("
@@ -77,13 +78,14 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
         return [dict(rid, status="FAIL", back_to="2", value=f"step 2's panels at {', '.join(stale)} have no sources",
                      why="each share is read off the reference or filled from the convention (panel_shares.py, F4)",
                      fix=f"back to step 2: garment_plan style with {_form()}")]
-    vals, why = [], []
+    vals, why, moves = [], [], {}  # (moves: {seam: {"seam", "at": {mm along: mm}}}, every level's crossing)
     for e in plan:
         g, sh = e["girth"], {base(k): float(v["share"]) for k, v in e["shares"].items()}
         if (T.get(g) or {}).get("kind") != "loop":
             why.append(f"{g}: step 3 has no girth {g!r} (back to step 3: body_tape)")
             continue
-        for ring, w, off in _widths(B, decl, T, g):
+        for ring, w, off, lines in _widths(B, decl, T, g):
+            _crossings(B, ring, lines, moves)
             bw = {}
             for p, v in w.items():
                 bw.setdefault(base(p), []).append(p)
@@ -109,9 +111,58 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
                                + (f", {'to' if d > 0 else 'from'} " + ", ".join(
                                    f"{n} ({1000 * abs(diff[n]):.0f} mm a piece too {'narrow' if d > 0 else 'wide'})"
                                    for n in give) if give else ""))
+                    opp = [n for n in nb if n in diff and (diff[n] < 0) != (d < 0)]  # (within tolerance too)
+                    if d > 0 or not give:  # (a pair off both ways: the wide one names it, once)
+                        _hints(B, bw, b, give or opp or nb, diff, lines, d, moves)
     return [dict(rid, status="FAIL" if why else "PASS", value="; ".join(vals) or "no stated girth placed",
-                 why="; ".join(why), fix="move the seams between the named pieces by the named mm (the design's seam "
-                 "points at that level; back to step 4); step 2's shares if the reference says otherwise" if why else "")]
+                 why="; ".join(why), fix=_fix([draft_moves.entry(m["seam"], m["at"]) for m in moves.values()
+                                       if any(abs(v) >= 1 for v in m["at"].values())]) if why else "")]
+
+
+def _twin(p: str, ring) -> bool:
+    """p is a pair's right side whose left side is there too (its moves follow the left's: draft_moves.expand)."""
+    return p.endswith(".R") and p[:-2] + ".L" in ring
+
+
+def _crossings(B: dict, ring: set, lines: dict, moves: dict) -> None:
+    """Every seam of the ring crossed at this level, at a 0 mm move (so a move declared at one level keeps the others)."""
+    from . import draft_moves
+    for p in sorted(x for x in ring if not _twin(x, ring) and x in lines):
+        for q in sorted(q for q in _neighbours(B, p, ring) if q > p):
+            c = draft_moves.crossing(B, p, q, lines[p])
+            if c:
+                moves.setdefault(tuple(c[0]), {"seam": c[0], "at": {}})["at"].setdefault(round(c[1]), 0.0)
+
+
+def _hints(B: dict, bw: dict, b: str, give: list, diff: dict, lines: dict, d: float, moves: dict) -> None:
+    """Into moves: b's seams with the neighbours in give whose seam crosses the level (a shoulder seam doesn't) moved by
+    b's d mm, shared among them as far as each is off the other way (a neighbour within tolerance: all of it)."""
+    from . import draft_moves
+    ring = {x for xs in bw.values() for x in xs}
+    can = {}
+    for n in give:
+        for p in [p for p in bw[b] if not _twin(p, ring)]:
+            for q in [q for q in _neighbours(B, p, ring) if base(q) == n]:
+                f, s = sorted((p, q))
+                c = draft_moves.crossing(B, f, s, lines[f]) if f in lines else None
+                if c:  # (the narrow one grows: + toward the second piece when the first is the narrow one)
+                    can.setdefault(n, []).append((c, 1.0 if (f == q) == (d > 0) else -1.0))
+    w = {n: max(0.0, -np.sign(d) * diff[n]) for n in can}
+    for n, hits in can.items():
+        mm = abs(d) * (w[n] / sum(w.values()) if sum(w.values()) > 0 else 1.0 / len(can))
+        for (seam, at), sg in hits:
+            m = moves.setdefault(tuple(seam), {"seam": seam, "at": {}})["at"]
+            m[round(at)] = m.get(round(at), 0.0) + sg * mm
+
+
+def _fix(moves: list) -> str:
+    from . import draft_moves
+    if not moves:
+        return ("move the seams between the named pieces by the named mm (the design's seam points at that level; back "
+                "to step 4); step 2's shares if the reference says otherwise")
+    return ("declare (the converter re-cuts both pieces, the seam still sews; one entry a seam, its levels in one "
+            f"'at' list, every level it crosses): moves [{', '.join(moves)}]. Form: {draft_moves.FORM}. Step 2's shares if the reference says "
+            "otherwise")
 
 
 def _form() -> str:
