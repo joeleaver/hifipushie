@@ -224,7 +224,7 @@ def test_no_function_reads_a_module_by_a_name_its_path_did_not_import():
     its own name on the clumps path and as `_hk` in two later blocks; the split of hair_clumps wrote those blocks'
     `_hk.ARCH` as `hair_clumps.ARCH` (a constant is read by its module's name) and left `import hair_clumps as _hk`,
     so they read a local that only the clumps path had bound: UnboundLocalError for every strand groom cut by lock at
-    the tiers main / npc / far, for four days (C477). No name was undefined for a reader of the file, every moved
+    the tiers main / npc / far, for four days (C478). No name was undefined for a reader of the file, every moved
     unit was unchanged, and no test ran the job (tests/test_hair_cards_job.py does now)."""
     old = ("def job(clumped):\n    if clumped:\n        from . import hair_clumps\n        hair_clumps.cut()\n"
            "    if not clumped:\n        from . import hair_clumps as _hk\n        return hair_clumps.ARCH, _hk.strands\n")

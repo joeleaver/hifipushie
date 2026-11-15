@@ -17,7 +17,7 @@ both" (`write_glb`, `cards_job`). Goal: each function readable and under the 500
 - `veg_export_glb.write_glb` (C475): the context (`PlantGlb`), nine stage calls: _subject, _builders, _finish
   (veg_export_glb.py, 217 lines) | _bark, _foliage_materials, _leaf_materials, _forks, _impostor_materials (_materials,
   226) | _plants (_plants, 267). 53 of 173 variables cross a stage (`pg.<name>`); five nested builders are handed on.
-- `hair_cards_job.cards_job` (C478): the context (`CardsJob`), twelve stage calls: _settings, _pictures, _lock_marks
+- `hair_cards_job.cards_job` (C479): the context (`CardsJob`), twelve stage calls: _settings, _pictures, _lock_marks
   (hair_cards_job.py, 210 lines) | _cards, _shell_cards (hair_cards_job_cards.py, 275) | _cap, _baby, _budget, _bake,
   _meshes, _clearance, _write (hair_cards_job_finish.py, 253). 54 of 211 variables cross a stage (`cj.<name>`).
 
@@ -55,6 +55,6 @@ stage_function.py (its docstring is the rule: what crosses a stage, the prologue
 2. Still long, because a stage begins only at a statement of the function and a loop or an `if` is one statement:
    _seasons (407, its loop 398), _plants (247, its loop 241), _cards (214, its `if` 203), _tile_lods (181); also
    _manifest (164), _lods (182). proof_tiles.py has no stream, cave or style case.
-3. A staging proves the function equals the old one, faults included (C477): run the old one at its defaults first.
+3. A staging proves the function equals the old one, faults included (C478): run the old one at its defaults first.
 
 NEXT: no giant function is left. Joe's call: Open 1, or the long files still whole (resources, sdf, spec).
