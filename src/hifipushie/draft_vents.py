@@ -10,6 +10,7 @@ piece running from the hem up the extension to the VENT TOP, the point where the
 (an end of that piece's edge sewn to the other piece). Below its top the vent is open: its edges are sewn to nothing
 (a vent edge in a seam is refused); `over` lies on `under` (the side seen from outside), lapped by their extensions.
 A pair (pieces.P {pair: true}) is declared once by its base name: one vent per side (draft_pairs.expand).
+A vent named as a step-1 detail is that detail's mark (`with_marks`: it follows the over side's vent edge; F3).
 THE GIRTH: the two sides are linked across the opening like a closure's lap, and each side's cloth beyond its seam line
 (the sewn edge run on straight past the vent top) is taken off once: the vent's overlap is counted once round a girth.
 Nothing here knows a garment."""
@@ -35,6 +36,16 @@ def _ends(arc) -> tuple[str, str] | None:
         return None
     pts = arc.split(">")
     return pts[0], pts[-1]
+
+
+def with_marks(decl: dict, step1: dict) -> dict:
+    """decl with each vent named as a step-1 detail marked where it is (t s4-27: "the vents declaration does not count
+    as the vent's mark"): marks.<name> = {piece: the over side's piece, follows: [its vent edge]}, unless one is given."""
+    det = (step1 or {}).get("details") or {}
+    vs = [v for v in decl.get("vents") or [] if isinstance(v, dict) and v.get("name") in det and isinstance(v.get("over"), str)]
+    mk = decl.get("marks") if isinstance(decl.get("marks"), dict) else {}
+    add = {v["name"]: {"piece": _pe(v["over"])[0], "follows": [v["over"]]} for v in vs if v["name"] not in mk}
+    return dict(decl, marks={**mk, **add}) if add else decl
 
 
 def faults(decl: dict) -> list:

@@ -66,6 +66,18 @@ def stand_ref(name: str, garment: str) -> dict | None:
     return ref
 
 
+def trace_look(name: str, garment: str) -> dict | None:
+    """{plan, at}: step 2's plan and the body's landmarks that place its traces (row turned_width); None: no traces."""
+    from . import chain_structure as cs, cloth, store
+    plan = cs.load_plan(name, garment)
+    if not ((plan or {}).get("style") or {}).get("traces"):
+        return None
+    try:
+        return {"plan": plan, "at": cloth.Body(cloth.body_mesh(store.load(name))).at}
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 def _fit(name: str, garment: str) -> dict:
     """Step 0's fit ease {region: {ease_mm}} (the body_lengths row's ease; {} when step 0 has none)."""
     from . import garment_record as gr
@@ -86,7 +98,8 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     blk = draft_own_block.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
-    rows = draft_own_gate.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))
+    rows = draft_own_gate.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"),
+                             look=trace_look(name, garment))
     from . import draft_marks
     rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
     from . import draft_links
@@ -134,11 +147,17 @@ def option_errors(options: dict, cfg: dict) -> list:
 
 def run(name: str, garment: str, design: str, declarations: dict, options: dict | None = None,
         sa: float = 10.0) -> tuple[str | None, str]:
-    from . import chain_garment as cg, cloth, garment_record as gr, pattern_sheet, store
+    from . import chain_garment as cg, cloth, draft_vents, garment_record as gr, pattern_parts, pattern_sheet, store
+    try:
+        design = pattern_parts.read_path(design)  # (F3, t s4-27: a path to the design file is read)
+    except pattern_parts.InspectRefused as e:
+        raise do.DraftRefused(str(e)) from None
     if not isinstance(design, str) or "Design" not in design:
-        raise do.DraftRefused("design: the FreeSewing design source (an ES module ending `export default new Design({...})`)")
+        raise do.DraftRefused("design: the FreeSewing design source (an ES module ending `export default new Design({...})`) "
+                              "or the path to its .mjs file")
     if not isinstance(declarations, dict):
         raise do.DraftRefused("declarations: {pieces, edges, seams, stiff, folds, closures, omit}: guide(topic=\"draft_pattern\")")
+    declarations = draft_vents.with_marks(declarations, gr.reads(name, garment, "4")["1"])
     rd = gr.reads(name, garment, "4")
     meas = measurements(rd["3"])
     d = gr.look_dir(name, garment) / "draft"
@@ -179,7 +198,8 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     blk = draft_own_block.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
-    rows = draft_own_gate.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))  # (expanded: C366)
+    rows = draft_own_gate.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"),
+                             look=trace_look(name, garment))  # (expanded: C366)
     from . import draft_marks
     mrow, drawn = draft_marks.place(M, B["decl"], rd["1"])  # (C380: where every mark lands, as step 7 places it)
     rows.append(mrow)

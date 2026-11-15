@@ -34,6 +34,8 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
                                 and (lay["mode"] == "visible" or str(lay.get("why") or "").strip())):
         bad.append("layers: {mode: visible (default: the garment under kept where seen) | full (the whole garment under "
                    "fitted inside and hung with this one), why (needed for full: it comes off at runtime, a close-up)}")
+    from . import draft_panels  # (F3, t s4-27: where the seams round the body fall; step 4's row panels checks it)
+    draft_panels.check(p.get("panels"), pieces, bad)
     pose = p.get("pose")
     if not isinstance(pose, dict) or not pose.get("name"):
         bad.append("pose: {name (e.g. 'arms down, relaxed'), source}")

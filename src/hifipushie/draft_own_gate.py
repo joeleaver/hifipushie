@@ -14,11 +14,14 @@ def _at_cut(na: str, tags: set) -> bool:
 
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3: dict | None = None,
-         fit: dict | None = None, step2: dict | None = None) -> list:
+         fit: dict | None = None, step2: dict | None = None, look: dict | None = None) -> list:
     """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), seam_ends (each seam's edges run
     the same way: draft_seam_ends.py), cut (every built inventory piece
     cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO), and
-    the SHAPE rows per role (draft_shape.py: stand / band rise and lean, fall spread, sleeve cap, curved-to-straight seams)."""
+    the SHAPE rows per role (draft_shape.py: stand / band rise and lean, fall spread, sleeve cap, curved-to-straight seams),
+    panels (draft_panels.py: each piece's share of a girth as step 2 states it), caught (draft_caught.py: every edge step 1
+    catches in a seam reaches it), turned_width (draft_turned.py: a traced fold's turned part as wide as the reference;
+    look = {plan, at}: step 2's plan and the body's landmarks that place its traces)."""
     from . import cloth_check as cc, pattern
     rows = []
     sm = cc.seams(B)
@@ -31,8 +34,9 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         ok = lo - 1e-6 <= e <= hi + 1e-6
         r.update(ease=e, band=(lo, hi), ok=ok, kind="declared" if n else "plain")
         if not ok:
+            from .draft_runs import hint  # (F3, t s4-27: a cap counted past its corners, +49.8 %)
             bad.append(f"{r['a']} || {r['b']}: {r['len_a_mm']:.1f} vs {r['len_b_mm']:.1f} mm, ease {100 * e:+.1f}% "
-                       f"outside [{100 * lo:+.1f}, {100 * hi:+.1f}]%")
+                       f"outside [{100 * lo:+.1f}, {100 * hi:+.1f}]%" + hint(B, r))
         seen_n = set()
         if r.get("notches_off"):  # (C416: a chain joined at a dart's cut-through is one seam: the cut is sewn shut)
             r["notches_off"] = [x for x in r["notches_off"] if not _at_cut(x[0], cut_tags)]
@@ -128,6 +132,12 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
     fr = fold_bends.draft_row(decl, step2)  # (R2 C392: every planned fold drafted, every roll planned)
     if fr:
         rows.append(fr)
+    from . import draft_caught, draft_panels, draft_turned  # (F3: s4-27's sliver side body, short canvas, narrow lapel)
+    if step3 is not None:
+        rows += draft_panels.rows(B, step2, step3, dx)
+    for r in (draft_caught.row(B, step1), draft_turned.row(B, dx, step2, look)):
+        if r:
+            rows.append(r)
     return rows + draft_shape.rows(B, dx, step1, stand_ref)
 
 

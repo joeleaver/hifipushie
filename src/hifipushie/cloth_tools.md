@@ -160,7 +160,12 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   Row girths (G1) walks every girth the tapes name round the pieces it crosses, each level placed by a LENGTH tape the
   piece names (so name both: its girths and a length from its top past them), and holds the pattern to the body +
   step 0's ease for that girth (15 mm or 15 % of the ease); a closure's lap comes off by its marks; a piece in the ring
-  whose tapes miss the girth FAILs. Draft the ease the plan asks for: step 5 can't add cloth;
+  whose tapes miss the girth FAILs; where step 3's girth is another definition than step 0's (hips: FreeSewing's iliac
+  crest vs the tape's own), the row checks on step 0's, at its level, and says both. Draft the ease the plan asks for:
+  step 5 can't add cloth. Row panels: each piece's share of a girth as step 2's panels state it (seams placed where
+  the style wants them, not where the block put them). Row caught: an edge step 1 catches in a seam (a canvas) is
+  drawn out to that seam's edge, the piece inside its host. Row turned_width: a lapel / cuff turned along a traced fold
+  is as wide as the traces show. A seam far off its ease names the points its long side should end at;
   `marks` {detail: mark | [marks]}: WHERE each built step-1 detail sits (a closure's holes and buttons are its own marks: each on
   the piece step 1 puts it on): a
   mark = {"piece", "mirror"?: true (again on the .L <-> .R piece), and ONE of: "at": [{"point": name, "dx", "dy"} (mm, dy UP the piece: FreeSewing's y is -dy) |
