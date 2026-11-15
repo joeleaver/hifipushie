@@ -2,7 +2,7 @@
 
 Until 2026-11-15 no test ran it. For four days (from the split of hair_clumps) every strand groom that is not cut by
 clumps raised UnboundLocalError at the tiers main / npc / far: the crown arch row read `hair_clumps.ARCH` in a block
-that had imported the module only as `_hk` (C476). Needs Blender for the strands: the slow tier.
+that had imported the module only as `_hk` (C477). Needs Blender for the strands: the slow tier.
 `uv run pytest -m "" tests/test_hair_cards_job.py`."""
 import contextlib
 import io
