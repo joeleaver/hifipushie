@@ -22,8 +22,8 @@ Conventions: metres, Z up, the trunk's foot at the origin.
 
 Where the code is (split by responsibility, as C424): this module is the family's base: EVERY constant, the defaults,
 presets and `resolve`. vegetation_kernels: lineage hashing and the growth kernels. vegetation_tree: nodes, shadow,
-envelope, limbs. vegetation_grow: `grow` (one function of 733 lines). vegetation_measures: silhouettes and measures.
-vegetation_fit: fit_habit, fit_form.
+envelope, limbs. vegetation_grow: `grow` (what is not grown here leaves at its top; then seven stages over one
+context, `Growth`). vegetation_measures: silhouettes and measures. vegetation_fit: fit_habit, fit_form.
 """
 from __future__ import annotations
 
