@@ -279,4 +279,5 @@ def _style(d, s, vi, plan, read, parts):
         if m.get("view", 0) == vi:
             for u, v in m["at"].values():
                 d.ellipse([u * s - 4, v * s - 4, u * s + 4, v * s + 4], fill=MAG)
-    return leg
+    from . import panel_shares_look  # (F4, t s4-28: the shares' seams round the body, judged where step 2 is approved)
+    return leg + panel_shares_look.draw(d, s, vi, plan, read, _label, _line)

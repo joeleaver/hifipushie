@@ -162,7 +162,7 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   step 0's ease for that girth (15 mm or 15 % of the ease); a closure's lap comes off by its marks; a piece in the ring
   whose tapes miss the girth FAILs; where step 3's girth is another definition than step 0's (hips: FreeSewing's iliac
   crest vs the tape's own), the row checks on step 0's, at its level, and says both. Draft the ease the plan asks for:
-  step 5 can't add cloth. Row panels: each piece's share of a girth as step 2's panels state it (seams placed where
+  step 5 can't add cloth. Row panels: each piece's share of a girth as step 2 placed it (each share read off the reference or the convention body_panels, never typed; seams where
   the style wants them, not where the block put them). Row caught: an edge step 1 catches in a seam (a canvas) is
   drawn out to that seam's edge, the piece inside its host. Row turned_width: a lapel / cuff turned along a traced fold
   is as wide as the traces show. A seam far off its ease names the points its long side should end at;
