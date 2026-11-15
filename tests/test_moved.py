@@ -144,6 +144,101 @@ def test_a_split_off_module_reads_no_docstring_or_source_of_its_own():
     assert not bad, f"reads its own docstring or hashes only its own file, in a module split off another: {bad}"
 
 
+def read_by_its_other_name(src: str) -> list:
+    """`function line N: reads M where only ALIAS was imported`: one function imports one module under two names, and
+    a line reads one of them on a path where only the other was certainly imported (both branches of an `if` count; a
+    loop's, a handler's or a case's body counts for itself only; nested functions are functions of their own)."""
+    skip = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+    def bound(node) -> set:
+        return {(a.asname or a.name) for a in node.names}
+
+    def groups(fn) -> list:
+        names = {}
+
+        def walk(node):
+            for ch in ast.iter_child_nodes(node):
+                if isinstance(ch, skip):
+                    continue
+                if isinstance(ch, (ast.Import, ast.ImportFrom)):
+                    mod = f"{'.' * ch.level}{ch.module or ''}:" if isinstance(ch, ast.ImportFrom) else ":"
+                    for a in ch.names:
+                        names.setdefault(mod + a.name, set()).add(a.asname or a.name)
+                walk(ch)
+
+        walk(fn)
+        return [g for g in names.values() if len(g) > 1]
+
+    def reads(node, have, gs, out):
+        if isinstance(node, skip):
+            return
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in have:
+            for g in gs:
+                if node.id in g and (g - {node.id}) & have:
+                    out.append((node.lineno, node.id, sorted((g - {node.id}) & have)[0]))
+        for ch in ast.iter_child_nodes(node):
+            reads(ch, have, gs, out)
+
+    def run(stmts, have, gs, out) -> set:
+        have = set(have)
+        for s in stmts:
+            if isinstance(s, skip):
+                continue
+            if isinstance(s, (ast.Import, ast.ImportFrom)):
+                have |= bound(s)
+            elif isinstance(s, ast.If):
+                reads(s.test, have, gs, out)
+                have = run(s.body, have, gs, out) & run(s.orelse, have, gs, out)
+            elif isinstance(s, (ast.For, ast.AsyncFor, ast.While)):
+                reads(s.test if isinstance(s, ast.While) else s.iter, have, gs, out)
+                run(s.body, have, gs, out)
+                run(s.orelse, have, gs, out)
+            elif isinstance(s, (ast.With, ast.AsyncWith)):
+                for it in s.items:
+                    reads(it.context_expr, have, gs, out)
+                have = run(s.body, have, gs, out)
+            elif isinstance(s, ast.Try):
+                run(s.orelse, run(s.body, have, gs, out), gs, out)
+                for h in s.handlers:
+                    run(h.body, have, gs, out)
+                have = run(s.finalbody, have, gs, out)
+            elif isinstance(s, ast.Match):
+                reads(s.subject, have, gs, out)
+                for c in s.cases:
+                    run(c.body, have, gs, out)
+            else:
+                reads(s, have, gs, out)
+        return have
+
+    found = []
+    for fn in ast.walk(ast.parse(src)):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and (gs := groups(fn)):
+            out = []
+            run(fn.body, set(), gs, out)
+            found += [f"{fn.name} line {ln}: reads {n} where only {other} was imported" for ln, n, other in sorted(set(out))]
+    return found
+
+
+def test_no_function_reads_a_module_by_a_name_its_path_did_not_import():
+    """An import inside a function makes its name a local of the WHOLE function. cards_job imported hair_clumps under
+    its own name on the clumps path and as `_hk` in two later blocks; the split of hair_clumps wrote those blocks'
+    `_hk.ARCH` as `hair_clumps.ARCH` (a constant is read by its module's name) and left `import hair_clumps as _hk`,
+    so they read a local that only the clumps path had bound: UnboundLocalError for every strand groom cut by lock at
+    the tiers main / npc / far, for four days (C476). No name was undefined for a reader of the file, every moved
+    unit was unchanged, and no test ran the job (tests/test_hair_cards_job.py does now)."""
+    old = ("def job(clumped):\n    if clumped:\n        from . import hair_clumps\n        hair_clumps.cut()\n"
+           "    if not clumped:\n        from . import hair_clumps as _hk\n        return hair_clumps.ARCH, _hk.strands\n")
+    assert read_by_its_other_name(old) == ["job line 7: reads hair_clumps where only _hk was imported"]
+    assert read_by_its_other_name(old.replace(" as _hk", "").replace("_hk.", "hair_clumps.")) == []
+    assert read_by_its_other_name("def f(a):\n    if a:\n        import json as _js\n        _js.dumps(1)\n"
+                                  "    else:\n        import json\n        json.dumps(1)\n") == []
+    bad = {}
+    for p in sorted(SRC.glob("*.py")) + sorted((ROOT / "tests").glob("*.py")):
+        if found := read_by_its_other_name(p.read_text()):
+            bad[p.name] = found
+    assert not bad, f"a module read by a name this path did not import (import it where it is read, under ONE name): {bad}"
+
+
 def test_the_skin_reference_tool_gives_its_text():
     """(the case above, at the tool) the description's keys from skin.py's docstring, the marks' text from
     skin_features.py's, and nothing of the paragraph that says where the code is."""

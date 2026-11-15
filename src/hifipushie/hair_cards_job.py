@@ -196,11 +196,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         if (not clumped and not short and hair.COVER_TIERS and tier_name
                 and float(hair.COVER_TIERS.get(tier_name, 0.0)) > 0):  # (round 33) the part's cover row at a coarser tier:
             # hair_clumps_part.part_cover with fewer, wider cards (COVER_TIERS x PART_COVER per side) on the tiles
-            from . import hair_clumps as _hk
+            from . import hair_clumps
             from . import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
             n_cov = int(round(float(hair.COVER_TIERS[tier_name]) * max(hair_clumps.PART_COVER, 1)))
             if n_cov > 0:
-                St_c = _hk.strands(D, hair_locks)
+                St_c = hair_clumps.strands(D, hair_locks)
                 so_c = (hair_clumps_part.strand_part(St_c, sc.C) if hair_clumps.PART_FROM_STRANDS else None) or part_side_of(sc, g)
                 if so_c is not None:
                     env_c = hair_clumps_fit.envelope(St_c, sc.C, pct=hair_clumps.ENV_PCT)
@@ -223,10 +223,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                     print(f"hair cards: part cover {len(cov_)} cards at tier {tier_name!r}", flush=True)
         if (not clumped and not short and hair.ARCH_TIERS and tier_name
                 and float(hair.ARCH_TIERS.get(tier_name, 0.0)) > 0):  # (round 35) the crown arch at a coarser tier
-            from . import hair_clumps as _hk
+            from . import hair_clumps
             from . import hair_clumps_bake, hair_clumps_cut, hair_clumps_fit, hair_clumps_part
             n_ar = max(1, int(round(float(hair.ARCH_TIERS[tier_name]) * max(hair_clumps.ARCH, 1))))
-            St_c = _hk.strands(D, hair_locks)
+            St_c = hair_clumps.strands(D, hair_locks)
             ar_, hw_ = hair_clumps.ARCH, hair_clumps.ARCH_HW
             hair_clumps.ARCH, hair_clumps.ARCH_HW = n_ar, hw_ * max(1.0, float(max(hair_clumps.ARCH, 1)) / n_ar) ** 0.5
             try:
