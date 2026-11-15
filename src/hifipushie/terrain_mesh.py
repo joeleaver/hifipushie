@@ -27,7 +27,9 @@ world's.
 
 Where the code is (split by responsibility, C414): this module holds the defaults, the layers and the smooth min / max;
 terrain_volumes, terrain_relief, terrain_field and terrain_materials the field and what it is made of; terrain_tiles
-export_tiles, with terrain_tile_jobs (workers), terrain_tile_mesh and terrain_tile_border (one tile's mesh and border),
+export_tiles: its stages in order over one context, the later ones in terrain_tiles_build (the tiles' meshes and LODs),
+terrain_tiles_ground (heightmaps, splats, clutter, trees) and terrain_tiles_manifest (the manifest, the checks); with
+terrain_tile_jobs (workers), terrain_tile_mesh and terrain_tile_border (one tile's mesh and border),
 terrain_tile_job and terrain_tile_finish (a tile at one LOD, normals, bake); terrain_gltf the writer;
 terrain_seam_check and terrain_map_seams the checks; terrain_tile_views the renders."""
 from __future__ import annotations
@@ -226,5 +228,6 @@ MAP_SEAM = [
 # The modules this one was split into (C414), in the order the pipeline runs them. The tile export's state hashes the
 # code of all of them (codehash.digest(*MODULES)): before the split that was this one module's import closure.
 MODULES = ("terrain_mesh", "terrain_volumes", "terrain_relief", "terrain_field", "terrain_materials", "terrain_gltf", "terrain_tile_mesh", "terrain_tile_border",
-           "terrain_tile_jobs", "terrain_tiles", "terrain_tile_job", "terrain_tile_finish", "terrain_seam_check", "terrain_map_seams", "terrain_tile_views")
+           "terrain_tile_jobs", "terrain_tiles", "terrain_tiles_build", "terrain_tiles_ground", "terrain_tiles_manifest", "terrain_tile_job",
+           "terrain_tile_finish", "terrain_seam_check", "terrain_map_seams", "terrain_tile_views")
 __getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)
