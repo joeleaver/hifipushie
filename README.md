@@ -12,7 +12,7 @@ their own tools, and a finished model exports as a game-ready GLB.
 
 ## Tools
 
-107 tools in 14 domains. A small core is native MCP tools; every other tool runs through
+113 tools in 15 domains. A small core is native MCP tools; every other tool runs through
 `call_tool(name, args)`. An agent does not need this table: `guide` is the playbook (read first),
 `find_tool("<the job in plain words>")` names the tool for a job with an example call, and
 `guide(topic="<tool>")` gives any tool's full parameters. `guide(topic="example")` returns two whole models to
