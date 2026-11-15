@@ -1,60 +1,60 @@
-# STATE: the long export functions as stages (asset_export._export, terrain_tiles._export_tiles) -- 2026-11-14
+# STATE: long functions as stages (asset_export._export, terrain_tiles._export_tiles, vegetation_grow.grow) -- 2026-11-15
 
-Joe (2026-11-14): "Yes you should" (the character export), then "Yes, stage it" (the tile export).
+Joe: "Yes you should" (the character export), "Yes, stage it" (the tile export, 2026-11-14; `grow`, 2026-11-15).
 Goal: each function readable and under the 500-line rule, with not one statement changed. Ledger C468 (`_export`).
 
 ## Current best
 - `asset_export._export`: the context (`Export`, made from its arguments), thirteen stage calls, the last one's
-  return value: _begin, _mesh, _density, _lowpoly, _bake (asset_export_parts.py, except _begin) | _hair, _clothes,
-  _materials (asset_export_wear.py) | _rig, _shapes, _correctives (asset_export_rig.py) | _lods
-  (asset_export_lods.py) | _finish (asset_export_finish.py). asset_export.py is 199 lines, the largest module 292.
-  85 of 329 variables cross a stage (`ex.<name>`), 244 are locals; nine imports / defs handed on by one added line.
+  return value; the stages in asset_export_parts / _wear / _rig / _lods / _finish.py (asset_export.py 199 lines,
+  the largest module 292). 85 of 329 variables cross a stage (`ex.<name>`).
 - `terrain_tiles._export_tiles`: the context (`TileExport`), eleven stage calls, cut at the function's own numbered
-  sections: _setup, _keys (terrain_tiles.py, 243 lines, with export_tiles, preview_tiles, summary) | _cubes,
-  _border_chains, _dense_meshes, _tile_lods (terrain_tiles_build.py, 363) | _ground_maps, _clutter, _trees
-  (terrain_tiles_ground.py, 182) | _manifest, _finish (terrain_tiles_manifest.py, 275). 76 of 234 variables cross a
-  stage (`tx.<name>`), 158 are locals; four imports handed on (copy, inc, shutil, terrain_cliffs: 6 added lines).
-  terrain_mesh.MODULES and its overview name the three new modules (the export's state hashes all their code).
-- Commits: `_export` three (locals() lookups by hand; staging; modules); `_export_tiles` two: the tool learned `nonlocal`.
+  sections; the stages in terrain_tiles.py (243 lines), terrain_tiles_build (363), _ground (182), _manifest (275).
+  76 of 234 variables cross a stage (`tx.<name>`). terrain_mesh.MODULES names the modules (the state hashes them).
+- `vegetation_grow.grow` (branch grow-stages, NOT LANDED): its first 6 statements stay in `grow` as they are, the
+  PROLOGUE (the resolved spec; a sward or a clump handed to its own module; the run that sets the unit from
+  `height`: three early returns). Then the context (`Growth`: the 3 arguments and s, h, t0 from the prologue) and
+  seven stage calls: _setting, _guides, _seedling (vegetation_grow.py, 151 lines) | _seasons
+  (vegetation_grow_seasons.py, 424) | _wood, _dead_wood, _finish (vegetation_grow_wood.py, 260). 40 of 257 variables
+  cross a stage (`gx.<name>`); `n` (nonlocal in `subset`) is one. vegetation.MODULES names both new modules.
+- The loop that stays whole: `for step in range(steps)` is ONE statement of `grow`, 398 lines. A stage begins only at
+  a statement of the function itself, so _seasons is 407 lines of statements: the loop, with new_axis and the
+  loop's settings before it (begun at the loop alone, 44 names cross instead of 40). Its target is `gx.step`.
 
 ## Proofs
-- Structure: `destage_check.py <root> <file> <function> <ctx> <commit before>`: the stages put back into one body
-  equal the old function statement for statement, comments in order. `_export`: 112 statements, 140 comments.
-  `_export_tiles` (tx, against f776cb50): 171 statements, 94 comments, 1 name dropped from a nonlocal statement.
-  Splits (same_units, same_comments against the staged file): 16 units, 143 comments; tiles (tag tiles-staged): 17, 96.
-- Behaviour, `_export`: proof_export.py, five exports per tree, 124 files: equal except the body's TANGENT array in
-  the last bit (max 1.8e-7) and 1-4 pixel values by 1 in a normal map; the old code against itself differs the same
-  way (Blender's tangents). golfer fails the same on both.
-- Behaviour, `_export_tiles`: proof_tiles.py (run_proof_tiles.sh <tree> <label>) on the coast of tests/test_tiles.py:
-  `coast` (four tiles round the cliff tile, 2 LODs, baked maps, ground maps, clutter, trees, the checks) and `again`
-  (two exports into one folder: the second reads the first's state). RESULT (2026-11-14, 202 files, tiles_diff.py):
-  old against old: 196 byte for byte, 6 differ only in times, memory and the profile. Old against new: 194 byte for
-  byte (every GLB, map, heightmap and csv), 4 the same way, 4 only in the code's hash (state.pkl's code and global
-  key; checks.pkl's keys, every value equal). The coast has no streams, falls, caves or styles: those blocks of
-  _manifest and _trees did not run. The checks fail on this cut of the coast, the same on all three runs.
-- No test reads terrain_tiles.py's source text; those that read `_export`'s read every export module, `ex.` read away.
+- Structure: `destage_check.py <root> <file> <function> <ctx> <commit before>` on the staged, unsplit file (a
+  worktree at tag archive/before-{export,tiles,grow}-stage-split): the stages put back into one body equal the old
+  function statement for statement, comments in order. `_export` (ex, d9d3e655): 112 statements, 140 comments.
+  `_export_tiles` (tx, f776cb50): 171, 94, 1 name dropped from a nonlocal. `grow` (gx, b934a449): 85 = 6 prologue
+  + 79 in 7 stages, 94, 1 dropped (n). Splits (same_units, same_comments): 16 units, 143 comments; tiles 17, 96; grow 9, 94.
+- Behaviour, exports: proof_export.py, 124 files, equal but for Blender's tangents (last bit) and 1-4 pixels of a
+  normal map, as old against old. proof_tiles.py, 202 files: 194 byte for byte, 4 differ in times, 4 in the code's hash.
+- Behaviour, `grow`: proof_grow.py grows 60 plants per source tree (the 16 packaged presets at their default and
+  at 0.6 of their age with seed + 7; 28 cases, most on a 22-year birch: height, guides, prunes, cuts, girths, a
+  stand, wind, decay, dead wood, log), one sha1 each over every array and scalar `grow` returns (not stats.grow_s).
+  Old, old again, new: three equal files. `--lines`: 23 of 692 lines with code ran in no plant (proof_grow/lines_new.txt).
+- No test reads the source text of terrain_tiles.py or vegetation_grow*.py; `_export`'s readers read every module.
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
-stage_function.py (the staging; its docstring is the rule for what crosses a stage), plan_stage_export.py and
-plan_stage_tiles.py (stages by anchor: a statement's start, or a `#` comment of the function; re-run if main changes
-the function before landing), destage_check.py, plan_asset_export.py and plan_terrain_tiles.py (the module splits),
-proof_export.py, proof_tiles.py, run_proof_tiles.sh, compare_export.py, tiles_diff.py (differences by kind), glb_diff.py.
+stage_function.py (the staging; its docstring is the rule for what crosses a stage and for the prologue),
+destage_check.py, plan_stage_{export,tiles,grow}.py (stages by anchor: re-run if main changes the function first),
+plan_{asset_export,terrain_tiles,vegetation_grow}.py (module splits), proof_{export,tiles,grow}.py, tiles_diff.py.
 
 ## Decisions in force
 - A variable is the context's only if a stage reads it before certainly setting it (or it is an argument, or a def
-  reads it and more than one stage sets it). Loop variables every stage sets for itself stay locals.
-- Nonlocal (new, for on_done's `nonlocal t_dec`): a name a nested def declares nonlocal is the context's; it is
-  dropped from that statement, and the statement goes when no name is left. destage_check drops exactly those names
-  from the OLD function before comparing, prints how many, and fails on a bare use of one in the staged def.
-- Lazy imports stay lazy: a module one stage imports under a condition is not imported at the top of another.
-- A helper only one stage calls moves with it (`_maps_done` with _tile_lods): left behind it is an import cycle.
-- `preview` (asset_export) was not touched (the review-fixes session edits it).
+  reads it and more than one stage sets it, or a nested def declares it nonlocal). Other loop variables stay locals.
+- Prologue (new, for grow's early returns): a plan may begin its first stage after the function's first statement.
+  The statements before it stay in the driver unchanged, returns included; the context is made after them from the
+  arguments and the prologue's variables the stages need (read before the stages, in order, have certainly set
+  them), each by its own name. Refused: such a variable set on some paths only; a def, lambda or generator in the
+  prologue reading what a stage sets; a return after the prologue outside the last stage. destage_check compares
+  the prologue one by one with the old function's first statements and prints how many it found.
+- Lazy imports stay lazy. A helper only one stage calls moves with it. `preview` (asset_export) was not touched.
 
 ## Open
-1. Both contexts are flat bags (85 and 76 names): group them and give stages narrower inputs, by hand, with the proofs.
-2. Still long, one statement or block each: _tile_lods (181 lines, a while loop), _manifest (164), _lods (182); and
-   the giant functions left: vegetation_grow.grow (733), veg_export_glb.write_glb (578), hair_cards_job.cards_job (570).
-3. proof_tiles.py has no stream, cave or style case: add one before the tile export's stages are cut further.
+1. The contexts are flat bags (85, 76 and 40 names): group them, give stages narrower inputs, by hand, with proofs.
+2. Still long: _seasons (407: its numbered sections can only become functions by hand, the step's locals passed),
+   _tile_lods (181), _manifest (164), _lods (182); giants left: veg_export_glb.write_glb (578), cards_job (570).
+3. proof_tiles.py has no stream, cave or style case; stage_function.py's class docstring order can vary (hash seed).
 
-NEXT: the coordinator lands tiles-stages (re-run the proofs; add the ledger row; every existing tile export goes cold
-once: the code's hash changed). Then Joe's call: the next giant function (vegetation_grow.grow), or Open 1.
+NEXT: the coordinator re-runs the proofs (/mnt/data/hifipushie/proof_grow/REPORT.md has every command), runs
+bin/suite, lands grow-stages and adds the ledger row. Then Joe's call: write_glb, cards_job, or Open 1.
