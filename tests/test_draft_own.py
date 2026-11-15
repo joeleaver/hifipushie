@@ -326,10 +326,17 @@ def test_pattern_parts_lists_a_designs_parts_points_and_outline_order(home):
     from hifipushie import pattern_parts as pp
     _, txt = pp.run("brian")
     assert "measurements it needs" in txt and "waistToArmpit" in txt and "brian.base HIDDEN" in txt
-    assert "brian.back: from brian.base" in txt and "seam runs: cbNeck >" in txt and "DEFAULT values" in txt
+    assert "brian.back: from brian.base" in txt and "seam runs (@ mm along it): cbNeck @0 >" in txt and "DEFAULT values" in txt
     look, one = pp.run("brian", part="brian.front", look_part=True)
-    assert "points (x right, y down, mm): " in one and "cfNeck (" in one and "path seam: cfNeck >" in one
+    assert "points (x right, y down, mm): " in one and "cfNeck (" in one and "path seam: cfNeck @0 >" in one
     assert Path(look).exists()
+    import re  # (t s4-25: a cap chain ran past the cap's end, 725 vs 481 mm: every point of a seam with its arc position)
+    _, ts = pp.run("jaeger", part="jaeger.topsleeve")
+    seam = next(x for x in ts.splitlines() if x.startswith("path seam: "))
+    at = {m[0]: int(m[1]) for m in re.findall(r"([A-Za-z]\w*)(?:=\w+)* @(\d+)", seam)}
+    assert {"tsRightEdge", "backPitchPoint", "top", "frontPitchPoint", "tsLeftEdge"} <= set(at), seam
+    assert at["tsRightEdge"] < at["backPitchPoint"] < at["top"] < at["frontPitchPoint"] < at["tsLeftEdge"], at
+    assert 50 < at["frontPitchPoint"] - at["backPitchPoint"] < 600 and "difference" in ts, at
     own = pp.inspect(RECT, {"waist": 800.0})  # the agent's own design: its parts, no measurement missing
     assert not own["missing"] and "test.panel" in own["parts"] and own["parts"]["test.panel"]["paths"]["seam"]["ops"]
     bad = pp.inspect(RECT.replace("measurements.waist / 4", "measurements.nope / 4"), {"waist": 800.0})  # (C361: NaN)
