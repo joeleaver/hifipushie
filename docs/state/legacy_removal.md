@@ -32,7 +32,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
   says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script; the repo's
   own spikes/ and examples/ are repointed (C428). Rule tests: test_undefined_names, test_constants_address, test_moved.
-- Still over 500 lines because one function is: asset_export 1,004 (_export ~930), terrain_tiles 937 (_export_tiles 799),
+- Still over 500 lines because one function is: terrain_tiles 937 (_export_tiles 799),
   vegetation_grow 750 (grow 733), veg_export_glb 601 (write_glb 578), hair_cards_job 600 (cards_job 570); at the limit: hair_loose_grow 503 (grow 484), terrain_sea_apply 499 (apply 486): refactoring.
 - NOT split, and why: blender_* (Blender runs them by path); fieldjit (numba kernels cached beside the file); artist
   (a CLI); the clothes files (the chain-build cut first). Everything else over 1,000 lines is split.
@@ -57,4 +57,4 @@ repoint, the proof, same_comments and same_order (a rehome plan needs MID_IMPORT
 faceext 376 lines, terrain_seams 201 of 308 (its measure side), flipfit 137, faceatlas 105, gnm_controls 90. NOT unreachable: blender_cards, blender_lashes (blender_scene imports both inside functions).
 
 Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: reports in /mnt/data/hifipushie/review_20261112/; its fixes: docs/state/mcp_rules.md.
-NEXT: the long files still whole outside clothes, Blender scripts and the giant functions are resources (908), sdf (904) and spec (781): sdf and spec are the core (check every code key first); then the giant functions. A split-off module reads no bare __doc__ and hashes no file of its own alone (C459, tests/test_moved.py). The clothes files wait for the chain-build cut.
+NEXT: the giant functions, by the staging tool (C468: asset_export._export is thirteen stages now, docs/state/export_stages.md; terrain_tiles._export_tiles is the largest left). Long files still whole outside clothes and Blender scripts: resources (908), sdf (904), spec (781): sdf and spec are the core (check every code key first). The clothes files wait for the chain-build cut.
