@@ -231,14 +231,19 @@ dependencies = [
     { name = "potpourri3d" },
     { name = "pyfqmr" },
     { name = "scikit-image" },
-    { name = "scikit-sparse" },
     { name = "scipy" },
     { name = "threadpoolctl" },
+]
+
+[package.optional-dependencies]
+fast = [
+    { name = "scikit-sparse" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "scikit-sparse" },
 ]
 
 [package.metadata]
@@ -251,13 +256,17 @@ requires-dist = [
     { name = "potpourri3d", specifier = ">=1.4.0" },
     { name = "pyfqmr", specifier = ">=0.5.0" },
     { name = "scikit-image", specifier = ">=0.26.0" },
-    { name = "scikit-sparse", specifier = ">=0.5.1" },
+    { name = "scikit-sparse", marker = "extra == 'fast'", specifier = ">=0.5.1" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "threadpoolctl", specifier = ">=3.8.0" },
 ]
+provides-extras = ["fast"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "scikit-sparse", specifier = ">=0.5.1" },
+]
 
 [[package]]
 name = "httpcore2"

@@ -55,7 +55,7 @@ import time
 
 import numpy as np
 import scipy.sparse as sp
-from sksparse.cholmod import CholeskyFactor
+from .sparse_chol import CholeskyFactor
 from threadpoolctl import threadpool_limits
 
 from . import chain_net as cn

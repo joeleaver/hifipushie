@@ -17,10 +17,13 @@ dependencies = [
     "potpourri3d>=1.4.0",
     "pyfqmr>=0.5.0",
     "scikit-image>=0.26.0",
-    "scikit-sparse>=0.5.1",
     "scipy>=1.18.1",
     "threadpoolctl>=3.8.0",
 ]
+
+[project.optional-dependencies]
+# CHOLMOD for the chain solvers (sparse_chol.py): builds from source (libsuitesparse-dev, python3-dev), so optional.
+fast = ["scikit-sparse>=0.5.1"]
 
 [project.scripts]
 hifipushie-mcp = "hifipushie.server:main"
@@ -35,6 +38,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "scikit-sparse>=0.5.1",
 ]
 
 [tool.pytest.ini_options]
