@@ -456,7 +456,7 @@ def _at_cut(na: str, tags: set) -> bool:
 
 # ---------------------------------------------------------------- the flat gate
 def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3: dict | None = None,
-         fit: dict | None = None, body: dict | None = None, step2: dict | None = None) -> list:
+         fit: dict | None = None, step2: dict | None = None) -> list:
     """General flat rows: seams (each pair within its declared ease, else PLAIN_TOL), seam_ends (each seam's edges run
     the same way: draft_seam_ends.py), cut (every built inventory piece
     cut), sewn (every step-1 seam), closures (every step-1 closure declared; lapped edges line up), truing (INFO), and
@@ -507,8 +507,8 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         from . import draft_body_lengths
         rows += draft_body_lengths.rows(B, step1, step3, fit)
         rows += draft_body_lengths.style_rows(B, step1, step3)
-        from . import draft_girths  # (C383: the pattern round the body at its girths' levels)
-        rows += draft_girths.rows(B, step3, fit, body)
+        from . import draft_girths  # (G1: the pattern round every girth its tapes name vs body + the plan's ease)
+        rows += draft_girths.rows(B, step3, fit, B.get("decl") or decl)
         from . import draft_tapes  # (P1: every piece placed where the body was measured for it)
         rows.append(draft_tapes.row(B, B.get("decl") or decl, step3))
     inv = step1.get("pieces") or {}
