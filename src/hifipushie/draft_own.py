@@ -32,6 +32,8 @@ Declarations (JSON beside the code; names are step 1's):
   neckline tape). Row piece_tapes (draft_tapes.py) FAILs a piece with none, a name step 3 hasn't taken (back to 3).
   departs {edge: why} (C381): a step-1 seam drafted more than 30 % off its approved estimate, said with what the
   reference shows there (else row style_lengths FAILs).
+  vents [{"name", "over": "piece:edge", "under": "piece:edge"}]: a vent's two sides, open below its top and lapped
+  (draft_vents.py: the girths row counts the overlap once).
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
   docstring: at / rows / points / follows / path / lines; stiffens: a trim that stiffens its edge); a closure's
   buttons are its own marks. A step-1 detail built full / simplified with no mark is refused (cloth-made ones: pieces).
@@ -57,7 +59,9 @@ MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} |
              "[positions]}; an edge: a declared edge name or 'a>b' along the outline (C361: the form was only in a "
              "docstring a blind agent can't read)")
 TIMEOUT = 60  # s
-DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts", "departs", "tapes"}
+DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts", "departs", "tapes",
+             "vents"}
+GRAIN_WORDS = {"lengthwise": 90.0, "straight": 90.0, "crosswise": 0.0, "bias": 45.0}  # (s4-26: "lengthwise" refused)
 def _roles() -> list:
     from .garment_design import kb
     return [r for r in kb()["roles"] if not r.startswith("_")] + ["collar_band"]
@@ -67,6 +71,13 @@ PIECE_KEYS = {"part", "fold", "mirror", "flip_y", "cut", "grain", "place", "role
 BUILT = ("full", "simplified")  # step 1's "build" values that are cut
 PLAIN_TOL = 0.01  # a seam with no declared ease: its two sides agree within 1 % (cloth_check KINDS "plain")
 CLOSURE_TOL = 0.01  # a lapped closure's over and under edges agree within 1 % (the buttons line up)
+
+
+def grain(v) -> float | None:
+    """A piece's grain in degrees from a number or a word (GRAIN_WORDS); None: neither."""
+    if isinstance(v, str):
+        return GRAIN_WORDS.get(v.strip().lower())
+    return None if isinstance(v, bool) or not isinstance(v, (int, float)) else float(v)
 
 
 class DraftRefused(ValueError):
@@ -229,9 +240,9 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
         if pd.get("role") is not None and pd["role"] not in _roles():  # (t s4-7: "stand" was taken silently)
             bad.append(f"piece {nm!r}: role {pd['role']!r} is not a role (have {', '.join(_roles())}); a layer sewn "
                        "edge to edge onto a piece (canvas, facing, lining of it) needs none: it takes that piece's (C377)")
-        if pd.get("grain") is not None and (isinstance(pd["grain"], bool) or not isinstance(pd["grain"], (int, float))):
+        if pd.get("grain") is not None and grain(pd["grain"]) is None:
             bad.append(f"piece {nm!r}: grain {pd['grain']!r}: degrees from the part's x axis (90 = lengthwise, the usual "
-                       "straight grain; 0 = crosswise; 45 = bias) (C363)")
+                       "straight grain; 0 = crosswise; 45 = bias), or one of those words (C363)")
         if parts is not None and pd.get("part") not in parts:
             bad.append(f"piece {nm!r}: the draft has no part {pd.get('part')!r} (has {', '.join(parts)})")
     for nm, it in inv.items():
@@ -304,8 +315,8 @@ def validate(decl: dict, step1: dict, parts: dict | None = None) -> list:
                 dp.expand(decl, parts)
             except DraftRefused as e:
                 bad.append(str(e))
-    from . import draft_tapes  # (P1: the step-3 tapes each piece / edge was drafted on, by name)
-    return bad + draft_tapes.validate(decl) + validate_marks(decl, step1)
+    from . import draft_tapes, draft_vents  # (P1: the step-3 tapes each piece / edge was drafted on, by name)
+    return bad + draft_tapes.validate(decl) + validate_marks(decl, step1) + draft_vents.faults(decl)
 
 
 def validate_marks(decl: dict, step1: dict) -> list:
@@ -415,7 +426,7 @@ def block(pat: dict) -> dict:
         if pd.get("flip_y"):
             pc = pattern.mirror_y(pc)
         pc["wrap"] = dict(pd.get("place") or {"to": "torso"})
-        pc["grain"] = float(pd.get("grain", 90.0))
+        pc["grain"] = grain(pd.get("grain", 90.0))
         pc["cut"] = int(pd.get("cut", 1))
         if pd.get("role"):
             pc["role"] = pd["role"]
@@ -452,7 +463,9 @@ def block(pat: dict) -> dict:
         if isinstance(c.get("edge"), dict):
             c["edge"] = {k: arcs.get(c.get(k), {}).get(v, v) for k, v in c["edge"].items()}
         closures.append(c)
-    return {"pieces": out, "seams": seams, "stitches": [], "interfaced": list(decl.get("stiff") or []),
+    vents = [{k: (f"{v[k].split(':', 1)[0]}:{arcs.get(v[k].split(':', 1)[0], {}).get(v[k].split(':', 1)[1])}"
+                  if k in ("over", "under") else v[k]) for k in v} for v in decl.get("vents") or []]
+    return {"pieces": out, "seams": seams, "stitches": [], "interfaced": list(decl.get("stiff") or []), "vents": vents,
             "draft": {"design": "own", "dir": str(d), "options": decl.get("options") or {}},
             "folds": folds, "closures": closures, "seam_notes": notes, "edge_arcs": arcs, "decl": decl,
             "darts": darts}
@@ -520,7 +533,9 @@ def gate(B: dict, decl: dict, step1: dict, stand_ref: dict | None = None, step3:
         rows += draft_girths.rows(B, step3, fit, B.get("decl") or decl)
         from . import draft_tapes  # (P1: every piece placed where the body was measured for it)
         rows.append(draft_tapes.row(B, B.get("decl") or decl, step3))
-    inv = step1.get("pieces") or {}
+        from . import draft_place  # (F2: each piece's place read off its own tapes, never a silent guess)
+        rows.append(draft_place.row(B, B.get("decl") or decl, step3))
+    inv =step1.get("pieces") or {}
     from .draft_pairs import base_name
     dx = B.get("decl") or decl  # (pairs expanded: draft_pairs)
     # (a cut copy counts under its own name or its pair's base, whichever step 1 uses: C366, t s4-5's "not cut: front.L

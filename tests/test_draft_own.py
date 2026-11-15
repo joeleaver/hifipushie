@@ -141,8 +141,10 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
     # (G1: the girths row needs a length tape to place the waist on each panel, and panels round the body + its gap)
     gr.write("tm", "g", "3", "done", output={"measurements": STEP3["measurements"] + [
-        {"name": "len", "mm": 600.0, "kind": "length", "path": [[0.05, -0.1, 1.15], [0.05, -0.1, 0.55]]}]})
-    decl = dict(DECL, tapes={"panel.L": ["waist", "len"], "panel.R": ["waist", "len"]})
+        {"name": "len", "mm": 600.0, "kind": "length", "path": [[0.05, -0.1, 1.15], [0.05, -0.1, 0.55]]},
+        {"name": "len_back", "mm": 600.0, "kind": "length", "path": [[0.05, 0.1, 1.15], [0.05, 0.1, 0.55]]}]})
+    # (F2: the back panel on a tape down the back: row place reads each piece's side off its own tapes)
+    decl = dict(DECL, tapes={"panel.L": ["waist", "len"], "panel.R": ["waist", "len_back"]})
     rect = RECT.replace("measurements.waist / 4", "measurements.waist * 0.53")
     sheet, txt = dot.run("tm", "g", RECT, decl)
     assert "draft_pattern: FAIL" in txt and "girths" in txt and "can't be worn" in txt, txt  # (400 round on 800)
