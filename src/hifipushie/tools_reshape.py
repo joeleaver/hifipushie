@@ -199,7 +199,7 @@ def flap(name: str, mass: str, root: list[float], over: list[float], tip: list[f
     view, y and z in the side view; the figure faces -y): root (the middle of where it grows out: put it a little
     INSIDE the mass it grows from), over (the top of its arch) and tip (where its tip ends: for an ear folded
     forward, in front of and below `over`). It bends about its own width: its broad face is square to the plane
-    the three points make. width: across it at the root; thickness (default a fifth of the width);
+    the three points make. width: across it at the root; thickness (default about a quarter of the width: clay is thick);
     pointed 0..1 (0 a round leaf, 1 narrowing to a soft point); cup: metres its side edges curl toward the inside
     of the fold (an ear's hollow). mass: its name; one ending ".L" is made on the left (+x) and mirrored. The same
     name again replaces it: move ONE point to change where it hangs, how it arches or where it grows from.
@@ -217,7 +217,8 @@ def flap(name: str, mass: str, root: list[float], over: list[float], tip: list[f
     r, o, tp = pts
     l1, l2 = float(np.linalg.norm(o - r)), float(np.linalg.norm(tp - o))
     width = float(width)
-    thick = float(thickness) if thickness is not None else max(width / 5.0, 0.008)
+    # (a fifth of the width came out as thin strips twice, p6 and p7: clay ears are thick)
+    thick = float(thickness) if thickness is not None else max(0.28 * width, 0.008)
     if width <= 0 or thick <= 0 or thick >= 0.8 * width:
         raise ValueError(f"width is across the flap at its root and thickness through it, in metres, the thickness "
                          f"well under the width (got {width:g} and {thick:g})")

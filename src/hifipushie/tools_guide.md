@@ -349,7 +349,7 @@ figure faces -y, so forward is the lower y):
 A flap bends about its own width, so its broad face is square to the plane the three points make: root, over and
 tip at about the same x give a broad face that shows from the front (a pig's or a dog's folded ear); the answer
 says which view shows the broad face.
-width: across it at the root, metres. thickness: default a fifth of the width (clay ears are thick). pointed: 0 a
+width: across it at the root, metres. thickness: default about a quarter of the width (clay ears are thick). pointed: 0 a
 round leaf .. 1 narrowing to a soft point. cup: metres its side edges curl toward the inside of the fold.
 mass: the flap's name; a name ending ".L" is made on the left (+x) and mirrored to ".R". at: the joint it rides on
 (default: the joint nearest the root). blend: how softly it joins what it grows from (small = a crease at the
