@@ -8,7 +8,7 @@ from . import structure_rows as sr
 from .garment_plan import PlanRefused, _src, _target, _uv_list, form, pixel_errors
 
 
-def check_style(p: dict, read: dict, parts: dict) -> dict:
+def check_style(p: dict, read: dict, parts: dict, body=None) -> dict:
     bad, p = [], json.loads(json.dumps(p))
     nv = len(read.get("views") or [])
     pieces, details, closures = (parts.get(k) or {} for k in ("pieces", "details", "closures"))
@@ -34,8 +34,10 @@ def check_style(p: dict, read: dict, parts: dict) -> dict:
                                 and (lay["mode"] == "visible" or str(lay.get("why") or "").strip())):
         bad.append("layers: {mode: visible (default: the garment under kept where seen) | full (the whole garment under "
                    "fitted inside and hung with this one), why (needed for full: it comes off at runtime, a close-up)}")
-    from . import draft_panels  # (F3, t s4-27: where the seams round the body fall; step 4's row panels checks it)
-    draft_panels.check(p.get("panels"), pieces, bad)
+    from . import panel_shares  # (F3/F4, t s4-27/28: where the seams round the body fall, each share from a source)
+    pan = panel_shares.check(p.get("panels"), pieces, read, panel_shares.loop_of_body(body), bad)
+    if pan is not None:
+        p["panels"] = pan
     pose = p.get("pose")
     if not isinstance(pose, dict) or not pose.get("name"):
         bad.append("pose: {name (e.g. 'arms down, relaxed'), source}")

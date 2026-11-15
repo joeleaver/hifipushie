@@ -50,20 +50,14 @@ def test_caught_fits_without_shared_names():
     assert r["status"] == "PASS" and "fitted to its caught edges" in r["value"]
 
 
-def test_panels_form_refused_by_name():
-    bad = []
-    draft_panels.check([{"girth": "chest", "shares": {"front": .5, "side": .2, "yoke": .1}, "source": ""}],
-                       {"front.L": {}, "side.L": {}, "back.L": {}}, bad)
-    assert any("yoke" in b for b in bad) and any("sum to 0.80" in b for b in bad) and any("source" in b for b in bad)
-
-
 def test_panels_sliver_side_body_fails_with_mm(monkeypatch):
     ring = {"front.L", "front.R", "side.L", "side.R", "back.L", "back.R"}
     w = {"front.L": .277, "front.R": .277, "side.L": .046, "side.R": .046, "back.L": .248, "back.R": .248}
     monkeypatch.setattr(draft_panels, "_widths", lambda B, d, T, g: [(ring, w, {"front": .029})])
     monkeypatch.setattr("hifipushie.tape_geom.tapes", lambda s3: {"chest": {"kind": "loop"}})
     monkeypatch.setattr(draft_panels, "_neighbours", lambda B, p, r: {"front.L", "back.L"} if "side" in p else {"side.L"})
-    plan = {"panels": [{"girth": "chest", "shares": {"front": .40, "side": .22, "back": .38}, "source": "convention"}]}
+    plan = {"panels": [{"girth": "chest", "shares": {k: {"source": "convention", "share": v} for k, v in
+                                                     {"front": .40, "side": .22, "back": .38}.items()}}]}
     r = draft_panels.rows({"pieces": {p: {} for p in ring}}, plan, {}, {})[0]
     assert r["status"] == "FAIL" and "side is 76 mm a piece too narrow" in r["why"] and "move its seams out" in r["why"]
     w.update({"front.L": .2365, "front.R": .2365, "side.L": .1223, "side.R": .1223, "back.L": .2113, "back.R": .2113})
