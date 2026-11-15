@@ -23,7 +23,7 @@ on the other (SLIT apart), round the dart's two sides between them. The legs are
 them as every other dart. A declared edge that ENDS at the outline point keeps its end on its own side. An edge running
 PAST it (the release lands partway along a side seam: t s4-25, through the pocket mouth to the side seam) is split
 there into `<edge>.1` (its start to the point) and `<edge>.2` (the point to its end), and every seam that sews the edge
-sews the two as a chain in its place (draft_own.block): cloth.mesh lays the partner's sample at the same arc length, so
+sews the two as a chain in its place (draft_own_block.block): cloth.mesh lays the partner's sample at the same arc length, so
 the partner is split to match; the release and the dart between the halves are closed by their own seams.
 """
 from __future__ import annotations

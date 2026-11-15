@@ -153,9 +153,10 @@ def test_a_carried_draft_must_pass_its_flat_gate_as_it_runs_now(tmp_path, monkey
     """C404: trial s2-6's step-2 retake carried step 4 forward as "gate PASS" while its draft FAILed planned_folds and
     seams_crossed. Declarations matching step 1 is not the gate passing: the carry re-runs the flat gate."""
     import json as _j
-    from hifipushie import draft_own as do, draft_own_tool as dot, garment_carry as gc
+    from hifipushie import draft_own_tool as dot, garment_carry as gc
+    from hifipushie import draft_own_validate
     (tmp_path / "declarations.json").write_text(_j.dumps({"pieces": {}}))
-    monkeypatch.setattr(do, "validate", lambda *a, **k: [])
+    monkeypatch.setattr(draft_own_validate, "validate", lambda *a, **k: [])
     rec = {"model": "m", "garment": "w", "steps": {k: {"output": {}} for k in ("0", "1", "2", "3")}}
     rows = [{"id": "planned_folds", "status": "FAIL", "why": "step 2 turns fold 'collar_roll' on collar"}]
     monkeypatch.setattr(dot, "flat_check", lambda m, g: (rows, {}, {}))

@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from hifipushie import draft_own, garment_details as gd, garment_details_tool as gdt, garment_record as gr, store
+from hifipushie import garment_details as gd, garment_details_tool as gdt, garment_record as gr, store
+from hifipushie import draft_own_validate
 
 
 def _grid(x0, w=0.2, h=0.4, s=0.01):
@@ -116,12 +117,12 @@ def test_marks_validated_at_step4():
                          "pkt": {"what": "patch pocket", "on": ["front.L"], "build": "full"},
                          "back": {"what": "braid", "on": ["front.L"], "build": "omit"}}}
     decl = {"pieces": {"front.L": {}}}
-    bad = draft_own.validate_marks(decl, step1)
+    bad = draft_own_validate.validate_marks(decl, step1)
     assert len(bad) == 1 and "'btn'" in bad[0] and "has no mark" in bad[0]  # (the pocket is a piece; omitted: no mark)
-    assert draft_own.validate_marks(dict(decl, marks={"btn": {"piece": "front.L", "points": "button*"}}), step1) == []
-    assert any("not a step-1 detail" in b for b in draft_own.validate_marks(dict(decl, marks={"zz": {"at": []}}), step1))
+    assert draft_own_validate.validate_marks(dict(decl, marks={"btn": {"piece": "front.L", "points": "button*"}}), step1) == []
+    assert any("not a step-1 detail" in b for b in draft_own_validate.validate_marks(dict(decl, marks={"zz": {"at": []}}), step1))
     step1["closures"] = {"front": {"pieces": ["front.L"], "details": ["btn"]}}
-    assert draft_own.validate_marks(dict(decl, closures=[{"name": "front", "kind": "buttons"}]), step1) == []
+    assert draft_own_validate.validate_marks(dict(decl, closures=[{"name": "front", "kind": "buttons"}]), step1) == []
 
 
 # ---------------------------------------------------------------- the record + the tool body

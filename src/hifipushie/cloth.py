@@ -323,8 +323,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         seam_notes = dict(blk.get("seam_notes") or {})
         pat = None
     if pat and pat.get("from") == "own":  # the agent's own FreeSewing draft + its declarations (draft_own, step 4)
-        from . import draft_own
-        blk = draft_own.block(pat)
+        from . import draft_own_block
+        blk = draft_own_block.block(pat)
         out, seams, interfaced = dict(blk["pieces"]), list(blk["seams"]), list(blk["interfaced"])
         draft_info, seam_notes = blk["draft"], dict(blk["seam_notes"])
         folds_tbl += blk["folds"]

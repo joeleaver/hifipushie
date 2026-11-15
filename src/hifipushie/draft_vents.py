@@ -39,7 +39,7 @@ def _ends(arc) -> tuple[str, str] | None:
 
 def faults(decl: dict) -> list:
     """Refusals by name (step 4), on the declarations as written (a pair by its base name)."""
-    from .draft_own import _sides
+    from .draft_own_validate import _sides
     from .draft_pairs import base_name
     pcs, edges, bad = decl.get("pieces") or {}, decl.get("edges") or {}, []
     sewn = [(_sides(s.get("a")), _sides(s.get("b"))) for s in decl.get("seams") or []]
@@ -73,7 +73,7 @@ def faults(decl: dict) -> list:
 
 def _top(decl: dict, p: str, ed: str, other: str) -> str | None:
     """The vent edge's end that is an end of an edge of p sewn to `other` (names only), or None."""
-    from .draft_own import _sides
+    from .draft_own_validate import _sides
     from .draft_pairs import base_name
     edges = decl.get("edges") or {}
     en = _ends((edges.get(base_name(p, decl)) or {}).get(ed))
