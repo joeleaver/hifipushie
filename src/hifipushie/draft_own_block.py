@@ -149,8 +149,14 @@ def _moves(out: dict, arcs: dict, splits: dict, arc, decl: dict) -> list:
             k = pattern.arc_indices(out[p], a.split(":", 1)[1])
             ix += k[1:] if ix and k[0] == ix[-1] else k
         return ix
+    stops = {}  # (every declared edge's ends: a re-cut's respacing never runs past one)
+    for p, eds in arcs.items():
+        for spec in eds.values():  # (a split edge's halves are declared edges too)
+            for nm in (str(spec).split(">")[0], str(spec).split(">")[-1]):
+                if nm in out[p]["names"]:
+                    stops.setdefault(p, set()).add(pattern.index_of(out[p], nm))
     try:
-        return draft_moves.apply(out, ix_of, decl.get("seams") or [], decl["moves"])
+        return draft_moves.apply(out, ix_of, decl.get("seams") or [], decl["moves"], stops)
     except draft_moves.Refused as e:
         raise DraftRefused(str(e)) from None
 

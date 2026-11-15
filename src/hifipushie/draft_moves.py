@@ -28,7 +28,9 @@ from __future__ import annotations
 import numpy as np
 
 SPREAD = 0.03  # m: the least run of the edge beyond a moved end that eases the slide
-FOLLOW = 0.0005  # m: a point of another piece this near the host's outline is drawn on it (moves with it)
+EXACT = 1e-5  # m: a point of another piece this near a host's point is drawn from it (FreeSewing copies points exactly;
+# t s4-29: the back, drafted in the front's frame, lay 0.2-0.5 mm off three of its points and was dragged as a follower)
+REACH = 0.03  # m: a follower's points this near its host's outline take the host's move in full, tapering to none at 2x
 FORM = ('moves [{"seam": ["pieceA:edge", "pieceB:edge"], "at": [[mm along A\'s edge from its start, mm toward B], ...]}] '
         '(A grows, B shrinks; held past the listed points: add [0, 0] / [A\'s length, 0] to taper)')
 
@@ -83,13 +85,24 @@ def _frame(P: np.ndarray, ix: list, end: int) -> tuple:
     return step, u, nrm, tng
 
 
-def _slide(P: np.ndarray, ix: list, end: int, D: np.ndarray) -> None:
-    """Move the edge's end (0: first, -1: last) by D, easing the outline beyond it over max(3 |D|, SPREAD)."""
+def _axis(P: np.ndarray, ix: list) -> np.ndarray:
+    """The direction the seam moves in: along the levels a girth is read on (across the grain for a seam running up
+    it, flat y being the grain; up the grain for one running across), signed out of the piece across the seam. Moved
+    along each piece's own normal instead, a seam whose top bends toward its armhole (t s4-29: the jacket front's last
+    10 mm at 24 degrees) moved up as much as across, and the girth at the underarm grew 16 mm."""
+    d = P[ix[-1]] - P[ix[0]]
+    ax = np.array([1.0, 0.0]) if abs(d[1]) >= abs(d[0]) else np.array([0.0, 1.0])
+    return ax if float(_normals(P)[ix].sum(0) @ ax) >= 0 else -ax
+
+
+def _slide(P: np.ndarray, ix: list, end: int, D: np.ndarray, stops: set) -> None:
+    """Move the edge's end (0: first, -1: last) by D, easing the outline beyond it over max(3 |D|, SPREAD), never past
+    another edge's end."""
     n = len(P)
     i0 = ix[end]
     step = _frame(P, ix, end)[0]
     A = max(3 * float(np.linalg.norm(D)), SPREAD)
-    own = set(ix)
+    own = set(ix) | stops
     a, k, prev = 0.0, i0, P[i0].copy()
     P[i0] = P[i0] + D
     for _ in range(n):
@@ -103,17 +116,18 @@ def _slide(P: np.ndarray, ix: list, end: int, D: np.ndarray) -> None:
         P[k] = P[k] + D * (1 - a / A)
 
 
-def _run(P: np.ndarray, ix: list, end: int, A: float | None) -> list:
-    """Outline indices beyond the edge's end, from it out to the first point A m along (None: to the outline's next
-    point of the edge); the last one stays where it is."""
-    n, own = len(P), set(ix)
+def _run(P: np.ndarray, ix: list, end: int, A: float | None, stops: set) -> list:
+    """Outline indices beyond the edge's end, from it out to the first point A m along (None: to the next end of an
+    edge); never past another edge's end (t s4-29: the side body's short armhole respaced on down its back seam)."""
+    n, own = len(P), set(ix) | stops
     step, k, a, out = _frame(P, ix, end)[0], ix[end], 0.0, []
     for _ in range(n):
         j = (k + step) % n
+        out.append(j)
         if j in own:
+            out.pop()
             break
         a += float(np.linalg.norm(P[j] - P[k]))
-        out.append(j)
         k = j
         if A is not None and a >= A:
             break
@@ -126,60 +140,88 @@ def _resample(Q: np.ndarray, m: int) -> np.ndarray:
     return np.stack([np.interp(t, L, Q[:, k]) for k in range(2)], axis=1)
 
 
-def _ends(PA, ia, PB, ib, v: float, end: int) -> None:
-    """A move of v m toward B at that end: the piece that gives up width there is trimmed along the edge beyond its end
-    (the armhole, the hem) to where it lies |v| inside the seam; the one that gains it takes that strip of the edge, set
-    on beyond its own end in its own frame, so the edge beyond runs on as one line and both seam sides stay one length.
-    The points of the edge beyond are respaced over max(3 x the strip, SPREAD); none is added, none taken away."""
-    (Ps, is_), (Pg, ig) = ((PB, ib), (PA, ia)) if v > 0 else ((PA, ia), (PB, ib))
-    _, _, ns, ts = _frame(Ps, is_, end)
-    _, _, ng, tg = _frame(Pg, ig, end)
-    Cs, Cg = Ps[is_[end]].copy(), Pg[ig[end]].copy()
-    beyond = _run(Ps, is_, end, None)
-    Q = np.vstack([Cs, Ps[beyond]])
-    dep = -(Q - Cs) @ ns
-    k = next((i for i in range(1, len(Q)) if dep[i] >= abs(v)), None)
-    if k is None:
-        raise Refused("doesn't reach that far inside the seam, so the end can't be trimmed along it")
-    f = (abs(v) - dep[k - 1]) / max(dep[k] - dep[k - 1], 1e-12)
-    X = Q[k - 1] + f * (Q[k] - Q[k - 1])
-    strip = np.vstack([Q[:k], X])
+def _resample2(Q1: np.ndarray, Q2: np.ndarray, m: int) -> np.ndarray:
+    """m points over Q1 then Q2 (Q1 ends where Q2 starts), that joint kept as a point: the old corner the strip is set
+    on at (respaced through, its corner cut and the armhole ran 1 mm short)."""
+    l1, l2 = _len(Q1), _len(Q2)
+    if m < 3 or l1 + l2 <= 0:
+        return _resample(np.vstack([Q1, Q2[1:]]), m)
+    k1 = int(np.clip(round((m - 1) * l1 / (l1 + l2)), 1, m - 2))
+    return np.vstack([_resample(Q1, k1 + 1), _resample(Q2, m - k1)[1:]])
+
+
+def _ray_hit(c: np.ndarray, t: np.ndarray, Q: np.ndarray) -> tuple | None:
+    """(segment index, its share, the point) where the ray c + a t (a >= 0) first crosses polyline Q."""
+    for k in range(len(Q) - 1):
+        a, b = Q[k], Q[k + 1]
+        M = np.array([t, a - b]).T
+        if abs(np.linalg.det(M)) < 1e-15:
+            continue
+        s, f = np.linalg.solve(M, a - c)
+        if s >= -1e-9 and -1e-9 <= f <= 1 + 1e-9:
+            return k, f, a + f * (b - a)
+    return None
+
+
+def _ends(PA, ia, PB, ib, OA, OB, v: float, end: int, stops: tuple) -> None:
+    """A move of v m toward B at that end, after both edges moved across the levels (O*: the outlines before). The piece
+    giving up width (its end now inside it) runs its moved seam on along its end's own direction to where it meets the
+    edge beyond (the armhole, the hem): that is its new end, and the strip of the edge beyond up to there is cut off.
+    The piece gaining width takes that strip, set on beyond its own end in its own frame (along its seam, out past it),
+    so the edge beyond runs on as one line and its length over both pieces stays (the sleeve cap's ease with it). The
+    points of the edge beyond are respaced over max(3 x the strip, SPREAD), never past another edge's end; none is
+    added, none taken away."""
+    (Ps, Os, is_, ss), (Pg, Og, ig, sg) = ((PB, OB, ib, stops[1]), (PA, OA, ia, stops[0])) if v > 0 else \
+        ((PA, OA, ia, stops[0]), (PB, OB, ib, stops[1]))
+    _, _, ns, ts = _frame(Os, is_, end)
+    _, _, ng, tg = _frame(Og, ig, end)
+    Cs, Cg = Os[is_[end]].copy(), Og[ig[end]].copy()
+    beyond = _run(Os, is_, end, None, ss)
+    Q = np.vstack([Cs, Os[beyond]])
+    t = Ps[is_[end]] - Ps[is_[1] if end == 0 else is_[-2]]
+    hit = _ray_hit(Ps[is_[end]], t / max(np.linalg.norm(t), 1e-12), Q)
+    if hit is None:
+        raise Refused("doesn't reach across the moved seam, so the end can't be trimmed along it")
+    k, f, X = hit
+    strip = np.vstack([Q[: k + 1], X])
     sl = _len(strip)
-    rs = _run(Ps, is_, end, max(3 * sl, SPREAD))
-    seg = np.vstack([Cs, Ps[rs]])
+    rs = _run(Os, is_, end, max(3 * sl, SPREAD), ss)
+    seg = np.vstack([Cs, Os[rs]])
     Ls = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(seg, axis=0), axis=1))])
-    keep = seg[Ls > _len(strip[: k + 1]) - 1e-12] if len(seg) > 1 else seg[-1:]
+    keep = seg[Ls > sl - 1e-12]
+    if not len(keep):
+        raise Refused("is shorter than the strip the move cuts off it")
     new = _resample(np.vstack([X, keep]), len(rs) + 1)
     Ps[is_[end]] = new[0]
     Ps[rs] = new[1:]
     rel = strip - Cs  # (the strip in the gaining piece's frame: along its seam, out past it)
     mapped = Cg + np.outer(rel @ ts, tg) + np.outer(-(rel @ ns), ng)
-    rg = _run(Pg, ig, end, max(3 * sl, SPREAD))
-    new = _resample(np.vstack([mapped[::-1], Pg[rg]]), len(rg) + 1)
+    rg = _run(Og, ig, end, max(3 * sl, SPREAD), sg)
+    new = _resample2(mapped[::-1], np.vstack([Cg, Og[rg]]), len(rg) + 1)
     Pg[ig[end]] = new[0]
     Pg[rg] = new[1:]
 
 
-def _recut(pa: dict, ia: list, pb: dict, ib: list, prof: np.ndarray, LA0: float) -> None:
-    PA, PB = np.asarray(pa["P"], float).copy(), np.asarray(pb["P"], float).copy()
+def _recut(pa: dict, ia: list, pb: dict, ib: list, prof: np.ndarray, LA0: float, stops: tuple) -> None:
+    """Both edges moved across the levels by the profile at each point's share of its edge (so what A gains at a level
+    B loses at that level: the girth holds there), then each moved end re-cut (_ends)."""
+    OA, OB = np.asarray(pa["P"], float), np.asarray(pb["P"], float)
+    PA, PB = OA.copy(), OB.copy()
 
     def s_of(P, ix):
         E = P[ix]
         L = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))])
         return np.interp(L / (L[-1] or 1.0) * LA0, prof[:, 0], prof[:, 1])
-    sA, sB = s_of(PA, ia), s_of(PB, ib)
-    nA, nB = _normals(PA), _normals(PB)
+    sA, sB = s_of(OA, ia), s_of(OB, ib)
+    PA[ia] = OA[ia] + np.outer(sA, _axis(OA, ia))
+    PB[ib] = OB[ib] - np.outer(sB, _axis(OB, ib))
     for e in (0, -1):
         if abs(sA[e]) > 1e-6:
-            _ends(PA, ia, PB, ib, float(sA[e]), e)
-    for i, k in enumerate(ia[1:-1], 1):
-        PA[k] = PA[k] + sA[i] * nA[k]
-    for i, k in enumerate(ib[1:-1], 1):
-        PB[k] = PB[k] - sB[i] * nB[k]
+            _ends(PA, ia, PB, ib, OA, OB, float(sA[e]), e, stops)
     pa["P"], pb["P"] = PA, PB
 
 
-def _true(pc: dict, ix: list, target: float) -> float:
+def _true(pc: dict, ix: list, target: float, stops: set) -> float:
     """The edge made target m long as a pattern maker trues a seam: its end where the edge beyond crosses it squarest
     (the hem, not the armhole: the cap's ease stays) lengthened or shortened along the seam, the edge beyond eased.
     Needed because two sewn edges are rarely one curve (each piece's shaping): moved together, one gains what the
@@ -191,45 +233,60 @@ def _true(pc: dict, ix: list, target: float) -> float:
         r = _len(P[ix]) - target
         if abs(r) < 1e-5:
             break
-        _slide(P, ix, e, -r * _frame(P, ix, e)[3])
+        _slide(P, ix, e, -r * _frame(P, ix, e)[3], stops)
         pc["P"] = P
     return _len(np.asarray(pc["P"])[ix]) - target
 
 
-def _follow(pieces: dict, host: str, P0: np.ndarray) -> None:
-    """Pieces drawn on the host's own points (a canvas, a facing: FreeSewing parts made `from` it, one frame) move with
-    it: a point of another piece within FOLLOW of the host's old outline takes the host's move there (t s4-29: the
-    canvas drawn from the front's armhole was left 22 mm outside the re-cut front)."""
-    P1 = np.asarray(pieces[host]["P"], float)
-    D = P1 - P0
-    if not np.any(np.linalg.norm(D, axis=1) > 1e-7):
-        return
-    a, b = P0, np.roll(P0, -1, axis=0)
-    ab = b - a
+def _followers(pieces: dict, hosts: tuple) -> dict:
+    """{piece: its host}: pieces drawn on a host's own points (a canvas, a facing: FreeSewing parts made `from` it, one
+    frame): at least 3 of its points exactly on the host's, and most of them on or inside the host. Read before the re-cut. A
+    neighbour drafted in the same frame (jaeger's back beside its front) lies outside it and is no follower."""
+    from .draft_caught import _inside
+    out = {}
     for nm, pc in pieces.items():
-        if nm == host:
+        if nm in hosts:
             continue
         Q = np.asarray(pc["P"], float)
-        t = np.clip(np.einsum("qkd,kd->qk", Q[:, None] - a[None], ab) / np.maximum((ab * ab).sum(1), 1e-18), 0, 1)
-        dist = np.linalg.norm(Q[:, None] - (a[None] + t[..., None] * ab[None]), axis=2)
-        k = dist.argmin(1)
-        on = dist[np.arange(len(Q)), k] < FOLLOW
-        if on.sum() < 2:
-            continue
-        tk = t[np.arange(len(Q)), k][:, None]
-        Dq = (1 - tk) * D[k] + tk * np.roll(D, -1, axis=0)[k]
-        pc["P"] = np.where(on[:, None], Q + Dq, Q)
+        for h in hosts:
+            H = np.asarray(pieces[h]["P"], float)
+            on = np.linalg.norm(Q[:, None] - H[None], axis=2).min(1) < EXACT
+            if on.sum() >= 3 and (on | _inside(Q, H)).mean() > 0.5:
+                out[nm] = h
+                break
+    return out
 
 
-def apply(pieces: dict, ix_of, seams: list, moves: list) -> list:
+def _follow(pc: dict, H0: np.ndarray, H1: np.ndarray) -> None:
+    """The follower takes its host's move: each of its points the move of the host's outline nearest it, in full within
+    REACH, tapering to none at 2 x REACH (its own cut lines near the moved seam move with it: t s4-29, the canvas's edge
+    beside the front's side seam was left 23 mm outside it)."""
+    D = H1 - H0
+    if not np.any(np.linalg.norm(D, axis=1) > 1e-7):
+        return
+    a, ab = H0, np.roll(H0, -1, axis=0) - H0
+    Q = np.asarray(pc["P"], float)
+    t = np.clip(np.einsum("qkd,kd->qk", Q[:, None] - a[None], ab) / np.maximum((ab * ab).sum(1), 1e-18), 0, 1)
+    dist = np.linalg.norm(Q[:, None] - (a[None] + t[..., None] * ab[None]), axis=2)
+    k = dist.argmin(1)
+    r = np.arange(len(Q))
+    tk = t[r, k][:, None]
+    w = np.clip(2.0 - dist[r, k] / REACH, 0.0, 1.0)[:, None]
+    pc["P"] = Q + w * ((1 - tk) * D[k] + tk * np.roll(D, -1, axis=0)[k])
+
+
+def apply(pieces: dict, ix_of, seams: list, moves: list, stops: dict | None = None) -> list:
     """Every move re-cut on `pieces` (module docstring). ix_of("piece:edge") -> outline indices; seams = the declared
-    seams (to check the two edges are sewn to each other). Returns the record of what moved."""
-    sewn = {}  # (A, B) -> the ease B is trued to: A / B - 1, the mean of the seam's declared range (none: 0)
+    seams (to check the two edges are sewn to each other, and to true the moved pieces' other seams); stops = {piece:
+    outline indices of its declared edges' ends}. Returns the record of what moved."""
+    stops = stops or {}
+    sewn, plain = {}, []  # (A, B) -> the ease B is trued to: A / B - 1, the mean of the seam's declared range (none: 0)
     for s in seams or []:
         a, b = s.get("a"), s.get("b")
         if isinstance(a, str) and isinstance(b, str):
             mid = float(np.mean(s["ease"])) if s.get("ease") is not None else 0.0
             sewn[(a, b)], sewn[(b, a)] = mid, 1.0 / (1.0 + mid) - 1.0
+            plain.append((a, b))
     out = []
     for m in expand(moves, set(pieces)):
         sm = m.get("seam")
@@ -247,19 +304,29 @@ def apply(pieces: dict, ix_of, seams: list, moves: list) -> list:
         prof = prof[np.argsort(prof[:, 0])]
         (pa, _), (pb, _) = (e.split(":", 1) for e in sm)
         ia, ib = ix_of(sm[0]), ix_of(sm[1])
-        LA0, LB0 = _len(np.asarray(pieces[pa]["P"])[ia]), _len(np.asarray(pieces[pb]["P"])[ib])
-        old = (np.asarray(pieces[pa]["P"], float).copy(), np.asarray(pieces[pb]["P"], float).copy())
+        L = lambda e: _len(np.asarray(pieces[e.split(":", 1)[0]]["P"])[ix_of(e)])
+        others = [(x, y) for x, y in plain if {x, y} != set(sm) and x.split(":", 1)[0] in (pa, pb)
+                  and y.split(":", 1)[0] not in (pa, pb)]
+        was = {(x, y): L(x) / max(L(y), 1e-12) for x, y in others}
+        LA0, LB0 = L(sm[0]), L(sm[1])
+        old = {h: np.asarray(pieces[h]["P"], float).copy() for h in (pa, pb)}
+        fol = _followers(pieces, (pa, pb))
+        st = (set(stops.get(pa, ())), set(stops.get(pb, ())))
         try:
-            _recut(pieces[pa], ia, pieces[pb], ib, prof, LA0)
+            _recut(pieces[pa], ia, pieces[pb], ib, prof, LA0, st)
         except Refused as e:
             raise Refused(f"{tag}: the edge beyond an end of {sm[0]} or {sm[1]} {e}: taper the move to 0 there") from None
-        LA = _len(np.asarray(pieces[pa]["P"])[ia])
-        err = _true(pieces[pb], ib, LA / (1.0 + sewn[tuple(sm)]))
-        for h, P0 in ((pa, old[0]), (pb, old[1])):
-            _follow(pieces, h, P0)
-        LB = _len(np.asarray(pieces[pb]["P"])[ib])
+        LA = L(sm[0])
+        err = _true(pieces[pb], ib, LA / (1.0 + sewn[tuple(sm)]), st[1])
+        for (x, y), r in was.items():  # (the moved pieces' other seams kept at their ease: the side body's back seam)
+            p = x.split(":", 1)[0]
+            _true(pieces[p], ix_of(x), r * L(y), set(stops.get(p, ())))
+        for f, h in fol.items():
+            _follow(pieces[f], old[h], np.asarray(pieces[h]["P"], float))
+        LB = L(sm[1])
         out.append({"seam": sm, "at": m.get("at"), "lengths_mm": [round(1000 * LA, 1), round(1000 * LB, 1)],
-                    "was_mm": [round(1000 * LA0, 1), round(1000 * LB0, 1)], "off_mm": round(1000 * err, 2)})
+                    "was_mm": [round(1000 * LA0, 1), round(1000 * LB0, 1)], "off_mm": round(1000 * err, 2),
+                    "followers": sorted(fol)})
     return out
 
 
