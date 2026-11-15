@@ -349,8 +349,8 @@ def text(name: str, res: dict) -> str:
             lines.append(f"  {i}. the model {what} by up to {p['off'] * 100:.1f} cm round ({ax}) {p['at']}, {p['area'] * 1e4:.0f} cm2"
                          + (f", on {p['mass']}" if p["mass"] else "") + f": {p['grab']}")
         for o in r.get("on_purpose", []):
-            lines.append(f"  on purpose, not listed and not counted: {o['why']} (round {o['at']}, {o['area'] * 1e4:.0f} cm2, "
-                         f"up to {o['off'] * 100:.1f} cm)")
+            lines.append(f"  on purpose (kept on record with the model: no need to give it again), not listed and not "
+                         f"counted: {o['why']} (round {o['at']}, {o['area'] * 1e4:.0f} cm2, up to {o['off'] * 100:.1f} cm)")
         if r["lines"]:
             lines.append("  lines inside the reference's outline with no line of the model near them (form the outline can't "
                          "show: a mass in front of another, a crease; some are paint):")
@@ -363,11 +363,14 @@ def text(name: str, res: dict) -> str:
                      f"back with on_purpose=[{{\"view\": \"{e['plane']}\", \"at\": {e['at']}, \"remove\": true}}]")
     lines.append("next: one picture per view: look at each. Fix the BIGGEST difference on the whole figure first: a mass in "
                  "the wrong place or of the wrong size is its own joint or size; an outline that is off on a mass that is "
-                 "otherwise right is the grab given; two masses that should be one are a fuse. A red line with no line of "
+                 "otherwise right is the grab given; two masses that should be one are a fuse. A grab moves the clay through "
+                 "the whole depth of its view, and a small one dents the form: after any grab look at the clay from a "
+                 "three-quarter view. If the overlap rose and the clay looks worse, the clay is right: take the grab off "
+                 "(grab with remove=true) and change the mass or the fuse instead. A red line with no line of "
                  "the model under it is form still to make (one mass standing in front of another, a crease), unless it is "
                  "paint. Then look_beside again. These are differences, not faults: the reference is yours to interpret. "
                  "Where you differ ON PURPOSE (a limb held away for the rig, a choice between two pictures that disagree, "
                  "something left for a later pass), record it: on_purpose=[{\"view\": \"front\", \"at\": [x, z] as listed, "
                  "\"why\": \"...\"}]. It is then shown apart with its reason, pale in the picture, and left out of the list "
-                 "and the overlap.")
+                 "and the overlap, in this and every later look_beside: give it once.")
     return "\n".join(lines)

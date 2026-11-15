@@ -98,7 +98,8 @@ def test_a_difference_kept_on_purpose_is_shown_apart_and_not_counted(home):
                    for q in after["places"])
     assert after["on_purpose"][0]["why"].startswith("short ears") and after["iou"] > before["iou"]
     assert after["on_purpose"][0]["area"] > 1.6 * p["area"]  # the one record holds for the right ear too
-    assert "on purpose, not listed and not counted: short ears" in beside.text("fig", res)
+    said = beside.text("fig", res)
+    assert "not listed and not counted: short ears" in said and "kept on record" in said
     s["blobs"]["ear.L"]["size"] = tall  # mended: the record says it has nothing to stand for
     store.save("fig", s, "ears as the reference")
     res = beside.compare("fig", resolution=144)
