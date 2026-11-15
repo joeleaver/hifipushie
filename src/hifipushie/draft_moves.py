@@ -20,7 +20,7 @@ HOW (`apply`): each point of both edges moves along its piece's normal by the mo
   loses the other gains), that edge's points respaced over max(3 x the strip, SPREAD), none added. Then B's end that
   crosses it squarest (the hem, not the armhole: the cap's ease stays) is lengthened or shortened along the seam until
   the two edges are one length (with the seam's declared ease: its range's middle), so the seam sews, and a seam drafted
-  off its length is trued by the same entry. The re-cut is recorded in the block's `moves` (what moved, both lengths after).
+  off its length is trued by the same entry. A piece drawn on a re-cut piece's points (canvas, facing) moves with it. The re-cut is recorded in the block's `moves` (what moved, both lengths after).
 `crossing` / `entry` give the declaration the panels row's FAIL names, so the agent's next call is the fix.
 """
 from __future__ import annotations
@@ -28,6 +28,7 @@ from __future__ import annotations
 import numpy as np
 
 SPREAD = 0.03  # m: the least run of the edge beyond a moved end that eases the slide
+FOLLOW = 0.0005  # m: a point of another piece this near the host's outline is drawn on it (moves with it)
 FORM = ('moves [{"seam": ["pieceA:edge", "pieceB:edge"], "at": [[mm along A\'s edge from its start, mm toward B], ...]}] '
         '(A grows, B shrinks; held past the listed points: add [0, 0] / [A\'s length, 0] to taper)')
 
@@ -195,6 +196,31 @@ def _true(pc: dict, ix: list, target: float) -> float:
     return _len(np.asarray(pc["P"])[ix]) - target
 
 
+def _follow(pieces: dict, host: str, P0: np.ndarray) -> None:
+    """Pieces drawn on the host's own points (a canvas, a facing: FreeSewing parts made `from` it, one frame) move with
+    it: a point of another piece within FOLLOW of the host's old outline takes the host's move there (t s4-29: the
+    canvas drawn from the front's armhole was left 22 mm outside the re-cut front)."""
+    P1 = np.asarray(pieces[host]["P"], float)
+    D = P1 - P0
+    if not np.any(np.linalg.norm(D, axis=1) > 1e-7):
+        return
+    a, b = P0, np.roll(P0, -1, axis=0)
+    ab = b - a
+    for nm, pc in pieces.items():
+        if nm == host:
+            continue
+        Q = np.asarray(pc["P"], float)
+        t = np.clip(np.einsum("qkd,kd->qk", Q[:, None] - a[None], ab) / np.maximum((ab * ab).sum(1), 1e-18), 0, 1)
+        dist = np.linalg.norm(Q[:, None] - (a[None] + t[..., None] * ab[None]), axis=2)
+        k = dist.argmin(1)
+        on = dist[np.arange(len(Q)), k] < FOLLOW
+        if on.sum() < 2:
+            continue
+        tk = t[np.arange(len(Q)), k][:, None]
+        Dq = (1 - tk) * D[k] + tk * np.roll(D, -1, axis=0)[k]
+        pc["P"] = np.where(on[:, None], Q + Dq, Q)
+
+
 def apply(pieces: dict, ix_of, seams: list, moves: list) -> list:
     """Every move re-cut on `pieces` (module docstring). ix_of("piece:edge") -> outline indices; seams = the declared
     seams (to check the two edges are sewn to each other). Returns the record of what moved."""
@@ -222,12 +248,15 @@ def apply(pieces: dict, ix_of, seams: list, moves: list) -> list:
         (pa, _), (pb, _) = (e.split(":", 1) for e in sm)
         ia, ib = ix_of(sm[0]), ix_of(sm[1])
         LA0, LB0 = _len(np.asarray(pieces[pa]["P"])[ia]), _len(np.asarray(pieces[pb]["P"])[ib])
+        old = (np.asarray(pieces[pa]["P"], float).copy(), np.asarray(pieces[pb]["P"], float).copy())
         try:
             _recut(pieces[pa], ia, pieces[pb], ib, prof, LA0)
         except Refused as e:
             raise Refused(f"{tag}: the edge beyond an end of {sm[0]} or {sm[1]} {e}: taper the move to 0 there") from None
         LA = _len(np.asarray(pieces[pa]["P"])[ia])
         err = _true(pieces[pb], ib, LA / (1.0 + sewn[tuple(sm)]))
+        for h, P0 in ((pa, old[0]), (pb, old[1])):
+            _follow(pieces, h, P0)
         LB = _len(np.asarray(pieces[pb]["P"])[ib])
         out.append({"seam": sm, "at": m.get("at"), "lengths_mm": [round(1000 * LA, 1), round(1000 * LB, 1)],
                     "was_mm": [round(1000 * LA0, 1), round(1000 * LB0, 1)], "off_mm": round(1000 * err, 2)})

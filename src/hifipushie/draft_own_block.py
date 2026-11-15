@@ -96,7 +96,7 @@ def block(pat: dict) -> dict:
     def arc(e):  # (an edge split where a dart's release lands on it: its halves, in its order)
         p, ed = e.split(":", 1)
         return [f"{p}:{arcs[p][x]}" for x in (splits.get(p) or {}).get(ed, [ed])]
-    moved = _moves(out, arcs, arc, decl)
+    moved = _moves(out, arcs, splits, arc, decl)
     side = lambda s: (lambda L: L[0] if len(L) == 1 else L)([a for e in ([s] if isinstance(s, str) else s) for a in arc(e)])
     seams, notes = [], {}
     for s in decl.get("seams") or []:
@@ -134,7 +134,7 @@ def block(pat: dict) -> dict:
             "darts": darts, "short_ways": shorts, "moves": moved}
 
 
-def _moves(out: dict, arcs: dict, arc, decl: dict) -> list:
+def _moves(out: dict, arcs: dict, splits: dict, arc, decl: dict) -> list:
     """Declaration `moves` re-cut on the pieces (draft_moves.py, F5): a seam line moved between its two pieces."""
     from . import draft_moves, pattern
     if not decl.get("moves"):
@@ -142,7 +142,7 @@ def _moves(out: dict, arcs: dict, arc, decl: dict) -> list:
 
     def ix_of(e):
         p, ed = e.split(":", 1)
-        if ed not in arcs.get(p, {}):
+        if ed not in arcs.get(p, {}) and ed not in (splits.get(p) or {}):
             raise DraftRefused(f"moves: {e}: no declared edge {ed!r} on {p!r}")
         ix: list = []
         for a in arc(e):
