@@ -568,6 +568,62 @@ def test_set_reference_takes_a_library_version(dept_runner):
     assert dept.run(sid, "_close")["status"] == "ok"
 
 
+def test_an_export_with_an_optional_out_dir_returns_its_files_and_the_plant_spec(dept_runner):
+    """export_plant / export_stand take an OPTIONAL out_dir: dropped and left unfilled, the GLB stayed in the session
+    workspace and the result had files: [] (Braynard Racing, 2026-11-15). A dropped out_dir is now filled."""
+    caps, _ = _caps()
+    for t in ("export_plant", "export_stand"):
+        assert "out_dir" not in caps[t]["input_schema"]["properties"], t
+        assert "file" in caps[t]["returns"] and caps[t]["timing"] == "very_slow", t
+        assert artist.FILLS[t] == {"out_dir": "dir"}, t
+    assert artist.FILLS["fake_plant_export"] == {"out_dir": "dir"}  # any tool: no policy needed
+    dept, runner, root = dept_runner
+    sid = "sess-plant"
+    assert dept.run(sid, "_open", {"subject": {"kind": "model", "name": "fern", "version": None},
+                                   "workspace": sid})["status"] == "ok"
+    res = dept.run(sid, "fake_plant_export", {"triangles": 900})
+    assert res["status"] == "ok", res
+    roles = {f["role"]: f for f in res["files"]}
+    assert set(roles) == {"glb", "basecolor", "plant_spec"}, res["files"]  # no model spec: the export doesn't fail
+    assert roles["glb"]["filename"] == "fern.glb" and dept.blobs[roles["glb"]["blob"]].startswith(b"glTF")
+    assert json.loads(dept.blobs[roles["plant_spec"]["blob"]]) == {"species": "fern"}
+    assert str(root) not in text_of(res)
+    assert dept.run(sid, "_close")["status"] == "ok"
+
+
+def test_clutter_tools_are_offered_with_their_folders_confined(dept_runner):
+    caps, left = _caps()
+    for t in ("make_clutter", "clutter_kit", "look_clutter"):
+        assert t in caps, (t, left.get(t))
+        assert caps[t]["subject_kinds"] == ["model", "terrain"]
+    assert "out_dir" not in caps["make_clutter"]["input_schema"]["properties"]
+    assert "out_dir" not in caps["clutter_kit"]["input_schema"]["properties"]
+    assert "required" not in caps["clutter_kit"]["input_schema"]  # out_dir was its only required parameter
+    lc = caps["look_clutter"]["input_schema"]
+    assert "save" not in lc["properties"] and lc["required"] == ["folders"]
+    assert lc["properties"]["folders"]["items"]["pattern"] == f"^{artist.SAFE_FOLDER}$"
+    assert caps["make_clutter"]["returns"] == ["text", "image", "file"]
+    dept, runner, root = dept_runner
+    sid = "sess-clutter"
+    assert dept.run(sid, "_open", {"subject": {"kind": "model", "name": "rocks", "version": None},
+                                   "workspace": sid})["status"] == "ok"
+    for bad in (["../../etc"], ["/tmp"], ["a/b"]):
+        res = dept.run(sid, "look_clutter", {"folders": bad})
+        assert res["status"] == "error" and "not a path" in res["error"]["message"], res
+    res = dept.run(sid, "look_clutter", {"folders": ["real_boulder"]})
+    assert res["status"] == "error" and "no folder 'real_boulder'" in res["error"]["message"], res
+    res = dept.run(sid, "make_clutter", {"kind": "boulder", "variants": 1}, timeout=600)
+    assert res["status"] == "ok", res
+    names = [f["filename"] for f in res["files"]]
+    assert names and all(n.startswith("real_boulder/") for n in names), names
+    assert any(f["role"] == "glb" for f in res["files"]) and any(n.endswith("_seasons.json") for n in names)
+    assert (root / sid / "clutter" / "real_boulder").is_dir()
+    assert str(root) not in text_of(res)
+    listing = dept.run(sid, "make_clutter", {})  # kind "" lists the kinds: nothing written, no files
+    assert listing["status"] == "ok" and listing["files"] == [] and "boulder" in text_of(listing)
+    assert dept.run(sid, "_close")["status"] == "ok"
+
+
 # ------------------------------------------------------------------------------------------- hosted mode
 
 def test_hosted_config_comes_from_env_only(tmp_path, monkeypatch):

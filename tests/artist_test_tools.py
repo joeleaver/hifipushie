@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from pathlib import Path
 
 from hifipushie import store
 from hifipushie.server import mcp
@@ -25,3 +26,16 @@ def nap(name: str, secs: float = 60.0) -> str:
     time.sleep(secs)
     child.kill()
     return "rested"
+
+
+@mcp.tool(structured_output=False)
+def fake_plant_export(name: str, out_dir: str | None = None, triangles: int | None = None) -> str:
+    """Export the plant as a GLB (a test stand-in for export_plant: an OPTIONAL out_dir, a default in the workspace)."""
+    plant = store.HOME / "plants" / name
+    plant.mkdir(parents=True, exist_ok=True)
+    (plant / "plant.json").write_text('{"species": "fern"}')
+    out = Path(out_dir) if out_dir else plant / "export"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{name}.glb").write_bytes(b"glTF" + bytes(16))
+    (out / f"{name}_bark_basecolor.png").write_bytes(b"\x89PNG fake")
+    return f"exported {out / (name + '.glb')}"
