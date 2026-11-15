@@ -376,6 +376,7 @@ def _compile(spec: dict) -> list[Prim]:
         prims[1:1] = _gnm_mouth(s, prims[0].part)
     prims = _deform(s, prims)
     prims = _grabs(s, prims)
+    prims = _trims(s, prims)
     out = _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
     if s.get("base"):  # the upper lids' fold (base.head.fold, lidfold.py): modifiers right after the base, seated on
         # the base as it is finally built (seated on the base as first made, the lines stood 4 mm off the meshed lid)
@@ -616,6 +617,23 @@ def _cut(name: str, b: dict) -> float:
     if isinstance(e, dict) and "flat" in e:
         return max(float(e["flat"]), 1e-4)
     raise SpecError(f"bone {name!r}: ends is \"round\", \"flat\" or {{\"flat\": edge radius}}")
+
+
+def _trims(s: dict, prims: list[Prim]) -> list[Prim]:
+    """spec["trims"] (reshape.py): each named mass is cut by the trim's plane, in world space, after its grabs."""
+    trims = s.get("trims")
+    if not trims:
+        return prims
+    from . import reshape
+    cut = [p for p in prims if p.instance is None and p.op == "add" and p.kind in SHAPES]
+    for point, normal, soft, of in reshape.trims_effective(trims, bool(s.get("symmetry", True)), [p.name for p in cut]):
+        for p in cut:
+            if p.name in of:
+                if p.kind != "csg":
+                    p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+                    p.kind = "csg"
+                p.params["trims"] = [*p.params.get("trims", []), (point, normal, float(soft))]
+    return prims
 
 
 def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:

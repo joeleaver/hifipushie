@@ -24,6 +24,16 @@ grab: the move brush. spec["grabs"] = {label: {"of": [element names], "view": "f
     clay by at most MOVE of its radius (further would fold the clay): a bigger move takes a bigger radius, or is
     a move of the mass itself. With symmetry on, a grab on a ".L" mass is made on its ".R" twin, and a grab made
     off the centre line of a centre mass is made on the other side too ("mirror": false turns that off).
+
+trim: the knife. spec["trims"] = {label: {"of": [element names] | "all", "view", "a": [u, v], "b": [u, v],
+    "off": "up" | "down" | "left" | "right" | "front" | "back", "soft": metres}}. In that flat view a straight line
+    runs through a and b; the clay of the masses `of` on the `off` side of it is cut away, all the way through the
+    depth, flat (a sole under a hoof, the flat front of a snout, a seat). `soft` rounds the cut's edge (0: knife
+    sharp). The cut is made where the figure stands now: after the grabs, in the view's own coordinates. Mirrored
+    as a grab is. A mass used as a cutter instead of a line is the spec's own "op": "subtract" with "targets"
+    (the carve tool sets it).
+
+flap: no kind of its own: the flap tool writes a "sheet" (sheet.py) from three points read off the pictures.
 """
 from __future__ import annotations
 
@@ -93,16 +103,94 @@ def effective(grabs: dict, symmetry: bool, names: list[str]) -> list[tuple[dict,
 def stretch(ops: list[dict], names: list[str]) -> tuple[float, float]:
     """(lip, reach) of a set of grabs on the same masses: how much steeper than a distance the warped field can be,
     and how far the clay moves. The bound is the grabs' own (their sum), not a sample of the box."""
-    bend = reach = 0.0
-    for op in ops:
-        g = op["grab"]
-        d = float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1]))
-        bend += STEEP * d / g["radius"]
-        reach = max(reach, d)
+    gs = [op["grab"] for op in ops]
+    ds = [float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1])) for g in gs]
+    reach = max(ds, default=0.0)
+
+    def meet(a, b):  # two grabs bend the same clay unless they are discs apart in one view (a grab and its mirror)
+        return a["view"] != b["view"] or np.hypot(a["at"][0] - b["at"][0], a["at"][1] - b["at"][1]) < a["radius"] + b["radius"]
+    bend = max((sum(STEEP * ds[j] / gs[j]["radius"] for j in range(len(gs)) if j == i or meet(gs[i], gs[j]))
+                for i in range(len(gs))), default=0.0)
     if bend >= BEND + 1e-9:
         raise SpecError(f"the grabs on {', '.join(names[:4])} together bend the clay too sharply ({bend:.2f}; the "
                         f"limit is {BEND}): give them bigger radii, move less, or take one off")
     return float(1.0 / (1.0 - min(bend, 0.95))), reach
+
+
+# ---------------------------------------------------------------- trims
+
+SIDES = {"front": (1, -1.0), "back": (1, 1.0), "left": (0, 1.0), "right": (0, -1.0), "up": (2, 1.0), "down": (2, -1.0)}
+
+
+def check_trim(label: str, t: dict) -> dict:
+    """One trim, checked: {"of", "point", "normal" (3D, toward the clay that goes), "soft", ...}."""
+    if not isinstance(t, dict):
+        raise SpecError(f"trim {label!r}: {{\"of\": [masses], \"view\", \"a\": [u, v], \"b\": [u, v], \"off\"}}")
+    miss = [k for k in ("of", "view", "a", "b", "off") if k not in t]
+    if miss:
+        raise SpecError(f"trim {label!r}: needs {', '.join(miss)}")
+    if t["view"] not in GRAB_AXES:
+        raise SpecError(f"trim {label!r}: view is \"front\" (points [x, z]), \"side\" ([y, z]) or \"top\" ([x, y])")
+    for k in ("a", "b"):
+        if not (isinstance(t[k], (list, tuple)) and len(t[k]) == 2):
+            raise SpecError(f"trim {label!r}: {k} is two numbers in the view's own axes, read off look's rulers")
+    a, b = np.array(t["a"], float), np.array(t["b"], float)
+    run = b - a
+    if np.hypot(*run) < 1e-6:
+        raise SpecError(f"trim {label!r}: a and b are the same point: the line runs through two different points")
+    if t["off"] not in SIDES:
+        raise SpecError(f"trim {label!r}: off is the side of the line that is cut away: {', '.join(SIDES)}")
+    _, i, j = GRAB_AXES[t["view"]]
+    ax, sgn = SIDES[t["off"]]
+    ok = [w for w, (x, _) in SIDES.items() if x in (i, j)]
+    if ax not in (i, j):
+        raise SpecError(f"trim {label!r}: in the {t['view']} view a line has no {t['off']} side (that is the view's "
+                        f"own depth): off is one of {', '.join(ok)}")
+    n2 = np.array([-run[1], run[0]]) / np.hypot(*run)  # square to the line, in the view
+    want = sgn * n2[0 if ax == i else 1]
+    if abs(want) < 0.25:
+        other = [w for w in ok if SIDES[w][0] != ax]
+        raise SpecError(f"trim {label!r}: the line runs {t['off']} and {[w for w in ok if SIDES[w][0] == ax and w != t['off']][0]}"
+                        f", so neither side of it is the {t['off']} one: off is {' or '.join(other)}")
+    n2 = n2 * np.sign(want)
+    point, normal = np.zeros(3), np.zeros(3)
+    point[[i, j]], normal[[i, j]] = a, n2
+    soft = float(t.get("soft", 0.004))
+    if soft < 0:
+        raise SpecError(f"trim {label!r}: soft is how far the cut's edge is rounded, in metres: 0 or more")
+    of = t["of"] if t["of"] == "all" else ([t["of"]] if isinstance(t["of"], str) else list(t["of"]))
+    if not of:
+        raise SpecError(f"trim {label!r}: of names the masses that are cut (or \"all\")")
+    return {"of": of, "view": t["view"], "a": [float(v) for v in a], "b": [float(v) for v in b], "off": t["off"],
+            "soft": soft, "mirror": bool(t.get("mirror", True)), "point": point, "normal": normal}
+
+
+def trims_effective(trims: dict, symmetry: bool, names: list[str]) -> list[tuple[np.ndarray, np.ndarray, float, set]]:
+    """The trims as they act on the mirrored model: [(a point on the cut, its normal toward the clay that goes,
+    soft, the element names it cuts)], twins included."""
+    if not isinstance(trims, dict):
+        raise SpecError("trims is {label: {\"of\", \"view\", \"a\", \"b\", \"off\"}}")
+    known, out = set(names), []
+    for label, t in trims.items():
+        t = check_trim(label, t)
+        of = set(known) if t["of"] == "all" else set(t["of"])
+        gone = sorted(n for n in of if n not in known)
+        if gone:
+            raise SpecError(f"trim {label!r}: no mass called {', '.join(map(repr, gone))} (the model has: "
+                            f"{', '.join(sorted(known)[:30])})")
+        twins = {mirror_name(n) for n in of if mirror_name(n) in known} if symmetry and t["mirror"] else set()
+        p, n = t["point"], t["normal"]
+        if t["view"] == "side" or not (symmetry and t["mirror"]):  # the view looks along x: one cut holds both sides
+            out.append((p, n, t["soft"], of | twins))
+            continue
+        flip = np.array([-1.0, 1.0, 1.0])
+        if abs(n[0]) < 1e-9:  # a cut that does not lean left or right is its own mirror image
+            out.append((p, n, t["soft"], of | twins))
+            continue
+        out.append((p, n, t["soft"], of))
+        centre = of - {m for m in of if mirror_name(m) in known}
+        out.append((p * flip, n * flip, t["soft"], twins | centre))
+    return out
 
 
 # ---------------------------------------------------------------- the waist between two fused masses

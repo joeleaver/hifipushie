@@ -12,7 +12,9 @@ Read guide(topic="") (the playbook) first: describe the reference, then work big
   nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
-- Ears, leaves, fins, feathers, blades: a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
+- An ear, comb or tongue that folds over or hangs: the `flap` tool (three points read off the pictures: root, the top
+  of its arch, its tip), not a blade.
+- Flat leaves that only lean (upright ears, leaves, fins, feathers, blades): a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
   point, `cup` for an ear's hollow, `bend` for a curling tip). Turn it by saying where it goes, not by angles:
   `"aim": {"point": "up out", "face": "forward"}` (its length rises and leans out, its hollow looks forward); the
   twin is mirrored. A cone reads as a spike, and an ellipsoid as a lump.

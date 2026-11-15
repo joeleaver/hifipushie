@@ -53,7 +53,7 @@ match the description is wrong, however good its numbers.
 | # | Stage | Tools | Gate |
 |---|---|---|---|
 | 1 | Plan | `set_plan` (front / side outlines, landmark heights, 3-4 sections), `set_reference` | Proportions match the description: fix them here, where it costs one edit |
-| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; `look_beside` after every change (the model beside each reference view, the biggest differences and the grab for each); then on the figure itself: `fuse` (two masses that are one form), `grab` (an outline that is off) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
+| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; `look_beside` after every change (the model beside each reference view and the biggest differences); then on the figure itself: `fuse` (two masses that are one form), `grab` (an outline that is off), `flap` (an ear, comb or tongue that folds over), `trim` (a face that should be flat), `carve` (a hollow of a shape: a mouth, a socket) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
 | 3 | Secondary forms | strokes (`look(strokes=True)`, `shading="raking"`), `feature_report` | Every FORM of the feature map made; masses read; the silhouette barely moved |
 | 4 | Detail | strokes with repeat / scatter, in close-ups | Details at the right scale, judged in close-ups |
 | 5 | Parts | parts (eyes, teeth, clothing shells), seated joints | Each part its own mesh, nothing cutting into another |
@@ -110,6 +110,11 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 - A mass's outline is off against the reference (a round end that should come to a point, a tip that should lean, a
   face that should be flatter): `grab` the clay there and move it to where the reference has it, in the view that
   shows it. Don't rebuild the mass from new numbers to find out how they turn it.
+- An ear, a comb, a tongue or a tab that folds over and hangs: `flap` (three points: where it grows from, the top
+  of its arch, where its tip ends). A blade blob is a flat leaf that can only lean: it never reads as a folded ear.
+- A face that should be FLAT (the front of a snout, a sole, a seat): `trim` it with a line drawn in the view that
+  shows the face edge-on. A hollow of a SHAPE (a mouth, a socket, a nostril): make that shape as a mass and `carve`
+  it out. Don't squash a round mass's numbers toward flat, and don't model a hollow by leaving a gap between blobs.
 - Don't guess and pile on fixes. Isolate: render the region with `shading="curvature"` and remove suspects one at a
   time (history makes it cheap) until the defect goes.
 - Stripes or speckle across a stroke: its path crosses busy features or it is deep for its width: widen it, make it
@@ -129,6 +134,7 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 | Heavy-handed weathering | Restraint: a shift of tone, centimetres of sag |
 | Calling a blockout done on its outline | `feature_report`: nothing NOT MADE (an outline can match round a box) |
 | Filling a join with another blob, or rebuilding a mass to change its outline | `fuse` the two masses; `grab` the outline |
+| A blade for a folded ear; a squashed ellipsoid for a flat face | `flap`; `trim` |
 | Calling it done on numbers | The self-review beside the reference |
 
 ## 4d. Realistic humans start from a base, not blobs

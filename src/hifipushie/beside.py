@@ -241,6 +241,10 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
             return None
 
         places, kept_on = [], {}
+        extent = {}  # each mass's smaller size in this view's plane
+        for q in prims:
+            e = float(min(q.hi[GRAB_VIEW[v][1]] - q.lo[GRAB_VIEW[v][1]], q.hi[GRAB_VIEW[v][2]] - q.lo[GRAB_VIEW[v][2]]))
+            extent[q.name] = max(extent.get(q.name, 0.0), e)
         accepted = np.zeros(hit.shape, bool)
         for kind, only, other in (("short", ref & ~hit, hit), ("out", hit & ~ref, ref)):
             for r in _places(only, other, k):
@@ -263,6 +267,8 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
                 if twin and gv == "front":
                     at, to = [-at[0], at[1]], [-to[0], to[1]]
                 rad = float(np.clip(max(2.2 * r["off"], 0.6 * np.sqrt(r["area"])), 0.02, 0.3))
+                if mass:  # a grab small against its mass dents the form (a trench across a back): move the form
+                    rad = max(rad, min(0.3, 0.35 * extent.get(mass, 0.0)))
                 call = (f'grab("{name}", of=["{mass}"], view="{gv}", at={at}, to={to}, radius={rad:.3f})'
                         if mass else "(on a kit's own piece: no grab)")
                 places.append({"kind": kind, "off": r["off"], "area": r["area"], "at": at, "to": to, "mass": mass,
@@ -347,7 +353,8 @@ def text(name: str, res: dict) -> str:
             what = "SHORT (add clay)" if p["kind"] == "short" else "STICKS OUT (take away)"
             ax = "x, z" if GRAB_VIEW[v][0] == "front" else "y, z"
             lines.append(f"  {i}. the model {what} by up to {p['off'] * 100:.1f} cm round ({ax}) {p['at']}, {p['area'] * 1e4:.0f} cm2"
-                         + (f", on {p['mass']}" if p["mass"] else "") + f": {p['grab']}")
+                         + (f", on {p['mass']}" if p["mass"] else "")
+                         + f". If the outline alone is off there: {p['grab']}")
         for o in r.get("on_purpose", []):
             lines.append(f"  on purpose (kept on record with the model: no need to give it again), not listed and not "
                          f"counted: {o['why']} (round {o['at']}, {o['area'] * 1e4:.0f} cm2, up to {o['off'] * 100:.1f} cm)")
@@ -362,8 +369,9 @@ def text(name: str, res: dict) -> str:
         lines.append(f"recorded as on purpose, but nothing differs there now ({e['plane']} {e['at']}: {e['why']}): take it "
                      f"back with on_purpose=[{{\"view\": \"{e['plane']}\", \"at\": {e['at']}, \"remove\": true}}]")
     lines.append("next: one picture per view: look at each. Fix the BIGGEST difference on the whole figure first: a mass in "
-                 "the wrong place or of the wrong size is its own joint or size; an outline that is off on a mass that is "
-                 "otherwise right is the grab given; two masses that should be one are a fuse. A grab moves the clay through "
+                 "the wrong place or of the wrong size is its own joint or size (most differences are); an outline that is off "
+                 "on a mass that is otherwise right is the grab given; two masses that should be one are a fuse; a "
+                 "folded ear is a flap; a face that should be flat is a trim. A grab moves the clay through "
                  "the whole depth of its view, and a small one dents the form: after any grab look at the clay from a "
                  "three-quarter view. If the overlap rose and the clay looks worse, the clay is right: take the grab off "
                  "(grab with remove=true) and change the mass or the fuse instead. A red line with no line of "

@@ -332,6 +332,61 @@ and look(camera={"fitted": view}) work from it). height: metres, feet to top of 
 view as picture | numbered patches | form lines with pixel rulers, and the patch table. Without image: shows `view`
 again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="features").
 
+### `flap`
+
+`flap(name, mass, root, over, tip, width, thickness=None, pointed=0.6, cup=0.0, at=None, blend=None, part=None, note='')`
+
+A flap of clay that grows out of the figure, arches over and hangs: a folded ear, a comb, a tongue, a tab, a leaf.
+A modeller makes one as ONE leaf with thickness, rooted, bent over in a smooth arch. Three points say where it
+goes, each [x, y, z] in metres read off `look`'s rulers (x and z in the front view, y and z in the side view; the
+figure faces -y, so forward is the lower y):
+- root: the middle of where it grows out. Put it a little INSIDE the mass it grows from, or the flap floats (the
+  answer says so when it does).
+- over: the top of its arch.
+- tip: where its tip ends. For an ear folded forward: in front of `over` and below it.
+A flap bends about its own width, so its broad face is square to the plane the three points make: root, over and
+tip at about the same x give a broad face that shows from the front (a pig's or a dog's folded ear); the answer
+says which view shows the broad face.
+width: across it at the root, metres. thickness: default a fifth of the width (clay ears are thick). pointed: 0 a
+round leaf .. 1 narrowing to a soft point. cup: metres its side edges curl toward the inside of the fold.
+mass: the flap's name; a name ending ".L" is made on the left (+x) and mirrored to ".R". at: the joint it rides on
+(default: the joint nearest the root). blend: how softly it joins what it grows from (small = a crease at the
+root). The same name again replaces it: to change it, call again with ONE point moved (tip: where it hangs; over:
+how high and which way it arches; root: where it grows from).
+In the spec it is a `"shape": "sheet"` blob (spine through the three points, stations for the width): `get_model`
+shows it, `fit` and `edit_model` can work on it, and a `put_model` of a whole new spec must carry it over.
+Use a blade blob only for a flat leaf that leans; a blade never reads as a folded ear.
+
+### `trim`
+
+`trim(name, of, view, a, b, off, soft=0.004, label='', remove=False, note='')`
+
+Cut clay away along a straight line drawn in a flat view: a modeller's trim (knife). The line runs through the
+points a and b; the clay of the masses `of` on the `off` side of the line is cut away, all the way through the
+depth of the view, and the cut face is flat. For the flat front of a snout (side view, a line up and down in
+front of the head, off "front"), a flat sole under a hoof (a level line, off "down"), a seat, a squared-off end.
+view: "front" (a, b are [x, z]), "side" ([y, z]; the figure faces -y) or "top" ([x, y]): metres off `look`'s rulers.
+off: the side that goes: up, down, left (+x), right (-x), front (-y), back (+y). It has to be a side the line has:
+a level line has an up and a down side, a line up and down has a left and right (front view) or a front and back
+(side view).
+of: the masses cut (the centre or the ".L" one), or "all". soft: how far the cut's edge is rounded, metres; 0 is
+knife sharp. label names the trim (default trim1, trim2 ...): the same label replaces it, remove=True takes it off.
+On a symmetric model a trim on a ".L" mass, or off the centre line, is made on the other side too.
+The cut is made where the figure stands now (after its grabs). A mass blended wide into its neighbours fills the
+cut back in a little at the join.
+
+### `carve`
+
+`carve(name, cutter, of, soft=None, back=False, note='')`
+
+Take one mass OUT of others: a modeller's boolean subtract. The mass `cutter` stops being clay and becomes a hollow
+of its own shape in the masses `of`, and only in them. For a mouth cavity, an eye socket, a nostril, a notch.
+First make the cutter as an ordinary mass (`put_model` / `edit_model`: any shape, where the hollow should be,
+sticking out through the surface it opens to), look at it, then carve it. Afterwards the cutter is still in the
+spec: move, resize or reshape it and the hollow follows. soft: how far the hollow's rim is rounded, metres.
+back=True makes the cutter clay again. A cutter can't be fused into other masses.
+(In the spec: the cutter carries "op": "subtract" and "targets": [masses].)
+
 ### `look_beside`
 
 `look_beside(name, views=None, ignore=None, on_purpose=None, resolution=176, save=None)`

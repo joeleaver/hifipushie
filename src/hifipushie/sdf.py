@@ -353,6 +353,7 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     the instance's scale), so every instance of a prefab is the same shape. With "warp" (deform.py: the model's
     style deformation), everything is evaluated at the undeformed point and the field divided by its stretch."""
     wp = pr.get("warp")
+    p0 = p  # where the point is in the world: a trim (reshape.py) cuts there, after any bending
     if wp is not None:
         if pre is not None:  # the caller undeformed these points once for all its primitives
             p = pre
@@ -385,7 +386,11 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     for op, kind, params, k in pr["cuts"]:
         c = SDF[kind](p, params)
         d = -smin(-d, c, k) if op == "subtract" else -smin(-d, -c, k)
-    return d if wp is None else d / wp[1]
+    if wp is not None:
+        d = d / wp[1]
+    for a, n, k in pr.get("trims", ()):  # what stands on the plane's far side goes
+        d = -smin(-d, -((p0 - a) @ n), k)
+    return d
 
 
 def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
