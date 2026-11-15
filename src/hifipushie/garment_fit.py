@@ -403,7 +403,9 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
 
 def text(fit: dict, heights: dict) -> list:
     L = [f"  fit {k}: ratio {e['ratio']} (body {e['body']}, garment {e['garment']}) -> ease {e['ease_mm']:+.0f} mm "
-         f"(girth {e['body_girth_mm']:.0f} -> {e['garment_girth_mm']:.0f} mm; width {e['body_width_mm']:.0f} -> "
+         f"(girth {e['body_girth_mm']:.0f}" + (f" at z {e['level_z_m']:.3f} m, the model's own section there (the tape's "
+         "own definition; a step-3 girth of the same name in a FreeSewing definition can differ: step 4 checks on this "
+         "one)" if e.get("level_z_m") is not None else "") + f" -> {e['garment_girth_mm']:.0f} mm; width {e['body_width_mm']:.0f} -> "
          f"{e['garment_width_mm']:.0f} mm)" + "".join(
              f"; {w} edges moved to the picture's {x['moved_px'][0]:.0f} / {x['moved_px'][1]:.0f} px"
              + (f" ({'; '.join(x['notes'])})" if x["notes"] else "")
