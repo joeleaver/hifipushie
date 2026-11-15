@@ -138,11 +138,16 @@ TOOL_GROUPS: dict[str, dict] = {
     "concept": {"about": "match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles "
                          "for review_view, how parts join the body (stalk or base)",
                 "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report", "fit_matched"]},
+    "reshape": {"about": "reshape what is already there, as a modeller's hands do: work two masses into one flowing "
+                         "mass, take hold of clay in a flat view and move it, cut clay away along a line (a flat "
+                         "face) or take one shape out of another (a boolean: a mouth, a socket), make a flap that "
+                         "folds over (an ear)",
+                "tools": ["fuse", "grab", "trim", "carve", "flap"]},
     "features": {"about": "sculpt from reference pictures: read a picture's views, patches and form lines, name its "
                           "features as marks on it (the feature map), build the masses from their marks, measure a "
                           "model feature by feature",
                  "subject": "feature features turnaround",
-                 "tools": ["read_reference", "mark_features", "build_masses", "build_forms", "feature_report"]},
+                 "tools": ["read_reference", "look_beside", "mark_features", "build_masses", "build_forms", "feature_report"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",

@@ -12,7 +12,7 @@ their own tools, and a finished model exports as a game-ready GLB.
 
 ## Tools
 
-107 tools in 14 domains. A small core is native MCP tools; every other tool runs through
+113 tools in 15 domains. A small core is native MCP tools; every other tool runs through
 `call_tool(name, args)`. An agent does not need this table: `guide` is the playbook (read first),
 `find_tool("<the job in plain words>")` names the tool for a job with an example call, and
 `guide(topic="<tool>")` gives any tool's full parameters. `guide(topic="example")` returns two whole models to
@@ -23,7 +23,8 @@ start from.
 | core | Native tools: models, specs, look, check, measure, history, the guide, find / call any tool | `guide`, `find_tool`, `call_tool`, `list_models`, `get_model`, `kit_reference`, `put_model`, `edit_model`, `look`, `check`, `measure`, `history`, `revert`, `review_view` |
 | plan | Plans, reference images, compare, silhouette fit, clearance, style check | `set_plan`, `set_reference`, `compare`, `fit`, `clearance`, `style_check` |
 | concept | Match a concept image: fit its camera, render from it pixel-aligned, same-box feature tiles for review_view, how parts join the body (stalk or base) | `fit_concept_camera`, `look_matched`, `feature_tiles`, `join_report`, `fit_matched` |
-| features | Sculpt from reference pictures: read a picture's views, patches and form lines, name its features as marks on it (the feature map), build the masses from their marks, measure a model feature by feature | `read_reference`, `mark_features`, `build_masses`, `build_forms`, `feature_report` |
+| reshape | Reshape what is already there, as a modeller's hands do: work two masses into one flowing mass, take hold of clay in a flat view and move it, cut clay away along a line or take one shape out of another, make a flap that folds over | `fuse`, `grab`, `trim`, `carve`, `flap` |
+| features | Sculpt from reference pictures: read a picture's views, patches and form lines, name its features as marks on it (the feature map), build the masses from their marks, measure a model feature by feature | `read_reference`, `look_beside`, `mark_features`, `build_masses`, `build_forms`, `feature_report` |
 | scene | The Blender scene (sync, pull) and the heavy-job queue | `sync`, `pull`, `heavy_status`, `heavy_queue` |
 | export | OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB | `export`, `export_asset`, `rig`, `judge_asset` |
 | human | Realistic humans: the base body, the artist block-in of a head from pictures (the default), measurements, fits, skin | `human`, `measure_human`, `fit_human`, `nudge_human`, `human_reference`, `block_in_start`, `block_in_look`, `block_in_step`, `block_in_solve`, `block_in_expression`, `set_expression`, `lid_read`, `eye_ruler`, `face_ruler`, `lip_read`, `gnm_controls` |

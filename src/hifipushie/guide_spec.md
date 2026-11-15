@@ -15,6 +15,11 @@ Spec:
                   "blend"?, "op"?: "add"|"subtract", "layer"?: int, "group"?: str, "join"?: m}}   round cone
   blobs:  {name: {"at": joint | [x,y,z] | {"bone": name, "t": 0..1}, "offset"?: [x,y,z] (world axes),
                   "size": [rx,ry,rz] (semi-axes), "rot"?: [deg x,y,z], "blend"?, "op"?, "layer"?}}  ellipsoid;
+          "aim"?: {"point": where its LENGTH goes, "face": where its FLAT side looks} turns a blob by direction
+          instead of by angles (not with "rot"): each is words ("up out", "forward down": up, down, forward, back,
+          out, in, left, right; two words = between them, a word twice = more that way; out is away from the centre
+          line and is mirrored) or [x,y,z]. Length = a blade's root-to-tip, any other shape's longest axis; flat
+          side = a blade's hollow side, any other shape's thinnest axis. One of the two is enough.
           "shape": "blade": a thin rounded sheet (ears, leaves, fins, feathers), size [half width, half length
           (along local y), half thickness], "taper" 0..1 (narrower tip), "cup" m (edges lift to +z: an ear's
           hollow), "bend" m (the +y tip lifts to +z)
