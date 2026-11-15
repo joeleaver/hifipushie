@@ -23,7 +23,9 @@ Conventions: metres, Z up, the trunk's foot at the origin.
 Where the code is (split by responsibility, as C424): this module is the family's base: EVERY constant, the defaults,
 presets and `resolve`. vegetation_kernels: lineage hashing and the growth kernels. vegetation_tree: nodes, shadow,
 envelope, limbs. vegetation_grow: `grow` (what is not grown here leaves at its top; then seven stages over one
-context, `Growth`). vegetation_measures: silhouettes and measures. vegetation_fit: fit_habit, fit_form.
+context, `Growth`) and its stages before the growth. vegetation_grow_seasons: the growth itself, step by step (one
+loop, one stage). vegetation_grow_wood: the grown tree's arrays and girths, dead wood, prunes, stats.
+vegetation_measures: silhouettes and measures. vegetation_fit: fit_habit, fit_form.
 """
 from __future__ import annotations
 
@@ -236,5 +238,6 @@ FORM_KEYS = ("height", "width_over_height", "crown_ratio", "widest_at", "dbh_cm"
 
 
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
-MODULES = ("vegetation_kernels", "vegetation_tree", "vegetation_grow", "vegetation_measures", "vegetation_fit")
+MODULES = ("vegetation_kernels", "vegetation_tree", "vegetation_grow", "vegetation_grow_seasons", "vegetation_grow_wood",
+           "vegetation_measures", "vegetation_fit")
 __getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)
