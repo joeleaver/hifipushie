@@ -132,6 +132,7 @@ class TapeBody:
         d = np.array([n2[1], -n2[0]])  # (across the limb in the view)
         P = L[:, ax]
         return {"p3": L.mean(0).tolist(), "girth_mm": m["mm"], "width_mm": float(np.ptp(P @ d)) * 1000,
+                **({"z_m": round(float(L[:, 2].mean()), 4)} if sq == "body" else {}),  # (a torso level: girths row)
                 "z_mm": (float(L[:, 2].mean()) - t.zmin) * 1000, "centre": P.mean(0).tolist(), "dir": d.tolist()}
 
 

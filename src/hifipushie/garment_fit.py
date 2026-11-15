@@ -34,7 +34,8 @@ LANDMARKS: below. A torso level's width is the torso section's across the view; 
 limb, across it in the view; the girth is body_tape's at the same place. Ease = body girth x (ratio - 1): the garment's
 section taken as the body's scaled by the ratio (stated in every source). Heights: the fraction between the two marked
 landmarks either side (extrapolated beyond the outermost two, said so) on the model's own landmark heights.
-OUTPUT (step 0's record): fit {landmark: {ratio, ease_mm, body_girth_mm, garment_girth_mm, body_width_mm,
+OUTPUT (step 0's record): fit {landmark: {ratio, ease_mm, body_girth_mm, level_z_m (a torso level's height, model m:
+  step 4's girths row checks the girth where its ease was read, F2), garment_girth_mm, body_width_mm,
   garment_width_mm, body: seen|inferred, garment: seen|inferred, source}}, heights {name: {z_mm (above the floor),
   fraction, between, source}}, fit_read (the marks as given). Refusals name the item and what to write instead.
 """
@@ -377,6 +378,7 @@ def check(fit, views: list, body=None) -> tuple[dict, dict, dict]:
         out[w["at"]] = dict(ratio=round(r, 3), ease_mm=round(m["girth_mm"] * (r - 1), 1),
                             body_girth_mm=round(m["girth_mm"], 1), garment_girth_mm=round(m["girth_mm"] * r, 1),
                             body_width_mm=round(m["width_mm"], 1), garment_width_mm=round(m["width_mm"] * r, 1),
+                            **({"level_z_m": m["z_m"]} if m.get("z_m") is not None else {}),
                             body=w["body"], garment=w["garment"], source=src, **({"why": w["why"]} if w.get("why") else {}),
                             **({"measured": w["measured"]} if w.get("measured") else {}),
                             **({"section": {k: heights[w["at"]].get(k) for k in ("on", "z_mm", "along")}}

@@ -83,7 +83,9 @@ def faults(decl: dict, parts: dict, step1: dict) -> list:
                 out.append(f"piece {nm!r}: \"pair\" and \"fold\" both: a fold makes one whole piece, a pair two halves; keep one")
             elif not _off_centre(P) and not _limb(pd, nm, decl):
                 out.append(f"piece {nm!r}: \"pair\": true but its flat is whole (centred, x {x.min():.0f} to {x.max():.0f} mm): "
-                           "a pair is two halves; drop \"pair\" (or cut it on the fold if it is drafted half)")
+                           "a centre piece is cut once: drop \"pair\" (or cut it on the fold if it is drafted half); a "
+                           "whole piece cut twice, one on each side of the body (a sleeve), keeps \"pair\" and says where "
+                           "it is worn: place {\"to\": \"arm\"} (or \"leg\"; .L / .R are added per copy)")
             continue
         if _limb(pd, nm, decl):  # (stiff ones too: a cuff on one wrist)
             out.append(f"piece {nm!r}: a limb piece with no side (the body has two): " + PAIR_HOW.format(n=nm))
@@ -206,7 +208,8 @@ def expand(decl: dict, parts: dict) -> dict:
         D["darts"] = dd
     if D.get("marks"):
         D["marks"] = {n: _pair_mark(m, n, pr) for n, m in D["marks"].items()}
-    return D
+    from . import draft_vents
+    return draft_vents.expand(D, pr)
 
 
 def _swap(n: str) -> str:

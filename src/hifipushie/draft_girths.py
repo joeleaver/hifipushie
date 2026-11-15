@@ -40,6 +40,8 @@ TOL_MM = 15.0  # mm: the level is placed to ~1 cm on a shaped piece where the ro
 REACH = 0.02  # m: a length tape ending this close short of a girth's plane still places it (run on straight)
 CENTRE = 0.01  # m: a tape's top end this close to the centre line starts at the piece's centre-line top (a cbNeck)
 TOL_FRAC = 0.15  # x the planned ease: a loose plan (200 mm of ease) is read off a picture less exactly than a close one
+DEF_TOL = 0.01  # x the girth: step 0's body girth this far from step 3's same-named one is another definition (s4-26:
+# step 3's hips 901 mm, FreeSewing's at the iliac crest; step 0 read its ease on the tape's hips, 942.8 at the hip joints)
 
 
 def _gap_round() -> float:
@@ -217,7 +219,9 @@ def rings(B: dict, lines: dict, named: set | None = None) -> tuple[list, bool]:
         o, un = c.get("over"), c.get("under")
         if o in lines and un in lines and o != un:
             links += [(o, un), (un, o)]
-    deg = lambda alive: {p: sum(1 for a, b in links if a == p and b in alive) for p in alive}
+    from . import draft_vents  # (a vent's two sides lapped across its opening, as a closure's: draft_vents)
+    links += draft_vents.links(B, crosses)
+    deg =lambda alive: {p: sum(1 for a, b in links if a == p and b in alive) for p in alive}
     alive = {a for a, _ in links}
     while True:
         dg = deg(alive)
@@ -292,9 +296,28 @@ def laps(B: dict, ring: set, lines: dict) -> tuple[float, float, list]:
     return lap, gap, miss
 
 
+def like_with_like(g: str, reg: str, fe: dict | None, loop: np.ndarray, body: float, fails: list) -> tuple:
+    """(loop, body mm, said) of girth g compared like with like: step 0's ease for it was read on ITS body girth at ITS
+    level; where step 3's same-named girth is another definition (another body girth), the level is moved to step 0's
+    (fe["level_z_m"]) and the body is step 0's, so the target is that definition's body + its ease. (None, ...) with a
+    FAIL when step 0 doesn't record its level."""
+    if not fe or fe.get("body_girth_mm") is None or abs(float(fe["body_girth_mm"]) - body) <= DEF_TOL * body:
+        return loop, body, ""
+    b0 = float(fe["body_girth_mm"])
+    if fe.get("level_z_m") is None:
+        fails.append(f"{g}: step 0 read its {reg} ease on a body girth of {b0:.0f} mm, step 3's {g} is {body:.0f}: two "
+                     "definitions, and step 0's fit doesn't record its level: re-read step 0's fit (garment_plan read: "
+                     "back to step 0) so the girth is checked where its ease was read")
+        return None, body, ""
+    z = float(fe["level_z_m"])
+    said = (f" (step 0's {reg} definition, where its ease was read: {b0:.0f} mm at z {z:.3f}; step 3's {g} is "
+            f"{body:.0f} at z {float(loop[:, 2].mean()):.3f}, another definition)")
+    return loop + np.array([0.0, 0.0, z - float(loop[:, 2].mean())]), b0, said
+
+
 def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None) -> list:
     """Row `girths` (module docstring)."""
-    from . import draft_tapes, tape_geom
+    from . import draft_tapes, draft_vents, tape_geom
     from .draft_body_lengths import _ease
     decl = decl or B.get("decl") or {}
     rid = {"id": "girths", "back_to": "4", "target": "every girth the pieces' tapes name: the pattern round = the body + "
@@ -314,6 +337,10 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
     for g, decl_by in sorted(named.items(), key=lambda kv: -float(np.asarray(T[kv[0]]["loop"])[:, 2].mean())):
         loop = np.asarray(T[g]["loop"], float)
         body = float(T[g].get("mm") or 1000 * np.linalg.norm(np.diff(np.r_[loop, loop[:1]], axis=0), axis=1).sum())
+        ease, reg = _ease(g, fit)
+        loop, body, defn = like_with_like(g, reg, (fit or {}).get(reg) if reg else None, loop, body, fails)
+        if loop is None:
+            continue
         lines, under, own = place(B, loop, T, decl)
         comps, is_open = rings(B, lines, decl_by)
         if is_open and any(c & decl_by for c in comps):  # (open at a vent or the front: all the cloth across it)
@@ -326,7 +353,6 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
                             f"{g} level: declare one running from the piece's top past it") + "): sew the ring's seams "
                          "across that level, or declare the front closure (over / under, edges, marks)")
             continue
-        ease, reg = _ease(g, fit)
         tgt, tol = body + ease, max(TOL_MM, TOL_FRAC * ease)
         seen = []
         for ring in sorted(comps, key=lambda c: sorted(c)):
@@ -338,18 +364,20 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
             lap, gap, miss = laps(B, ring, lines)
             for m in miss:
                 fails.append(f"{g}: {m}")
-            pat = 1000 * (sum(w.values()) - lap)
+            vlap = draft_vents.laps(B, ring, lines)
+            pat = 1000 * (sum(w.values()) - lap - vlap)
             key = round(pat)
             if key in seen:
                 continue  # (the other side's ring, alike)
             seen.append(key)
             opening = gap > 1e-3 or is_open
             spare = pat - tgt
-            vals.append(f"{g}: pattern {pat:.0f} mm, body {body:.0f}, planned ease "
+            vals.append(f"{g}: pattern {pat:.0f} mm, body {body:.0f}{defn}, planned ease "
                         + (f"{ease:.0f} ({reg})" if reg else f"none stated (the cloth's minimum {gmin:.0f})")
                         + (f", spare {spare:+.0f} vs plan" if reg else f", spare {pat - body - gmin:+.0f} vs minimum")
                         + f" [{', '.join(f'{p} {1000 * v:.0f}' for p, v in w.items())}"
-                        + (f"; lap -{1000 * lap:.0f}" if lap else "") + "]"
+                        + (f"; lap -{1000 * lap:.0f}" if lap else "")
+                        + (f"; vents' overlap -{1000 * vlap:.0f}" if vlap else "") + "]"
                         + (f"; OPEN at the front (edges {1000 * gap:.0f} mm short of the centre line)" if gap > 1e-3 else
                            "; OPEN: no closure or seam closes it there (a vent, an open front)" if is_open else "")
                         + ("; taken at the underarm" if under and any(p in ring for p in under) else ""))
