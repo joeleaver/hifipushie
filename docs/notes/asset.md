@@ -64,6 +64,15 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   (~0.1 texel at 4x zoom) is bilinear reconstruction of a sub-texel edge at each chart's own phase: a texture made
   analytically from the low poly's own z shows the same. `asset.preview(denoise=False)` for texture close-ups.
 
+- export `recolour_masks` (asset_recolour.py; C480): `[{"R": [part], "G": [...], "B": [...], "A": [...]}, ...]`. The
+  listed parts bake a NEUTRAL base (each texel's luminance over its channel's default, x `RECOLOUR_BASE_WHITE` 0.8
+  linear, grey: laps, creases, grain and a darker part sharing the channel stay as light / dark) and one linear RGBA
+  `<asset>_mask<k>.png` per entry, all on ONE atlas and material (refused otherwise). Each channel's default = its parts'
+  median baked colour, every part's own beside it: json "recolour" and the shading notes (formula, params.recolour);
+  blender_game tints the preview with the defaults (GE_NORECOLOUR: the neutral base). Without masks the output is
+  byte-identical (checked against main). For kits recoloured per instance (Braynard's farmhouses): a scheme is one
+  material with a tint per channel instead of a material slot per colour.
+
 ## hides (2026-10-16, "hides" agent)
 `parts.<cover>.hides: ["body", "socks"]` (or `{"parts", "margin" 1 mm, "reach" 20 mm, "rim" 4 mm}`; `hides.py`): what
 game studios do with body masks under shoes / gloves / tight garments. A vertex of a hidden part is covered when the

@@ -32,6 +32,8 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
   alone by pyfqmr with its border held (no crack at seams or at the head/body ring), every new vertex reads uv,
   normal, tangent, 4 weights, shape deltas at its closest point of its own LOD0 patch. Hair cards drop whole layers
   from the top (the export orders card triangles by layer). Default shares 0.5 / 0.25 / 0.12 (Joe's call).
+- export `recolour_masks` (docs/notes/asset.md, C480): neutral base + RGBA channel masks for parts an engine recolours;
+  engine albedo = basecolor * (1 - sum(m) + sum(m_c * tint_c) / base_white), defaults in json "recolour".
 - export `cloth_triangles`: the garments' sim meshes (1 cm, two-sided: Tess's jeans 38k + sweater 28k triangles) are
   decimated the same way to a total.
 - export `cull_under_cloth` (default on): skin and plain shells (socks) a garment covers along the normal (6 cm reach,

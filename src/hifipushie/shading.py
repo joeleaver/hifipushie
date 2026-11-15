@@ -71,7 +71,8 @@ def _map(path: str, key: str) -> dict:
         "blink": "the blink-multiply map: lid crease line + the lid's share of occlusion, NOT in basecolor",
         "aux": "R root gradient (1 at the root), G a value per strand, B depth in the clump (0 deep), A alpha",
         "flow": "strand direction in tangent space (RG) + strength (B): KHR_materials_anisotropy's texture",
-    }.get(key, key)
+    }.get(key, "recolour mask: R G B A = 1 on the channel's parts (params.recolour.channels)" if key.startswith("mask")
+          else key)
     size = None
     try:
         from PIL import Image
@@ -203,6 +204,16 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
             else:
                 f += ["metallic-roughness PBR: albedo = basecolor, roughness = orm.g, metallic = orm.b, AO = orm.r on "
                       "indirect light"]
+            rc = info.get("recolour")  # (export_asset recolour_masks: asset_recolour) neutral base + channel masks
+            if rc and rc.get("atlas") == an and any(pn in c_["export_parts"] for c_ in rc["channels"] for pn in ps):
+                for key, p in (a.get("maps") or {}).items():
+                    if key.startswith("mask"):
+                        maps[key] = _map(p, key)
+                f.insert(0, rc["formula"])
+                m["params"]["recolour"] = {"base_white": rc["base_white"], "masks": rc["masks"],
+                                           "channels": [{k_: c_[k_] for k_ in ("mask", "channel", "parts", "default",
+                                                                               "default_linear", "part_colors")}
+                                                        for c_ in rc["channels"]]}
             ext = set()
             for pn in ps:
                 for e in (((looks or {}).get(pn) or {}).get("ext") or {}):
@@ -243,6 +254,12 @@ def markdown(n: dict) -> str:
         if m.get("texel_mm"):
             out.append("- texel size (mm): " + ", ".join(f"{p} {t}" for p, t in m["texel_mm"].items()))
         out += ["", "Shading:"] + [f"- {f}" for f in m["formulas"]]
+        rc = (m.get("params") or {}).get("recolour")
+        if rc:
+            out += ["", "Recolour channels (default = the part's own baked colour, sRGB):"] + [
+                f"- mask{c['mask']}.{c['channel']}: {', '.join(c['parts'])}: default {c['default']}"
+                + (f" (parts: {', '.join(f'{p} {h}' for p, h in c['part_colors'].items())})" if len(c["part_colors"]) > 1 else "")
+                for c in rc["channels"]]
         if m["gltf"]:
             out += ["", "glTF extensions:"] + [f"- {e}: {t}" for e, t in m["gltf"].items()]
         out += ["", "Engines:"] + [f"- {e}: {t}" for e, t in m["engines"].items()] + [""]

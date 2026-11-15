@@ -243,6 +243,9 @@ def _bake(ex):
     # (s14) the finest texel any part bakes at: the bake prefilters paint images finer than its sample spacing
     ex.ctx["texel_m"] = min((min([r["mm_per_texel"]] + list(r.get("focus_mm_per_texel") or [])) for r in ex.report.values()
                           if r.get("mm_per_texel")), default=0.0) / 1000.0
+    from . import asset_recolour
+    ex.ctx["recolour"] = asset_recolour.resolve(ex.recolour_masks, ex.parts, ex.origin)
+    ex.recolour = None
     given = scene_maps(ex.name, ex.parts, ex.sizes, ex.ctx, ex.resolution, ex.log)
     ek_ = (ex.spec.get("base") or {}).get("eyes")
     ex.ctx["ao_off"] = [ek_] if isinstance(ek_, str) else []
@@ -276,6 +279,13 @@ def _bake(ex):
             _png(files[key], maps[key])
         files["height"] = ex.out_dir / f"{stem}_height.png"
         _png(files["height"], maps["height"], bits=16)
+        for k_ in range(len(ex.ctx["recolour"]["groups"]) if "recolour" in res else 0):  # linear RGBA channel masks
+            files[f"mask{k_}"] = ex.out_dir / f"{stem}_mask{k_}.png"
+            _png(files[f"mask{k_}"], maps[f"mask{k_}"])
+        if "recolour" in res:
+            ex.recolour = {"atlas": an, "material": f"{ex.aname}_{an}", "base_white": asset.RECOLOUR_BASE_WHITE,
+                           "masks": [files[f"mask{k_}"].name for k_ in range(len(ex.ctx["recolour"]["groups"]))],
+                           "channels": res["recolour"], "formula": asset_recolour.formula()}
         if "blink" in maps:   # the minimal wrinkle map: basecolor x lerp(1, blink, 1 - eyeBlink)
             files["blink"] = ex.out_dir / f"{stem}_blink_multiply.png"
             _png(files["blink"], maps["blink"])

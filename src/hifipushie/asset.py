@@ -117,6 +117,8 @@ LIP_FLOOR_ZONE = {"zone": {"name": "lip_lower", "grow": 0.6}}  # (lip_sheen's ow
 LIP_ASTRAY_WARN = 0.045  # bake(): the share of the lips' front-band texels whose projection went astray, over which
 # the log warns (clean v31/v37 2.5%, v32's torn streaks 6.5%: tests/test_lip_astray.py; a narrow margin, 2.6x)
 
+RECOLOUR_BASE_WHITE = 0.8  # (asset_recolour) linear: a masked part's neutral base where its colour equals its channel's
+# default (sRGB ~0.91, near white): 1.25x headroom for painted detail lighter than the default before it clips
 DEFECT_CLUSTER = 12  # this many folded edges / turned faces by one joint is a tear or a tangle someone will see
 
 BAKE_CAGE = True  # (r51) bake through a per-vertex cage (cage_verts) instead of one extrusion per part

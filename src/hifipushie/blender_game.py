@@ -275,6 +275,35 @@ def build(m):
         nt.links.new(st_.outputs["Color"], pb.inputs["Specular IOR Level"])
     kind = m["model"]
     P = m.get("params") or {}
+    rcp = P.get("recolour")
+    if rcp and not os.environ.get("GE_NORECOLOUR"):  # (asset_recolour) albedo x the default tint / base_white where a
+        # mask channel is on (the masks are exclusive: a chain of mixes from white); GE_NORECOLOUR: debug, the neutral base
+        acc = None
+        for c in rcp["channels"]:
+            mt = tex(nt, m, f"mask{c['mask']}", "linear")
+            mt.image.alpha_mode = "CHANNEL_PACKED"  # (A is data: no premultiplying RGB by it)
+            if c["channel"] == "A":
+                fac = mt.outputs["Alpha"]
+            else:
+                sp = nt.nodes.new("ShaderNodeSeparateColor")
+                nt.links.new(mt.outputs["Color"], sp.inputs["Color"])
+                fac = sp.outputs[{"R": "Red", "G": "Green", "B": "Blue"}[c["channel"]]]
+            mx = nt.nodes.new("ShaderNodeMix")
+            mx.data_type = "RGBA"
+            if acc is None:
+                mx.inputs["A"].default_value = (1, 1, 1, 1)
+            else:
+                nt.links.new(acc, mx.inputs["A"])
+            mx.inputs["B"].default_value = tuple(v / float(rcp["base_white"]) for v in c["default_linear"]) + (1,)
+            nt.links.new(fac, mx.inputs["Factor"])
+            acc = mx.outputs["Result"]
+        if acc is not None:
+            mul = nt.nodes.new("ShaderNodeMix")
+            mul.data_type, mul.blend_type = "RGBA", "MULTIPLY"
+            mul.inputs["Factor"].default_value = 1.0
+            nt.links.new(albedo, mul.inputs["A"])
+            nt.links.new(acc, mul.inputs["B"])
+            albedo = mul.outputs["Result"]
     if kind == "skin":
         if "blink" in m["maps"] and not os.environ.get("GE_NOBLINKMAP"):  # albedo = basecolor * lerp(1, blink, 1 - eyeBlink)
             # (GE_NOBLINKMAP: debug, the multiplier left out)

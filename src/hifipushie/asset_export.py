@@ -31,7 +31,7 @@ class Export:
     _lowpoly sets:
       names, sizes, cfg, t1, parts, binfo, ntri, tsz, report
     _bake sets:
-      atlas_files, maps_info, heights, cover, skin_recipe
+      atlas_files, maps_info, heights, cover, skin_recipe, recolour
     _hair sets:
       extra_ext, hair_cards, pn_h
     _clothes sets:
@@ -57,7 +57,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
             lods: bool | list | None = None, cloth_triangles: int | None = None,
             cull_under_cloth: bool = True, role: str | None = None, correctives: bool = True,
-            cull_poses: list | str | None = None) -> dict:
+            cull_poses: list | str | None = None, recolour_masks: list | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -78,11 +78,15 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
     skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name); hair cards by whole layers.
     cloth_triangles: the simulated garments together decimated to this many triangles (their sim mesh, two-sided, is
     10-40k each: Tess's jeans 38k, sweater 28k); None keeps the sim mesh. cull_under_cloth: the skin (and shells on
-    it without a garment fit, socks) the garments cover is left out (under_cloth_keep), a rim kept at the openings."""
+    it without a garment fit, socks) the garments cover is left out (under_cloth_keep), a rim kept at the openings.
+    recolour_masks: [{"R": [part, ...], "G": ..., "B": ..., "A": ...}, ...]: the listed parts bake a neutral base and one
+    RGBA mask texture per entry (<asset>_mask<k>.png), each channel's default colour (its parts' own) in the json's
+    "recolour" and the shading notes; a colour scheme is then one material with a tint per channel (asset_recolour)."""
     ex = Export(name=name, out_dir=out_dir, triangles=triangles, texture=texture, resolution=resolution,
                 atlases=atlases, texel_density=texel_density, instancing=instancing, rig=rig, fbx=fbx,
                 face_shapes=face_shapes, asset_name=asset_name, lods=lods, cloth_triangles=cloth_triangles,
-                cull_under_cloth=cull_under_cloth, role=role, correctives=correctives, cull_poses=cull_poses)
+                cull_under_cloth=cull_under_cloth, role=role, correctives=correctives, cull_poses=cull_poses,
+                recolour_masks=recolour_masks)
     _begin(ex)
     _mesh(ex)
     _density(ex)
@@ -148,6 +152,14 @@ def _begin(ex):
             if "skin.folds" in m_:
                 ex.log.append(m_)
     ex.aname = ex.asset_name or ex.name
+    if ex.recolour_masks:  # (asset_recolour) say now, not after the bake, that a mask names no part of the model
+        from .spec import SpecError
+        from .base_implied import part_defs
+        pd_ = part_defs(ex.spec)
+        bad_ = sorted({nm for g in ex.recolour_masks if isinstance(g, dict) for v in g.values()
+                       for nm in ([v] if isinstance(v, str) else v) if nm not in pd_})
+        if bad_:
+            raise SpecError(f"recolour_masks: no part {bad_} in model {ex.name} (parts: {sorted(pd_)})")
     from .base_implied import part_defs
     ex.defs = part_defs(ex.spec)  # (the base's implied parts too: a clear cornea's lens)
     ex.fine, ex.tri_focus, ex.rest_w = {}, [], {}

@@ -196,17 +196,20 @@ def export_asset(name: str, out_dir: str, triangles: int | None = None, texture:
                  hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
                  face_shapes: bool | list[str] = False, asset_name: str | None = None,
                  lods: bool | list[float] = False, cloth_triangles: int | None = None, role: str | None = None,
-                 correctives: bool = True):
+                 correctives: bool = True, recolour_masks: list[dict[str, list[str]]] | None = None):
     """Game-ready export into out_dir: low poly per part, UV atlases and PBR maps, GLB (+ fbx=True). Key options:
     role (hero / main_npc / secondary_npc / crowd: budgets from budgets.json; explicit arguments win), triangles,
     texture / texel_density, lods, rig=True (Mixamo for humanoids; correctives: knee / elbow / shoulder morphs),
-    face_shapes (ARKit), cloth_triangles, preview (the GLB rendered as a game draws it), hide, asset_name. Minutes;
+    face_shapes (ARKit), cloth_triangles, preview (the GLB rendered as a game draws it), hide, asset_name,
+    recolour_masks ([{"R": [part], "G": [...], "B": [...], "A": [...]}, ...]: those parts bake a neutral base + RGBA
+    mask textures in one material, each channel's default colour in the json: a colour scheme = a tint per channel). Minutes;
     progress in progress.log. Details: guide(topic="export_asset")."""
     from . import asset
     from . import asset_export
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
                         instancing, rig, fbx, face_shapes or None, asset_name=asset_name, lods=lods or None,
-                        cloth_triangles=cloth_triangles, role=role, correctives=correctives)
+                        cloth_triangles=cloth_triangles, role=role, correctives=correctives,
+                        recolour_masks=recolour_masks)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     out_ = "".join(f"NOT IN THIS EXPORT: garment {x['garment']}: {x['why']}\n" for x in info.get("garments_left_out") or [])
     text = (out_ + f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "

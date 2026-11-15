@@ -54,7 +54,7 @@ def _finish(ex):
             "atlases": {an: {"size": ex.sizes[ai], "maps": ex.maps_info[an], "height_range_m": ex.heights[an],
                              "coverage": round(ex.cover[an], 3),
                              "parts": [pn for pn, r in ex.report.items() if r["atlas"] == an]} for ai, an in enumerate(ex.names)},
-            "parts": ex.report, "prefabs": prefabs, **({"lods": ex.lod_info} if ex.lod_info else {}),
+            "parts": ex.report, "prefabs": prefabs, **({"recolour": ex.recolour} if ex.recolour else {}), **({"lods": ex.lod_info} if ex.lod_info else {}),
             **({"role": ex.role, "budget": budget_gate} if ex.rb is not None else {}), **({"skin": ex.skin_recipe} if ex.skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in ex.rigged["bones"]],
                         "base_bones": sum(1 for b in ex.rigged["bones"] if not b.get("twist") and not b.get("bend")),

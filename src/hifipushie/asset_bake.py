@@ -282,7 +282,18 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
             lin[ys[sel], xs[sel]] = new_
             log.append(f"hair fade: baked into {sf['part']}'s base colour: {int((a_ > 0.05).sum())} texels "
                        f"(alpha mean {float(a_[a_ > 0.05].mean()) if (a_ > 0.05).any() else 0:.2f}); roughness unchanged")
-    put_given("basecolor", _srgb(lin))
+    rc = ctx.get("recolour")  # (export_asset recolour_masks) neutral base + channel masks over the masked parts
+    channels = None
+    if rc is not None and rc["atlas"] == atlas:
+        from . import asset_recolour
+        # (filled out first: the masks reach past the islands, so the neutral base must too)
+        lin, masks_, channels = asset_recolour.apply(_dilate(lin, own), rc, names, ys, xs, part, drawn, baked, filled, log)
+        for k_, m_ in enumerate(masks_):
+            maps[f"mask{k_}"] = m_
+    if channels is None:
+        put_given("basecolor", _srgb(lin))
+    else:  # (already filled past the islands, then neutral by the masks' own labels: a second fill would undo it there)
+        maps["basecolor"] = _srgb(lin)
     put_given("roughness", given["rms"][..., :1])
     put_given("metallic", given["rms"][..., 1:2])
     put_given("specular", given["rms"][..., 2:3])
@@ -301,4 +312,5 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     put("normal", tn * 0.5 + 0.5, 0.5)
     put("height", (height / hr * 0.5 + 0.5)[:, None], 0.5)
     maps["orm"] = np.concatenate([maps["ao"], maps["roughness"], maps["metallic"]], -1)
-    return {"maps": maps, "height_range": hr, "coverage": float(drawn.sum()) / size ** 2, "lip_astray": lip_astray}
+    return {"maps": maps, "height_range": hr, "coverage": float(drawn.sum()) / size ** 2, "lip_astray": lip_astray,
+            **({"recolour": channels} if channels is not None else {})}
