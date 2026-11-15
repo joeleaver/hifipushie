@@ -368,6 +368,12 @@ def _cut_inside_darts(pc: dict, part: dict, nm: str, decl: dict, ped: dict) -> d
                 ped[f"{dt['inside']}.s{i}a"], ped[f"{dt['inside']}.s{i}b"] = ea, eb
                 names.append([f"{dt['inside']}.s{i}a", f"{dt['inside']}.s{i}b"])
             pc.setdefault("cuts", {})[dt["inside"]] = names
+            for ed, subs in cut["split"].items():  # (an edge the release lands partway along: sewn as its two halves)
+                old = pc.setdefault("split", {})
+                for k in [k for k, v in old.items() if ed in v]:
+                    old[k] = [x for e in old[k] for x in (subs if e == ed else [e])]
+                if not any(ed in v for v in old.values()):
+                    old[ed] = subs
     return ped
 
 
@@ -379,12 +385,13 @@ def block(pat: dict) -> dict:
     from . import draft_pairs
     decl = draft_pairs.expand(json.loads((d / "declarations.json").read_text()), draft["parts"])
     edges = decl.get("edges") or {}
-    out, arcs = {}, {}
+    out, arcs, splits = {}, {}, {}
     for nm, pd in (decl.get("pieces") or {}).items():
         part = draft["parts"][pd["part"]]
         pc = pattern.from_freesewing(part, nm, fold=pd.get("fold"))
         arcs[nm] = {}
         ped = _cut_inside_darts(pc, part, nm, decl, dict(edges.get(nm) or {}))
+        splits[nm] = pc.pop("split", {})
         for ed, how in sorted(ped.items(), key=lambda kv: isinstance(kv[1], dict) and "mirror_of" in kv[1]):
             if isinstance(how, dict) and "mirror_of" in how:  # (a folded piece's other half, sewn to a pair's other copy)
                 try:
@@ -413,8 +420,10 @@ def block(pat: dict) -> dict:
         if pd.get("role"):
             pc["role"] = pd["role"]
         out[nm] = pc
-    arc = lambda e: "{}:{}".format(e.split(":", 1)[0], arcs[e.split(":", 1)[0]][e.split(":", 1)[1]])
-    side = lambda s: arc(s) if isinstance(s, str) else [arc(e) for e in s]
+    def arc(e):  # (an edge split where a dart's release lands on it: its halves, in its order)
+        p, ed = e.split(":", 1)
+        return [f"{p}:{arcs[p][x]}" for x in (splits.get(p) or {}).get(ed, [ed])]
+    side = lambda s: (lambda L: L[0] if len(L) == 1 else L)([a for e in ([s] if isinstance(s, str) else s) for a in arc(e)])
     seams, notes = [], {}
     for s in decl.get("seams") or []:
         S = [side(s["a"]), side(s["b"])]

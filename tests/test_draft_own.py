@@ -326,10 +326,17 @@ def test_pattern_parts_lists_a_designs_parts_points_and_outline_order(home):
     from hifipushie import pattern_parts as pp
     _, txt = pp.run("brian")
     assert "measurements it needs" in txt and "waistToArmpit" in txt and "brian.base HIDDEN" in txt
-    assert "brian.back: from brian.base" in txt and "seam runs: cbNeck >" in txt and "DEFAULT values" in txt
+    assert "brian.back: from brian.base" in txt and "seam runs (@ mm along it): cbNeck @0 >" in txt and "DEFAULT values" in txt
     look, one = pp.run("brian", part="brian.front", look_part=True)
-    assert "points (x right, y down, mm): " in one and "cfNeck (" in one and "path seam: cfNeck >" in one
+    assert "points (x right, y down, mm): " in one and "cfNeck (" in one and "path seam: cfNeck @0 >" in one
     assert Path(look).exists()
+    import re  # (t s4-25: a cap chain ran past the cap's end, 725 vs 481 mm: every point of a seam with its arc position)
+    _, ts = pp.run("jaeger", part="jaeger.topsleeve")
+    seam = next(x for x in ts.splitlines() if x.startswith("path seam: "))
+    at = {m[0]: int(m[1]) for m in re.findall(r"([A-Za-z]\w*)(?:=\w+)* @(\d+)", seam)}
+    assert {"tsRightEdge", "backPitchPoint", "top", "frontPitchPoint", "tsLeftEdge"} <= set(at), seam
+    assert at["tsRightEdge"] < at["backPitchPoint"] < at["top"] < at["frontPitchPoint"] < at["tsLeftEdge"], at
+    assert 50 < at["frontPitchPoint"] - at["backPitchPoint"] < 600 and "difference" in ts, at
     own = pp.inspect(RECT, {"waist": 800.0})  # the agent's own design: its parts, no measurement missing
     assert not own["missing"] and "test.panel" in own["parts"] and own["parts"]["test.panel"]["paths"]["seam"]["ops"]
     bad = pp.inspect(RECT.replace("measurements.waist / 4", "measurements.nope / 4"), {"waist": 800.0})  # (C361: NaN)
@@ -488,11 +495,37 @@ def test_a_dart_inside_the_piece_is_cut_through_and_sewn(home):  # (t s4-23: a f
     bad["darts"] = [{"piece": "panel.L", "inside": "nodart", "release": ["bm"], "legs": ["x", "y"]}]
     why = " ".join(do.validate(bad, STEP1, out["parts"]))
     assert "no legs" in why and "not a path of the part" in why, why
-    bad["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pk", "tl"]}]
-    bad["edges"]["panel.L"]["back"] = "tr>tl>bl"  # (an edge running past the cut's outline point)
-    (d / "declarations.json").write_text(json.dumps(bad))
-    with pytest.raises(do.DraftRefused, match="runs past"):
-        do.block({"dir": str(d)})
+    run = copy.deepcopy(decl)  # (the release lands partway along a sewn edge: t s4-25, through a pocket to the side seam)
+    run["darts"] = [{"piece": "panel.L", "inside": "dart", "release": ["pr", "lm"]}]
+    (d / "declarations.json").write_text(json.dumps(run))
+    blk = do.block({"dir": str(d)})
+    pc, ea = blk["pieces"]["panel.L"], blk["edge_arcs"]["panel.L"]
+    assert "back" not in ea and dcut._simple(np.asarray(pc["P"]))
+    b1, b2 = (pattern.length(pc["P"][pattern.arc_indices(pc, ea[e])]) for e in ("back.1", "back.2"))
+    assert abs(b1 - 0.2) < 0.002 and abs(b2 - 0.1) < 0.002, (b1, b2)  # (each half keeps its length)
+    chain = [s_ for s_ in blk["seams"] if any(isinstance(x, list) for x in s_)]
+    assert len(chain) == 1 and chain[0][0] == [f"panel.L:{ea['back.1']}", f"panel.L:{ea['back.2']}"], blk["seams"]
+    B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800})
+    B["edge_arcs"], B["darts"] = blk["edge_arcs"], blk["darts"]
+    rows = {r["id"]: r for r in do.gate(B, run, STEP1)}
+    for r in ("darts", "seams", "sewn"):
+        assert rows.get(r, {"status": "PASS"})["status"] == "PASS", rows.get(r)
+    M = cloth.mesh(B)
+    k = B["seams"].index(chain[0])
+    assert len(set(int(x) for x in M["sew_seam"])) == len(B["seams"]), "every seam sewn"
+    sw, P = np.asarray(M["sew"]).reshape(-1, 2), M["points"]
+    mate = lambda v: {int(b) for a, b in sw if a == v} | {int(a) for a, b in sw if b == v}
+    assert mate(P["panel.L:dart.cut_a"]) & mate(P["panel.L:dart.cut_b"]) == {P["panel.R:lm"]}  # (one partner vertex)
+    assert abs(np.linalg.norm(M["uv"][P["panel.R:lm"]] - M["uv"][P["panel.R:tl"]]) - 0.2) < 0.002  # (0.2 m down its back)
+    lap = copy.deepcopy(decl)  # (two sewn edges overlapping: said by piece and point names, never indices; t s4-25)
+    lap.pop("darts")
+    for p in ("panel.L", "panel.R"):
+        lap["edges"][p]["low"] = "lm>bl"
+    lap["seams"].append({"a": "panel.L:low", "b": "panel.R:low"})
+    (d / "declarations.json").write_text(json.dumps(lap))
+    with pytest.raises(ValueError, match=r"overlap: panel\.\w:tl>bl \(seam 2\) and panel\.\w:lm>bl \(seam 3\)"):
+        cloth.mesh(cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, {"waist": 800}))
+
 
 
 def test_s4_2_gaps_options_exports_edges_blocks(home):  # (C362)
@@ -936,3 +969,38 @@ def test_piece_tapes_row_fails_each_way_and_passes():
     r = _tape_row(dict(stiff, tapes={"panel.L": {"side": "waist", "back": "waist"}, "panel.R": ["waist"]}))
     assert r["status"] == "PASS" and r["value"].startswith("2 of 2"), r
     assert _tape_row(DECL)["status"] == "PASS"
+
+
+SLEEVE = """import { Design } from '@freesewing/core'
+import { topsleeve, undersleeve } from '@freesewing/jaeger'
+const hide = { from: true, inherited: true }
+const top = { name: 'test.top', from: topsleeve, hide, draft: ({ paths, part }) => { delete paths.sa; return part } }
+const under = { name: 'test.under', from: undersleeve, hide, draft: ({ paths, part }) => { delete paths.sa; return part } }
+export default new Design({ parts: [top, under] })
+"""
+
+
+def test_a_fold_along_an_edge_keeps_the_whole_edge_at_any_cap_ease(home):  # (t s4-25: sleevecapEase 0.045 crashed)
+    from hifipushie import cloth, draft_own as do, pattern, pattern_parts as pp
+    hem = "hemLeft>ventRight>ventFoldRight"
+    decl = {"pieces": {"top": {"part": "test.top", "place": {"to": "arm.L"}},
+                       "under": {"part": "test.under", "place": {"to": "arm.L"}}},
+            "edges": {"top": {"fore": "tsLeftEdge>tsElbowLeft>hemLeft", "hind": "backPitchPoint>tsRightEdge>ventFoldRight",
+                              "hem": hem},
+                      "under": {"fore": "usLeftEdge>usElbowLeft>hemLeft", "hind": "usTip>usRightEdge>ventFoldRight",
+                                "hem": hem}},
+            "seams": [{"a": "top:fore", "b": "under:fore"}, {"a": "top:hind", "b": "under:hind"}],
+            "folds": [{"name": "top_hem", "piece": "top", "line": "hem", "kind": "press"},
+                      {"name": "under_hem", "piece": "under", "line": "hem", "kind": "press"}]}
+    meas = {k: v for k, v in pp.DEFAULTS.items() if not k.startswith("crossSeam")}
+    for ease in (0.0, 0.03, 0.045, 0.06, 0.08):
+        d = home / f"cap{ease}"
+        out = do.node_draft(SLEEVE, meas, {"sleevecapEase": ease}, d=d)
+        (d / "draft.json").write_text(json.dumps(out))
+        (d / "declarations.json").write_text(json.dumps(decl))
+        B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, meas)
+        for f in B["folds"]:  # (the line ON the edge: the inside test flipped point by point, 1 point left)
+            pc = B["pieces"][f["piece"]]
+            L, E = pattern.fold_line(B["pieces"], f), pc["P"][pattern.arc_indices(pc, hem)]
+            assert abs(pattern.length(L) / pattern.length(E) - 1) < 0.02, (ease, f["piece"], len(L))
+        assert len(cloth.mesh(B)["F"]), ease

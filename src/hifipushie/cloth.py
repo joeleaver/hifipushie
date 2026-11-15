@@ -819,7 +819,9 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         arcs = sorted(fixed[nm].items(), key=lambda kv: kv[0][0])
         for (ix, _), (ix2, _) in zip(arcs, arcs[1:] + arcs[:1]):
             if len(arcs) > 1 and ((ix2[0] - ix[0]) % n) < ((ix[-1] - ix[0]) % n):
-                raise ValueError(f"{nm}: two sewn edges overlap ({ix[0]}..{ix[-1]} and {ix2[0]}..{ix2[-1]})")
+                raise ValueError(f"two sewn edges overlap: {nm}:{_arc_name(pc, ix)} (seam {owner[nm][ix] + 1}) and "
+                                 f"{nm}:{_arc_name(pc, ix2)} (seam {owner[nm][ix2] + 1}): end one where the other "
+                                 f"starts, or sew them as one chain")
         ring, rkeys, pending = [], [], []
 
         def emit(p, key):
