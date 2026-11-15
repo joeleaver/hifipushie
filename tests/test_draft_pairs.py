@@ -2,7 +2,8 @@
 expands to NAME.L + NAME.R with its seams per side; a folded centre piece's other half sewn to the other copy."""
 import pytest
 
-from hifipushie import draft_own as do, draft_pairs as dp
+from hifipushie import draft_pairs as dp
+from hifipushie import draft_own_validate
 
 
 def _part(pts, order):
@@ -42,11 +43,11 @@ def test_a_half_piece_and_a_sideless_limb_are_refused_with_the_pair_declaration(
 
 def test_validate_refuses_at_step_4_and_passes_once_paired():
     d = _decl(mirror=True)
-    bad = do.validate(d, STEP1, PARTS)
+    bad = draft_own_validate.validate(d, STEP1, PARTS)
     assert any('"pair": true' in b for b in bad)
     d["pieces"]["front"] = {"part": "t.front", "pair": True, "place": {"to": "torso", "side": "front"}}
     d["pieces"]["sleeve"]["pair"] = True
-    assert do.validate(d, STEP1, PARTS) == []
+    assert draft_own_validate.validate(d, STEP1, PARTS) == []
 
 
 def test_a_pair_expands_per_side_and_a_folded_half_goes_to_the_other_copy():

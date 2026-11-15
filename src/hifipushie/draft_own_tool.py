@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 
 from . import draft_own as do
+from . import draft_own_block, draft_own_gate, draft_own_validate
 
 
 
@@ -82,10 +83,10 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     decl = json.loads((d / "declarations.json").read_text())
     rd = gr.reads(name, garment, "4")
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
-    blk = do.block(g["pattern"])
+    blk = draft_own_block.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
-    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))
+    rows = draft_own_gate.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))
     from . import draft_marks
     rows.append(draft_marks.place(cloth.mesh(B), blk["decl"], rd["1"])[0])  # (C380: the pairs expanded, as step 7)
     from . import draft_links
@@ -97,7 +98,7 @@ def check_text(name: str, garment: str) -> str:
     """pattern_check on a garment drafted with draft_pattern: the general flat gate re-read; step 4 rewritten."""
     from . import garment_record as gr
     rows, B, _ = flat_check(name, garment)
-    v = do.verdict(rows)
+    v = draft_own_gate.verdict(rows)
     rec = gr._try(gr.write, name, garment, "4", "done" if v == "PASS" else "failed", by="pattern_check",
                   output=dict(gr.load(name, garment)["steps"]["4"].get("output") or {}, pieces=list(B["pieces"])),
                   gate={"verdict": v, "rows": rows}, look=gr.load(name, garment)["steps"]["4"].get("look"), back_to="4")
@@ -155,7 +156,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     if obad:
         raise do.DraftRefused("options refused (nothing drafted):\n  " + "\n  ".join(obad))
     draft = do.node_draft(design, meas, options, sa, d)
-    bad = do.validate(declarations, rd["1"], draft["parts"])
+    bad = draft_own_validate.validate(declarations, rd["1"], draft["parts"])
     if bad:
         return None, ("draft_pattern REFUSED (nothing written):\n  " + "\n  ".join(bad[:20]) +
                       f"\n  draft parts: {', '.join(draft['parts'])}\nnext: fix the declarations (step 1's names) and call again")
@@ -175,15 +176,15 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         if isinstance(e, KeyError) and not isinstance(e, NoPoint):  # (C408: never a bare 'name')
             e = f"no {e.args[0]!r} where a declaration names it (a piece, edge or point name the draft hasn't)"
         raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
-    blk = do.block(g["pattern"])
+    blk = draft_own_block.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)
-    rows = do.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))  # (expanded: C366)
+    rows = draft_own_gate.gate(B, blk["decl"], rd["1"], stand_ref(name, garment), rd["3"], _fit(name, garment), step2=rd.get("2"))  # (expanded: C366)
     from . import draft_marks
     mrow, drawn = draft_marks.place(M, B["decl"], rd["1"])  # (C380: where every mark lands, as step 7 places it)
     rows.append(mrow)
     draft_marks.sheet_marks(B, drawn)
-    v = do.verdict(rows)
+    v = draft_own_gate.verdict(rows)
     seam_rows = next(r for r in rows if r["id"] == "seams")["detail"]
     dx = B.get("decl") or declarations
     names = seam_names(dx) if len(dx.get("seams") or []) == len(B["seams"]) else None
@@ -197,7 +198,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     ver = store.save(name, spec, f"draft_pattern {garment}")
     from . import draft_links  # (C395: step 4 FAILs what step 5 refuses, read on the build's own mesh of this draft)
     rows += draft_links.saved_rows(name, garment)
-    v = do.verdict(rows)
+    v = draft_own_gate.verdict(rows)
     keys = [k for k in cg.PATTERN_KEYS if k in M]
     out = {"dir": str(d), "pieces": list(B["pieces"]), "seams": len(B["seams"]), "measurements": sorted(meas),
            "mesh": {"vertices": int(len(M["uv"])), "faces": int(len(M["F"])), "keys": keys}}

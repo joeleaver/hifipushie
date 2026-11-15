@@ -17,7 +17,7 @@ STEP 2 "style" bends, each ONE of:
 A bend in words only ({target: {is}}) is refused: say it as a fold, as a target, or as a row the photo judges; a hang
 is step 8's, a pose is `pose`.
 
-STEP 4 (draft_own.gate, row `planned_folds`): every fold step 2 plans is declared on its piece, and every ROLL fold the
+STEP 4 (draft_own_gate.gate, row `planned_folds`): every fold step 2 plans is declared on its piece, and every ROLL fold the
 draft declares has its turn planned (a roll is a worn bend; a press fold is the cut's own, flat or pressed).
 The build reads them as wear["folds"] (chain_plan.planned_wear) for R3's one crease turn.
 """

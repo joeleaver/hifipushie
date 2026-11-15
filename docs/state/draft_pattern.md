@@ -1,6 +1,6 @@
 # STATE: draft_pattern (garment step 4, T5 + T5b) -> codified.md C285, C295, C300, C303, C304-C306
 Tool draft_pattern(name, garment, design, declarations, options, sa): the agent's own FreeSewing design (Node, no network,
-fs read-only, 60 s) + declarations in step 1's names -> draft_own.block (the one converter) -> cloth.mesh -> the flat
+fs read-only, 60 s) + declarations in step 1's names -> draft_own_block.block (the one converter) -> cloth.mesh -> the flat
 gate -> step 4 + flat sheet. pattern_check and chain_garment's gate read an own draft's step 4. The spec's pattern
 carries a digest of draft + declarations + options (a redraft into the same dir is a new chain job).
 T5b (C295): the flat gate checks SHAPE per role (draft_shape.py, its docstring the spec; targets on FreeSewing 4.10.2's own
@@ -32,7 +32,7 @@ F2 (2026-11-02, fix run on blind trial t8's step-4 friction; HOME /mnt/data/hifi
 - Carry forward (garment_carry.py; garment_record T1 rule extended): after garment_plan rewrites step 0 / 1, each later
   done step whose SAVED content still validates is re-stamped (inputs = the new digest, `carried`; digest + approval
   kept); the first that doesn't gets `stale_why` (states() treats it as stale and shows the reason; a rewrite clears it).
-  Validators: 1 check_parts, 2 check_style, 3 step 1's names all taken, 4 draft_own.validate; 5+ never carried.
+  Validators: 1 check_parts, 2 check_style, 3 step 1's names all taken, 4 draft_own_validate.validate; 5+ never carried.
   t8 shirt: a reworded piece -> "step 2 (style) carried forward ... step 3 still valid, step 4 still valid".
 - shape_stand: ONE row per stand piece, its neck-sewn edges joined into one neck edge (draft_shape.full_arc: a fold-cut
   half cb>sh + sh>fe -> fe.m>cb>fe), its free edge likewise. t8 shirt: was two rows "near straight +0.9 / +0.8 mm"; now

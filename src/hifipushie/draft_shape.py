@@ -7,7 +7,7 @@ off the declarations (role, stiff, folds, seams, place) and compares a shape mea
 FreeSewing design's own part (4.10.2, measured on wf_simon's step-3 measurements; /mnt/data/hifipushie/t5b/scripts/
 ref_measure.py). Every FAIL names what to change in the design (`change`) and goes back to step 4.
 
-Rows (`rows(B, decl, step1)`; B = draft_own.block + cloth.pieces, its pieces in FreeSewing's frame, y = the grain):
+Rows (`rows(B, decl, step1)`; B = draft_own_block.block + cloth.pieces, its pieces in FreeSewing's frame, y = the grain):
   shape_stand: a STAND / BAND (role collar_stand / collar_band / neckband, or a stiff piece sewn to edges named neck*):
     its curve and heights DECIDED BY THE REFERENCE (T5c, C300; draft_stand.py, its docstring the derivation): step 2's
     collar_top trace says whether the top follows the neckline down (the hugging stand: neck edge rising, jaeger) or
