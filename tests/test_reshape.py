@@ -197,3 +197,53 @@ def test_a_fuse_can_leave_one_side_creased_and_the_others_smooth():
             s["blobs"][n]["fill_sides"] = bad
         with pytest.raises(SpecError, match=said):
             compile_prims(s)
+
+
+def test_each_mass_in_a_fuse_keeps_its_own_fill():
+    s = _figure()
+    s["joints"]["jaw"] = {"pos": [0, -0.12, 0.5]}
+    for n in ("head", "torso"):
+        s["blobs"][n].update(fuse="h", fill=0.2)
+    two = compile_prims(copy.deepcopy(s))
+    s["blobs"]["jaw"] = {"at": "jaw", "size": [0.08, 0.05, 0.04], "fuse": "h", "fill": 0.03}
+    three = {p.name: p for p in compile_prims(s)}
+    assert (three["head"].join, three["jaw"].join) == (0.2, 0.03)
+    names = list(three)
+    assert names.index("jaw") > max(names.index("head"), names.index("torso"))  # the widest joins first
+    z = reshape.waist(compile_prims(_figure()), "head", "torso", 0.2)["z"]
+    x = np.linspace(0.0, 0.5, 1001)
+    back = lambda prims: float(x[np.nonzero(field_at(prims, np.stack([np.zeros_like(x), x, np.full_like(x, z)], 1),
+                                                     clip=False) < 0)[0].max()])  # noqa: E731
+    assert abs(back(list(three.values())) - back(two)) < 0.002  # the jaw's small fill left the neck as it was
+
+
+def test_a_grab_on_a_fused_mass_moves_nothing_far_from_it():
+    s = _figure()
+    for n in ("head", "torso"):
+        s["blobs"][n].update(fuse="h", fill=0.25)
+    before = compile_prims(copy.deepcopy(s))
+    s["grabs"] = {"chin": {"of": ["head"], "view": "side", "at": [-0.15, 0.45], "to": [-0.18, 0.44], "radius": 0.07}}
+    after = compile_prims(s)
+    y = np.linspace(0.0, 0.5, 2001)
+    for z in (0.3, 0.37, 0.45, 0.6):  # the back of the figure, 30 cm from the grab (it swelled 4 cm before)
+        f0, f1 = (field_at(p, np.stack([np.zeros_like(y), y, np.full_like(y, z)], 1), clip=False) for p in (before, after))
+        assert abs(y[np.nonzero(f0 < 0)[0].max()] - y[np.nonzero(f1 < 0)[0].max()]) < 0.002
+
+
+def test_a_third_mass_is_fused_in_with_its_own_fill_by_the_tool(tmp_path, monkeypatch):
+    from hifipushie import server, tools_reshape
+    monkeypatch.setattr(store, "HOME", tmp_path)
+    monkeypatch.setattr(tools_reshape, "_with_look", lambda name, views, text: text)
+    s = _figure()
+    s["joints"]["jaw"] = {"pos": [0, -0.12, 0.5]}
+    s["blobs"]["jaw"] = {"at": "jaw", "size": [0.08, 0.05, 0.04]}
+    store.save("fig", s, "start")
+    server.fuse("fig", "head", "torso", fill=0.2, sides={"front": 0.2})
+    out = server.fuse("fig", "head", "jaw", fill=0.03)  # (this was refused: "only 'torso' has it")
+    b = store.load("fig")["blobs"]
+    assert (b["head"]["fill"], b["torso"]["fill"], b["jaw"]["fill"]) == (0.2, 0.2, 0.03)
+    assert "fill_sides" not in b["jaw"] and b["head"]["fill_sides"] == {"front": 0.2}
+    assert "also holds" in out and "torso (fill 20.0 cm)" in out
+    server.fuse("fig", "head", "jaw", fill=0)  # the jaw comes out; head and torso stay fused
+    b = store.load("fig")["blobs"]
+    assert "fuse" not in b["jaw"] and b["head"]["fuse"] == b["torso"]["fuse"]

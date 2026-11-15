@@ -88,6 +88,23 @@ def displacement(ops: list, x: np.ndarray) -> np.ndarray:
     return D
 
 
+def grab_lip(ops: list, x: np.ndarray, lip: float):
+    """How much steeper than a distance the warped field can be at each undeformed point x. A style deformation
+    bends the whole model: one number. Grabs bend only inside their radius, by 4 t (1 - t^2) |move| / radius at t
+    of the radius: there, and nowhere else, the field is scaled. (Scaled all over, a grabbed mass's field shrank
+    everywhere, and a fuse or a wide blend with its neighbours swelled 30 cm from the grab.)"""
+    if any(next(iter(op)) != "grab" for op in ops):
+        return lip
+    bend = np.zeros(x.shape[:-1])
+    for op in ops:
+        p = op["grab"]
+        _, i, j = GRAB_AXES[p["view"]]
+        c, t_, r = p["at"], p["to"], float(p["radius"])
+        t = np.clip(np.hypot(x[..., i] - c[0], x[..., j] - c[1]) / r, 0.0, 1.0)
+        bend += 4 * t * (1 - t * t) * float(np.hypot(t_[0] - c[0], t_[1] - c[1])) / r
+    return 1.0 / (1.0 - np.minimum(bend, 0.95))
+
+
 def undeform(ops: list, p: np.ndarray, steps: int = 4) -> np.ndarray:
     """The undeformed point x with x + D(x) = p (fixed-point iteration: fine while D bends gently)."""
     x = np.asarray(p, np.float64)

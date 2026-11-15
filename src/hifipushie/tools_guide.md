@@ -269,7 +269,10 @@ of THIS pair.
 fill: how far the two are worked into each other, in metres (0.05 a soft crease, 0.15 a clear waist, 0.25 one
 mass with a slight pinch; the hollow fills by about a sixth of it). OR width: how wide the figure is at its narrowest between the two, in metres, read off the
 reference's outline at that height: the fill is found for you (two masses one above the other only). One of the
-two. fill=0 parts them again. Fusing a third mass to one already fused puts all three in one fuse, with one fill.
+two. fill=0 parts them again (of a fuse of three or more, it takes `b` out). Fusing a third mass to one already
+fused brings it into that fuse WITH ITS OWN fill and sides: a jaw worked into a head by 0.05 does not change how
+far the head is worked into the body. Each mass's fill is how far IT is worked into the rest of its fuse; the
+widest are worked together first.
 sides: {side: 0..1} with sides front (where the figure faces), back, left, right, up, down: on that side of the
 fuse's middle only that part of the fill is worked in (0 a crease, 1 all of it). The same fill all round can only
 trade a snowman's neck (too little) for a bean (too much); a head that runs smooth into the body behind and at

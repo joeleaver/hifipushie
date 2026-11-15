@@ -3,7 +3,8 @@
 A modeller blocks a figure in as rough masses, then works on the figure itself: two lumps that are one form are
 smoothed into each other, and an outline that is off is taken hold of and moved. These are those two acts.
 
-fuse: two (or more) masses worked into one. Elements that carry the same "fuse" tag are joined first, smooth by
+fuse: two (or more) masses worked into one. Elements that carry the same "fuse" tag are joined first, each by
+    its own "fill" (how far that mass is worked into the others, the widest first), smooth by
     "fill" metres (how far the two are worked into each other: the hollow between them fills by about a sixth of
     it; 0.05 leaves a soft crease, 0.25 makes one mass with a slight pinch), and blended into the rest of the
     model once (spec._fuse). The tools write the tag; by hand it is

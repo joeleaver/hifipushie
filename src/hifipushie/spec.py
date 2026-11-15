@@ -367,7 +367,9 @@ def _compile(spec: dict) -> list[Prim]:
     for p in prims:  # them, or a chunk that culls the first member blends by another's (seams at chunk edges)
         if p.group:
             g = first.setdefault(p.group, p)
-            p.blend, p.join = g.blend, g.join
+            p.blend = g.blend
+            if not p.group.startswith("fuse:"):  # (a fused mass keeps its own fill: _fuse)
+                p.join = g.join
     prims = _csg(s, prims, els)
     if s.get("base"):  # the base mesh first: everything else unions onto it
         prims.insert(0, _base(s, k_default))
@@ -471,19 +473,18 @@ def _fuse(prims: list[Prim], els: list[dict]) -> tuple[list[Prim], list[dict]]:
         if t:
             if len(mem) < 2:
                 raise SpecError(f"fuse {t!r}: only {prims[i].name!r} has it; a fuse works two or more masses together")
-            fill = max(float(els[j].get("fill", 0.0)) for j in mem)
-            if fill < 0:
-                raise SpecError(f"fuse {t!r}: fill is how far the masses are worked into each other, in metres: 0 or more")
+            if min(float(els[j].get("fill", 0.0)) for j in mem) < 0:
+                raise SpecError(f"fuse {t!r}: fill is how far a mass is worked into the others, in metres: 0 or more")
+            mem = sorted(mem, key=lambda j: -float(els[j].get("fill", 0.0)))  # (stable) the widest joins first
             for j in mem:
                 p, p0 = prims[j], prims[mem[0]]
                 if p.group:
                     raise SpecError(f"{p.name!r} is already in the group {p.group!r}: it can't be fused as well")
                 if p.op != "add" or (p.layer, p.part) != (p0.layer, p0.part):
                     raise SpecError(f"fuse {t!r}: {p.name!r} and {p0.name!r} must both add clay, in the same layer and part")
-            sides = _fuse_sides(t, next((els[j]["fill_sides"] for j in mem if els[j].get("fill_sides")), None),
-                                [prims[j] for j in mem])
-            for j in mem:
-                prims[j].group, prims[j].join, prims[j].sides = f"fuse:{t}", fill, sides
+            for j in mem:  # each mass: how far IT is worked into the masses of the fuse before it, and on which sides
+                prims[j].group, prims[j].join = f"fuse:{t}", float(els[j].get("fill", 0.0))
+                prims[j].sides = _fuse_sides(t, els[j].get("fill_sides"), [prims[i] for i in mem])
         order += mem
         placed.update(mem)
     return [prims[i] for i in order], [els[i] for i in order]
@@ -502,9 +503,8 @@ def _fuse_sides(tag: str, sides, members: list[Prim]):
                         "(front is where the figure faces, -y), e.g. {\"front\": 0.2}")
     if any(not 0.0 <= float(v) <= 1.0 for v in sides.values()):
         raise SpecError(f"fuse {tag!r}: a side takes a part of the fill, 0 (a crease on that side) to 1 (all of it)")
-    cs = np.array([(p.lo + p.hi) / 2 for p in members])
-    R = max(0.5 * float(max(np.linalg.norm(a - b) for a in cs for b in cs)), 0.02)
-    return (tuple(float(v) for v in cs.mean(0)), R,
+    lo, hi = np.min([p.lo for p in members], 0), np.max([p.hi for p in members], 0)
+    return (tuple(float(v) for v in (lo + hi) / 2), tuple(float(max(v, 0.02)) for v in (hi - lo) / 2),
             tuple(sorted((FUSE_SIDES[k][0], FUSE_SIDES[k][1], float(v)) for k, v in sides.items())))
 
 
@@ -884,8 +884,13 @@ def _set_reach(prims: list[Prim]) -> None:
     it can be skipped without changing the combined field. That needs its value to stay out of its own
     blend and out of the blend of every later primitive that overlaps it (a fillet from a later part
     rounds toward everything already combined), plus k/4 for the dip smooth union adds."""
-    def blend(q: Prim) -> float:  # a fused mass also rounds toward its fellows by the fuse's fill (often the larger)
-        return max(q.blend, q.join) if (q.group or "").startswith("fuse:") else q.blend
+    widest: dict = {}  # a fused mass also rounds toward its fellows, by as much as the widest fill in its fuse
+    for q in prims:
+        if (q.group or "").startswith("fuse:"):
+            widest[q.group] = max(widest.get(q.group, 0.0), q.join)
+
+    def blend(q: Prim) -> float:
+        return max(q.blend, widest[q.group]) if q.group in widest else q.blend
 
     scale = [np.broadcast_to(np.asarray(p.reach, float), (3,)) for p in prims]
     for i in range(len(prims) - 1, -1, -1):

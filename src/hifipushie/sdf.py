@@ -37,13 +37,13 @@ def smin_var(a, b, k):
 
 
 def sides_mul(sides, pts: np.ndarray) -> np.ndarray:
-    """How much of a fuse's fill holds at each point (spec._fuse): 1 everywhere, falling to a side's own value
-    on that side of the fuse's centre, smoothly across the middle."""
+    """How much of a mass's fill holds at each point (spec._fuse_sides): all of it on the far half of the fuse,
+    easing from the fuse's middle to the side's own part at that side's face."""
     c, R, items = sides
-    q = (np.asarray(pts, float) - np.asarray(c, float)) / R
+    q = (np.asarray(pts, float) - np.asarray(c, float)) / np.asarray(R, float)
     m = np.ones(q.shape[:-1])
-    for ax, sgn, val in items:
-        t = np.clip((sgn * q[..., ax] + 0.25) / 0.5, 0.0, 1.0)
+    for ax, sgn, val in items:  # all of it up to the fuse's middle, then easing to the side's part at that side's
+        t = np.clip(sgn * q[..., ax], 0.0, 1.0)  # face (a change in a narrow band at the middle left a ridge)
         m = m * (1.0 + (val - 1.0) * (t * t * (3 - 2 * t)))
     return m
 
@@ -385,7 +385,10 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     for op, kind, params, k in pr["cuts"]:
         c = SDF[kind](p, params)
         d = -smin(-d, c, k) if op == "subtract" else -smin(-d, -c, k)
-    return d if wp is None else d / wp[1]
+    if wp is None:
+        return d
+    from .deform import grab_lip
+    return d / grab_lip(wp[0], p, wp[1])
 
 
 def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
@@ -489,10 +492,11 @@ def _merge(hits: list[np.ndarray], ds: list[np.ndarray], tail: tuple, join: floa
         return hits[0], ds[0]
     h = np.unique(np.concatenate(hits))
     d = np.full((len(h), *tail), FAR, dtype=ds[0].dtype)
-    m = None if mul is None else mul(h)
-    for hit, v in zip(hits, ds):
+    for i, (hit, v) in enumerate(zip(hits, ds)):  # (a fuse: each mass by its own join and sides; else one for all)
         k = np.searchsorted(h, hit)
-        d[k] = smin(d[k], v, join) if m is None else smin_var(d[k], v, join * m[k]).astype(d.dtype)
+        ji = join[i] if isinstance(join, list) else join
+        mi = mul[i] if isinstance(mul, list) else mul
+        d[k] = smin(d[k], v, ji) if mi is None else smin_var(d[k], v, ji * mi(hit)).astype(d.dtype)
     return h, d
 
 
@@ -661,7 +665,7 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             if len(hit):
                 vals[hit] = MODS[p.kind](vals[hit], a_lo[hit, None, None, None, :] + local, p.params)
             continue
-        hits, ds = [], []
+        hits, ds, joins, muls = [], [], [], []
         for p in unit:
             margin = p.reach + voxel
             hit = np.flatnonzero(np.all((a_hi >= p.lo - margin) & (a_lo <= p.hi + margin), axis=1))
@@ -670,6 +674,8 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             if len(hit):
                 hits.append(hit)
                 ds.append(_sd(p, a_lo[hit, None, None, None, :] + local, und, hit).astype(np.float32))
+                joins.append(p.join)
+                muls.append((lambda hh, s=p.sides: sides_mul(s, a_lo[hh, None, None, None, :] + local)) if p.sides else None)
         if unit[-1].op == "intersect":  # outside every region primitive's reach is outside the region
             d = np.full((len(a_lo), B, B, B), FAR, np.float32)
             if hits:
@@ -679,8 +685,8 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             continue
         if not hits:
             continue
-        mul = (lambda hh, s=unit[0].sides: sides_mul(s, a_lo[hh, None, None, None, :] + local)) if unit[0].sides else None
-        h, d = _merge(hits, ds, (B, B, B), unit[0].join, mul)
+        fused = (unit[0].group or "").startswith("fuse:")
+        h, d = _merge(hits, ds, (B, B, B), joins if fused else unit[0].join, muls if fused else None)
         vals[h] = combine(vals[h], d, unit[-1])
     return vals
 
@@ -782,7 +788,7 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             if len(near):
                 out[near] = MODS[p.kind](out[near], flat[near], p.params)
             continue
-        hits, ds = [], []
+        hits, ds, joins, muls = [], [], [], []
         for p in unit:
             if clip:
                 near = np.flatnonzero(np.all((flat >= p.lo - p.reach - margin) &
@@ -792,6 +798,8 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             if len(near):
                 hits.append(near)
                 ds.append(_sd(p, flat[near], und, near))
+                joins.append(p.join)
+                muls.append((lambda hh, s=p.sides: sides_mul(s, flat[hh])) if p.sides else None)
         if unit[-1].op == "intersect":
             d = np.full(len(flat), FAR)
             if hits:
@@ -801,8 +809,8 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             continue
         if not hits:
             continue
-        mul = (lambda hh, s=unit[0].sides: sides_mul(s, flat[hh])) if unit[0].sides else None
-        h, d = _merge(hits, ds, (), unit[0].join, mul)
+        fused = (unit[0].group or "").startswith("fuse:")
+        h, d = _merge(hits, ds, (), joins if fused else unit[0].join, muls if fused else None)
         out[h] = combine(out[h], d, unit[-1])
     return out
 
