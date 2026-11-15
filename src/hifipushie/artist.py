@@ -259,8 +259,8 @@ def instructions() -> str:
             "tools take no `name`. Every tool is offered directly here (no find_tool / call_tool). Files never come as host paths: set_reference takes `image`, a library version id; "
             "exports come back as task files (glb, fbx, obj, maps, json, and the spec): export_asset, export_terrain, "
             "export_plant and export_stand (name the plant or stand as the session's model; its plant.json / "
-            "stand.json comes back as role plant_spec / stand_spec), make_clutter and clutter_kit (their folders, "
-            "e.g. real_boulder/…; look_clutter takes those folder names, made in the same session). `snapshot` "
+            "stand.json comes back as role plant_spec / stand_spec), make_clutter and clutter_kit (each kind "
+            "a folder such as real_boulder; look_clutter takes those folder names, made in the same session). `snapshot` "
             "returns the spec and a quick look, to publish a working state. A session's workspace is gone when it "
             "closes: publish what you want to keep.")
 
