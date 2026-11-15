@@ -79,9 +79,9 @@ def test_a_seam_moved_20mm_at_the_chest_still_sews_and_the_panels_row_passes(mon
     L = lambda e: pattern.length(np.asarray(B["pieces"][e.split(":")[0]]["P"])[ix(e)])
     arm0 = L("front.L:arm") + L("back.L:arm")
     r = _panels(B, monkeypatch, 0.32 / 0.60)  # (front 300 mm where the plan wants 320: 20 mm a piece too narrow)
-    assert r["status"] == "FAIL" and '"seam": ["front.L:side", "back.L:side"]' in r["fix"], r["fix"]
+    assert r["status"] == "FAIL" and '"seam": ["back.L:side", "front.L:side"]' in r["fix"], r["fix"]
     mv = json.loads(r["fix"].split("moves [", 1)[1].split("]. Form", 1)[0])
-    assert 15 < mv["at"][0][1] < 25 and abs(mv["at"][0][0] - 300) < 15, mv  # (the chest crosses ~300 mm up)
+    assert -25 < mv["at"][0][1] < -15 and abs(mv["at"][0][0] - 300) < 15, mv  # (the chest crosses ~300 mm up)
     rec = draft_moves.apply(B["pieces"], ix, seams, [{"seam": mv["seam"], "at": mv["at"]}])
     assert abs(L("front.L:side") - L("back.L:side")) < 1e-4, rec  # (the seam still sews: one length both sides)
     assert abs(L("front.L:arm") + L("back.L:arm") - arm0) < 0.02 * arm0  # (the armhole: what one loses the other

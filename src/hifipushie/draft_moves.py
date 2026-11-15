@@ -15,11 +15,13 @@ FORM: moves [{"seam": ["pieceA:edge", "pieceB:edge"] (two declared edges sewn to
   the listed points the move is linear; past the first / last it holds (list [0, 0] and [A's length, 0] to taper it out).
   A ".L" move brings its ".R" twin unless that is declared too.
 HOW (`apply`): each point of both edges moves along its piece's normal by the move at its share of the edge (A outward,
-  B inward). An end that moves slides along the edge beyond it (the armhole, the hem: trimmed on one piece, extended on
-  the other), the points of that edge eased over max(3 x the slide, SPREAD) so none crosses another. Then B's end that
-  changes the seam's length most per mm slides until the two edges differ by what they differed before (the declared
-  ease kept): the seam still sews. The re-cut is recorded in the block's `moves` (what moved, both lengths after).
-`hint` gives the declaration the panels row's FAIL names, so the agent's next call is the fix.
+  B inward). At an end that moves, the piece giving up width is trimmed along the edge beyond (the armhole, the hem)
+  and the piece gaining it takes that strip of the edge on beyond its own end (the armhole runs on as one line; what one
+  loses the other gains), that edge's points respaced over max(3 x the strip, SPREAD), none added. Then B's end that
+  crosses it squarest (the hem, not the armhole: the cap's ease stays) is lengthened or shortened along the seam until
+  the two edges are one length (with the seam's declared ease: its range's middle), so the seam sews, and a seam drafted
+  off its length is trued by the same entry. The re-cut is recorded in the block's `moves` (what moved, both lengths after).
+`crossing` / `entry` give the declaration the panels row's FAIL names, so the agent's next call is the fix.
 """
 from __future__ import annotations
 
@@ -196,11 +198,12 @@ def _true(pc: dict, ix: list, target: float) -> float:
 def apply(pieces: dict, ix_of, seams: list, moves: list) -> list:
     """Every move re-cut on `pieces` (module docstring). ix_of("piece:edge") -> outline indices; seams = the declared
     seams (to check the two edges are sewn to each other). Returns the record of what moved."""
-    sewn = set()
+    sewn = {}  # (A, B) -> the ease B is trued to: A / B - 1, the mean of the seam's declared range (none: 0)
     for s in seams or []:
         a, b = s.get("a"), s.get("b")
         if isinstance(a, str) and isinstance(b, str):
-            sewn |= {(a, b), (b, a)}
+            mid = float(np.mean(s["ease"])) if s.get("ease") is not None else 0.0
+            sewn[(a, b)], sewn[(b, a)] = mid, 1.0 / (1.0 + mid) - 1.0
     out = []
     for m in expand(moves, set(pieces)):
         sm = m.get("seam")
@@ -224,29 +227,45 @@ def apply(pieces: dict, ix_of, seams: list, moves: list) -> list:
         except Refused as e:
             raise Refused(f"{tag}: the edge beyond an end of {sm[0]} or {sm[1]} {e}: taper the move to 0 there") from None
         LA = _len(np.asarray(pieces[pa]["P"])[ia])
-        err = _true(pieces[pb], ib, LA + (LB0 - LA0))
+        err = _true(pieces[pb], ib, LA / (1.0 + sewn[tuple(sm)]))
         LB = _len(np.asarray(pieces[pb]["P"])[ib])
         out.append({"seam": sm, "at": m.get("at"), "lengths_mm": [round(1000 * LA, 1), round(1000 * LB, 1)],
                     "was_mm": [round(1000 * LA0, 1), round(1000 * LB0, 1)], "off_mm": round(1000 * err, 2)})
     return out
 
 
-def hint(B: dict, p: str, q: str, line: tuple, mm: float) -> str:
-    """The `moves` entry that moves the seam between p (grows) and q by mm at the level line (q0, u) on p; "" when
-    the seam isn't one declared edge a side."""
-    from . import pattern
-    from .draft_girths import _cross, _seam_pairs
+def _edge_name(B: dict, p: str, arcs) -> str | None:
+    """The declared edge a seam side's arcs are: one edge, or the halves a dart's release split it into (<edge>.1, .2)."""
+    import re
     names = {v: k for k, v in (B.get("edge_arcs") or {}).get(p, {}).items()}
-    namesq = {v: k for k, v in (B.get("edge_arcs") or {}).get(q, {}).items()}
+    got = [names.get(a) for a in arcs]
+    if None in got:
+        return None
+    base = {re.sub(r"\.\d+$", "", g) if len(got) > 1 else g for g in got}
+    return base.pop() if len(base) == 1 else None
+
+
+def crossing(B: dict, p: str, q: str, line: tuple) -> tuple | None:
+    """([p's edge, q's edge], mm along p's edge from its start where the level line (q0, u) on p crosses their seam);
+    None when they share no seam of one declared edge a side, or the line misses it."""
+    from .draft_girths import _cross, _edge, _seam_pairs
     for pa, ea, pb, eb in _seam_pairs(B):
-        if pa == p and pb == q and len(ea) == len(eb) == 1 and ea[0] in names and eb[0] in namesq:
-            E = np.asarray(B["pieces"][p]["P"], float)[pattern.arc_indices(B["pieces"][p], ea[0])]
-            hit = _cross(E, np.asarray(line[0], float), np.asarray(line[1], float), closed=False)
-            if not hit:
-                return ""
-            _, i, t = hit[0]
-            L = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))])
-            at = L[i] + t * (L[i + 1] - L[i])
-            return (f'{{"seam": ["{p}:{names[ea[0]]}", "{q}:{namesq[eb[0]]}"], "at": [[{1000 * at:.0f}, '
-                    f'{mm:.0f}]]}}')
-    return ""
+        if pa != p or pb != q:
+            continue
+        na, nb = _edge_name(B, p, ea), _edge_name(B, q, eb)
+        if not (na and nb):
+            continue
+        E = _edge(B["pieces"], p, ea)
+        hit = _cross(E, np.asarray(line[0], float), np.asarray(line[1], float), closed=False)
+        if not hit:
+            return None
+        _, i, t = hit[0]
+        L = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))])
+        return [f"{p}:{na}", f"{q}:{nb}"], 1000 * (L[i] + t * (L[i + 1] - L[i]))
+    return None
+
+
+def entry(seam: list, at: dict) -> str:
+    """A `moves` entry as the agent declares it: at {mm along: mm toward the second piece}."""
+    pts = ", ".join(f"[{k:.0f}, {v:.0f}]" for k, v in sorted(at.items()))
+    return f'{{"seam": ["{seam[0]}", "{seam[1]}"], "at": [{pts}]}}'
