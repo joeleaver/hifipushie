@@ -1,7 +1,7 @@
 # STATE: the character export as stages (asset_export._export) -- 2026-11-14
 
 Joe (2026-11-14, to "restructure the 930-line character export function into stages?"): "Yes you should".
-Goal: `_export` readable and under the 500-line rule, with not one statement changed. Ledger C465.
+Goal: `_export` readable and under the 500-line rule, with not one statement changed. Ledger C468.
 
 ## Current best
 - `asset_export._export` keeps its signature and docstring and is: the context (`Export`, made from its arguments),
@@ -23,14 +23,16 @@ Goal: `_export` readable and under the 500-line rule, with not one statement cha
 - Behaviour: /mnt/data/hifipushie/deadcode/proof_export.py runs five exports per tree into one fixed out dir:
   fixtures (prefabs, two atlases), troll (creature, rig, LODs), golfer (base body, hair locks, rig), gnm_talk (GNM
   head, face shapes, hero, LODs), cf_shirt (the dressed test character). Old tree = main at the branch point; files
-  compared one by one. RESULT: see the ledger row (filled in when the run ends).
+  compared one by one. RESULT (2026-11-14, 124 files): everything equal except the body's TANGENT array in the last bit
+  (max 1.8e-7) and, from it, 1-4 pixel values by 1 in a normal map. The OLD code against itself differs the same way
+  (Blender's tangents are not bit-reproducible): glb_diff.py names the arrays. golfer fails the same on both.
 - Tests that read the export's source text read every export module with `ex.` read away (test_codified,
   test_garment_asset, test_skin).
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
 stage_function.py (the staging; its docstring is the rule for what crosses a stage), plan_stage_export.py (stages by
 anchor text, so it still holds when lines move: re-run it if main changes `_export` before landing),
-destage_check.py, proof_export.py, plan_asset_export.py (the module split).
+destage_check.py, proof_export.py, compare_export.py, glb_diff.py, plan_asset_export.py (the module split).
 
 ## Decisions in force
 - A variable is the context's only if a stage reads it before certainly setting it (or it is an argument, or a def

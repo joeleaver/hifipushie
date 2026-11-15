@@ -566,7 +566,7 @@ def test_export_bakes_skin_detail_into_the_parts_maps():
     from pathlib import Path
     from hifipushie import asset, moved, shading, store
     assert asset.BAKE_SKIN_DETAIL is True
-    # (_export: asset.py was split, a constant is read as asset.NAME; its stages carry `ctx` as ex.ctx, C465)
+    # (_export: asset.py was split, a constant is read as asset.NAME; its stages carry `ctx` as ex.ctx, C468)
     src = re.sub(r"\bex\.", "", "".join((Path(asset.__file__).parent / f).read_text() for f in moved.files("asset")
                                         if f.startswith("asset_export")))
     assert 'ctx["bake_detail"] = asset.BAKE_SKIN_DETAIL or' in src  # the bake job's "detail" flag (blender_scene: hp_detail)

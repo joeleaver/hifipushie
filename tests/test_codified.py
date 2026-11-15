@@ -220,7 +220,7 @@ def test_claude_md_under_8_kb():
 
 def _export_source() -> str:
     """The export's code as one text: asset_export.py and the modules its stages live in, `ex.name` read as `name`
-    (the stages carry the function's variables on one context, C465)."""
+    (the stages carry the function's variables on one context, C468)."""
     import re
     from hifipushie import moved
     return re.sub(r"\bex\.", "", "".join((ROOT / "src/hifipushie" / f).read_text() for f in moved.files("asset")
