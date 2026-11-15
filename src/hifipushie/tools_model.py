@@ -43,6 +43,9 @@ spine plane's normal); "root" / "tip": end rounding m): ONE seamless thick sheet
 twisting: a floppy ear folded through 100 degrees, a leaf, flap, cape, tongue (blades hinged or chained show seams
 and knuckles). Refused when the spine bends tighter than the sheet is thick. fit moves spine points ("pos") and
 station widths ("size").
+Turning a blob (a blade ear, a flat ellipsoid, a snout): "aim": {"point": where its LENGTH goes, "face": where its
+FLAT side looks}, each in words ("up out", "forward down") or [x, y, z], instead of working out "rot" angles; the
+mirrored twin follows. A blade's length is root to tip and its flat side is where its hollow opens.
 Hard-surface pieces (blobs): "shape": "box" | "cylinder" (size [rx, ry, half-height], along its local
 z; "rot" to turn it) with "round": edge radius; any bone or blob may be "hollow": t (only a wall t thick inside its
 surface: pots, cups, pipes, a boat hull). "ends": "flat" on a bone cuts it square at its joints (sawn logs, beams, dowels; {"flat": r} rounds

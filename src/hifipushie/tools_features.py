@@ -204,3 +204,36 @@ def build_forms(name: str, how: dict, view: str | None = None, save: str | None 
     if view is None:
         return "\n".join(lines)
     return [_out(featuresee.draw(name, rep, view), save), "\n".join(lines)]
+
+
+@mcp.tool(structured_output=False)
+def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | None = None,
+                on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None):
+    """Compare the model with its reference pictures, view by view, and see what to change: the model beside each
+    flat reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
+    "painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
+    outline over it (the painting) | the model, its parts tinted, with the reference's outline and inside lines in
+    red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists those
+    places biggest first, with the mass each is on, and the pieces that touch nothing. Seconds, no render: use it
+    after every change. LOOK at the pictures: the painting's view is where a figure reads as itself, and where a
+    mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
+    differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures
+    that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
+    its reason and left out of the list and the overlap. ignore: masses to leave out. save: a folder for the
+    pictures. Details: guide(topic="look_beside")."""
+    from pathlib import Path
+
+    from . import beside
+    from .tool_common import _png
+    if on_purpose:
+        beside.set_on_purpose(name, on_purpose)
+    res = beside.compare(name, views, ignore, resolution)
+    out = []
+    for v, r in res["views"].items():
+        if save:
+            d = Path(save).expanduser()
+            d.mkdir(parents=True, exist_ok=True)
+            r["picture"].save(d / f"beside_{v}.png")
+        out.append(_png(r["picture"]))
+    return [*out, beside.text(name, res)]
+

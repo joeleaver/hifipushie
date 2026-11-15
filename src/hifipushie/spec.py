@@ -152,6 +152,8 @@ def expand_mirror(spec: dict) -> dict:
             nb["offset"] = _mirror_vec(bl["offset"])
         if "rot" in bl:
             nb["rot"] = _mirror_rot(bl["rot"])
+        if isinstance(bl.get("aim"), dict):
+            nb["aim"] = _mirror_aim(bl["aim"])
         for key in ("pts", "nrm", "path", "N", "U", "spine"):  # sweeps (strokes, sweep blobs), sheets
             if key in bl:
                 nb[key] = [_mirror_vec(v) for v in bl[key]]
@@ -205,10 +207,11 @@ class Prim:
     inert: float = 0.0  # where its own value is at least this, it leaves the blended field unchanged
     group: str | None = None  # consecutive members are joined first (by `join`), then blended in once
     join: float = 0.0
-    lip: float = 1.0  # modifiers: how much steeper than a distance field they can make the field
+    lip: float = 1.0  # modifiers and grabbed masses: how much steeper than a distance their field can be
     part: str = "body"  # which separate mesh it belongs to; parts are fields of their own, hard-unioned
     instance: str | None = None  # the prefab instance it came from (assemble); export shares their meshes
     cut_boxes: tuple = ()  # (fingerprint, lo, hi) of each targeted cut folded into it: where a moved cut changes it
+    sides: tuple | None = None  # a fuse whose fill differs by side: (centre, size, ((axis, sign, part of the fill), ...))
 
 
 BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "loft", "super", "sweep", "collar", "lids", "displace",
@@ -284,7 +287,7 @@ def _compile(spec: dict) -> list[Prim]:
     for name, bl in s["blobs"].items():
         c = resolve_point(s, bl.get("at", [0, 0, 0])) + np.array(bl.get("offset", [0, 0, 0]), float)
         size = np.array(bl.get("size", [0.05] * 3), float)
-        rot = euler_matrix(bl.get("rot", [0, 0, 0]))
+        rot = _aim(name, bl, size) if bl.get("aim") is not None else euler_matrix(bl.get("rot", [0, 0, 0]))
         k = float(bl["blend"]) if bl.get("blend") is not None else k_default
         if bl.get("shape", "ellipsoid") not in BLOB_SHAPES:  # (it fell through to an ellipsoid without a word)
             raise SpecError(f"blob {name!r}: unknown shape {bl.get('shape')!r} (have {', '.join(BLOB_SHAPES)}; "
@@ -359,16 +362,21 @@ def _compile(spec: dict) -> list[Prim]:
         p.group, p.join = el.get("group"), float(el.get("join", 0.0))
         p.part = el.get("part") or "body"
         p.instance = el.get("instance")
+    prims, els = _fuse(prims, els)
     first: dict = {}  # a group blends into the body once, by its first member's blend and join: every member carries
     for p in prims:  # them, or a chunk that culls the first member blends by another's (seams at chunk edges)
         if p.group:
             g = first.setdefault(p.group, p)
-            p.blend, p.join = g.blend, g.join
+            p.blend = g.blend
+            if not p.group.startswith("fuse:"):  # (a fused mass keeps its own fill: _fuse)
+                p.join = g.join
     prims = _csg(s, prims, els)
     if s.get("base"):  # the base mesh first: everything else unions onto it
         prims.insert(0, _base(s, k_default))
         prims[1:1] = _gnm_mouth(s, prims[0].part)
     prims = _deform(s, prims)
+    prims = _grabs(s, prims)
+    prims = _trims(s, prims)
     out = _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
     if s.get("base"):  # the upper lids' fold (base.head.fold, lidfold.py): modifiers right after the base, seated on
         # the base as it is finally built (seated on the base as first made, the lines stood 4 mm off the meshed lid)
@@ -447,6 +455,173 @@ def _deform(s: dict, prims: list[Prim]) -> list[Prim]:
     return prims
 
 
+def _fuse(prims: list[Prim], els: list[dict]) -> tuple[list[Prim], list[dict]]:
+    """Elements that share a "fuse" tag are worked into one mass (reshape.py): joined first, smooth by the tag's
+    "fill" (the largest given), then blended into the rest once, like a kit's group. A group joins neighbours in
+    the combination order, so the members are gathered at the first one's place."""
+    tags: dict = {}
+    for i, el in enumerate(els):
+        if el.get("fuse"):
+            tags.setdefault(str(el["fuse"]), []).append(i)
+    if not tags:
+        return prims, els
+    order, placed = [], set()
+    for i in range(len(prims)):
+        if i in placed:
+            continue
+        t = els[i].get("fuse")
+        mem = tags[str(t)] if t else [i]
+        if t:
+            if len(mem) < 2:
+                raise SpecError(f"fuse {t!r}: only {prims[i].name!r} has it; a fuse works two or more masses together")
+            if min(float(els[j].get("fill", 0.0)) for j in mem) < 0:
+                raise SpecError(f"fuse {t!r}: fill is how far a mass is worked into the others, in metres: 0 or more")
+            mem = sorted(mem, key=lambda j: -float(els[j].get("fill", 0.0)))  # (stable) the widest joins first
+            for j in mem:
+                p, p0 = prims[j], prims[mem[0]]
+                if p.group:
+                    raise SpecError(f"{p.name!r} is already in the group {p.group!r}: it can't be fused as well")
+                if p.op != "add" or (p.layer, p.part) != (p0.layer, p0.part):
+                    raise SpecError(f"fuse {t!r}: {p.name!r} and {p0.name!r} must both add clay, in the same layer and part")
+            for j in mem:  # each mass: how far IT is worked into the masses of the fuse before it, and on which sides
+                prims[j].group, prims[j].join = f"fuse:{t}", float(els[j].get("fill", 0.0))
+                prims[j].sides = _fuse_sides(t, els[j].get("fill_sides"), [prims[i] for i in mem])
+        order += mem
+        placed.update(mem)
+    return [prims[i] for i in order], [els[i] for i in order]
+
+
+FUSE_SIDES = {"front": (1, -1), "back": (1, 1), "left": (0, 1), "right": (0, -1), "up": (2, 1), "down": (2, -1)}
+
+
+def _fuse_sides(tag: str, sides, members: list[Prim]):
+    """A fuse's "fill_sides" {side: 0..1}: on that side of the fuse's middle only that part of the fill is worked
+    in (0 = a crease there, 1 = all of it): a head smooth into the body behind and creased under the chin."""
+    if not sides:
+        return None
+    if not isinstance(sides, dict) or any(k not in FUSE_SIDES for k in sides):
+        raise SpecError(f"fuse {tag!r}: fill_sides is {{side: part of the fill}} with sides {', '.join(FUSE_SIDES)} "
+                        "(front is where the figure faces, -y), e.g. {\"front\": 0.2}")
+    if any(not 0.0 <= float(v) <= 1.0 for v in sides.values()):
+        raise SpecError(f"fuse {tag!r}: a side takes a part of the fill, 0 (a crease on that side) to 1 (all of it)")
+    lo, hi = np.min([p.lo for p in members], 0), np.max([p.hi for p in members], 0)
+    return (tuple(float(v) for v in (lo + hi) / 2), tuple(float(max(v, 0.02)) for v in (hi - lo) / 2),
+            tuple(sorted((FUSE_SIDES[k][0], FUSE_SIDES[k][1], float(v)) for k, v in sides.items())))
+
+
+AIM_WORDS = {"up": (0, 0, 1), "down": (0, 0, -1), "forward": (0, -1, 0), "front": (0, -1, 0), "back": (0, 1, 0),
+             "backward": (0, 1, 0), "out": (1, 0, 0), "left": (1, 0, 0), "in": (-1, 0, 0), "right": (-1, 0, 0)}
+
+
+def _aim_vec(v, what: str = "aim") -> np.ndarray:
+    """A direction as words ("up out": their sum; a word twice leans more that way) or as [x, y, z]."""
+    if isinstance(v, str):
+        words = v.replace(",", " ").replace("+", " ").split()
+        bad = [w for w in words if w not in AIM_WORDS]
+        if bad or not words:
+            raise SpecError(f"{what}: {v!r} is not a direction. Use words ({', '.join(AIM_WORDS)}; \"up out\" is "
+                            "between the two; out is away from the centre line on a mirrored mass) or [x, y, z]")
+        d = np.sum([AIM_WORDS[w] for w in words], 0).astype(float)
+    else:
+        d = np.asarray(v, float)
+        if d.shape != (3,):
+            raise SpecError(f"{what}: a direction is words (\"up out\") or [x, y, z]")
+    n = np.linalg.norm(d)
+    if n < 1e-9:
+        raise SpecError(f"{what}: {v!r} adds up to no direction")
+    return d / n
+
+
+def _mirror_aim(aim: dict) -> dict:
+    return {k: _mirror_vec([float(x) for x in _aim_vec(v, f"aim.{k}")]) for k, v in aim.items() if k in ("point", "face")}
+
+
+def _aim(name: str, bl: dict, size: np.ndarray) -> np.ndarray:
+    """A blob turned by saying where it points and which way it faces, instead of by angles ("aim": {"point",
+    "face"}). point: where its LENGTH goes (a blade's root-to-tip axis; any other shape's longest axis). face:
+    where its FLAT side looks (a blade's hollow side; any other shape's thinnest axis). Either or both."""
+    aim = bl["aim"]
+    if "rot" in bl:
+        raise SpecError(f"blob {name!r}: give aim or rot, not both")
+    if not isinstance(aim, dict) or not aim or any(k not in ("point", "face") for k in aim):
+        raise SpecError(f"blob {name!r}: aim is {{\"point\": where its length goes, \"face\": where its flat side looks}}, "
+                        "each as words (\"up out\", \"forward down\") or [x, y, z]; one of the two is enough")
+    if bl.get("shape", "ellipsoid") == "blade":
+        L, F = 1, 2
+    else:
+        L, F = int(np.argmax(size)), int(np.argmin(size))
+        if L == F:
+            L, F = 2, 1
+    T = 3 - L - F
+    p = _aim_vec(aim["point"], f"blob {name!r}: aim.point") if "point" in aim else None
+    f = _aim_vec(aim["face"], f"blob {name!r}: aim.face") if "face" in aim else None
+    eye = np.eye(3)
+    if p is None:
+        p = eye[L] - (eye[L] @ f) * f
+        p = p / np.linalg.norm(p) if np.linalg.norm(p) > 1e-6 else np.cross(f, eye[T]) / np.linalg.norm(np.cross(f, eye[T]))
+    if f is None:
+        f = next(e for e in (eye[F], eye[T], eye[L]) if np.linalg.norm(e - (e @ p) * p) > 0.3)
+    f = f - (f @ p) * p
+    if np.linalg.norm(f) < 1e-6:
+        raise SpecError(f"blob {name!r}: aim.face looks along aim.point; the flat side faces across the length")
+    f = f / np.linalg.norm(f)
+    R = np.zeros((3, 3))
+    R[:, L], R[:, F] = p, f
+    R[:, T] = np.cross(p, f)
+    if np.linalg.det(R) < 0:
+        R[:, T] = -R[:, T]
+    return R
+
+
+def _grabs(s: dict, prims: list[Prim]) -> list[Prim]:
+    """grabs: clay of named masses moved as a modeller's move brush moves it (reshape.py). Each grab's masses are
+    evaluated through its warp, like a style deformation, so what is moved stays one smooth surface and blends
+    with its neighbours as before."""
+    grabs = s.get("grabs")
+    if not grabs:
+        return prims
+    from . import reshape
+    eff = reshape.effective(grabs, bool(s.get("symmetry", True)), [p.name for p in prims])
+    sets: dict = {}
+    for i, p in enumerate(prims):
+        if p.instance is None and p.op in ("add", "subtract", "intersect") and p.kind in SHAPES:
+            hit = tuple(j for j, (_, of) in enumerate(eff) if p.name in of)
+            if hit:
+                prev = p.params.get("warp") if p.kind == "csg" else None
+                sets.setdefault((id(prev[0]) if prev else 0, hit), []).append(i)
+    from .deform import GRAB_AXES
+    from .sdf import SDF
+    for op, of in eff:  # each grab's depth: the middle of its clay on its view's ray through `at`
+        mine_p = [p for p in prims if p.name in of and p.instance is None and p.op in ("add", "subtract", "intersect")
+                  and p.kind in SHAPES]
+        if not mine_p:
+            continue
+        dep, a, b = GRAB_AXES[op["view"]]
+        r = float(op["radius"])
+        ts = np.linspace(min(p.lo[dep] for p in mine_p) - r, max(p.hi[dep] for p in mine_p) + r, 257)
+        ray = np.zeros((len(ts), 3))
+        ray[:, a], ray[:, b], ray[:, dep] = op["at"][0], op["at"][1], ts
+        f = np.min([SDF[p.kind](ray, p.params) for p in mine_p], 0)
+        inside = np.nonzero(f < 0)[0]  # through the clay: its middle; a ray that only grazes it: the nearest point
+        op["depth"] = float((ts[inside[0]] + ts[inside[-1]]) / 2) if len(inside) else float(ts[int(np.argmin(f))])
+    for (_, hit), idx in sets.items():
+        prev = prims[idx[0]].params.get("warp") if prims[idx[0]].kind == "csg" else None
+        mine = [{"grab": eff[j][0]} for j in hit]
+        lip, reach = reshape.stretch(mine, [prims[i].name for i in idx])
+        ops = (list(prev[0]) if prev else []) + mine
+        for i in idx:
+            p = prims[i]
+            if p.kind != "csg":
+                p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+                p.kind = "csg"
+            # the field is not divided by the grab's stretch (deform.py says why): the mesher's band takes it
+            p.params["warp"] = (ops, prev[1] if prev else 1.0)
+            p.lip = max(float(p.lip), lip)
+            p.lo, p.hi = p.lo - reach, p.hi + reach
+            p.reach = np.asarray(p.reach, float) * lip
+    return prims
+
+
 def _cut(name: str, b: dict) -> float:
     """Flat ends for a bone ("ends": "flat" or {"flat": edge radius}): 0 = the usual round caps."""
     e = b.get("ends")
@@ -457,6 +632,23 @@ def _cut(name: str, b: dict) -> float:
     if isinstance(e, dict) and "flat" in e:
         return max(float(e["flat"]), 1e-4)
     raise SpecError(f"bone {name!r}: ends is \"round\", \"flat\" or {{\"flat\": edge radius}}")
+
+
+def _trims(s: dict, prims: list[Prim]) -> list[Prim]:
+    """spec["trims"] (reshape.py): each named mass is cut by the trim's plane, in world space, after its grabs."""
+    trims = s.get("trims")
+    if not trims:
+        return prims
+    from . import reshape
+    cut = [p for p in prims if p.instance is None and p.op == "add" and p.kind in SHAPES]
+    for point, normal, soft, of in reshape.trims_effective(trims, bool(s.get("symmetry", True)), [p.name for p in cut]):
+        for p in cut:
+            if p.name in of:
+                if p.kind != "csg":
+                    p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+                    p.kind = "csg"
+                p.params["trims"] = [*p.params.get("trims", []), (point, normal, float(soft))]
+    return prims
 
 
 def _csg(s: dict, prims: list[Prim], els: list[dict]) -> list[Prim]:
@@ -727,16 +919,27 @@ def _set_reach(prims: list[Prim]) -> None:
     it can be skipped without changing the combined field. That needs its value to stay out of its own
     blend and out of the blend of every later primitive that overlaps it (a fillet from a later part
     rounds toward everything already combined), plus k/4 for the dip smooth union adds."""
+    widest: dict = {}  # a fused mass also rounds toward its fellows, by as much as the widest fill in its fuse
+    for q in prims:
+        if (q.group or "").startswith("fuse:"):
+            widest[q.group] = max(widest.get(q.group, 0.0), q.join)
+
+    def blend(q: Prim) -> float:
+        return max(q.blend, widest[q.group]) if q.group in widest else q.blend
+
     scale = [np.broadcast_to(np.asarray(p.reach, float), (3,)) for p in prims]
     for i in range(len(prims) - 1, -1, -1):
-        p, k = prims[i], prims[i].blend
+        p, k = prims[i], blend(prims[i])
         if p.op == "modify":  # applied exactly within its box, not blended: nothing to widen
             p.reach, p.inert = 0.0, 0.0
             continue
         for q in prims[i + 1:]:
-            if q.op != "modify" and q.blend * 1.25 > k and np.all(p.lo - scale[i] * q.blend * 1.25 <= q.hi + q.reach) \
-                    and np.all(q.lo - q.reach <= p.hi + scale[i] * q.blend * 1.25):
-                k = q.blend * 1.25
+            # (a fuse's fill rounds its own fellows only: the fused mass meets everything else by its blend. Taken
+            # for every neighbour, a folded ear beside a fused head and body reached 0.8 m and a 0.2 s build took 6 s)
+            kq = blend(q) if q.group == p.group else q.blend
+            if q.op != "modify" and kq * 1.25 > k and np.all(p.lo - scale[i] * kq * 1.25 <= q.hi + q.reach) \
+                    and np.all(q.lo - q.reach <= p.hi + scale[i] * kq * 1.25):
+                k = kq * 1.25
         p.reach, p.inert = scale[i] * k, k
 
 

@@ -46,6 +46,9 @@ KEYWORDS = {
     "set_expression": "eyebrow eyebrows frown wink",
     "reference_brief": "photos needed shots",
     "lid_read": "eyelid eyelids",
+    "flap": "ear ears floppy folded droop drooping",  # (2026-11-15: "make a folded ear" led with put_model alone)
+    "trim": "flatten flat sole bottom slice knife",  # ("flatten the bottom of a hoof": no tool named)
+    "carve": "boolean subtract hollow cavity hole socket",
 }
 
 
