@@ -55,14 +55,15 @@ FAST = {"guide", "kit_reference", "heavy_queue", "get_model", "put_model", "edit
         "look"}  # ~10 s at the default resolution: worth waiting for inline (a big close-up becomes a task to poll)
 SLOW = {  # (documentation: anything not fast or very_slow is slow, new tools included)
     "compare", "fit", "rig", "style_check", "sync", "set_terrain", "check_terrain", "export", "snapshot"}
-VERY_SLOW = {"export_asset", "look_terrain", "export_terrain"}
+VERY_SLOW = {"export_asset", "look_terrain", "export_terrain", "export_plant", "export_stand", "clutter_kit"}
 MUTATES = {"put_model", "edit_model", "revert", "set_plan", "fit", "set_reference", "set_terrain", "sync",
            "terrain_history"}  # terrain_history: only with revert_to, but it can
 BLENDER = {"look", "rig", "style_check", "sync", "export_asset", "look_terrain", "export_terrain", "snapshot"}
 NO_BLENDER = FAST | {"compare", "fit", "set_terrain", "check_terrain", "export", "terrain_history"}
 IMAGES = {"look", "set_reference", "compare", "fit", "set_plan", "check", "rig", "export_asset", "look_terrain",
-          "snapshot"}
-FILES = {"export", "export_asset", "export_terrain", "snapshot"}
+          "snapshot", "make_clutter", "look_clutter"}
+FILES = {"export", "export_asset", "export_terrain", "snapshot", "export_plant", "export_stand", "make_clutter",
+         "clutter_kit"}
 PAINTED = {"look", "style_check"}  # render the Blender scene in EEVEE by default (painted looks; style colours)
 
 # Left out of the department: they list or reach the host (every model on this machine; the person's Blender).
@@ -71,11 +72,16 @@ EXCLUDE = {"list_models": "lists every model on this machine, not the session's 
            "find_tool": "the runner offers every tool directly",
            "call_tool": "the runner offers every tool directly"}
 # Tools that take no subject are only offered when known to be harmless (an unknown one might list the host).
-SUBJECTLESS_OK = {"guide", "kit_reference", "heavy_queue"}  # heavy_queue: no paths, pids or dirs (resources.queue_view)
+SUBJECTLESS_OK = {"guide", "kit_reference", "heavy_queue",  # heavy_queue: no paths, pids or dirs (resources.queue_view)
+                  "make_clutter", "clutter_kit", "look_clutter"}  # generators: their folders are confined (POLICY)
 
 # Host-path parameters: dropped from the schema. Their values are set by the runner (outputs into the task's
 # scratch dir) or not at all. Unknown tools: any string parameter with a path-like name is dropped too.
 HOST_PATH_NAMES = {"save", "path", "out_dir", "out", "dir", "file", "filepath", "image_path"}
+# An output-directory parameter the runner drops is FILLED with the task's files dir (unless the policy says how), so
+# whatever a tool exports comes back as task files. Left unfilled, the tool wrote to its default folder in the
+# session workspace and the result had `files: []` (export_plant / export_stand, 2026-11-15).
+OUT_DIR_NAMES = {"out_dir"}
 
 IMAGE_INPUT = {"type": "string", "x-oxidegen": "version", "description": "a library version id (an image)"}
 
@@ -86,6 +92,12 @@ class Policy:
     fill: dict = field(default_factory=dict)  # parameter -> how the runner fills it: "obj", "dir"
     inputs: dict = field(default_factory=dict)  # new parameter -> (tool parameter it becomes, schema)
     restrict: dict = field(default_factory=dict)  # parameter -> regex its string value must match
+    # files the tool writes under this workspace folder during the call come back as task files (named relative to
+    # it): for tools that write into a lasting folder of the session (make_clutter's <ws>/clutter/<style>_<kind>/)
+    collect: str | None = None
+    # parameter (a name or a list of names) -> workspace folder: each name must be a safe folder name, existing there,
+    # and becomes that folder's path (look_clutter's `folders`: what make_clutter / clutter_kit made in this session)
+    under: dict = field(default_factory=dict)
 
 
 POLICY = {
@@ -98,7 +110,31 @@ POLICY = {
     "export": Policy(drop=("path",), fill={"path": "obj"}),
     "export_asset": Policy(drop=("out_dir", "save"), fill={"out_dir": "dir"}),
     "export_terrain": Policy(drop=("out_dir",), fill={"out_dir": "dir"}),
+    "export_plant": Policy(drop=("out_dir",), fill={"out_dir": "dir"}),
+    "export_stand": Policy(drop=("out_dir",), fill={"out_dir": "dir"}),
+    # clutter: folders live in <ws>/clutter (the tool's own default), so look_clutter can show them by name
+    "make_clutter": Policy(drop=("out_dir",), collect="clutter"),
+    "clutter_kit": Policy(drop=("out_dir",), fill={"out_dir": "ws:clutter"}, collect="clutter"),
+    "look_clutter": Policy(drop=("save",), fill={"save": "png"}, under={"folders": "clutter"}),
 }
+SAFE_FOLDER = r"[A-Za-z0-9][A-Za-z0-9_\-]{0,80}"
+UNDER_NOTE = ("names of folders this session made (as make_clutter / clutter_kit report them, e.g. real_boulder); "
+              "not paths")
+
+
+def fills(name: str, dropped) -> dict:
+    """How the runner fills a tool's dropped parameters: the policy's, plus the task's files dir for a dropped
+    output directory (OUT_DIR_NAMES) the policy doesn't handle (no fill, no collect)."""
+    pol = POLICY.get(name, Policy())
+    f = dict(pol.fill)
+    if pol.collect is None:
+        for p in dropped:
+            if p in OUT_DIR_NAMES and p not in f:
+                f[p] = "dir"
+    return f
+
+
+FILLS: dict[str, dict] = {}  # tool -> fills(), recorded by capability() (the runner fills only what the tool takes)
 
 
 def subject_kinds(tool: str, takes_name: bool) -> list[str]:
@@ -138,8 +174,9 @@ def capability(tool) -> tuple[dict | None, str]:
         return None, "takes no subject and isn't known to be harmless"
     pol = POLICY.get(name, Policy())
     drop = set(pol.drop) | {p for p, s in props.items() if p != "name" and _host_path_param(p, s)}
+    fill = fills(name, drop & set(props))
     for p in sorted(drop):
-        if p in required and p not in pol.fill and p not in {v[0] for v in pol.inputs.values()}:
+        if p in required and p not in fill and p not in {v[0] for v in pol.inputs.values()}:
             return None, f"needs a host path ({p}) the runner doesn't know how to fill"
     for p in drop | {"name"}:
         props.pop(p, None)
@@ -150,6 +187,13 @@ def capability(tool) -> tuple[dict | None, str]:
     for p, rx in pol.restrict.items():
         if p in props:
             props[p]["pattern"] = f"^{rx}$"
+    for p in pol.under:
+        if p in props:
+            sch = props[p]
+            target = sch.get("items") if sch.get("type") == "array" and isinstance(sch.get("items"), dict) else sch
+            target["pattern"] = f"^{SAFE_FOLDER}$"
+            sch["description"] = UNDER_NOTE
+    FILLS[name] = fill
     schema["required"] = required
     if not required:
         schema.pop("required")
@@ -213,8 +257,12 @@ def instructions() -> str:
     from .server import INSTRUCTIONS
     return (INSTRUCTIONS + "\nAs the department's sculpt artist: a session works on ONE subject (a model or a terrain), so "
             "tools take no `name`. Every tool is offered directly here (no find_tool / call_tool). Files never come as host paths: set_reference takes `image`, a library version id; "
-            "exports come back as task files (glb, fbx, obj, maps, json, and the spec). `snapshot` returns the spec "
-            "and a quick look, to publish a working state.")
+            "exports come back as task files (glb, fbx, obj, maps, json, and the spec): export_asset, export_terrain, "
+            "export_plant and export_stand (name the plant or stand as the session's model; its plant.json / "
+            "stand.json comes back as role plant_spec / stand_spec), make_clutter and clutter_kit (their folders, "
+            "e.g. real_boulder/…; look_clutter takes those folder names, made in the same session). `snapshot` "
+            "returns the spec and a quick look, to publish a working state. A session's workspace is gone when it "
+            "closes: publish what you want to keep.")
 
 
 # ---------------------------------------------------------------------------------------------- config
@@ -686,6 +734,20 @@ class Runner:
         for p, rx in pol.restrict.items():
             if p in args and not (isinstance(args[p], str) and re.fullmatch(rx, args[p])):
                 return _error(f"{tool}: {p} {args[p]!r} isn't allowed here (a name, not a path)")
+        for p, sub in pol.under.items():  # names of the session's own folders -> their paths
+            if p not in args:
+                continue
+            names = args[p] if isinstance(args[p], list) else [args[p]]
+            paths = []
+            for n in names:
+                if not (isinstance(n, str) and re.fullmatch(SAFE_FOLDER, n)):
+                    return _error(f"{tool}: {p} {n!r} isn't allowed here (a folder name, not a path)")
+                d = s.ws / sub / n
+                if not d.is_dir():
+                    have = sorted(q.name for q in (s.ws / sub).glob("*") if q.is_dir()) if (s.ws / sub).is_dir() else []
+                    return _error(f"{tool}: no folder {n!r} in this session (it has: {', '.join(have) or 'none'})")
+                paths.append(str(d))
+            args[p] = paths if isinstance(args[p], list) else paths[0]
         out = s.ws / "_artist" / "out" / _safe(task["task_id"])
         shutil.rmtree(out, ignore_errors=True)
         out.mkdir(parents=True)
@@ -693,19 +755,33 @@ class Runner:
             args.pop(new, None)
             args[param] = str(self._fetch_input(task, new))
         files_dir = out / "files"
-        for param, how in pol.fill.items():
-            files_dir.mkdir(exist_ok=True)
-            args[param] = str(files_dir / f"{s.name}.obj") if how == "obj" else str(files_dir)
+        fill = FILLS.get(tool, pol.fill)
+        for param, how in fill.items():
+            if how == "obj":
+                files_dir.mkdir(exist_ok=True)
+                args[param] = str(files_dir / f"{s.name}.obj")
+            elif how == "png":  # a picture the tool also returns inline: scratch, not a task file
+                args[param] = str(out / f"{_safe(param)}.png")
+            elif how.startswith("ws:"):
+                (s.ws / how[3:]).mkdir(parents=True, exist_ok=True)
+                args[param] = str(s.ws / how[3:])
+            else:
+                files_dir.mkdir(exist_ok=True)
+                args[param] = str(files_dir)
         if tool not in SUBJECTLESS_OK:  # every other offered tool takes the subject's name (capability())
             args["name"] = s.name
+        before = _stamps(s.ws / pol.collect) if pol.collect else {}
         rep = self._call(task, {"op": "call", "tool": tool, "args": args, "out": str(out / "content")})
         if not rep.get("ok"):
             return _error(rep.get("error") or "the tool failed")
         content, questions = self._content(rep["content"])
         files = []
-        if pol.fill:
+        if files_dir.is_dir():
             files = self._files(files_dir)
-            files.append(self._spec_file())
+        if pol.collect:
+            files += self._files(s.ws / pol.collect, unchanged=before)
+        if files_dir.is_dir() or (pol.collect and files):
+            files += self._spec_files()
         res = {"status": "ok", "content": content, "files": files}
         if questions is not None:
             res.update(status="needs_input", questions=questions)
@@ -840,10 +916,12 @@ class Runner:
                     questions = q
         return out, questions
 
-    def _files(self, d: Path) -> list[dict]:
+    def _files(self, d: Path, unchanged: dict | None = None) -> list[dict]:
+        """Every file under d as a task file (blobs uploaded), but those still as they were in `unchanged`."""
         files = []
-        for p in sorted(d.rglob("*")):
-            if not p.is_file():
+        now = _stamps(d)
+        for p in sorted(now):
+            if unchanged is not None and unchanged.get(p) == now[p]:
                 continue
             mime = _mime(p)
             files.append({"role": _role(p, self.session.name), "filename": str(p.relative_to(d)),
@@ -860,6 +938,20 @@ class Runner:
             raise ValueError(f"{self.session.name} has no spec yet")
         return {"role": "spec", "filename": "spec.json", "blob": self.put_blob(p.read_bytes(), "application/json"),
                 "mime": "application/json"}
+
+    def _spec_files(self) -> list[dict]:
+        """What an export's files carry of their source: the subject's spec (role "spec": what the next session
+        hydrates from) when it has one, and a plant's / stand's own definition of that name (role "plant_spec" /
+        "stand_spec": kept beside its export; not a model spec, so never hydrated as one). An export of a plant or
+        a stand has no model spec, and asking for one failed the whole export."""
+        s = self.session
+        out = [self._spec_file()] if self._spec_path().exists() else []
+        for role, p in (("plant_spec", s.ws / "plants" / s.name / "plant.json"),
+                        ("stand_spec", s.ws / "stands" / s.name / "stand.json")):
+            if s.kind == "model" and p.is_file():
+                out.append({"role": role, "filename": f"{role}.json",
+                            "blob": self.put_blob(p.read_bytes(), "application/json"), "mime": "application/json"})
+        return out
 
     def _snapshot(self, task: dict, look: bool) -> dict:
         s = self.session
@@ -886,6 +978,13 @@ class Runner:
                 return {"status": "ok", "content": content, "files": [spec_file] + files}
             content.append({"type": "text", "text": f"(no look: {rep.get('error')})"})
         return {"status": "ok", "content": content, "files": [spec_file]}
+
+
+def _stamps(d: Path) -> dict:
+    """{file: (mtime_ns, size)} under d: what a call wrote there is what differs afterwards."""
+    if not d.is_dir():
+        return {}
+    return {p: (st.st_mtime_ns, st.st_size) for p in d.rglob("*") if p.is_file() for st in [p.stat()]}
 
 
 def _error(message: str, retryable: bool = False) -> dict:
