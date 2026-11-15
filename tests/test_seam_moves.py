@@ -37,3 +37,62 @@ def test_a_side_body_taking_the_underarm_reads_the_two_piece_bodys_depth():
     r2, r3 = ds.cap_rows(two, {}, {}), ds.cap_rows(three, {}, {})
     assert "armhole depth 200 mm" in r2["value"] and "armhole depth 200 mm" in r3["value"], (r2["value"], r3["value"])
     assert r3["status"] == r2["status"] == "PASS"  # (read per piece, the three-piece body read the front's 140 mm)
+
+
+def _tube():
+    """Two panels a side of a tube: front.L (0.30 wide) and back.L (0.30), each in its own frame, sewn at the side
+    (a curved seam, its top on a slanted armhole) and at a centre seam; a chest level at y 0.30."""
+    from hifipushie import pattern
+    up = np.linspace(0, 1, 13)[1:-1]
+    side = [(0.30 + 0.015 * np.sin(np.pi * t), 0.45 * t) for t in up]  # (bulging out at the waist)
+    arm = [(0.30 - 0.08 * t, 0.45 + 0.11 * t) for t in np.linspace(0, 1, 15)[1:-1]]  # (dense, as a drafted curve)
+    F = [(0.0, 0.0), (0.30, 0.0)] + side + [(0.30, 0.45)] + arm + [(0.22, 0.56), (0.0, 0.60)]
+    Bk = [(-x, y) for x, y in F]  # (the back: the front mirrored, its own frame)
+    nF = {"cfHem": 0, "sideHem": 1, "armpit": 13, "shoulder": 27, "cfTop": 28}
+    front = {"name": "front.L", "P": np.asarray(F, float), "names": dict(nF), "wrap": {"to": "torso"}}
+    back = {"name": "back.L", "P": np.asarray(Bk, float), "names": dict(nF), "wrap": {"to": "torso"}}
+    arcs = {"side": "sideHem>armpit", "centre": "cfHem>cfTop", "arm": "armpit>shoulder"}
+    B = {"pieces": {"front.L": front, "back.L": back},
+         "seams": [["front.L:sideHem>armpit", "back.L:sideHem>armpit"], ["front.L:cfHem>cfTop", "back.L:cfHem>cfTop"]],
+         "edge_arcs": {"front.L": dict(arcs), "back.L": dict(arcs)}}
+    ix = lambda e: pattern.arc_indices(B["pieces"][e.split(":")[0]], arcs[e.split(":", 1)[1]])
+    return B, ix
+
+
+def _panels(B, monkeypatch, front_share):
+    from hifipushie import draft_girths as dg, draft_panels, tape_geom
+    line = (np.array([0.0, 0.30]), np.array([1.0, 0.0]))
+    ring = set(B["pieces"])
+    monkeypatch.setattr(tape_geom, "tapes", lambda s3: {"chest": {"kind": "loop"}})
+    monkeypatch.setattr(draft_panels, "_widths", lambda B_, d, T, g: [
+        (ring, {p: dg.width(np.asarray(B_["pieces"][p]["P"]), *line)[0] for p in ring}, {}, {p: line for p in ring})])
+    plan = {"panels": [{"girth": "chest", "shares": {"front": {"source": "convention", "share": front_share},
+                                                     "back": {"source": "convention", "share": 1 - front_share}}}]}
+    return draft_panels.rows(B, plan, {}, {})[0]
+
+
+def test_a_seam_moved_20mm_at_the_chest_still_sews_and_the_panels_row_passes(monkeypatch):
+    import json
+    from hifipushie import draft_moves, pattern
+    B, ix = _tube()
+    seams = [{"a": "front.L:side", "b": "back.L:side"}, {"a": "front.L:centre", "b": "back.L:centre"}]
+    L = lambda e: pattern.length(np.asarray(B["pieces"][e.split(":")[0]]["P"])[ix(e)])
+    arm0 = L("front.L:arm") + L("back.L:arm")
+    r = _panels(B, monkeypatch, 0.32 / 0.60)  # (front 300 mm where the plan wants 320: 20 mm a piece too narrow)
+    assert r["status"] == "FAIL" and '"seam": ["front.L:side", "back.L:side"]' in r["fix"], r["fix"]
+    mv = json.loads(r["fix"].split("moves [", 1)[1].split("]. Form", 1)[0])
+    assert 15 < mv["at"][0][1] < 25 and abs(mv["at"][0][0] - 300) < 15, mv  # (the chest crosses ~300 mm up)
+    rec = draft_moves.apply(B["pieces"], ix, seams, [{"seam": mv["seam"], "at": mv["at"]}])
+    assert abs(L("front.L:side") - L("back.L:side")) < 1e-4, rec  # (the seam still sews: one length both sides)
+    assert abs(L("front.L:arm") + L("back.L:arm") - arm0) < 0.02 * arm0  # (the armhole: what one loses the other
+    # gains, but for the corner the respaced points cut: within the cap ease tolerance)
+    r = _panels(B, monkeypatch, 0.32 / 0.60)
+    assert r["status"] == "PASS", r
+
+
+def test_a_move_names_one_declared_seam():
+    import pytest
+    from hifipushie import draft_moves
+    B, ix = _tube()
+    with pytest.raises(draft_moves.Refused, match="aren't one declared seam"):
+        draft_moves.apply(B["pieces"], ix, [], [{"seam": ["front.L:side", "back.L:side"], "at": [[0, 10]]}])

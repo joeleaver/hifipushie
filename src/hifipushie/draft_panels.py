@@ -27,7 +27,8 @@ def base(p: str) -> str:
 
 
 def _widths(B: dict, decl: dict, T: dict, g: str) -> list:
-    """[(ring, {piece: width m}, {base: lap m off})] of girth g on the flat, placed as the girths row places it."""
+    """[(ring, {piece: width m}, {base: lap m off}, {piece: level line (q, u)})] of girth g on the flat, placed as the
+    girths row places it."""
     from . import draft_girths as dg, draft_tapes, draft_vents
     loop = np.asarray(T[g]["loop"], float)
     lines, _, _ = dg.place(B, loop, T, decl)
@@ -47,7 +48,7 @@ def _widths(B: dict, decl: dict, T: dict, g: str) -> list:
         vs = [v for v in decl.get("vents") or [] if isinstance(v, dict) and str(v.get("under", "")).split(":")[0] in ring]
         for v in vs:
             off[base(v["under"].split(":")[0])] = off.get(base(v["under"].split(":")[0]), 0.0) + vl / len(vs)
-        out.append((ring, w, off))
+        out.append((ring, w, off, lines))
     return out
 
 
@@ -62,7 +63,7 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
     named = sorted({n for p in B["pieces"] for n in draft_tapes.names_of(decl, p) if (T.get(n) or {}).get("kind") == "loop"})
     if not plan:
         for g in named:
-            for ring, w, _ in _widths(B, decl, T, g):
+            for ring, w, _, _ in _widths(B, decl, T, g):
                 bs = {base(p) for p in ring}
                 if len(bs) >= 3:
                     return [dict(rid, status="FAIL", back_to="2", value=f"{g}: {len(bs)} pieces round it ("
@@ -77,13 +78,13 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
         return [dict(rid, status="FAIL", back_to="2", value=f"step 2's panels at {', '.join(stale)} have no sources",
                      why="each share is read off the reference or filled from the convention (panel_shares.py, F4)",
                      fix=f"back to step 2: garment_plan style with {_form()}")]
-    vals, why = [], []
+    vals, why, moves = [], [], []
     for e in plan:
         g, sh = e["girth"], {base(k): float(v["share"]) for k, v in e["shares"].items()}
         if (T.get(g) or {}).get("kind") != "loop":
             why.append(f"{g}: step 3 has no girth {g!r} (back to step 3: body_tape)")
             continue
-        for ring, w, off in _widths(B, decl, T, g):
+        for ring, w, off, lines in _widths(B, decl, T, g):
             bw = {}
             for p, v in w.items():
                 bw.setdefault(base(p), []).append(p)
@@ -109,9 +110,34 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
                                + (f", {'to' if d > 0 else 'from'} " + ", ".join(
                                    f"{n} ({1000 * abs(diff[n]):.0f} mm a piece too {'narrow' if d > 0 else 'wide'})"
                                    for n in give) if give else ""))
+                    moves += [h for h in _hints(B, bw, b, give, diff, lines, d) if h not in moves]
     return [dict(rid, status="FAIL" if why else "PASS", value="; ".join(vals) or "no stated girth placed",
-                 why="; ".join(why), fix="move the seams between the named pieces by the named mm (the design's seam "
-                 "points at that level; back to step 4); step 2's shares if the reference says otherwise" if why else "")]
+                 why="; ".join(why), fix=_fix(moves) if why else "")]
+
+
+def _hints(B: dict, bw: dict, b: str, give: list, diff: dict, lines: dict, d: float) -> list:
+    """The `moves` entries (draft_moves.py) that shift b's seams with the neighbours in give: the narrow piece first."""
+    from . import draft_moves
+    out = []
+    for n in give:
+        mm = min(abs(d), 1000 * abs(diff[n]))
+        for p in bw[b]:
+            for q in [q for q in _neighbours(B, p, {x for xs in bw.values() for x in xs}) if base(q) == n]:
+                a, z = (q, p) if d > 0 else (p, q)  # (the narrow one grows: positive mm)
+                h = draft_moves.hint(B, a, z, lines[a], mm) if a in lines else ""
+                if h and h not in out:
+                    out.append(h)
+    return out
+
+
+def _fix(moves: list) -> str:
+    from . import draft_moves
+    if not moves:
+        return ("move the seams between the named pieces by the named mm (the design's seam points at that level; back "
+                "to step 4); step 2's shares if the reference says otherwise")
+    return ("declare (the converter re-cuts both pieces, the seam still sews; one entry a seam, its levels in one "
+            f"'at' list): moves [{', '.join(moves)}]. Form: {draft_moves.FORM}. Step 2's shares if the reference says "
+            "otherwise")
 
 
 def _form() -> str:

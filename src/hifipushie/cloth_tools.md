@@ -146,7 +146,11 @@ design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs s
   point ON the outline; a point inside the piece isn't a mark: C376) (an edge: a declared edge name, or "pointA>pointB" /
   "a>via>b" along the piece's outline); `vents` [{"name", "over": "piece:edge", "under": "piece:edge"}]: a vent's two
   sides (cut WITH their extensions), each edge from the hem up to the vent top where the seam starts; open below it, the
-  seam sewn only above; the girths row counts the overlap once (draft_vents.py); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
+  seam sewn only above; the girths row counts the overlap once (draft_vents.py); `moves` [{"seam": ["A:edge",
+  "B:edge"], "at": [[mm along A's edge from its start, mm toward B], ...]}]: a seam LINE moved between the two pieces it
+  joins (a side body too narrow for step 2's shares): the converter re-cuts both, the seam stays one length, the edge
+  beyond each end (armhole, hem) passes its strip across; never re-cut pieces by hand in design.mjs; the panels row's
+  FAIL writes the entry (draft_moves.py); `omit` {piece: why} (a built step-1 piece you don't cut); `darts` [{"piece",
   "legs": [edge, edge]}]: a dart OPEN on the outline (the seam path in to its tip and out), each leg declared
   "outline point>tip", sewn to each other; a dart drawn INSIDE the piece (a fish dart, a dart ending in a pocket
   mouth) is declared as drawn, never cut open by hand: {"piece", "inside": <its closed path of the part>, "release":

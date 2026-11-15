@@ -34,6 +34,8 @@ Declarations (JSON beside the code; names are step 1's):
   reference shows there (else row style_lengths FAILs).
   vents [{"name", "over": "piece:edge", "under": "piece:edge"}]: a vent's two sides, open below its top and lapped
   (draft_vents.py: the girths row counts the overlap once).
+  moves [{"seam": [A edge, B edge], "at": [[mm along A, mm toward B], ...]}] (F5): a seam line moved between the two
+  pieces it joins; the converter re-cuts both so the seam still sews (draft_moves.py).
   marks {detail: mark | [marks]}: WHERE each step-1 detail sits on the pattern, decided here once (garment_details.py
   docstring: at / rows / points / follows / path / lines; stiffens: a trim that stiffens its edge); a closure's
   buttons are its own marks. A step-1 detail built full / simplified with no mark is refused (cloth-made ones: pieces).
@@ -64,7 +66,7 @@ MARK_FORM = ("a mark = {piece, mirror?: true, and one of: at: [{point, dx, dy} |
              "docstring a blind agent can't read)")
 TIMEOUT = 60  # s
 DECL_KEYS = {"pieces", "edges", "seams", "stiff", "folds", "closures", "omit", "notes", "marks", "darts", "departs", "tapes",
-             "vents"}
+             "vents", "moves"}
 GRAIN_WORDS = {"lengthwise": 90.0, "straight": 90.0, "crosswise": 0.0, "bias": 45.0}  # (s4-26: "lengthwise" refused)
 def _roles() -> list:
     from .garment_design import kb
