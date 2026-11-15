@@ -102,23 +102,40 @@ def missing(design: str, measurements: dict, d: Path | None = None) -> list:
     return list(inspect(design, measurements, None, draft=False, d=d).get("missing") or [])
 
 
-def outline(path: dict, points: dict) -> list:
-    """A path's ops as point names in order ('move' / 'line' / 'curve' ends; 'close' back to the start)."""
+def outline(path: dict, points: dict, arc: bool = False) -> list:
+    """A path's ops as point names in order ('move' / 'line' / 'curve' ends; 'close' back to the start). arc: each name
+    followed by " @<mm>", its distance along the path from the start (curves measured as drawn): a run of an edge is the
+    difference of two positions, so an agent sums a seam's runs BEFORE declaring it (t s4-25: a sleeve cap chain counted
+    the hind seam's top, 725 mm against a 481 mm armhole)."""
+    import numpy as np
     at = {}
     for k, xy in points.items():
         if xy is not None:
             at.setdefault((round(xy[0], 1), round(xy[1], 1)), []).append(k)
     for v in at.values():  # (FreeSewing's own macro points last)
         v.sort(key=lambda k: k.startswith("__"))
-    names = []
+    names, cur, start, s = [], None, None, 0.0
     for o in path.get("ops") or []:
         if o["type"] == "close":
-            names.append("(close)")
-        elif o.get("to") is None:
+            if arc and cur is not None and start is not None:
+                s += float(np.linalg.norm(np.subtract(start, cur)))
+            names.append(f"(close) @{s:.0f}" if arc else "(close)")
+            cur = start
+            continue
+        if o.get("to") is None:
             names.append("(no value)")
-        else:
-            ks = at.get((round(o["to"][0], 1), round(o["to"][1], 1)))
-            names.append("=".join([k for k in ks if not k.startswith("__")][:3] or ks[:1]) if ks else f"({o['to'][0]:.0f},{o['to'][1]:.0f})")
+            continue
+        if cur is not None and o["type"] == "line":
+            s += float(np.linalg.norm(np.subtract(o["to"], cur)))
+        elif cur is not None and o["type"] == "curve":
+            q = _bez(cur, o["cp1"], o["cp2"], o["to"], 33)
+            s += float(np.linalg.norm(np.diff(q, axis=0), axis=1).sum())
+        if o["type"] == "move":
+            start = o["to"]
+        cur = o["to"]
+        ks = at.get((round(o["to"][0], 1), round(o["to"][1], 1)))
+        nm = "=".join([k for k in ks if not k.startswith("__")][:3] or ks[:1]) if ks else f"({o['to'][0]:.0f},{o['to'][1]:.0f})"
+        names.append(f"{nm} @{s:.0f}" if arc else nm)
     return names
 
 
@@ -168,7 +185,7 @@ def text(name: str, res: dict, part: str = "", filled: list | None = None) -> st
                 seam = dp["paths"].get("seam")
                 head += f"; {len(dp['points'])} points, paths {', '.join(dp['paths']) or '-'}"
                 if seam:
-                    head += f"\n      seam runs: {' > '.join(outline(seam, dp['points']))}"
+                    head += f"\n      seam runs (@ mm along it): {' > '.join(outline(seam, dp['points'], arc=True))}"
             L.append(head)
         L.append("options (default [min..max]; pct shown in %, but GIVE IT AS A FRACTION in draft_pattern's options: "
                  "4 % = 0.04): " + "; ".join(_opt(k, o) for k, o in c["options"].items()))
@@ -183,8 +200,10 @@ def text(name: str, res: dict, part: str = "", filled: list | None = None) -> st
     L.append("points (x right, y down, mm): " + "; ".join(f"{k} ({v[0]:.1f}, {v[1]:.1f})" for k, v in dp["points"].items()
                                                          if v is not None and not k.startswith("_")))
     for k, p in dp["paths"].items():
-        L.append(f"path {k}{' (hidden)' if p['hidden'] else ''}: {' > '.join(outline(p, dp['points']))}")
-    L.append("edges are declared along the seam path's order: \"a>b\" or \"a>via>b\" (draft_pattern declarations.edges)")
+        L.append(f"path {k}{' (hidden)' if p['hidden'] else ''}: {' > '.join(outline(p, dp['points'], arc=k == 'seam'))}")
+    L.append("edges are declared along the seam path's order: \"a>b\" or \"a>via>b\" (draft_pattern declarations.edges); "
+             "@ = mm along the seam from its start: an edge's length is the difference (sum a chain's edges against its "
+             "partner before declaring the seam)")
     return "\n".join(L)
 
 

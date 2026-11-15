@@ -20,8 +20,11 @@ nearest seam: the jacket's cut-through). So the declaration says just that, and 
 The opening: the outline point is split in two (SPLIT apart along the outline), the release runs in on one side and out
 on the other (SLIT apart), round the dart's two sides between them. The legs are `<piece>:<dart>.cut_a>...>.tip` and
 `.cut_b>...>.tip` (from the outline to ONE tip, C361's form), sewn to each other: the dart row and the seam rows read
-them as every other dart. A declared edge that ENDS at the outline point keeps its end on its own side; an edge running
-PAST it is refused (end the edges there).
+them as every other dart. A declared edge that ENDS at the outline point keeps its end on its own side. An edge running
+PAST it (the release lands partway along a side seam: t s4-25, through the pocket mouth to the side seam) is split
+there into `<edge>.1` (its start to the point) and `<edge>.2` (the point to its end), and every seam that sews the edge
+sews the two as a chain in its place (draft_own.block): cloth.mesh lays the partner's sample at the same arc length, so
+the partner is split to match; the release and the dart between the halves are closed by their own seams.
 """
 from __future__ import annotations
 
@@ -176,6 +179,7 @@ def open_inside(pc: dict, part: dict, dt: dict, edges: dict) -> dict:
     m = len(D)
     R = _dense(R0)
     R[-1] = D[X]
+    split = _split_edges(pc, edges, S)  # (an edge running past S: two edges ending there, t s4-25)
     # edges ending at S: which side of it they leave on (in the uncut outline)
     n0 = len(P)
     side = {}
@@ -183,10 +187,7 @@ def open_inside(pc: dict, part: dict, dt: dict, edges: dict) -> dict:
         if not isinstance(how, str) or S not in how.split(">"):
             continue
         ix = pattern.arc_indices(pc, how)
-        if s in ix[1:-1]:
-            raise Refused(f"{nm}: edge {ed!r} ({how}) runs past {S!r}, where dart {path!r} is cut through: end the "
-                          f"edges at {S!r} (two edges, sewn as one chain [a, b] in their seam; the joint needs no notch)")
-        nb = ix[1] if ix[0] == s else ix[-2]
+        nb =ix[1] if ix[0] == s else ix[-2]
         side[ed] = "b" if nb == (s + 1) % n0 else "a"
     t_out = P[(s + 1) % n0] - P[s - 1]
     t_out /= np.linalg.norm(t_out)
@@ -249,7 +250,34 @@ def open_inside(pc: dict, part: dict, dt: dict, edges: dict) -> dict:
     for ed, sd in side.items():
         if sd == "b":
             edges[ed] = ">".join(f"{tag}.cut_b" if q == S else q for q in edges[ed].split(">"))
-    return {"pairs": pairs, "release_mm": round(1000 * _len(R), 1)}
+    return {"pairs": pairs, "release_mm": round(1000 * _len(R), 1), "split": split}
+
+
+def _split_edges(pc: dict, edges: dict, S: str) -> dict:
+    """Every declared edge whose arc runs PAST outline point S becomes two edges ending at S, `<edge>.1` (its start to S)
+    and `<edge>.2` (S to its end), its via points kept on their side (a via added where the shorter way round would
+    turn the wrong way). `edges` is rewritten in place; returns {edge: [edge.1, edge.2]}."""
+    from . import pattern
+    s, out = int(pc["names"][S]), {}
+    for ed, how in list(edges.items()):
+        if not isinstance(how, str):
+            continue
+        ix = pattern.arc_indices(pc, how)
+        if s not in ix[1:-1]:
+            continue
+        k, qs = ix.index(s), how.split(">")
+        pos = {q: ix.index(pattern.index_of(pc, q)) for q in qs}
+        subs = []
+        for h, (lo, hi) in enumerate(((0, k), (k, len(ix) - 1)), 1):
+            sub = [qs[0] if h == 1 else S] + [q for q in qs if lo < pos[q] < hi] + [S if h == 1 else qs[-1]]
+            if pattern.arc_indices(pc, ">".join(sub)) != ix[lo:hi + 1]:
+                pc["names"][f"{ed}.{h}.m"] = ix[(lo + hi) // 2]
+                sub.insert(1, f"{ed}.{h}.m")
+            subs.append(">".join(sub))
+        del edges[ed]
+        edges[f"{ed}.1"], edges[f"{ed}.2"] = subs
+        out[ed] = [f"{ed}.1", f"{ed}.2"]
+    return out
 
 
 SLIT_MM = 3.0  # an open dart narrower than this where it meets the outline is a hand-cut slit
