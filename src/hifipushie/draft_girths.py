@@ -14,8 +14,9 @@ THE LEVEL on a piece: from the declared LENGTH tape of that piece that crosses t
 several, the one whose top is highest, as piece_start's panel start): its surface length from its top end (the end
 highest and nearest the centre line: an hps, a shoulder point, an armpit) to the plane is the drop from the piece's top
 (its highest flat point; flat y runs up the grain). A level above the lowest point of the piece's edges sewn to a piece
-of another body part (an armhole, a sleeve cap) is taken there: a tailor's chest line runs through the underarm, one
-underarm round the ring (one_underarm). A piece with no such tape gets the level over its seams at the same share of the
+of another body part (an armhole, a sleeve cap) is taken there: a tailor's chest line runs through the underarm. A girth
+taken at the underarm (any piece of the body part so lowered) is read on EVERY piece of that part at one underarm, the
+deepest, carried along the seams from the armholes (at_underarm): never at one piece's own corner, moved or not. A piece with no such tape gets the level over its seams at the same share of the
 seam's length (sewn end to end).
 THE RING: pieces linked where the level crosses both sides of a seam (a closure links its over and under pieces);
 pieces with fewer than two links are pruned (a facing or canvas lying on another is not round the body). A piece in
@@ -73,16 +74,44 @@ def _at_share(E: np.ndarray, f: float) -> np.ndarray:
     return np.array([np.interp(f * L[-1], L, E[:, k]) for k in range(2)])
 
 
-def one_underarm(B: dict, lines: dict, under: list, holes: dict) -> None:
-    """Pieces lowered to the underarm, sewn to each other by a seam running down from their armholes' ends, are read
-    at ONE underarm: the deeper of the two, measured along the seam from its top (as sewn: points that far down meet;
-    flat drops differ where the two pieces' grains meet at an angle), on both (F5b). Read per piece, each at its own
-    armhole's lowest point, s4-29's front was read at its spiked corner 19.5 mm above the side body's underarm, and a
-    seam moved toward the front raised the front's corner and its reading (8 mm), so a move that kept every level's
-    width read the chest 19 mm looser."""
+def holes(B: dict) -> dict:
+    """{piece: [(its edge sewn to a piece of another body part, {those pieces})]}: armholes, sleeve caps, necklines (a
+    cap sewn to an armhole chain too: several edges on the other side)."""
+    from .draft_shape import _sides
+    pcs, out = B["pieces"], {}
+    for pa, ea, pb, eb in _seam_pairs(B):
+        if _part(pcs[pa]) != _part(pcs[pb]):
+            out.setdefault(pa, []).append((ea, {pb}))
+    for s in B.get("seams") or []:
+        A, Bs = _sides(s[0]), _sides(s[1])
+        for X, Y in ((A, Bs), (Bs, A)):
+            for e in X:
+                p, a = e.split(":", 1)
+                oth = {y.split(":", 1)[0] for y in Y} & set(pcs)
+                if p in pcs and any(_part(pcs[q]) != _part(pcs[p]) for q in oth):
+                    out.setdefault(p, []).append((a, {q for q in oth if _part(pcs[q]) != _part(pcs[p])}))
+    return out
+
+
+def at_underarm(B: dict, lines: dict, holes: dict) -> list:
+    """A girth whose level on some piece would cut that piece's armhole is taken at the underarm: EVERY piece of that
+    body part with an armhole is read at ONE underarm, whatever its own length tape says: each starts at its armhole's
+    lowest point, then the deepest is carried, measured along each seam running down from two armholes' ends from its top (as sewn: points that far
+    down meet; flat drops differ where the two pieces' grains meet at an angle), carried round the ring. Returns the
+    pieces read at the underarm.
+    Why (F5b, F5c): read per piece, s4-29's front was read at its spiked corner 19.5 mm above the side body's
+    underarm, and a seam moved toward the front raised that corner and its reading (8 mm). F5b joined only pieces that
+    were themselves lowered, so the unmoved draft, whose side body's own level already sat below its armhole, kept the
+    front at its corner (chest +34 mm vs plan) while the moved one, whose side body happened to be lowered, read the
+    front 33 mm narrower: the row said loose or right by how it was read. Its own tape's level isn't kept either: the
+    level is a drop from the piece's top, and a move that raises the top corner raises it (s4-29's side body, 6 mm)."""
     pcs = B["pieces"]
-    lv = {p: float(lines[p][0][1]) for p in under if p in lines}
-    ends = {p: [x for a in holes.get(p, []) for x in _edge(pcs, p, a)[[0, -1]]] for p in lv}
+    arm = {p: [a for a, oth in holes.get(p, []) if oth & set(lines)] for p in lines}  # (sewn to a piece the girth
+    # reaches: an armhole to its sleeve; a neckline to a collar above every girth isn't one)
+    low = {p: min(float(_edge(pcs, p, a)[:, 1].min()) for a in A) - 1e-4 for p, A in arm.items() if A}
+    parts = {_part(pcs[p]) for p in low if float(lines[p][0][1]) > low[p]}
+    lv = {p: y for p, y in low.items() if _part(pcs[p]) in parts}
+    ends = {p: [x for a in arm[p] for x in _edge(pcs, p, a)[[0, -1]]] for p in lv}
 
     def down(E):  # (the seam from its top end down, with its arc lengths)
         E = E if E[-1, 1] >= E[0, 1] else E[::-1]
@@ -112,6 +141,7 @@ def one_underarm(B: dict, lines: dict, under: list, holes: dict) -> None:
             break
     for p, y in lv.items():
         lines[p] = (np.array([0.0, y]), lines[p][1])
+    return sorted(lv)
 
 
 def width(P: np.ndarray, q: np.ndarray, u: np.ndarray) -> tuple[float, float, float]:
@@ -180,20 +210,8 @@ def place(B: dict, loop: np.ndarray, T: dict, decl: dict) -> tuple[dict, list, l
     from . import draft_tapes, pattern
     pcs = B["pieces"]
     edge = lambda p, a: _edge(pcs, p, a)
-    holes = {}
-    for pa, ea, pb, eb in _seam_pairs(B):
-        if _part(pcs[pa]) != _part(pcs[pb]):
-            holes.setdefault(pa, []).append(ea)
-    for s in B.get("seams") or []:  # (a cap sewn to an armhole chain: several edges on the other side)
-        from .draft_shape import _sides
-        A, Bs = _sides(s[0]), _sides(s[1])
-        for X, Y in ((A, Bs), (Bs, A)):
-            for e in X:
-                p, a = e.split(":", 1)
-                if p in pcs and any(y.split(":", 1)[0] in pcs and _part(pcs[y.split(":", 1)[0]]) != _part(pcs[p])
-                                    for y in Y):
-                    holes.setdefault(p, []).append(a)
-    lines, under, own = {}, [], []
+    hl = holes(B)
+    lines, own = {}, []
     for p, pc in pcs.items():
         best = None
         for n in draft_tapes.names_of(decl, p):
@@ -213,13 +231,9 @@ def place(B: dict, loop: np.ndarray, T: dict, decl: dict) -> tuple[dict, list, l
         else:  # (a centre-line tape: from the top of the piece's edge nearest the centre line)
             x0 = P[np.argmin(np.abs(P[:, 0])), 0]
             y = float(P[np.abs(P[:, 0] - x0) < CENTRE, 1].max()) - best[1]
-        low = [float(edge(p, a)[:, 1].min()) for a in holes.get(p, [])]
-        if low and y > min(low):
-            y = min(low) - 1e-4
-            under.append(p)
         lines[p] = (np.array([0.0, y]), np.array([1.0, 0.0]))
         own.append(p)
-    one_underarm(B, lines, under, holes)
+    under = at_underarm(B, lines, hl)
     pairs = _seam_pairs(B)
     for _ in range(len(pcs)):  # carry the level over seams to pieces with no length tape of their own there
         got = {}
