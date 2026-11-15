@@ -99,7 +99,9 @@ def fit_concept_camera(name: str, image: str, mask: str | None = None, label: st
     return [_out(matched.overlay(name, cam, resolution), None),
             f"{name}: camera {label!r} az {cam['az']:+.1f} el {cam['el']:+.1f} roll {cam['roll']:+.1f} "
             f"f {cam['f_px']:.0f} px, IoU {cam['iou']:.3f}{note} | saved {matched.cam_path(name, label)} | next: "
-            f"look_matched(name, label={label!r}), then feature_tiles"]
+            f"look_beside(name) now shows the model from this angle too (view \"painting\": the picture with the model's "
+            f"outline over it, and what differs), in seconds, after every change; look_matched(name, label={label!r}) is "
+            "the slow full render, feature_tiles cuts review tiles"]
 
 
 @mcp.tool(structured_output=False)

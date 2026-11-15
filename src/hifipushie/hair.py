@@ -29,7 +29,8 @@ In Blender every lock is a curve object in the "hair" collection with the "hp_lo
 Where the code is (split by responsibility, C415; constants back here, C422): this module holds EVERY constant of
 the family (set at hair.NAME by specs, scripts and tests; the other modules read hair.NAME), HairError and the small shared
 helpers; hair_head the scalp; hair_groom, hair_seat and hair_grow the groom; hair_spec the spec and hair_lockmesh the
-lock geometry; hair_job, hair_cards_job and hair_card_fit the Blender jobs; hair_look the looks and gates;
+lock geometry; hair_job, hair_cards_job (the cards job as stages over one context; its later stages are in
+hair_cards_job_cards and hair_cards_job_finish) and hair_card_fit the Blender jobs; hair_look the looks and gates;
 hair_export the export; hair_drawn the drawn clumps; hair_reference and hair_trace a reference picture.
 Module-level imports among them only point back up this list. A function that calls into a later module imports it
 itself; a name a test or a spec may rebind (hair_head.scalp, any constant: hair.export.constants) is read as
@@ -522,5 +523,6 @@ OUTLINE_STEP = 3.0  # deg: the matched view's outline is sampled on rays from th
 
 # The modules this one was split into (C415). Their constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("hair", "hair_head", "hair_groom", "hair_seat", "hair_grow", "hair_spec", "hair_lockmesh", "hair_job",
-           "hair_cards_job", "hair_card_fit", "hair_look", "hair_export", "hair_drawn", "hair_reference", "hair_trace")
+           "hair_cards_job_cards", "hair_cards_job_finish", "hair_cards_job", "hair_card_fit", "hair_look", "hair_export",
+           "hair_drawn", "hair_reference", "hair_trace")
 __getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C427)

@@ -29,6 +29,25 @@ def smin(a, b, k):
     return np.minimum(a, b) - h * h * h * k * (1.0 / 6.0)
 
 
+def smin_var(a, b, k):
+    """smin with a blend that differs from point to point (an array like a and b)."""
+    k = np.maximum(k, 1e-9)
+    h = np.maximum(k - np.abs(a - b), 0.0) / k
+    return np.minimum(a, b) - h * h * h * k * (1.0 / 6.0)
+
+
+def sides_mul(sides, pts: np.ndarray) -> np.ndarray:
+    """How much of a mass's fill holds at each point (spec._fuse_sides): all of it on the far half of the fuse,
+    easing from the fuse's middle to the side's own part at that side's face."""
+    c, R, items = sides
+    q = (np.asarray(pts, float) - np.asarray(c, float)) / np.asarray(R, float)
+    m = np.ones(q.shape[:-1])
+    for ax, sgn, val in items:  # all of it up to the fuse's middle, then easing to the side's part at that side's
+        t = np.clip(sgn * q[..., ax], 0.0, 1.0)  # face (a change in a narrow band at the middle left a ridge)
+        m = m * (1.0 + (val - 1.0) * (t * t * (3 - 2 * t)))
+    return m
+
+
 def sd_cone(p: np.ndarray, pr: dict) -> np.ndarray:
     """Round cone along a bone, with an optionally elliptical cross-section."""
     q = (p - pr["a"]) @ pr["frame"].T  # columns: width, axis, height
@@ -334,6 +353,7 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     the instance's scale), so every instance of a prefab is the same shape. With "warp" (deform.py: the model's
     style deformation), everything is evaluated at the undeformed point and the field divided by its stretch."""
     wp = pr.get("warp")
+    p0 = p  # where the point is in the world: a trim (reshape.py) cuts there, after any bending
     if wp is not None:
         if pre is not None:  # the caller undeformed these points once for all its primitives
             p = pre
@@ -366,7 +386,11 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     for op, kind, params, k in pr["cuts"]:
         c = SDF[kind](p, params)
         d = -smin(-d, c, k) if op == "subtract" else -smin(-d, -c, k)
-    return d if wp is None else d / wp[1]
+    if wp is not None:
+        d = d / wp[1]
+    for a, n, k in pr.get("trims", ()):  # what stands on the plane's far side goes
+        d = -smin(-d, -((p0 - a) @ n), k)
+    return d
 
 
 def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
@@ -463,15 +487,18 @@ def units(prims: list[Prim]):
         i = j
 
 
-def _merge(hits: list[np.ndarray], ds: list[np.ndarray], tail: tuple, join: float):
-    """Union of a group's primitives (smooth by `join`, usually small or 0), each given on its own indices."""
+def _merge(hits: list[np.ndarray], ds: list[np.ndarray], tail: tuple, join: float, mul=None):
+    """Union of a group's primitives (smooth by `join`, usually small or 0), each given on its own indices.
+    mul(indices) -> how much of the join holds at each of those places (a fuse with sides); None = all of it."""
     if len(hits) == 1:
         return hits[0], ds[0]
     h = np.unique(np.concatenate(hits))
     d = np.full((len(h), *tail), FAR, dtype=ds[0].dtype)
-    for hit, v in zip(hits, ds):
+    for i, (hit, v) in enumerate(zip(hits, ds)):  # (a fuse: each mass by its own join and sides; else one for all)
         k = np.searchsorted(h, hit)
-        d[k] = smin(d[k], v, join)
+        ji = join[i] if isinstance(join, list) else join
+        mi = mul[i] if isinstance(mul, list) else mul
+        d[k] = smin(d[k], v, ji) if mi is None else smin_var(d[k], v, ji * mi(hit)).astype(d.dtype)
     return h, d
 
 
@@ -527,7 +554,8 @@ def fingerprint(p: Prim, cuts: bool = True) -> str:
     """Content hash of a primitive: equal fingerprints give equal field contributions. A shell's base part
     is left out (the shell part inherits its base's changed regions instead). cuts=False: without the targeted
     cuts folded into it (the same shape before cutting)."""
-    h = hashlib.sha1(repr((p.name, p.kind, p.op, p.blend, p.layer, p.group, p.join, p.part, p.lip)).encode())
+    h = hashlib.sha1(repr((p.name, p.kind, p.op, p.blend, p.layer, p.group, p.join, p.part, p.lip)
+                          + ((p.sides,) if p.sides else ())).encode())
     for k in sorted(p.params):
         v = p.params[k]
         if k in ("prims", "tree") or (k == "cuts" and not cuts):
@@ -584,8 +612,16 @@ class PartGrid:
         B = BLOCK
         b_lo = lo + voxel * B * idx
         centre = field_at(prims, b_lo + voxel * (B - 1) / 2, margin=2 * half_diag)
-        # modifiers make the field steeper than 1 (by up to lip), so the surface can be further from a centre
-        lip = max([p.lip for p in prims] + [1.0])
+        # modifiers and grabs make the field steeper than 1 (by up to lip), so the surface can be further from a
+        # centre: only in the blocks such a primitive can reach (over the whole part, one grabbed hoof made every
+        # block of a figure's band 3x wider and a 2 s build 17 s)
+        cpts = b_lo + voxel * (B - 1) / 2
+        lip = np.ones(len(idx))
+        for p in prims:
+            if p.lip > 1.0:
+                m = (0.0 if p.op == "modify" else float(np.max(p.reach))) + 2 * half_diag + 2 * voxel
+                near = np.all((cpts >= p.lo - m) & (cpts <= p.hi + m), axis=1)
+                lip[near] = np.maximum(lip[near], p.lip)
         act = np.abs(centre) <= lip * 1.5 * half_diag + voxel
         self.blocks[tuple(idx[~act].T)] = centre[~act, None, None, None]
         a_idx, a_lo = idx[act], b_lo[act]
@@ -639,15 +675,18 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             if len(hit):
                 vals[hit] = MODS[p.kind](vals[hit], a_lo[hit, None, None, None, :] + local, p.params)
             continue
-        hits, ds = [], []
+        hits, ds, joins, muls = [], [], [], []
         for p in unit:
             margin = p.reach + voxel
             hit = np.flatnonzero(np.all((a_hi >= p.lo - margin) & (a_lo <= p.hi + margin), axis=1))
             # AABBs of slanted bones are loose: also drop blocks this primitive can't reach
-            hit = hit[SDF[p.kind](a_lo[hit] + voxel * (B - 1) / 2, p.params) <= p.inert + 1.5 * half_diag]
+            # (a grabbed primitive's field is up to p.lip steeper than a distance: allow for it)
+            hit = hit[SDF[p.kind](a_lo[hit] + voxel * (B - 1) / 2, p.params) <= p.inert + p.lip * 1.5 * half_diag]
             if len(hit):
                 hits.append(hit)
                 ds.append(_sd(p, a_lo[hit, None, None, None, :] + local, und, hit).astype(np.float32))
+                joins.append(p.join)
+                muls.append((lambda hh, s=p.sides: sides_mul(s, a_lo[hh, None, None, None, :] + local)) if p.sides else None)
         if unit[-1].op == "intersect":  # outside every region primitive's reach is outside the region
             d = np.full((len(a_lo), B, B, B), FAR, np.float32)
             if hits:
@@ -657,7 +696,8 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             continue
         if not hits:
             continue
-        h, d = _merge(hits, ds, (B, B, B), unit[0].join)
+        fused = (unit[0].group or "").startswith("fuse:")
+        h, d = _merge(hits, ds, (B, B, B), joins if fused else unit[0].join, muls if fused else None)
         vals[h] = combine(vals[h], d, unit[-1])
     return vals
 
@@ -759,7 +799,7 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             if len(near):
                 out[near] = MODS[p.kind](out[near], flat[near], p.params)
             continue
-        hits, ds = [], []
+        hits, ds, joins, muls = [], [], [], []
         for p in unit:
             if clip:
                 near = np.flatnonzero(np.all((flat >= p.lo - p.reach - margin) &
@@ -769,6 +809,8 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             if len(near):
                 hits.append(near)
                 ds.append(_sd(p, flat[near], und, near))
+                joins.append(p.join)
+                muls.append((lambda hh, s=p.sides: sides_mul(s, flat[hh])) if p.sides else None)
         if unit[-1].op == "intersect":
             d = np.full(len(flat), FAR)
             if hits:
@@ -778,7 +820,8 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             continue
         if not hits:
             continue
-        h, d = _merge(hits, ds, (), unit[0].join)
+        fused = (unit[0].group or "").startswith("fuse:")
+        h, d = _merge(hits, ds, (), joins if fused else unit[0].join, muls if fused else None)
         out[h] = combine(out[h], d, unit[-1])
     return out
 

@@ -2,6 +2,25 @@
 
 Read guide(topic="") (the playbook) first: describe the reference, then work big to small.
 
+## The blockout, as a modeller does it (a figure from concept pictures)
+
+The first pass on a figure. Later passes (big forms, medium forms, fine forms, a clean mesh, a rig) start from it.
+1. Study the reference: every picture, whole and close. Decide which rules proportion (flat views at one scale:
+   `read_reference`) and which the look (a painting: `fit_concept_camera` once, so `look_beside` shows its angle).
+2. Decide the build pose and the pieces. A figure that will be rigged is blocked out neutral and symmetric, every
+   limb clear of the body; the concept's pose comes back at the end, by posing. What is a separate object in the
+   design, or its own material, is its own piece (`part`).
+3. Block in the WHOLE figure at once, in rough big shapes: only what still shows at thumbnail size. Each big mass
+   reads as itself (a head as a head, on a body) and sits where the pictures have it.
+4. Compare constantly, from the views the pictures were made from: `look_beside` after every change. Each time fix
+   the BIGGEST difference on the whole figure, and only that. An outline can match round the wrong figure: look at
+   what is inside it, and never work for the overlap. Record what you differ in on purpose, with the reason.
+5. Solve what the pictures don't show or disagree on: decide, and say what you decided.
+6. Check it reads without the pictures: a plain `look` all the way round, small. Lumps, shelves and floating
+   pieces show here.
+7. Stop when the big masses, their proportions and the silhouette are right. Features and surface are later passes.
+Your own verdict on the whole figure is worth trusting: say bluntly what is still wrong, biggest first.
+
 ## 2. Blockout pitfalls
 
 - A joint whose radius is bigger than the bones meeting there shows as a ball (elbows, knees). Taper
@@ -12,9 +31,12 @@ Read guide(topic="") (the playbook) first: describe the reference, then work big
   nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
-- Ears, leaves, fins, feathers, blades: a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
-  point, `cup` for an ear's hollow, `bend` for a curling tip), rotated so its local y runs root to tip and its
-  local z faces the way the hollow opens. A cone reads as a spike, and an ellipsoid as a lump.
+- An ear, comb or tongue that folds over or hangs: the `flap` tool (three points read off the pictures: root, the top
+  of its arch, its tip), not a blade.
+- Flat leaves that only lean (upright ears, leaves, fins, feathers, blades): a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
+  point, `cup` for an ear's hollow, `bend` for a curling tip). Turn it by saying where it goes, not by angles:
+  `"aim": {"point": "up out", "face": "forward"}` (its length rises and leans out, its hollow looks forward); the
+  twin is mirrored. A cone reads as a spike, and an ellipsoid as a lump.
 - Toes: the foot kit (`{"type": "foot", "ankle": "ankle.L", "ball": "toe.L"}`) makes the foot's body, ball, heel and
   toes. Drop a capsule "foot" bone it replaces, and any toe-groove strokes on it. Sizes follow the leg arriving
   at the ankle.

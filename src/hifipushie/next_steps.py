@@ -23,12 +23,24 @@ def after_save(name: str, spec: dict) -> str:
     model with a base, clothes, skin or hair adds nothing here.)"""
     if spec.get("base") or spec.get("cloth") or spec.get("skin") or spec.get("hair"):
         return ""
+    from . import store
+    if any((store._dir(name) / "cameras" / f"{v}.json").exists() for v in ("front", "side", "side_r", "back")):
+        from . import beside_painting
+        paint = ("" if beside_painting.has_camera(name) else " A concept painting too? fit_concept_camera(name, image) "
+                 "once, and look_beside shows the model from the painting's own angle as well.")
+        return (f'next: look_beside("{name}"): the model beside each reference view, the biggest differences first '
+                f"(seconds; after every change). Then look from three_quarter: what the flat views can't show.{paint}")
     plan = "" if spec.get("plan") else " No plan yet: set_plan (the blockout that check measures against) before detail."
     return f'next: look("{name}") from front, side and three_quarter before the next change.{plan}'
 
 
 def after_model_look(name: str, has_reference: bool) -> str:
     """look on a creature or a prop: what the look is compared with."""
+    from . import store
+    if any((store._dir(name) / "cameras" / f"{v}.json").exists() for v in ("front", "side", "side_r", "back")):
+        return (f'next: a plain look is how you check the figure reads WITHOUT the pictures: turn it all the way round and '
+                f'look at it small (lumps, shelves and pieces that float show here, not in an outline). look_beside("{name}") '
+                "puts it beside each reference view.")
     if not has_reference:
         return ("next: nothing to compare this model with yet: set_plan (your blockout) or set_reference (front / side / "
                 "top outlines); from ONE concept picture: fit_concept_camera, then look_matched. A look with nothing to "

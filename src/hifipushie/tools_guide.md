@@ -256,6 +256,54 @@ rest only in the buried piece at the join (within 1 cm of it); anywhere else dee
 depth. Without it an outline fit buries tips, which change no outline (Puddles' ears, 20-41 mm into the head).
 Trace the part where it meets the body too: that line is what stops it spreading. Judge the result by
 look_matched / feature_tiles and the blind review, not by IoU: outlines can't see form.
+### `fuse`
+
+`fuse(name, a, b, fill=None, width=None, sides=None, note='')`
+
+Work two masses into ONE flowing mass, as a modeller smooths two lumps of clay together. The hollow between `a`
+and `b` fills and the line between them goes; the rest of the model blends against the fused mass as before.
+Use it when two masses that are one form in the reference read as two in the look: a head and body that should
+be one pear and are two balls with a neck crease (a snowman), a snout that should grow out of a face. A blob put
+in the gap makes a ring (a scarf); a bigger `blend` on one mass rounds it against everything; this is the join
+of THIS pair.
+fill: how far the two are worked into each other, in metres (0.05 a soft crease, 0.15 a clear waist, 0.25 one
+mass with a slight pinch; the hollow fills by about a sixth of it). OR width: how wide the figure is at its narrowest between the two, in metres, read off the
+reference's outline at that height: the fill is found for you (two masses one above the other only). One of the
+two. fill=0 parts them again (of a fuse of three or more, it takes `b` out). Fusing a third mass to one already
+fused brings it into that fuse WITH ITS OWN fill and sides: a jaw worked into a head by 0.05 does not change how
+far the head is worked into the body. Each mass's fill is how far IT is worked into the rest of its fuse; the
+widest are worked together first.
+sides: {side: 0..1} with sides front (where the figure faces), back, left, right, up, down: on that side of the
+fuse's middle only that part of the fill is worked in (0 a crease, 1 all of it). The same fill all round can only
+trade a snowman's neck (too little) for a bean (too much); a head that runs smooth into the body behind and at
+the sides and stands over the chest in front is sides={"front": 0.2}. The waist is then reported front and back.
+Returns the front and side look, and the waist as measured: its width (across x), depth (across y) and height,
+with what they were before. The masses must both add clay, in the same layer and part; a mass in a kit's group
+can't be fused. In the spec it is two keys on each mass: "fuse": "<tag>", "fill": metres.
+
+### `grab`
+
+`grab(name, of, view, at, to, radius, label='', remove=False, note='')`
+
+Take hold of clay that is already there and move it: a modeller's move brush. In a flat view, the clay of the
+masses `of` at the point `at` goes to `to`; the clay within `radius` of the point taken hold of follows, all of it
+there, less the further out, none at `radius`: a ball of clay, as a brush has, not the whole depth of the view (so
+a chin pulled forward from the side stays a chin and does not become a shelf across the face). The surface stays
+smooth. Only the named masses move; they blend with their neighbours as before. On a symmetric model a grab off
+the centre line is made on both sides: never add the other side's yourself.
+view: "front" (at, to are [x, z]), "side" ([y, z]; the figure faces -y, so its front is the lower y) or "top"
+([x, y]): metres, read off the rulers of `look` (grid=True helps). of: names of bones or blobs (the centre or the
+".L" one).
+Use it wherever a mass's outline is off against the reference and retyping its numbers would mean guessing: a
+round end pulled out to a point, a tip tipped forward (in the side view), a cheek pulled out, a domed face pushed
+flatter, a back line pulled straight.
+A grab moves clay by at most half its radius (further would fold it): a bigger move takes a bigger radius, or is
+a move of the mass itself (its joint, its `at`), followed by a grab for the rest. Grabs on the same mass add up.
+label names the grab (default grab1, grab2 ...): the same label replaces it; remove=True with a label takes it
+off. On a symmetric model a grab on a ".L" mass is made on its ".R" twin, and a grab off the centre line of a
+centre mass is made on the other side too. Returns the look from that view and three-quarter. In the spec:
+"grabs": {label: {"of", "view", "at", "to", "radius"}}.
+
 ### `look_matched`
 
 `look_matched(name, label='concept', resolution=192, samples=32, only_parts=None, hide_parts=None, save=None)`
@@ -285,6 +333,104 @@ y0, x1, y1]} when the figures touch) it cuts the sheet, saves each view's crop a
 and look(camera={"fitted": view}) work from it). height: metres, feet to top of the first flat view. Returns the
 view as picture | numbered patches | form lines with pixel rulers, and the patch table. Without image: shows `view`
 again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="features").
+
+### `flap`
+
+`flap(name, mass, root, over, tip, width, thickness=None, pointed=0.6, cup=0.0, at=None, blend=None, part=None, note='')`
+
+A flap of clay that grows out of the figure, arches over and hangs: a folded ear, a comb, a tongue, a tab, a leaf.
+A modeller makes one as ONE leaf with thickness, rooted, bent over in a smooth arch. Three points say where it
+goes, each [x, y, z] in metres read off `look`'s rulers (x and z in the front view, y and z in the side view; the
+figure faces -y, so forward is the lower y):
+- root: the middle of where it grows out. Put it a little INSIDE the mass it grows from, or the flap floats (the
+  answer says so when it does).
+- over: the top of its arch.
+- tip: where its tip ends. For an ear folded forward: in front of `over` and below it.
+A flap bends about its own width, so its broad face is square to the plane the three points make: root, over and
+tip at about the same x give a broad face that shows from the front (a pig's or a dog's folded ear); the answer
+says which view shows the broad face.
+width: across it at the root, metres. thickness: default about a quarter of the width (clay ears are thick). pointed: 0 a
+round leaf .. 1 narrowing to a soft point. cup: metres its side edges curl toward the inside of the fold.
+mass: the flap's name; a name ending ".L" is made on the left (+x) and mirrored to ".R". at: the joint it rides on
+(default: the joint nearest the root). blend: how softly it joins what it grows from (small = a crease at the
+root). The same name again replaces it: to change it, call again with ONE point moved (tip: where it hangs; over:
+how high and which way it arches; root: where it grows from).
+In the spec it is a `"shape": "sheet"` blob (spine through the three points, stations for the width): `get_model`
+shows it, `fit` and `edit_model` can work on it, and a `put_model` of a whole new spec must carry it over.
+Use a blade blob only for a flat leaf that leans; a blade never reads as a folded ear.
+
+### `trim`
+
+`trim(name, of, view, a, b, off, soft=0.004, label='', remove=False, note='')`
+
+Cut clay away along a straight line drawn in a flat view: a modeller's trim (knife). The line runs through the
+points a and b; the clay of the masses `of` on the `off` side of the line is cut away, all the way through the
+depth of the view, and the cut face is flat. For the flat front of a snout (side view, a line up and down in
+front of the head, off "front"), a flat sole under a hoof (a level line, off "down"), a seat, a squared-off end.
+view: "front" (a, b are [x, z]), "side" ([y, z]; the figure faces -y) or "top" ([x, y]): metres off `look`'s rulers.
+off: the side that goes: up, down, left (+x), right (-x), front (-y), back (+y). It has to be a side the line has:
+a level line has an up and a down side, a line up and down has a left and right (front view) or a front and back
+(side view).
+of: the masses cut (the centre or the ".L" one), or "all". soft: how far the cut's edge is rounded, metres; 0 is
+knife sharp. label names the trim (default trim1, trim2 ...): the same label replaces it, remove=True takes it off.
+On a symmetric model a trim on a ".L" mass, or off the centre line, is made on the other side too.
+The cut is made where the figure stands now (after its grabs). A mass blended wide into its neighbours fills the
+cut back in a little at the join.
+
+### `carve`
+
+`carve(name, cutter, of, soft=None, back=False, note='')`
+
+Take one mass OUT of others: a modeller's boolean subtract. The mass `cutter` stops being clay and becomes a hollow
+of its own shape in the masses `of`, and only in them. For a mouth cavity, an eye socket, a nostril, a notch.
+First make the cutter as an ordinary mass (`put_model` / `edit_model`: any shape, where the hollow should be,
+sticking out through the surface it opens to), look at it, then carve it. Afterwards the cutter is still in the
+spec: move, resize or reshape it and the hollow follows. soft: how far the hollow's rim is rounded, metres.
+back=True makes the cutter clay again. A cutter can't be fused into other masses.
+(In the spec: the cutter carries "op": "subtract" and "targets": [masses].)
+
+### `look_beside`
+
+`look_beside(name, views=None, ignore=None, on_purpose=None, resolution=176, save=None)`
+
+The model beside its reference, view by view: the comparison a modeller makes all the time. For each flat
+reference view (front, side, side_r, back: `read_reference` cuts them and gives each its camera) the model is seen
+from that view's own camera at the picture's own pixels, straight from the field: seconds, no render. One picture
+per view, three panels: the reference | the model with the reference's outline AND the lines inside it in red |
+the difference (red = only the reference has clay there: add; blue = only the model: take away), its worst places
+numbered. Look at each picture: an outline can match round the wrong figure (a bean where the reference has a head
+on a body), and the red lines inside it are what show that.
+The text lists, per view, the numbered places biggest first: how far the outline is off, where (in the view's own
+axes: front and back x, z; side y, z), on which mass, and the points a `grab` would move if the mass itself is
+right (a mirrored model is off the same way on both sides: it is said once, for the ".L" mass). Then the
+reference's inside lines that the model has no line near: one mass standing in front of another, a crease, an
+opening; some are paint (an eye, a patch of colour).
+The painting's own angle (view "painting"): once `fit_concept_camera(name, image=<the concept painting>)` has found
+the camera the painting was made from, look_beside shows the model from there as well, with the flat views or
+alone (views=["painting"]). Its picture: the painting with the model's outline and inside lines over it in blue |
+the model with the painting's outline and inside lines (snout, eyes, mouth, folds) in red | the difference. This
+is the view where a figure reads as itself and where a mass in the wrong place shows: a blue shape sitting beside
+the painted thing it stands for, a red line crossing bare clay. Its places are given by the painting's own pixel,
+the mass they are on (the nearer limbs are as often the ".R" twins: the text says which side the camera stands
+on) and which way the model's outline would move to meet the painting's. Kept on purpose:
+on_purpose=[{"view": "painting", "at": [px, py] as listed, "why": "..."}].
+What to do with it: fix the BIGGEST difference on the whole figure first. A mass in the wrong place or of the
+wrong size is its own joint or size (most differences are); an outline off on a mass that is otherwise right is a
+`grab`; two masses that should be one form are a `fuse`; a folded ear is a `flap`; a face that should be flat is a
+`trim`; a red line with nothing under it is form still to make. The overlap is not the goal: it rises when clay is
+piled wherever an outline is short, and the figure gets worse. After every change look at the clay itself.
+Pieces that touch nothing are listed (FLOATS): an outline can't show one.
+These are differences, not faults. A modeller departs from a concept on purpose: a limb held away from the body
+for the rig, a choice between two pictures that disagree, something left for a later pass. Record such a place:
+on_purpose=[{"view": "front", "at": [x, z] as the list gives it, "why": "arms held out for the rig"}]. From then on
+it is shown apart with its reason, drawn pale, and left out of the numbered list and of the overlap; it holds for
+the mirrored side and for the view that shares the plane (front and back). A reason is required. A record whose
+place no longer differs is said, with the call that takes it back ("remove": true). The record is kept beside the
+reference's views, not in the spec, so a new spec does not lose it.
+ignore: masses left out of the model (a limb held away from the body for the rig, which the picture shows
+hanging); the reference's own limb still shows where the picture has it. views: which views (default: every flat
+view, and the painting when its camera is fitted). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one
+number among these, never the verdict.
 
 ### `mark_features`
 

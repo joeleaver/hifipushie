@@ -32,8 +32,8 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
   says where the name is (moved.refuse in every base); `bin/repoint <script.py> --write` rewrites a script; the repo's
   own spikes/ and examples/ are repointed (C428). Rule tests: test_undefined_names, test_constants_address, test_moved.
-- Still over 500 lines because one function is:
-  hair_cards_job 605 (cards_job 576: staged on a branch, see NEXT); at the limit: hair_loose_grow 503 (grow 484), terrain_sea_apply 499 (apply 486): refactoring.
+- At the 500-line limit because one function is (refactoring, not a split): hair_loose_grow 503 (grow 484),
+  terrain_sea_apply 499 (apply 486). The five giant functions are stages now (docs/state/export_stages.md).
 - NOT split, and why: blender_* (Blender runs them by path); fieldjit (numba kernels cached beside the file); artist
   (a CLI); the clothes files (the chain-build cut first). Everything else over 1,000 lines is split.
 
@@ -57,4 +57,4 @@ repoint, the proof, same_comments and same_order (a rehome plan needs MID_IMPORT
 faceext 376 lines, terrain_seams 201 of 308 (its measure side), flipfit 137, faceatlas 105, gnm_controls 90. NOT unreachable: blender_cards, blender_lashes (blender_scene imports both inside functions).
 
 Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: reports in /mnt/data/hifipushie/review_20261112/; its fixes: docs/state/mcp_rules.md.
-NEXT: the giant functions, by the staging tool (docs/state/export_stages.md; done: asset_export._export C468, terrain_tiles._export_tiles C470, vegetation_grow.grow C474, whose growth loop is still one 398-line statement, veg_export_glb.write_glb C475; hair_cards_job.cards_job is staged on branch cards-stages and waits for a fix to main that its proof found: no strand groom cut by lock exports at the tiers main / npc / far since the hair_clumps split). Long files still whole outside clothes and Blender scripts: resources (908), sdf (904), spec (781): sdf and spec are the core (check every code key first). The clothes files wait for the chain-build cut.
+NEXT: Joe's call. The giant functions are done (docs/state/export_stages.md: _export C468, _export_tiles C470, grow C474, write_glb C475, cards_job C479; its proof found a caller the hair_clumps split had broken, fixed first: C478). Long files still whole outside clothes and Blender scripts: resources (908), sdf (904), spec (781): sdf and spec are the core (check every code key first). The clothes files wait for the chain-build cut.
