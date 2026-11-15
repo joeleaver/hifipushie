@@ -11,8 +11,13 @@ The text gives, per view, the numbered places (how far the outline is off, where
 no line near. An outline can match round the wrong figure (a bean for a head on a body): the lines inside it are
 what say so.
 
-`ignore`: masses left out of the model (a limb held away from the body for the rig, which the picture shows
-hanging): the reference's own limb still shows where the picture has it.
+A difference is a question, not a fault: a modeller departs from a concept on purpose (a limb held away from the
+body for the rig, a choice between two pictures that disagree). `set_on_purpose` records such a place with its
+reason (features/on_purpose.json, beside the reference's views, so a new spec does not lose it); from then on
+it is listed apart with its reason, drawn pale, and left out of the ranking and of the overlap. A reason is
+required, and the record stays in view, so a fault can't be waved away unseen.
+
+`ignore`: masses left out of the model altogether; the reference's own limb still shows where the picture has it.
 """
 from __future__ import annotations
 
@@ -88,8 +93,8 @@ def _places(only: np.ndarray, other: np.ndarray, k: float) -> list[dict]:
         if off < OFF_M or area < AREA_M2:
             continue
         near = (int(idx[0][far]), int(idx[1][far]))
-        out.append({"area": area, "off": off, "far": (int(far[0]), int(far[1])), "near": near})
-    return sorted(out, key=lambda r: -r["area"])[:MOST]
+        out.append({"area": area, "off": off, "far": (int(far[0]), int(far[1])), "near": near, "mask": m})
+    return sorted(out, key=lambda r: -r["area"])
 
 
 def _ref_lines(lines: np.ndarray, ref: np.ndarray, model_lines: np.ndarray, k: float) -> tuple[list[dict], np.ndarray]:
@@ -127,8 +132,53 @@ def _stored(name: str, known: set) -> tuple[str | None, bool]:
     return (tw, True) if tw in known else (None, False)
 
 
+WHY = 10  # a reason shorter than this many letters is not a reason
+
+
+def _record(name: str):
+    return refread.folder(name) / "on_purpose.json"
+
+
+def on_purpose(name: str) -> list[dict]:
+    """The differences this model keeps on purpose: [{"plane": "front" | "side", "at": [u, v], "why"}]."""
+    import json
+    p = _record(name)
+    return json.loads(p.read_text()) if p.exists() else []
+
+
+def set_on_purpose(name: str, entries: list[dict]) -> list[dict]:
+    """Record (or, with "remove": true, take back) differences from the reference that are meant: each
+    {"view": a flat view, "at": [u, v] in that view's axes (as look_beside lists a place), "why": the reason}.
+    A place is kept by where it is, on the view's plane (front and back share one), and holds for the mirrored
+    side too."""
+    import json
+    if not isinstance(entries, list):
+        raise ValueError('on_purpose is a list of {"view", "at": [u, v], "why"}')
+    have = on_purpose(name)
+    for e in entries:
+        if not isinstance(e, dict) or e.get("view") not in GRAB_VIEW or not (
+                isinstance(e.get("at"), (list, tuple)) and len(e["at"]) == 2):
+            raise ValueError(f'on_purpose: each is {{"view": one of {list(GRAB_VIEW)}, "at": [u, v] as look_beside '
+                             f'lists the place, "why": the reason}}; got {e!r}')
+        plane, at = GRAB_VIEW[e["view"]][0], [float(e["at"][0]), float(e["at"][1])]
+
+        def here(q):
+            return q["plane"] == plane and min(np.hypot(q["at"][0] - s * at[0], q["at"][1] - at[1]) for s in (1, -1)) < 0.05
+        have = [q for q in have if not here(q)]
+        if e.get("remove"):
+            continue
+        why = str(e.get("why") or "").strip()
+        if len(why) < WHY:
+            raise ValueError("on_purpose: say why in a few words (\"arms held out for the rig; the picture's hang\"): "
+                             "a difference kept without a reason is a fault nobody looked at")
+        have.append({"plane": plane, "at": at, "why": why})
+    _record(name).write_text(json.dumps(have, indent=1))
+    return have
+
+
 def compare(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176) -> dict:
-    """{"views": {view: {"iou", "places": [...], "lines": [...], "picture": PIL image}}, "skipped": [...]}."""
+    """{"views": {view: {"iou", "places": [...], "on_purpose": [...], "lines": [...], "picture": PIL image}},
+    "ignored": [...], "stale": [on-purpose records with no difference at their place any more]}."""
     have = flat_views(name)
     if not have:
         raise ValueError(f"{name} has no flat reference view yet: read_reference(name, image, views=[\"front\", "
@@ -145,6 +195,8 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
         raise ValueError(f"ignore: no mass called {bad} (the model's masses: {sorted(known)})")
     ig |= {mirror_name(n) for n in ig if mirror_name(n)}
     prims, whole = _model(name, resolution)
+    meant = on_purpose(name)
+    used: set = set()
     out = {"views": {}, "ignored": sorted(ig)}
     for v in todo:
         rec, cam = refread.view_record(name, v), matched.load_camera(name, v)
@@ -166,14 +218,40 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
             depth = np.where(hit, depth, np.inf)
         gv, iu, iv = GRAB_VIEW[v]
 
-        def world(py, px):  # the pixel's place on the plane through the view's aim (a far camera: no perspective)
+        def wpt(py, px):  # the pixel's place on the plane through the view's aim (a far camera: no perspective)
             c, dd, _ = rays(cam, np.array([[px + 0.5, py + 0.5]]))
             p = np.asarray(c, float) + cam["dist"] * dd[0]
-            return [round(float(p[iu]), 3), round(float(p[iv]), 3)]
+            return np.array([float(p[iu]), float(p[iv])])
 
-        places = []
+        def world(py, px):
+            return [round(float(t), 3) for t in wpt(py, px)]
+
+        w0 = wpt(0, 0)
+        to_px = np.linalg.inv(np.stack([wpt(0, 1) - w0, wpt(1, 0) - w0], 1))  # (u, v) - w0 -> (px, py)
+        near_px = 0.03 / k
+        mine = [(i, e) for i, e in enumerate(meant) if e["plane"] == gv]
+
+        def meant_by(mask):
+            ys_, xs_ = np.nonzero(mask)
+            for i, e in mine:
+                for s in ((1, -1) if gv == "front" else (1,)):
+                    px, py = to_px @ (np.array([s * e["at"][0], e["at"][1]]) - w0)
+                    if np.hypot(ys_ - py, xs_ - px).min() <= near_px:
+                        return i
+            return None
+
+        places, kept_on = [], {}
+        accepted = np.zeros(hit.shape, bool)
         for kind, only, other in (("short", ref & ~hit, hit), ("out", hit & ~ref, ref)):
             for r in _places(only, other, k):
+                i = meant_by(r["mask"])
+                if i is not None:  # a difference kept on purpose: listed apart, not ranked, not counted
+                    used.add(i)
+                    accepted |= r["mask"]
+                    o = kept_on.setdefault(i, {"why": meant[i]["why"], "at": meant[i]["at"], "area": 0.0, "off": 0.0})
+                    o["area"] += r["area"]
+                    o["off"] = max(o["off"], r["off"])
+                    continue
                 # short: the model's outline (near) should go out to the reference's (far); out: the model's (far) back in
                 a, b = (r["near"], r["far"]) if kind == "short" else (r["far"], r["near"])
                 at, to = world(*a), world(*b)
@@ -206,13 +284,17 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
         missing, sk = _ref_lines(lines, ref, mlines, k)
         for m in missing:
             m["where"] = world(int(m["at"][0]), int(m["at"][1]))
-        iou = float((ref & hit).sum() / max((ref | hit).sum(), 1))
-        out["views"][v] = {"iou": iou, "places": places, "lines": [{k2: m[k2] for k2 in ("length", "where", "run")} for m in missing],
-                           "picture": _picture(v, rgba, ref, hit, depth, sk, missing, places, k, bool(ig))}
+        iou = float((ref & hit & ~accepted).sum() / max(((ref | hit) & ~accepted).sum(), 1))
+        out["views"][v] = {"iou": iou, "places": places, "on_purpose": list(kept_on.values()),
+                           "lines": [{k2: m[k2] for k2 in ("length", "where", "run")} for m in missing],
+                           "picture": _picture(v, rgba, ref, hit, depth, sk, missing, places, k, bool(ig), accepted)}
+    planes = {GRAB_VIEW[v][0] for v in todo}
+    out["stale"] = [e for i, e in enumerate(meant) if i not in used and e["plane"] in planes]
     return out
 
 
-def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ignoring: bool, height: int = 560) -> Image.Image:
+def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ignoring: bool, accepted=None,
+             height: int = 560) -> Image.Image:
     H, W = ref.shape
     s = height / H
     size = (max(int(round(W * s)), 1), height)
@@ -233,6 +315,9 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
     diff[ref & hit] = 205
     diff[ref & ~hit] = (225, 40, 40)
     diff[hit & ~ref] = (45, 90, 225)
+    if accepted is not None and accepted.any():  # kept on purpose: pale, so it stays in view without shouting
+        diff[accepted & ref & ~hit] = (244, 200, 200)
+        diff[accepted & hit & ~ref] = (200, 212, 244)
     right = Image.fromarray(diff).resize(size, Image.NEAREST)
     dr = ImageDraw.Draw(right)
     f = _font(26)
@@ -247,7 +332,7 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
     small = _font(15)
     for i, (im, title) in enumerate(((left, f"reference ({view})"),
                                      (mid, "model" + (" (without the ignored masses)" if ignoring else "") + ": red = the reference's outline and lines"),
-                                     (right, "red = add clay, blue = take away"))):
+                                     (right, "red = add clay, blue = take away (pale = on purpose)"))):
         x = i * (size[0] + gap)
         sheet.paste(im, (x, top))
         d.text((x + 4, 6), title[: max(int(size[0] / 8.2), 12)], font=small, fill=(0, 0, 0))
@@ -263,6 +348,9 @@ def text(name: str, res: dict) -> str:
             ax = "x, z" if GRAB_VIEW[v][0] == "front" else "y, z"
             lines.append(f"  {i}. the model {what} by up to {p['off'] * 100:.1f} cm round ({ax}) {p['at']}, {p['area'] * 1e4:.0f} cm2"
                          + (f", on {p['mass']}" if p["mass"] else "") + f": {p['grab']}")
+        for o in r.get("on_purpose", []):
+            lines.append(f"  on purpose, not listed and not counted: {o['why']} (round {o['at']}, {o['area'] * 1e4:.0f} cm2, "
+                         f"up to {o['off'] * 100:.1f} cm)")
         if r["lines"]:
             lines.append("  lines inside the reference's outline with no line of the model near them (form the outline can't "
                          "show: a mass in front of another, a crease; some are paint):")
@@ -270,9 +358,16 @@ def text(name: str, res: dict) -> str:
             lines += [f"    a line {m['length'] * 100:.0f} cm long running {m['run']}, round ({ax}) {m['where']}" for m in r["lines"]]
     if res["ignored"]:
         lines.append(f"left out of the model: {', '.join(res['ignored'])}. The reference's own still shows where the picture has it.")
+    for e in res.get("stale", []):
+        lines.append(f"recorded as on purpose, but nothing differs there now ({e['plane']} {e['at']}: {e['why']}): take it "
+                     f"back with on_purpose=[{{\"view\": \"{e['plane']}\", \"at\": {e['at']}, \"remove\": true}}]")
     lines.append("next: one picture per view: look at each. Fix the BIGGEST difference on the whole figure first: a mass in "
                  "the wrong place or of the wrong size is its own joint or size; an outline that is off on a mass that is "
                  "otherwise right is the grab given; two masses that should be one are a fuse. A red line with no line of "
                  "the model under it is form still to make (one mass standing in front of another, a crease), unless it is "
-                 "paint. Then look_beside again. A limb held away from the body for the rig is not a fault: ignore=[its masses].")
+                 "paint. Then look_beside again. These are differences, not faults: the reference is yours to interpret. "
+                 "Where you differ ON PURPOSE (a limb held away for the rig, a choice between two pictures that disagree, "
+                 "something left for a later pass), record it: on_purpose=[{\"view\": \"front\", \"at\": [x, z] as listed, "
+                 "\"why\": \"...\"}]. It is then shown apart with its reason, pale in the picture, and left out of the list "
+                 "and the overlap.")
     return "\n".join(lines)

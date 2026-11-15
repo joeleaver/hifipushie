@@ -80,3 +80,28 @@ def test_the_tool_gives_a_picture_a_view_and_the_text(home):
     assert len(out) == 2 and "front: outline overlap" in out[-1] and "next:" in out[-1]
     im = Image.open(home / "pics" / "beside_front.png")
     assert im.width > 1.4 * im.height  # three panels of an upright figure, side by side
+
+
+def test_a_difference_kept_on_purpose_is_shown_apart_and_not_counted(home):
+    s = store.load("fig")
+    tall = list(s["blobs"]["ear.L"]["size"])
+    s["blobs"]["ear.L"]["size"] = [0.045, 0.025, 0.045]
+    store.save("fig", s, "short ears")
+    before = beside.compare("fig", resolution=144)["views"]["front"]
+    p = before["places"][0]
+    with pytest.raises(ValueError, match="say why"):
+        beside.set_on_purpose("fig", [{"view": "front", "at": p["at"], "why": "ok"}])
+    beside.set_on_purpose("fig", [{"view": "front", "at": p["at"], "why": "short ears, on purpose for this test"}])
+    res = beside.compare("fig", resolution=144)
+    after = res["views"]["front"]
+    assert not any(q["mass"] == "ear.L" and np.hypot(q["at"][0] - p["at"][0], q["at"][1] - p["at"][1]) < 0.03
+                   for q in after["places"])
+    assert after["on_purpose"][0]["why"].startswith("short ears") and after["iou"] > before["iou"]
+    assert after["on_purpose"][0]["area"] > 1.6 * p["area"]  # the one record holds for the right ear too
+    assert "on purpose, not listed and not counted: short ears" in beside.text("fig", res)
+    s["blobs"]["ear.L"]["size"] = tall  # mended: the record says it has nothing to stand for
+    store.save("fig", s, "ears as the reference")
+    res = beside.compare("fig", resolution=144)
+    assert res["stale"] and "nothing differs there now" in beside.text("fig", res)
+    beside.set_on_purpose("fig", [{"view": "front", "at": p["at"], "remove": True}])
+    assert beside.on_purpose("fig") == []

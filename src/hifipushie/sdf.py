@@ -29,6 +29,25 @@ def smin(a, b, k):
     return np.minimum(a, b) - h * h * h * k * (1.0 / 6.0)
 
 
+def smin_var(a, b, k):
+    """smin with a blend that differs from point to point (an array like a and b)."""
+    k = np.maximum(k, 1e-9)
+    h = np.maximum(k - np.abs(a - b), 0.0) / k
+    return np.minimum(a, b) - h * h * h * k * (1.0 / 6.0)
+
+
+def sides_mul(sides, pts: np.ndarray) -> np.ndarray:
+    """How much of a fuse's fill holds at each point (spec._fuse): 1 everywhere, falling to a side's own value
+    on that side of the fuse's centre, smoothly across the middle."""
+    c, R, items = sides
+    q = (np.asarray(pts, float) - np.asarray(c, float)) / R
+    m = np.ones(q.shape[:-1])
+    for ax, sgn, val in items:
+        t = np.clip((sgn * q[..., ax] + 0.25) / 0.5, 0.0, 1.0)
+        m = m * (1.0 + (val - 1.0) * (t * t * (3 - 2 * t)))
+    return m
+
+
 def sd_cone(p: np.ndarray, pr: dict) -> np.ndarray:
     """Round cone along a bone, with an optionally elliptical cross-section."""
     q = (p - pr["a"]) @ pr["frame"].T  # columns: width, axis, height
@@ -463,15 +482,17 @@ def units(prims: list[Prim]):
         i = j
 
 
-def _merge(hits: list[np.ndarray], ds: list[np.ndarray], tail: tuple, join: float):
-    """Union of a group's primitives (smooth by `join`, usually small or 0), each given on its own indices."""
+def _merge(hits: list[np.ndarray], ds: list[np.ndarray], tail: tuple, join: float, mul=None):
+    """Union of a group's primitives (smooth by `join`, usually small or 0), each given on its own indices.
+    mul(indices) -> how much of the join holds at each of those places (a fuse with sides); None = all of it."""
     if len(hits) == 1:
         return hits[0], ds[0]
     h = np.unique(np.concatenate(hits))
     d = np.full((len(h), *tail), FAR, dtype=ds[0].dtype)
+    m = None if mul is None else mul(h)
     for hit, v in zip(hits, ds):
         k = np.searchsorted(h, hit)
-        d[k] = smin(d[k], v, join)
+        d[k] = smin(d[k], v, join) if m is None else smin_var(d[k], v, join * m[k]).astype(d.dtype)
     return h, d
 
 
@@ -527,7 +548,8 @@ def fingerprint(p: Prim, cuts: bool = True) -> str:
     """Content hash of a primitive: equal fingerprints give equal field contributions. A shell's base part
     is left out (the shell part inherits its base's changed regions instead). cuts=False: without the targeted
     cuts folded into it (the same shape before cutting)."""
-    h = hashlib.sha1(repr((p.name, p.kind, p.op, p.blend, p.layer, p.group, p.join, p.part, p.lip)).encode())
+    h = hashlib.sha1(repr((p.name, p.kind, p.op, p.blend, p.layer, p.group, p.join, p.part, p.lip)
+                          + ((p.sides,) if p.sides else ())).encode())
     for k in sorted(p.params):
         v = p.params[k]
         if k in ("prims", "tree") or (k == "cuts" and not cuts):
@@ -657,7 +679,8 @@ def _block_values(prims: list[Prim], a_lo, a_hi, local, voxel: float, half_diag:
             continue
         if not hits:
             continue
-        h, d = _merge(hits, ds, (B, B, B), unit[0].join)
+        mul = (lambda hh, s=unit[0].sides: sides_mul(s, a_lo[hh, None, None, None, :] + local)) if unit[0].sides else None
+        h, d = _merge(hits, ds, (B, B, B), unit[0].join, mul)
         vals[h] = combine(vals[h], d, unit[-1])
     return vals
 
@@ -778,7 +801,8 @@ def _field_serial(prims: list[Prim], flat: np.ndarray, clip: bool, margin: float
             continue
         if not hits:
             continue
-        h, d = _merge(hits, ds, (), unit[0].join)
+        mul = (lambda hh, s=unit[0].sides: sides_mul(s, flat[hh])) if unit[0].sides else None
+        h, d = _merge(hits, ds, (), unit[0].join, mul)
         out[h] = combine(out[h], d, unit[-1])
     return out
 

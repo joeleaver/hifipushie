@@ -34,13 +34,16 @@ def _with_look(name: str, views: list[str], text: str):
 
 
 @mcp.tool(structured_output=False)
-def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | None = None, note: str = ""):
+def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | None = None,
+         sides: dict | None = None, note: str = ""):
     """Work two masses into ONE flowing mass, as a modeller smooths two lumps of clay together: the hollow between `a`
     and `b` fills and the line between them goes (a head and body that should read as one pear, not two balls with
     a neck crease). Give fill (how far the two are worked into each other, in metres: 0.05 leaves a soft crease,
     0.15 a clear waist, 0.25 one mass with a slight pinch) OR width (how wide the figure is at its narrowest between the two, in metres, read off the
-    reference: the fill is found for you). fill=0 parts them again. Returns the look and the waist as measured.
-    Details: guide(topic="fuse")."""
+    reference: the fill is found for you). sides: {"front": 0.2} works in only that part of the fill on
+    that side (front, back, left, right, up, down): smooth behind and creased in front, which the same fill all
+    round can't give (it trades a snowman's neck for a bean). fill=0 parts them again. Returns the look and the
+    waist as measured. Details: guide(topic="fuse")."""
     spec = store.load(name)
     els = _need(spec, (a, b))
     if a == b:
@@ -50,22 +53,26 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
                          "place between them, read off the reference): one of the two")
     bare = copy.deepcopy(spec)
     for n in (a, b):
-        for k in ("fuse", "fill"):
+        for k in ("fuse", "fill", "fill_sides"):
             _elements(bare)[n].pop(k, None)
     prims0 = compile_prims(bare)
+    how = None
+    if sides:  # the sides as the compiler reads them (their middle and size come from the two masses)
+        from .spec import _fuse_sides
+        how = _fuse_sides(f"{a}+{b}", sides, [p for p in prims0 if p.name in (a, b)])
     k0 = max(float(els[n].get("blend", spec.get("blend", 0.03)) or 0.0) for n in (a, b))
     before = reshape.waist(prims0, a, b, k0)
     said = ""
     if width is not None:
-        fill, said = reshape.solve_fill(prims0, a, b, float(width))
+        fill, said = reshape.solve_fill(prims0, a, b, float(width), how)
     fill = float(fill)
     if fill < 0:
         raise ValueError("fill is how far the two are worked into each other, in metres: 0 (parted) or more")
     old = [els[n].get("fuse") for n in (a, b) if els[n].get("fuse")]
     if fill == 0:
         for n in (a, b):
-            els[n].pop("fuse", None)
-            els[n].pop("fill", None)
+            for k in ("fuse", "fill", "fill_sides"):
+                els[n].pop(k, None)
         for t in old:  # a tag left on one mass alone means nothing
             left = [e for e in _elements(spec).values() if e.get("fuse") == t]
             if len(left) == 1:
@@ -78,14 +85,21 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
                 e["fuse"], e["fill"] = tag, round(fill, 4)
         for n in (a, b):
             els[n]["fuse"], els[n]["fill"] = tag, round(fill, 4)
+        for e in _elements(spec).values():
+            if e.get("fuse") == tag:
+                e.pop("fill_sides", None)
+                if sides:
+                    e["fill_sides"] = {k: float(v) for k, v in sides.items()}
     compile_prims(spec)
     v = store.save(name, spec, note or (f"fuse {a} + {b}, fill {fill:.3f}" if fill else f"{a} and {b} parted"))
-    after = reshape.waist(prims0, a, b, fill if fill else k0)
+    after = reshape.waist(prims0, a, b, fill if fill else k0, how if fill else None)
 
     def cm(w):
-        return f"{w['width'] * 100:.1f} cm across (x) and {w['depth'] * 100:.1f} cm deep (y) at z {w['z']:.3f}"
-    lines = [f"{name} v{v}: " + (f"{a} and {b} worked into one mass, fill {fill * 100:.1f} cm." if fill
-                                 else f"{a} and {b} parted again.")]
+        return (f"{w['width'] * 100:.1f} cm across (x) and {w['depth'] * 100:.1f} cm deep (y: {w['front'] * 100:.1f} to the "
+                f"front, {w['back'] * 100:.1f} to the back of the middle) at z {w['z']:.3f}")
+    lines = [f"{name} v{v}: " + (f"{a} and {b} worked into one mass, fill {fill * 100:.1f} cm"
+                                 + (" (" + ", ".join(f"{k} {float(x):g} of it" for k, x in sides.items()) + ")" if sides else "")
+                                 + "." if fill else f"{a} and {b} parted again.")]
     if after is not None:
         lines.append(f"Narrowest between them: {cm(after)}" + (f" (before: {cm(before)})." if before is not None else "."))
     elif before is not None:
@@ -94,7 +108,10 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
         lines.append("They are not one above the other, so there is no waist to measure: judge the join in the look.")
     if said:
         lines.append(said)
-    lines.append("The fuse is in the spec as \"fuse\" and \"fill\" on both masses: a put_model of a whole new spec drops it "
+    if fill and not sides:
+        lines.append("The same fill all round: if one mass should stand over the other on one side (a chin over a chest) "
+                     "while they run smooth on the others, give sides, e.g. sides={\"front\": 0.2}.")
+    lines.append("The fuse is in the spec as \"fuse\", \"fill\" (and \"fill_sides\") on both masses: a put_model of a whole new spec drops it "
                  "unless those keys are carried over.")
     lines.append("next: look at this beside the reference from the front and the side. The waist's width is the one "
                  "number the reference's outline gives you there: fuse again with that width (or another fill) to "

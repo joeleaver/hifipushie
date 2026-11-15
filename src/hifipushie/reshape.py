@@ -8,6 +8,10 @@ fuse: two (or more) masses worked into one. Elements that carry the same "fuse" 
     it; 0.05 leaves a soft crease, 0.25 makes one mass with a slight pinch), and blended into the rest of the
     model once (spec._fuse). The tools write the tag; by hand it is
         "blobs": {"head": {..., "fuse": "head+torso", "fill": 0.08}, "torso": {..., "fuse": "head+torso", "fill": 0.08}}
+    "fill_sides": {side: 0..1} (front, back, left, right, up, down; front is where the figure faces) works in only
+    that part of the fill on that side of the fuse's middle: {"front": 0.2} leaves a head smooth into the body
+    behind and at the sides, and creased under the chin (spec._fuse_sides; the same fill all round can only trade
+    a snowman's neck for a bean).
     `waist` measures the narrowest place between two stacked masses, so a fill can be set from the width the
     reference shows there (`solve_fill`).
 
@@ -111,14 +115,14 @@ def _pair(prims, a: str, b: str):
     return of(a), of(b)
 
 
-def _field(pa, pb, pts, fill: float):
-    from .sdf import SDF, smin
+def _field(pa, pb, pts, fill: float, sides=None):
+    from .sdf import SDF, sides_mul, smin, smin_var
     da = np.min([SDF[p.kind](pts, p.params) for p in pa], 0)
     db = np.min([SDF[p.kind](pts, p.params) for p in pb], 0)
-    return smin(da, db, fill)
+    return smin(da, db, fill) if sides is None else smin_var(da, db, fill * sides_mul(sides, pts))
 
 
-def waist(prims, a: str, b: str, fill: float) -> dict | None:
+def waist(prims, a: str, b: str, fill: float, sides=None) -> dict | None:
     """The narrowest place between two masses that sit one above the other, with `fill` worked in: {"z", "width",
     "depth"} in metres (across x and across y, through the middle of the pair). None when the two are not stacked
     (one beside or in front of the other), or when nothing narrows between them."""
@@ -138,16 +142,19 @@ def waist(prims, a: str, b: str, fill: float) -> dict | None:
         P[..., 0], P[..., 1] = mid[0], mid[1]
         P[..., axis] = mid[axis] + t[None, :]
         P[..., 2] = zs[:, None]
-        inside = _field(pa, pb, P.reshape(-1, 3), fill).reshape(len(zs), len(t)) < 0
+        inside = _field(pa, pb, P.reshape(-1, 3), fill, sides).reshape(len(zs), len(t)) < 0
         span[:, k] = inside.sum(1) * (t[1] - t[0])
+        if axis == 1:  # how far the front (-y) and the back (+y) stand from the middle, each
+            front = (inside & (t[None, :] < 0)).sum(1) * (t[1] - t[0])
     w = span[:, 0]
     i = int(np.argmin(w))
     if i in (0, len(zs) - 1) or w[i] >= min(w[0], w[-1]) - 1e-4:
         return None
-    return {"z": float(zs[i]), "width": float(w[i]), "depth": float(span[i, 1])}
+    return {"z": float(zs[i]), "width": float(w[i]), "depth": float(span[i, 1]), "front": float(front[i]),
+            "back": float(span[i, 1] - front[i])}
 
 
-def solve_fill(prims, a: str, b: str, width: float) -> tuple[float, str]:
+def solve_fill(prims, a: str, b: str, width: float, sides=None) -> tuple[float, str]:
     """The fill that makes the waist between a and b `width` metres across, and a line about it when it can't."""
     pa, pb = _pair(prims, a, b)
     ca = np.mean([(p.lo + p.hi) / 2 for p in pa], 0)
@@ -161,13 +168,13 @@ def solve_fill(prims, a: str, b: str, width: float) -> tuple[float, str]:
         return 0.0, (f"they are already {w0['width'] * 100:.1f} cm across at their narrowest with nothing worked in: a "
                      "narrower waist is a matter of the masses' own sizes or places")
     lo, hi = 0.0, top
-    wt = waist(prims, a, b, top)
+    wt = waist(prims, a, b, top, sides)
     if wt is not None and wt["width"] < width:
         return top, (f"with all the clay a fuse can work in the waist is {wt['width'] * 100:.1f} cm: for more, make the "
                      "masses overlap further or thicker there")
     for _ in range(18):
         m = (lo + hi) / 2
-        wm = waist(prims, a, b, m)
+        wm = waist(prims, a, b, m, sides)
         if wm is None or wm["width"] >= width:
             hi = m
         else:

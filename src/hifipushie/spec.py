@@ -152,6 +152,8 @@ def expand_mirror(spec: dict) -> dict:
             nb["offset"] = _mirror_vec(bl["offset"])
         if "rot" in bl:
             nb["rot"] = _mirror_rot(bl["rot"])
+        if isinstance(bl.get("aim"), dict):
+            nb["aim"] = _mirror_aim(bl["aim"])
         for key in ("pts", "nrm", "path", "N", "U", "spine"):  # sweeps (strokes, sweep blobs), sheets
             if key in bl:
                 nb[key] = [_mirror_vec(v) for v in bl[key]]
@@ -209,6 +211,7 @@ class Prim:
     part: str = "body"  # which separate mesh it belongs to; parts are fields of their own, hard-unioned
     instance: str | None = None  # the prefab instance it came from (assemble); export shares their meshes
     cut_boxes: tuple = ()  # (fingerprint, lo, hi) of each targeted cut folded into it: where a moved cut changes it
+    sides: tuple | None = None  # a fuse whose fill differs by side: (centre, size, ((axis, sign, part of the fill), ...))
 
 
 BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "loft", "super", "sweep", "collar", "lids", "displace",
@@ -284,7 +287,7 @@ def _compile(spec: dict) -> list[Prim]:
     for name, bl in s["blobs"].items():
         c = resolve_point(s, bl.get("at", [0, 0, 0])) + np.array(bl.get("offset", [0, 0, 0]), float)
         size = np.array(bl.get("size", [0.05] * 3), float)
-        rot = euler_matrix(bl.get("rot", [0, 0, 0]))
+        rot = _aim(name, bl, size) if bl.get("aim") is not None else euler_matrix(bl.get("rot", [0, 0, 0]))
         k = float(bl["blend"]) if bl.get("blend") is not None else k_default
         if bl.get("shape", "ellipsoid") not in BLOB_SHAPES:  # (it fell through to an ellipsoid without a word)
             raise SpecError(f"blob {name!r}: unknown shape {bl.get('shape')!r} (have {', '.join(BLOB_SHAPES)}; "
@@ -477,11 +480,96 @@ def _fuse(prims: list[Prim], els: list[dict]) -> tuple[list[Prim], list[dict]]:
                     raise SpecError(f"{p.name!r} is already in the group {p.group!r}: it can't be fused as well")
                 if p.op != "add" or (p.layer, p.part) != (p0.layer, p0.part):
                     raise SpecError(f"fuse {t!r}: {p.name!r} and {p0.name!r} must both add clay, in the same layer and part")
+            sides = _fuse_sides(t, next((els[j]["fill_sides"] for j in mem if els[j].get("fill_sides")), None),
+                                [prims[j] for j in mem])
             for j in mem:
-                prims[j].group, prims[j].join = f"fuse:{t}", fill
+                prims[j].group, prims[j].join, prims[j].sides = f"fuse:{t}", fill, sides
         order += mem
         placed.update(mem)
     return [prims[i] for i in order], [els[i] for i in order]
+
+
+FUSE_SIDES = {"front": (1, -1), "back": (1, 1), "left": (0, 1), "right": (0, -1), "up": (2, 1), "down": (2, -1)}
+
+
+def _fuse_sides(tag: str, sides, members: list[Prim]):
+    """A fuse's "fill_sides" {side: 0..1}: on that side of the fuse's middle only that part of the fill is worked
+    in (0 = a crease there, 1 = all of it): a head smooth into the body behind and creased under the chin."""
+    if not sides:
+        return None
+    if not isinstance(sides, dict) or any(k not in FUSE_SIDES for k in sides):
+        raise SpecError(f"fuse {tag!r}: fill_sides is {{side: part of the fill}} with sides {', '.join(FUSE_SIDES)} "
+                        "(front is where the figure faces, -y), e.g. {\"front\": 0.2}")
+    if any(not 0.0 <= float(v) <= 1.0 for v in sides.values()):
+        raise SpecError(f"fuse {tag!r}: a side takes a part of the fill, 0 (a crease on that side) to 1 (all of it)")
+    cs = np.array([(p.lo + p.hi) / 2 for p in members])
+    R = max(0.5 * float(max(np.linalg.norm(a - b) for a in cs for b in cs)), 0.02)
+    return (tuple(float(v) for v in cs.mean(0)), R,
+            tuple(sorted((FUSE_SIDES[k][0], FUSE_SIDES[k][1], float(v)) for k, v in sides.items())))
+
+
+AIM_WORDS = {"up": (0, 0, 1), "down": (0, 0, -1), "forward": (0, -1, 0), "front": (0, -1, 0), "back": (0, 1, 0),
+             "backward": (0, 1, 0), "out": (1, 0, 0), "left": (1, 0, 0), "in": (-1, 0, 0), "right": (-1, 0, 0)}
+
+
+def _aim_vec(v, what: str = "aim") -> np.ndarray:
+    """A direction as words ("up out": their sum; a word twice leans more that way) or as [x, y, z]."""
+    if isinstance(v, str):
+        words = v.replace(",", " ").replace("+", " ").split()
+        bad = [w for w in words if w not in AIM_WORDS]
+        if bad or not words:
+            raise SpecError(f"{what}: {v!r} is not a direction. Use words ({', '.join(AIM_WORDS)}; \"up out\" is "
+                            "between the two; out is away from the centre line on a mirrored mass) or [x, y, z]")
+        d = np.sum([AIM_WORDS[w] for w in words], 0).astype(float)
+    else:
+        d = np.asarray(v, float)
+        if d.shape != (3,):
+            raise SpecError(f"{what}: a direction is words (\"up out\") or [x, y, z]")
+    n = np.linalg.norm(d)
+    if n < 1e-9:
+        raise SpecError(f"{what}: {v!r} adds up to no direction")
+    return d / n
+
+
+def _mirror_aim(aim: dict) -> dict:
+    return {k: _mirror_vec([float(x) for x in _aim_vec(v, f"aim.{k}")]) for k, v in aim.items() if k in ("point", "face")}
+
+
+def _aim(name: str, bl: dict, size: np.ndarray) -> np.ndarray:
+    """A blob turned by saying where it points and which way it faces, instead of by angles ("aim": {"point",
+    "face"}). point: where its LENGTH goes (a blade's root-to-tip axis; any other shape's longest axis). face:
+    where its FLAT side looks (a blade's hollow side; any other shape's thinnest axis). Either or both."""
+    aim = bl["aim"]
+    if "rot" in bl:
+        raise SpecError(f"blob {name!r}: give aim or rot, not both")
+    if not isinstance(aim, dict) or not aim or any(k not in ("point", "face") for k in aim):
+        raise SpecError(f"blob {name!r}: aim is {{\"point\": where its length goes, \"face\": where its flat side looks}}, "
+                        "each as words (\"up out\", \"forward down\") or [x, y, z]; one of the two is enough")
+    if bl.get("shape", "ellipsoid") == "blade":
+        L, F = 1, 2
+    else:
+        L, F = int(np.argmax(size)), int(np.argmin(size))
+        if L == F:
+            L, F = 2, 1
+    T = 3 - L - F
+    p = _aim_vec(aim["point"], f"blob {name!r}: aim.point") if "point" in aim else None
+    f = _aim_vec(aim["face"], f"blob {name!r}: aim.face") if "face" in aim else None
+    eye = np.eye(3)
+    if p is None:
+        p = eye[L] - (eye[L] @ f) * f
+        p = p / np.linalg.norm(p) if np.linalg.norm(p) > 1e-6 else np.cross(f, eye[T]) / np.linalg.norm(np.cross(f, eye[T]))
+    if f is None:
+        f = next(e for e in (eye[F], eye[T], eye[L]) if np.linalg.norm(e - (e @ p) * p) > 0.3)
+    f = f - (f @ p) * p
+    if np.linalg.norm(f) < 1e-6:
+        raise SpecError(f"blob {name!r}: aim.face looks along aim.point; the flat side faces across the length")
+    f = f / np.linalg.norm(f)
+    R = np.zeros((3, 3))
+    R[:, L], R[:, F] = p, f
+    R[:, T] = np.cross(p, f)
+    if np.linalg.det(R) < 0:
+        R[:, T] = -R[:, T]
+    return R
 
 
 def _grabs(s: dict, prims: list[Prim]) -> list[Prim]:

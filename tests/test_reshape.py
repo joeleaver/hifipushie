@@ -142,3 +142,58 @@ def test_the_tools_save_a_version_and_say_what_they_did(tmp_path, monkeypatch):
     assert "parted" in out and "fuse" not in store.load("fig")["blobs"]["head"]
     with pytest.raises(ValueError, match="no mass called 'neck'"):
         server.fuse("fig", "head", "neck", fill=0.1)
+
+
+def test_a_blob_is_aimed_by_where_it_points_and_where_it_faces():
+    s = _figure()
+    s["blobs"]["ear.L"] = {"at": "ear.L", "shape": "blade", "size": [0.04, 0.07, 0.012],
+                           "aim": {"point": "up out", "face": "forward"}}
+    prims = {p.name: p for p in compile_prims(s)}
+    R, Rr = prims["ear.L"].params["rot"], prims["ear.R"].params["rot"]
+    assert np.allclose(R[:, 1], np.array([1, 0, 1]) / 2 ** 0.5)  # its length rises and leans out
+    assert np.allclose(R[:, 2], [0, -1, 0])  # its hollow side looks forward
+    assert np.allclose(Rr[:, 1], np.array([-1, 0, 1]) / 2 ** 0.5) and np.allclose(Rr[:, 2], [0, -1, 0])  # the twin
+    assert abs(np.linalg.det(R) - 1) < 1e-9 and abs(np.linalg.det(Rr) - 1) < 1e-9
+    s["blobs"]["ear.L"] = {"at": "ear.L", "size": [0.045, 0.025, 0.06], "aim": {"point": [1, 0, 0]}}  # an ellipsoid
+    R = {p.name: p for p in compile_prims(s)}["ear.L"].params["rot"]
+    assert np.allclose(R[:, 2], [1, 0, 0])  # its longest axis (z) lies along x
+
+
+def test_an_aim_that_is_no_direction_or_comes_with_angles_is_refused():
+    s = _figure()
+    s["blobs"]["ear.L"].update(aim={"point": "up"}, rot=[0, 0, 0])
+    with pytest.raises(SpecError, match="aim or rot"):
+        compile_prims(s)
+    del s["blobs"]["ear.L"]["rot"]
+    s["blobs"]["ear.L"]["aim"] = {"point": "upwards"}
+    with pytest.raises(SpecError, match="not a direction"):
+        compile_prims(s)
+    s["blobs"]["ear.L"]["aim"] = {"point": "up", "face": "up"}
+    with pytest.raises(SpecError, match="looks along"):
+        compile_prims(s)
+
+
+def test_a_fuse_can_leave_one_side_creased_and_the_others_smooth():
+    from hifipushie import sdf
+    s = _figure()
+    for n in ("head", "torso"):
+        s["blobs"][n].update(fuse="h", fill=0.2)
+    even = compile_prims(copy.deepcopy(s))
+    for n in ("head", "torso"):
+        s["blobs"][n]["fill_sides"] = {"front": 0.1}
+    sided = compile_prims(s)
+    z = reshape.waist(compile_prims(_figure()), "head", "torso", 0.2)["z"]
+
+    def reach(prims, sign):  # how far the clay stands from the middle line at the waist, to the front (-1) or back
+        y = np.linspace(0.0, 0.4, 801)
+        f = field_at(prims, np.stack([np.zeros_like(y), sign * y, np.full_like(y, z)], 1), clip=False)
+        return float(y[np.nonzero(f < 0)[0].max()])
+    assert reach(even, -1) - reach(sided, -1) > 0.01  # the front is left creased
+    assert abs(reach(even, 1) - reach(sided, 1)) < 0.004  # behind it is as smooth as before
+    g = sdf.evaluate(sided, resolution=48)  # the grid's blocks take the sides too
+    assert np.isfinite(g.field).all() and (g.field < 0).any()
+    for bad, said in (({"front": 1.5}, "0 .a crease"), ({"chin": 0.2}, "fill_sides is")):
+        for n in ("head", "torso"):
+            s["blobs"][n]["fill_sides"] = bad
+        with pytest.raises(SpecError, match=said):
+            compile_prims(s)

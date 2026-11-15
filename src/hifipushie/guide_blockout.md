@@ -13,8 +13,9 @@ Read guide(topic="") (the playbook) first: describe the reference, then work big
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
 - Ears, leaves, fins, feathers, blades: a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
-  point, `cup` for an ear's hollow, `bend` for a curling tip), rotated so its local y runs root to tip and its
-  local z faces the way the hollow opens. A cone reads as a spike, and an ellipsoid as a lump.
+  point, `cup` for an ear's hollow, `bend` for a curling tip). Turn it by saying where it goes, not by angles:
+  `"aim": {"point": "up out", "face": "forward"}` (its length rises and leans out, its hollow looks forward); the
+  twin is mirrored. A cone reads as a spike, and an ellipsoid as a lump.
 - Toes: the foot kit (`{"type": "foot", "ankle": "ankle.L", "ball": "toe.L"}`) makes the foot's body, ball, heel and
   toes. Drop a capsule "foot" bone it replaces, and any toe-groove strokes on it. Sizes follow the leg arriving
   at the ankle.

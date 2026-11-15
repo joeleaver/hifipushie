@@ -258,7 +258,7 @@ Trace the part where it meets the body too: that line is what stops it spreading
 look_matched / feature_tiles and the blind review, not by IoU: outlines can't see form.
 ### `fuse`
 
-`fuse(name, a, b, fill=None, width=None, note='')`
+`fuse(name, a, b, fill=None, width=None, sides=None, note='')`
 
 Work two masses into ONE flowing mass, as a modeller smooths two lumps of clay together. The hollow between `a`
 and `b` fills and the line between them goes; the rest of the model blends against the fused mass as before.
@@ -270,6 +270,10 @@ fill: how far the two are worked into each other, in metres (0.05 a soft crease,
 mass with a slight pinch; the hollow fills by about a sixth of it). OR width: how wide the figure is at its narrowest between the two, in metres, read off the
 reference's outline at that height: the fill is found for you (two masses one above the other only). One of the
 two. fill=0 parts them again. Fusing a third mass to one already fused puts all three in one fuse, with one fill.
+sides: {side: 0..1} with sides front (where the figure faces), back, left, right, up, down: on that side of the
+fuse's middle only that part of the fill is worked in (0 a crease, 1 all of it). The same fill all round can only
+trade a snowman's neck (too little) for a bean (too much); a head that runs smooth into the body behind and at
+the sides and stands over the chest in front is sides={"front": 0.2}. The waist is then reported front and back.
 Returns the front and side look, and the waist as measured: its width (across x), depth (across y) and height,
 with what they were before. The masses must both add clay, in the same layer and part; a mass in a kit's group
 can't be fused. In the spec it is two keys on each mass: "fuse": "<tag>", "fill": metres.
@@ -327,7 +331,7 @@ again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="
 
 ### `look_beside`
 
-`look_beside(name, views=None, ignore=None, resolution=176, save=None)`
+`look_beside(name, views=None, ignore=None, on_purpose=None, resolution=176, save=None)`
 
 The model beside its reference, view by view: the comparison a modeller makes all the time. For each flat
 reference view (front, side, side_r, back: `read_reference` cuts them and gives each its camera) the model is seen
@@ -344,6 +348,13 @@ opening; some are paint (an eye, a patch of colour).
 What to do with it: fix the BIGGEST difference on the whole figure first. A mass in the wrong place or of the
 wrong size is its own joint or size; an outline off on a mass that is otherwise right is the grab given; two
 masses that should be one form are a `fuse`; a red line with nothing under it is form still to make.
+These are differences, not faults. A modeller departs from a concept on purpose: a limb held away from the body
+for the rig, a choice between two pictures that disagree, something left for a later pass. Record such a place:
+on_purpose=[{"view": "front", "at": [x, z] as the list gives it, "why": "arms held out for the rig"}]. From then on
+it is shown apart with its reason, drawn pale, and left out of the numbered list and of the overlap; it holds for
+the mirrored side and for the view that shares the plane (front and back). A reason is required. A record whose
+place no longer differs is said, with the call that takes it back ("remove": true). The record is kept beside the
+reference's views, not in the spec, so a new spec does not lose it.
 ignore: masses left out of the model (a limb held away from the body for the rig, which the picture shows
 hanging); the reference's own limb still shows where the picture has it. views: which of the flat views (default
 all). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one
