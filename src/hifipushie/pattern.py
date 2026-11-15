@@ -459,6 +459,10 @@ def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
         if _poly_inside(P, probe).mean() < 0.5:
             nrm = -nrm
         Q = L + off * nrm
+        # (inside is judged a hair inward: a line ON the edge (offset 0) lies on the outline, where the inside test
+        # flips point by point with the draft's rounding; its longest run inside came out 1 point and the fold rows
+        # crashed (t s4-25: sleevecapEase 0.045 "argmin of an empty sequence" on a hem fold along its edge))
+        ins = _poly_inside(P, L + (off + 1e-4) * nrm)
     elif isinstance(ln, dict) and "mid" in ln:
         lo, hi = P.min(0), P.max(0)
         c = 0.5 * (lo + hi)
@@ -468,8 +472,9 @@ def fold_line(pcs: dict, f: dict, step: float = 0.003) -> np.ndarray:
             Q = np.asarray(_line(pc, ln), float)
         except NoPoint as e:  # (C408: the declaration that named it, what it may name, the nearest names)
             raise NoPoint(f"folds {f.get('name', '')!r} on {nm}: line {ln!r}: {e}") from None
-    Q = _resampled(Q, step)
-    ins = _poly_inside(P, Q)
+    if not (isinstance(ln, dict) and "edge" in ln):  # (an edge's line is already resampled; its inside judged above)
+        Q = _resampled(Q, step)
+        ins = _poly_inside(P, Q)
     if ins.sum() >= 2:  # the longest run inside the piece
         runs, s0 = [], None
         for i, v in enumerate(np.r_[ins, False]):

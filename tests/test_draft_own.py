@@ -969,3 +969,38 @@ def test_piece_tapes_row_fails_each_way_and_passes():
     r = _tape_row(dict(stiff, tapes={"panel.L": {"side": "waist", "back": "waist"}, "panel.R": ["waist"]}))
     assert r["status"] == "PASS" and r["value"].startswith("2 of 2"), r
     assert _tape_row(DECL)["status"] == "PASS"
+
+
+SLEEVE = """import { Design } from '@freesewing/core'
+import { topsleeve, undersleeve } from '@freesewing/jaeger'
+const hide = { from: true, inherited: true }
+const top = { name: 'test.top', from: topsleeve, hide, draft: ({ paths, part }) => { delete paths.sa; return part } }
+const under = { name: 'test.under', from: undersleeve, hide, draft: ({ paths, part }) => { delete paths.sa; return part } }
+export default new Design({ parts: [top, under] })
+"""
+
+
+def test_a_fold_along_an_edge_keeps_the_whole_edge_at_any_cap_ease(home):  # (t s4-25: sleevecapEase 0.045 crashed)
+    from hifipushie import cloth, draft_own as do, pattern, pattern_parts as pp
+    hem = "hemLeft>ventRight>ventFoldRight"
+    decl = {"pieces": {"top": {"part": "test.top", "place": {"to": "arm.L"}},
+                       "under": {"part": "test.under", "place": {"to": "arm.L"}}},
+            "edges": {"top": {"fore": "tsLeftEdge>tsElbowLeft>hemLeft", "hind": "backPitchPoint>tsRightEdge>ventFoldRight",
+                              "hem": hem},
+                      "under": {"fore": "usLeftEdge>usElbowLeft>hemLeft", "hind": "usTip>usRightEdge>ventFoldRight",
+                                "hem": hem}},
+            "seams": [{"a": "top:fore", "b": "under:fore"}, {"a": "top:hind", "b": "under:hind"}],
+            "folds": [{"name": "top_hem", "piece": "top", "line": "hem", "kind": "press"},
+                      {"name": "under_hem", "piece": "under", "line": "hem", "kind": "press"}]}
+    meas = {k: v for k, v in pp.DEFAULTS.items() if not k.startswith("crossSeam")}
+    for ease in (0.0, 0.03, 0.045, 0.06, 0.08):
+        d = home / f"cap{ease}"
+        out = do.node_draft(SLEEVE, meas, {"sleevecapEase": ease}, d=d)
+        (d / "draft.json").write_text(json.dumps(out))
+        (d / "declarations.json").write_text(json.dumps(decl))
+        B = cloth.pieces({"pattern": {"from": "own", "dir": str(d)}}, meas)
+        for f in B["folds"]:  # (the line ON the edge: the inside test flipped point by point, 1 point left)
+            pc = B["pieces"][f["piece"]]
+            L, E = pattern.fold_line(B["pieces"], f), pc["P"][pattern.arc_indices(pc, hem)]
+            assert abs(pattern.length(L) / pattern.length(E) - 1) < 0.02, (ease, f["piece"], len(L))
+        assert len(cloth.mesh(B)["F"]), ease
