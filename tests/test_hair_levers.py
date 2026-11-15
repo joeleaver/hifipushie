@@ -5,7 +5,7 @@ import pytest
 
 from hifipushie import hair_cards as hc
 from hifipushie import hair_cards_budget
-from hifipushie import hair_cards_job
+from hifipushie import hair_cards_job_cards
 
 
 def test_lever_matched_raises_on_zero():
@@ -27,12 +27,12 @@ def test_stamp_cls_gives_far_tier_cards_their_class(monkeypatch):
     monkeypatch.setattr(hc, "BEND_ROWS", 30.0)
     monkeypatch.setattr(hc, "BEND_CLS", ("tail",))
     assert not any(hair_cards_budget.bend_selected(c) for c in cards)
-    hair_cards_job.stamp_cls(cards, locks)
+    hair_cards_job_cards.stamp_cls(cards, locks)
     assert [c["cls"] for c in cards] == ["tail", "head", "face", "fly"]
     assert [hair_cards_budget.bend_selected(c) for c in cards] == [True, False, False, False]
 
 
 def test_stamp_cls_keeps_an_existing_class():
     c = {"lock": "a", "cls": "head", "kind": "baked"}
-    hair_cards_job.stamp_cls([c], [{"name": "a", "free": 1.0}])
+    hair_cards_job_cards.stamp_cls([c], [{"name": "a", "free": 1.0}])
     assert c["cls"] == "head"
