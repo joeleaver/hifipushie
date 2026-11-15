@@ -2,6 +2,25 @@
 
 Read guide(topic="") (the playbook) first: describe the reference, then work big to small.
 
+## The blockout, as a modeller does it (a figure from concept pictures)
+
+The first pass on a figure. Later passes (big forms, medium forms, fine forms, a clean mesh, a rig) start from it.
+1. Study the reference: every picture, whole and close. Decide which rules proportion (flat views at one scale:
+   `read_reference`) and which the look (a painting: `fit_concept_camera` once, so `look_beside` shows its angle).
+2. Decide the build pose and the pieces. A figure that will be rigged is blocked out neutral and symmetric, every
+   limb clear of the body; the concept's pose comes back at the end, by posing. What is a separate object in the
+   design, or its own material, is its own piece (`part`).
+3. Block in the WHOLE figure at once, in rough big shapes: only what still shows at thumbnail size. Each big mass
+   reads as itself (a head as a head, on a body) and sits where the pictures have it.
+4. Compare constantly, from the views the pictures were made from: `look_beside` after every change. Each time fix
+   the BIGGEST difference on the whole figure, and only that. An outline can match round the wrong figure: look at
+   what is inside it, and never work for the overlap. Record what you differ in on purpose, with the reason.
+5. Solve what the pictures don't show or disagree on: decide, and say what you decided.
+6. Check it reads without the pictures: a plain `look` all the way round, small. Lumps, shelves and floating
+   pieces show here.
+7. Stop when the big masses, their proportions and the silhouette are right. Features and surface are later passes.
+Your own verdict on the whole figure is worth trusting: say bluntly what is still wrong, biggest first.
+
 ## 2. Blockout pitfalls
 
 - A joint whose radius is bigger than the bones meeting there shows as a ball (elbows, knees). Taper
