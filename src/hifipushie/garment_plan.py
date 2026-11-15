@@ -42,7 +42,7 @@ STEP 1 "parts": {pieces, details, closures, seams, centre?, over?, define?}
             body name | "piece:edge" | [step-0 height/landmark, another], source}} | {style: {value_mm, fixed: why it is
             the same on every wearer, source}}, why?}] (never mm read off the picture: garment_parts_lengths; a body
             length is checked against its edge as drawn at the step-0 scale; why keeps one the check refuses)
-STEP 2 "style": {ties, bends, pose, rows, layers?, drape?}
+STEP 2 "style": {ties, bends, pose, rows, traces, panels?, layers?, drape?}
   drape  {piece: {falls: down|up, source}}  (T13: a step-1 hang "draped" piece's start: a hood worn up falls up; chain_drape)
   layers {mode: visible|full, why}  (worn over another garment: visible (default) keeps the garment under where it is seen;
           full fits all of it inside, for a reason: chain_press.py, T12)
@@ -62,6 +62,9 @@ STEP 2 "style": {ties, bends, pose, rows, layers?, drape?}
           edge turns sharply: a lapel's notch, a cutaway's tip], source}]  REQUIRED: the reference's key edges (hem, front
           edges, collar, sleeve ends, a roll line...) traced on a view, what = a trace kind (listed on a refusal); step 6
           compares the build's outline in that view with them in mm (T15, C299, C351)
+  panels [{girth, shares: {piece base name: share of the round}, source}]  where the seams round the body fall (pieces
+          of three or more panels a side: front, side body, back), read off the reference or the garment's convention
+          (draft_panels.py; step 4's row panels FAILs without it)
   body_marks [{view, at: {landmark: [u,v]}, source}]  only for a view step 0 didn't fit: the fit view is placed by step
           0's own landmarks (C351)
 """

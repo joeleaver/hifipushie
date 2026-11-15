@@ -41,6 +41,17 @@ class InspectRefused(ValueError):
     """The design can't be inspected; the message says why."""
 
 
+def read_path(design):
+    """The design's source: a path to the agent's .mjs / .js file is read (t s4-27: a path was refused, the source text
+    wanted); anything else is returned as given."""
+    if isinstance(design, str) and "\n" not in design and design.strip().lstrip("@").endswith((".mjs", ".js")):
+        p = Path(design.strip().lstrip("@")).expanduser()
+        if not p.is_file():
+            raise InspectRefused(f"design: no file {str(p)!r} (a path to your design.mjs, or its source text)")
+        return p.read_text()
+    return design
+
+
 def source(design: str) -> str:
     """The module the runner imports: the agent's own source, or a re-export of a pack design."""
     from . import assets
@@ -51,6 +62,7 @@ def source(design: str) -> str:
             raise InspectRefused(f"no FreeSewing design {n!r} in the pack (designs: {', '.join(have)}); or pass your own "
                                  "design's source")
         return f"import {{ {n[0].upper() + n[1:]} as D }} from '@freesewing/{n}'\nexport default D\n"
+    design = read_path(design)
     if not isinstance(design, str) or "Design" not in design:
         raise InspectRefused("design: a pack design name (brian, bent, jaeger, carlton, simon, teagan...) or your own "
                              "design's source (an ES module ending `export default new Design({...})`)")
