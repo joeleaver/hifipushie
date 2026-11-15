@@ -88,9 +88,16 @@ def install(cache: Path, repo: str, sha: str, timeout: float = 1800) -> Path:
     if not uv:
         raise RuntimeError("no uv (expected in <cache>/bin or on PATH)")
     src = f"git+{repo}@{sha}"
-    r = subprocess.run([uv, "tool", "install", "--force", "--python", "3.12", src], env=uv_env(cache, sha),
-                       capture_output=True, text=True, timeout=timeout)
     exe = cache / "tools" / sha / "bin" / "hifipushie-artist"
+    # with the `fast` extra (CHOLMOD) when it builds here, else without (it needs libsuitesparse-dev + python3-dev:
+    # sparse_chol.py falls back to splu). A version from before the extra existed just warns that it has no `fast`.
+    for spec in (f"hifipushie[fast] @ {src}", src):
+        r = subprocess.run([uv, "tool", "install", "--force", "--python", "3.12", spec], env=uv_env(cache, sha),
+                           capture_output=True, text=True, timeout=timeout)
+        if not r.returncode and exe.exists():
+            break
+        log.warning("uv tool install %s failed (%s); %s", spec, r.returncode,
+                    "trying without the fast extra" if spec != src else "giving up")
     if r.returncode or not exe.exists():
         raise RuntimeError(f"uv tool install {src} failed ({r.returncode}): {(r.stderr or r.stdout)[-800:]}")
     return exe
