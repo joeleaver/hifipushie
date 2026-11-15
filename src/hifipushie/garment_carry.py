@@ -32,7 +32,8 @@ def _check(sid: str, out: dict, rec: dict) -> str:
         if sid == "1":
             gp.check_parts(out, o["0"])
         elif sid == "2":
-            gp.check_style(out, o["0"], o["1"])
+            from .garment_fit import body_for  # (a reference panel share is walked round the body: F4)
+            gp.check_style(out, o["0"], o["1"], lambda: body_for(rec.get("model") or ""))
         elif sid == "3":
             took = {r.get("name") for r in out.get("measurements") or []}
             miss = [m for m in o["1"].get("measurements") or [] if m not in took]

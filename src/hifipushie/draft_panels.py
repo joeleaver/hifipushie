@@ -6,11 +6,8 @@ round of the right length with its seams in the wrong places is invisible to it.
 seams where the style wants them (a three-piece lounge jacket: the front seam under the front of the armhole, the back
 seam at the blade) and only then shapes the pieces. So the style states it and the flat is checked against it.
 
-STEP 2 `panels` [{girth: a body girth by name (chest, waist, hips...: what step 3 measures), shares: {piece: share of
-  the round, ...} (step 1's pieces by base name, without .L / .R: a left and right pair share it between them; the
-  shares sum to 1), source}] (`check`, called by garment_plan's step-2 check). Read off the reference where its seams
-  show; else the convention for the garment, said in source (a three-piece lounge jacket at the chest: front ~0.40,
-  side ~0.22, back ~0.38 of the round, the front's to the centre line).
+STEP 2 `panels` (panel_shares.py, F4): each piece's share of a girth, read off the reference or filled from the one
+  named convention, never typed (t s4-28: shares typed as the block's own proportions passed this row against itself).
 STEP 4 row `panels` (`rows`): each stated girth placed on the flat as the girths row places it (draft_girths: the level
   on each piece, the ring round the body); each base's width along its level (a closure's lap off the over / under
   pieces, a vent's overlap off its under piece) as a share of the round. FAIL: a piece more than TOL_MM off its share
@@ -23,39 +20,10 @@ from __future__ import annotations
 import numpy as np
 
 TOL_MM = 15.0  # mm a piece, at its level: the level is placed to ~1 cm (draft_girths.TOL_MM's reasoning)
-SUM_TOL = 0.02  # the shares' sum may miss 1 by this (read off a picture to two figures)
-FORM = ("panels: [{girth: a body girth by name (chest, waist, hips...), shares: {piece base name (no .L/.R): share of "
-        "the round}, summing to 1, source}] where the seams round the body fall (draft_panels.py)")
 
 
 def base(p: str) -> str:
     return p[:-2] if p.endswith((".L", ".R")) else p
-
-
-def check(panels, pieces: dict, bad: list):
-    """Step 2's `panels` refused by name (FORM)."""
-    if panels is None:
-        return
-    if not isinstance(panels, list):
-        bad.append(FORM)
-        return
-    have = {base(p) for p in pieces}
-    for i, e in enumerate(panels):
-        w = f"panels[{i}]"
-        if not isinstance(e, dict) or not isinstance(e.get("girth"), str) or not isinstance(e.get("shares"), dict):
-            bad.append(f"{w}: {FORM}")
-            continue
-        sh = e["shares"]
-        for k, v in sh.items():
-            if base(k) not in have:
-                bad.append(f"{w}.shares.{k}: not a step-1 piece (have {', '.join(sorted(have))})")
-            if not isinstance(v, (int, float)) or not 0 < v < 1:
-                bad.append(f"{w}.shares.{k}: a share of the round between 0 and 1")
-        tot = sum(v for v in sh.values() if isinstance(v, (int, float)))
-        if abs(tot - 1) > SUM_TOL:
-            bad.append(f"{w}.shares sum to {tot:.2f}: the pieces round the {e['girth']} share all of it (1)")
-        if not str(e.get("source") or "").strip():
-            bad.append(f"{w}.source: where the seams show on the reference, or the convention for the garment")
 
 
 def _widths(B: dict, decl: dict, T: dict, g: str) -> list:
@@ -101,11 +69,17 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
                                  + ", ".join(f"{p} {1000 * v:.0f} mm" for p, v in w.items()) + "); no shares stated",
                                  why=f"step 2 states no panels: where the seams between {', '.join(sorted(bs))} fall "
                                      f"round the {g} is the style's choice, not the block's",
-                                 fix=f"back to step 2: garment_plan style with {FORM}")]
+                                 fix=f"back to step 2: garment_plan style with {_form()}")]
         return []
+    stale = [e.get("girth", "?") for e in plan if not all(isinstance(v, dict) and "share" in v
+                                                           for v in (e.get("shares") or {}).values())]
+    if stale:  # (F4: a record written before shares had sources: its step 2 no longer validates)
+        return [dict(rid, status="FAIL", back_to="2", value=f"step 2's panels at {', '.join(stale)} have no sources",
+                     why="each share is read off the reference or filled from the convention (panel_shares.py, F4)",
+                     fix=f"back to step 2: garment_plan style with {_form()}")]
     vals, why = [], []
     for e in plan:
-        g, sh = e["girth"], {base(k): float(v) for k, v in e["shares"].items()}
+        g, sh = e["girth"], {base(k): float(v["share"]) for k, v in e["shares"].items()}
         if (T.get(g) or {}).get("kind") != "loop":
             why.append(f"{g}: step 3 has no girth {g!r} (back to step 3: body_tape)")
             continue
@@ -138,6 +112,11 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
     return [dict(rid, status="FAIL" if why else "PASS", value="; ".join(vals) or "no stated girth placed",
                  why="; ".join(why), fix="move the seams between the named pieces by the named mm (the design's seam "
                  "points at that level; back to step 4); step 2's shares if the reference says otherwise" if why else "")]
+
+
+def _form() -> str:
+    from .panel_shares import FORM
+    return FORM
 
 
 def _neighbours(B: dict, p: str, ring: set) -> set:
