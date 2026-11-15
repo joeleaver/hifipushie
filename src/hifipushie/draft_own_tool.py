@@ -194,7 +194,11 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
         from .pattern import NoPoint
         if isinstance(e, KeyError) and not isinstance(e, NoPoint):  # (C408: never a bare 'name')
             e = f"no {e.args[0]!r} where a declaration names it (a piece, edge or point name the draft hasn't)"
-        raise do.DraftRefused(f"the converter refused the draft: {e}{nan}") from None
+        try:  # (F4: an a>b edge taken the short way round is the likeliest cause of an overlap: say so)
+            hint = draft_own_block.short_way_hint(draft_own_block.block(g["pattern"]), str(e))
+        except (KeyError, ValueError, IndexError, TypeError, do.DraftRefused):
+            hint = ""
+        raise do.DraftRefused(f"the converter refused the draft: {e}{nan}{hint}") from None
     blk = draft_own_block.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
     B["darts"] = blk.get("darts") or []  # (C386: cloth.pieces drops them; the dart row and the length rows need them)

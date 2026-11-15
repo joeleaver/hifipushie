@@ -81,3 +81,19 @@ def test_look_puts_each_seam_at_its_share():
     assert side["share"] == .08
     lines = "\n".join(ps.text_lines({"panels": [e]}))
     assert "front / side at" in lines and "side 0.22 (convention: body_panels)" in lines
+
+
+def test_short_way_round_named_on_a_refusal():
+    from hifipushie import draft_own_block as dob
+    # a collar: its outer edge tip1 > cbo > tip2 is the long way round from tip1 to tip2
+    pts = [("tip1", (0, 0)), ("n1", (.05, -.01)), ("tip2", (.1, 0)), ("o2", (.12, .06)), ("cbo", (.05, .09)),
+           ("o1", (-.02, .06))]
+    pc = {"name": "collar.L", "P": np.array([p for _, p in pts], float), "names": {n: i for i, (n, _) in enumerate(pts)}}
+    sw = []
+    dob._short_way(pc, "collar.L", "outer", "tip1>tip2", sw)
+    dob._short_way(pc, "collar.L", "neck", "tip1>n1>tip2", sw)  # (a via point decides: not noted)
+    assert [x["edge"] for x in sw] == ["collar.L:outer"] and sw[0]["short_mm"] == 102 and sw[0]["long_mm"] > 250
+    h = dob.short_way_hint({"short_ways": sw}, "two sewn edges overlap: collar.L:tip1>tip2 (seam 3) and collar.L:...")
+    assert "collar.L:tip1>tip2 (collar.L:outer) was walked the short way round (102 mm" in h
+    assert "add a via point (tip1>v>tip2" in h
+    assert dob.short_way_hint({"short_ways": []}, "x") == ""

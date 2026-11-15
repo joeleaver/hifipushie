@@ -57,7 +57,7 @@ def block(pat: dict) -> dict:
     from . import draft_pairs
     decl = draft_pairs.expand(json.loads((d / "declarations.json").read_text()), draft["parts"])
     edges = decl.get("edges") or {}
-    out, arcs, splits = {}, {}, {}
+    out, arcs, splits, shorts = {}, {}, {}, []
     for nm, pd in (decl.get("pieces") or {}).items():
         part = draft["parts"][pd["part"]]
         pc = pattern.from_freesewing(part, nm, fold=pd.get("fold"))
@@ -76,6 +76,7 @@ def block(pat: dict) -> dict:
                 ix = pattern.arc_indices(pc, arcs[nm][ed])
             except (KeyError, ValueError) as e:
                 raise DraftRefused(f"edges.{nm}.{ed} = {arcs[nm][ed]!r}: {e}") from None
+            _short_way(pc, nm, ed, arcs[nm][ed], shorts)
             P_ = np.asarray(pc["P"])[ix]
             ln_ = float(np.sum(np.linalg.norm(np.diff(P_, axis=0), axis=1))) if len(P_) > 1 else 0.0
             if not np.isfinite(ln_) or ln_ < 1e-3:  # (C362, t s4-2: "cannot convert float NaN to integer", no name)
@@ -129,4 +130,30 @@ def block(pat: dict) -> dict:
     return {"pieces": out, "seams": seams, "stitches": [], "interfaced": list(decl.get("stiff") or []), "vents": vents,
             "draft": {"design": "own", "dir": str(d), "options": decl.get("options") or {}},
             "folds": folds, "closures": closures, "seam_notes": notes, "edge_arcs": arcs, "decl": decl,
-            "darts": darts}
+            "darts": darts, "short_ways": shorts}
+
+
+def _short_way(pc: dict, nm: str, ed: str, spec: str, out: list):
+    """An edge "a>b" (no via) is walked the shorter way round the outline (pattern.arc_indices): noted with both ways'
+    mm, so a refusal it causes can say so (F4, t s4-28: a collar's outer edge, longer than the rest of its outline, was
+    walked the other way; "two sewn edges overlap" cost 5 of 11 calls)."""
+    from . import pattern
+    ends = spec.split(">")
+    if len(ends) != 2 or ends[0] == ends[1]:
+        return
+    a, b = (pattern.index_of(pc, x) for x in ends)
+    n, P = len(pc["P"]), np.asarray(pc["P"], float)
+    ways = sorted(pattern.length(P[[(i0 + k * sg) % n for k in range(k_ + 1)]])
+                  for i0, sg, k_ in ((a, 1, (b - a) % n), (a, -1, (a - b) % n)))
+    out.append({"edge": f"{nm}:{ed}", "spec": spec, "short_mm": round(1000 * ways[0]), "long_mm": round(1000 * ways[1])})
+
+
+def short_way_hint(blk: dict, msg: str) -> str:
+    """The lines a converter / build refusal gets for the a>b edges walked the short way (those of the pieces the
+    message names; all of them when it names none)."""
+    sw = blk.get("short_ways") or []
+    named = [x for x in sw if x["edge"].split(":")[0] in msg]
+    lines = [f"{x['edge'].split(':')[0]}:{x['spec']} ({x['edge']}) was walked the short way round ({x['short_mm']} mm; "
+             f"the long way is {x['long_mm']} mm); if you meant the long way, add a via point "
+             f"({x['spec'].replace('>', '>v>')}, v a point on the long way)" for x in (named or sw)]
+    return ("\n  " + "\n  ".join(lines[:8])) if lines else ""
