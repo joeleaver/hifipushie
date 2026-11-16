@@ -2,7 +2,7 @@
 
 Steps 4-6 rebuilt the draper's way: TOILE (the garment's 3D surface on the body), MARK, CUT AND FLATTEN.
 Runs R1 (C489) -> R2 (C490) -> R2b (C491) -> R3a (toile, C492) -> R3b (mark + cut, C493) -> R3c / R3c-2 (made pieces, C494)
--> R3d (lengths from the toile, C495) -> R3e (cap ease, girth rings, C496).
+-> R3d (lengths from the toile, C495) -> R3e (cap ease, girth rings, C496) -> R3f (collar draped on the toile, C497).
 History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 
 ## Tools (each module's docstring is the spec)
@@ -41,6 +41,9 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   cut_decl4.json; toile2 / mark2 / cut5 logs): toile 14 PASS; mark PASS; cut PASS seams 32 0 off, collar, piece_tapes,
   place, panels, shape_fall 1.261, landing 1.000, shape_cap 0.70, sewn, closures; FAIL darts_drafted, style_lengths, girths.
 - Tests: tests/test_cut_r3e.py (eased band flattens longer by e, unstrained against rest; marks on both fronts).
+
+## R3f (2026-11-16, C497, in progress): the collar draped on the toile (step 4), cut and unfolded at step 6
+- Joe: "Drape it on the toile". The step-6 draft-and-fit collar route is being replaced.
 
 ## Left
 - style_lengths: compare only where step 1 estimated the same line (collar neck edges, shoulder): R3d item 6.
