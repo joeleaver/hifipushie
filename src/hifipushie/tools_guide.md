@@ -338,23 +338,25 @@ again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="
 
 ### `flap`
 
-`flap(name, mass, base, length, width, rise="up", face="forward", fold=0, fold_at=0.6, thickness=None, pointed=0.6, blend=None, part=None, note='')`
+`flap(name, mass, base, length, width, rise="up", face="forward", tip_width=0, thickness=None, tip_thickness=None, fold=0, fold_at=0.6, blend=None, part=None, note='')`
 
-A flap of clay made as a modeller makes a folded ear: a thick lump standing on the figure, then its top folded over.
-For a folded or upright ear, a comb, a tongue, a tab.
-- base: [x, y, z], the middle of where it grows from, ON the surface of the mass it grows from (read off the rulers
-  of `look` or `look_beside`); it is sunk in a little by itself. Off the surface: the answer says it floats.
-- rise: the way it stands: words ("up", "up out", "up out back"; out is away from the centre line) or [x, y, z].
+An ear, a tab, a fin, made as a modeller makes one: its outline drawn flat, given a thickness with a rounded rim,
+stood on the figure, and its top folded over.
+- base: [x, y, z], the middle of its base, ON the surface of the mass it grows from (read off the rulers of `look`
+  or `look_beside`); it is sunk in by its own thickness. Off the surface: the answer says it floats.
+- rise: the way it stands: words ("up", "up out"; out is away from the centre line) or [x, y, z].
 - face: the way its broad face looks ("forward", "forward out"), made square to rise. The answer says from which
   views it shows broad and from which edge-on.
-- length: base to tip as if laid flat; width: across its base; thickness: through its base (default 0.6 of the
-  width: a clay ear is a thick lump, not a strap); pointed: 0 round .. 1 narrowing to a soft point.
-- fold: degrees the top folds over toward its face (0 upright; 90 the top sticks out forward; 150 to 180 it lies
-  down along the standing part); fold_at: where along its length it folds (0.6: the top 40 % folds, round a knuckle).
+- The outline: length (base to tip, laid flat), width (across the base), tip_width (across the tip: 0 is a point,
+  a triangle; the width is a strip). Corners are rounded by the clay's thickness.
+- thickness: through its base (default 0.35 of the width); tip_thickness: through its tip (default half that).
+- fold: degrees its top folds over toward its face (0 upright; 90 the top sticks out forward; 180 it lies flat
+  against the standing part); fold_at: where along its length the fold line is (0.6: the top 40 % folds). The clay
+  keeps its thickness round the fold. Past 90 degrees the folded part comes back against the way it rises: for a
+  top that hangs out as well as forward, give face the outward part.
 A name ending ".L" is made on the left (+x) and mirrored. The same name again replaces it: change ONE thing at a
 time, then `look_beside(name, focus=[mass])` to see it close up beside each reference view and the painting.
-In the spec: two bones, `<mass>` (base to fold, its numbers under "flap") and `<stem>_top<side>` (the folded part),
-oval round cones in one group, on joints `<stem>_root`, `_fold`, `_top`, `_tip`.
+In the spec: a `"shape": "slab"` blob (slab.py) with those numbers.
 
 ### `trim`
 

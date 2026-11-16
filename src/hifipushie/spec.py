@@ -159,6 +159,9 @@ def expand_mirror(spec: dict) -> dict:
             nb["rot"] = _mirror_rot(bl["rot"])
         if isinstance(bl.get("aim"), dict):
             nb["aim"] = spec_hands._mirror_aim(bl["aim"])
+        for key in ("rise", "face"):  # a slab's directions
+            if isinstance(bl.get(key), (list, tuple)):
+                nb[key] = _mirror_vec(bl[key])
         for key in ("pts", "nrm", "path", "N", "U", "spine"):  # sweeps (strokes, sweep blobs), sheets
             if key in bl:
                 nb[key] = [_mirror_vec(v) for v in bl[key]]
@@ -219,8 +222,8 @@ class Prim:
     sides: tuple | None = None  # a fuse whose fill differs by side: (centre, size, ((axis, sign, part of the fill), ...))
 
 
-BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "loft", "super", "sweep", "collar", "lids", "displace",
-               "flatten")
+BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "slab", "loft", "super", "sweep", "collar", "lids",
+               "displace", "flatten")
 
 
 class SpecError(ValueError):
@@ -352,6 +355,19 @@ def _compile(spec: dict) -> list[Prim]:
             pr, lo, hi = softforms.loft_params(name, bl, c, rot, SpecError)
             prims.append(Prim(name, "loft", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr, reach=3.0))
             continue
+        if bl.get("shape") == "slab":  # a flat outline of clay folded over (slab.py; the flap tool writes it)
+            from . import slab
+            need = [key for key in ("rise", "face", "length", "width", "thickness") if key not in bl]
+            if need:
+                raise SpecError(f"blob {name!r}: a slab needs {', '.join(need)} (the flap tool writes them)")
+            try:
+                pr, lo, hi = slab.params(c, bl["rise"], bl["face"], bl["length"], bl["width"], bl.get("tip_width", 0.0),
+                                         bl["thickness"], bl.get("tip_thickness", bl["thickness"]), bl.get("fold", 0.0),
+                                         bl.get("fold_at", 0.6))
+            except ValueError as e:
+                raise SpecError(f"blob {name!r}: {e}") from None
+            prims.append(Prim(name, "slab", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr, reach=1.5))
+            continue
         if bl.get("shape") == "box":
             rnd =min(float(bl.get("round", 0.0)), float(size.min()))
             prims.append(Prim(name, "box", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
@@ -466,7 +482,8 @@ FUSE_SIDES = {"front": (1, -1), "back": (1, 1), "left": (0, 1), "right": (0, -1)
 AIM_WORDS = {"up": (0, 0, 1), "down": (0, 0, -1), "forward": (0, -1, 0), "front": (0, -1, 0), "back": (0, 1, 0),
              "backward": (0, 1, 0), "out": (1, 0, 0), "left": (1, 0, 0), "in": (-1, 0, 0), "right": (-1, 0, 0)}
 
-SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep", "super", "loft", "sheet")
+SHAPES = ("cone", "ellipsoid", "box", "cylinder", "blade", "lids", "csg", "collar", "sweep", "super", "loft", "sheet",
+          "slab")
 
 
 OP_ORDER = {"add": 0, "subtract": 1, "intersect": 2, "modify": 3}
