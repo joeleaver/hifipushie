@@ -74,7 +74,8 @@ def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict, folds=()) 
             "closures": closures, "stiff": [], "folds": list(folds)}
     trued = true_seams(out, seams, notes)
     B = {"pieces": out, "seams": seams, "stitches": [], "interfaced": [], "vents": [], "folds": list(folds), "closures": closures,
-         "seam_notes": notes, "edge_arcs": arcs, "decl": decl, "darts": [], "draft": {"design": "toile"}, "trued": trued}
+         "seam_notes": notes, "edge_arcs": arcs, "decl": decl, "darts": [], "draft": {"design": "toile"}, "trued": trued,
+         "landing": {p: f["landing"] for p, f in pcs.items() if f.get("landing")}}
     return B, decl
 
 
@@ -212,8 +213,17 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
         log(f"{nm}: {f['rep']}; edges {sorted(edges[nm])}")
     from .cut_made import made
     folds, made_rows = made(pcs, edges, declarations, rd["1"], rec["steps"]["4"]["output"], (V, F), log)
+    from .cut_made import _mir
+    from .cut_tapes import folds as planned, piece_tapes, places
+    hems, b = planned(declarations, edges)
+    folds, why = folds + hems, why + b
     absent = {p: w for p, w in (m5.get("absent") or {}).items() if p not in pcs}
-    B, decl = block(pcs, edges, rd["1"], absent, declarations.get("ease") or {}, folds)
+    ease = dict(declarations.get("ease") or {})
+    ease.update({_mir(k): v for k, v in ease.items() if _mir(k) not in ease})  # (a ".L" seam's ease serves ".R")
+    B, decl = block(pcs, edges, rd["1"], absent, ease, folds)
+    decl["tapes"] = piece_tapes(pcs, rd["3"], edges)  # (each piece lies where it was cut from: the tapes there are its own)
+    for p, w in places(pcs, rd["3"]).items():
+        B["pieces"][p]["wrap"] = w
     rows = [{"id": "cut_flatten", "status": "FAIL" if why else "PASS", "value": f"{len(pcs)} pieces cut and flattened, edges named",
              "target": "every marked piece one disc, every edge named", "why": "; ".join(why[:8]), "back_to": "6"},
             *made_rows,
