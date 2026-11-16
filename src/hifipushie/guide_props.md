@@ -15,6 +15,9 @@ Read guide(topic="") (the playbook) first: describe the reference, then work big
   for sawn timber; `lumpy` for knots and axe marks. Identical copies at even spacing read as CG at once.
 - `tags` (and instance / array names, which are tags automatically) stand for all their members in paint
   `near`, cut `targets` and `delete`.
+- Lettering, signs and logos: a `text` blob (`text`, `font`, `height` = cap height, `depth`, `bevel` for a crisp
+  45-degree edge, `round`, `italic`, `tracking`) sets one exact, bevelled letter per glyph; an `outline` blob
+  extrudes any closed 2D loops (a badge, an arrow, a cut-out). Never build letters from boxes and sweeps.
 - Hard surfaces: `box` and `cylinder` blobs with `round`, `hollow` for vessels, and cuts with `targets` so an
   opening only bites what it should. Keep walls >= 2 voxels at the resolution you judge at.
 - Prefabs face -Y (their front is local -Y, like a creature), origin on the floor under them (a door's at its

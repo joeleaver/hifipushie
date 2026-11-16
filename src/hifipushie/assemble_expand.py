@@ -5,7 +5,7 @@ import copy
 
 import numpy as np
 
-from . import assemble
+from . import assemble, outline
 from .spec import SpecError, euler_matrix
 from .assemble_arrays import _arrays, _place
 from .assemble_place import _place_on, _scatter
@@ -15,7 +15,7 @@ from .assemble_weather import _weather_elements, _weathered
 def expand(spec: dict) -> dict:
     """The spec with instances and arrays expanded (a new dict; the input is left alone). Cached by content."""
     if not spec.get("instances") and not _has_arrays(spec) and not spec.get("weather") and not spec.get("walls") \
-            and not (spec.get("style") or {}).get("shape") and not spec.get("scatter"):
+            and not (spec.get("style") or {}).get("shape") and not spec.get("scatter") and not _has_text(spec):
         return spec
     import hashlib
     import json
@@ -37,6 +37,7 @@ def expand(spec: dict) -> dict:
             if "on" not in d:
                 _place(s, inst, d)
         s = _arrays(s)
+        outline.expand_text(s)  # a "text" blob set as one "outline" blob per letter
         assemble._SCATTERED[key] = _scatter(s, insts)
         insts = {**insts, **_weathered(assemble._SCATTERED[key], weather)}
         assemble._ON[key] = _place_on(s, {i: d for i, d in insts.items() if "on" in d}, insts)
@@ -97,6 +98,10 @@ def world_of(pl: dict) -> np.ndarray:
     if pl["mirror"]:
         M = np.diag([-1.0, 1, 1, 1]) @ M
     return M
+
+
+def _has_text(spec: dict) -> bool:
+    return any(el.get("shape") == "text" for el in (spec.get("blobs") or {}).values())
 
 
 def _has_arrays(spec: dict) -> bool:
