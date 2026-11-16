@@ -43,7 +43,7 @@ def inventory(rec: dict) -> tuple:
 
 
 def declarations(rec: dict) -> dict:
-    d = (rec["steps"]["4"].get("output") or {}).get("dir")
+    d = (rec["steps"][gr.FLAT].get("output") or {}).get("dir")
     p = Path(d) / "declarations.json" if d else None
     if not (p and p.exists()):
         return {}

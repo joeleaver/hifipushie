@@ -60,7 +60,7 @@ def stand_ref(name: str, garment: str) -> dict | None:
     if ref and "why" not in ref and "hps.L" in at:
         try:
             from . import garment_record as gr
-            ref["top_girth"] = draft_stand.girth_at(gr.reads(name, garment, "4")["3"], at, ref["h_side"])
+            ref["top_girth"] = draft_stand.girth_at(gr.reads(name, garment, gr.FLAT)["3"], at, ref["h_side"])
         except (KeyError, ValueError, TypeError):
             pass
     return ref
@@ -93,7 +93,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
     g = store.load(name)["cloth"][garment]
     d = Path(g["pattern"]["dir"])
     decl = json.loads((d / "declarations.json").read_text())
-    rd = gr.reads(name, garment, "4")
+    rd = gr.reads(name, garment, gr.FLAT)
     B = cloth.pieces(json.loads(json.dumps(g)), measurements(rd["3"]))
     blk = draft_own_block.block(g["pattern"])
     B["edge_arcs"], B["decl"] = blk["edge_arcs"], blk["decl"]
@@ -112,9 +112,9 @@ def check_text(name: str, garment: str) -> str:
     from . import garment_record as gr
     rows, B, _ = flat_check(name, garment)
     v = draft_own_gate.verdict(rows)
-    rec = gr._try(gr.write, name, garment, "4", "done" if v == "PASS" else "failed", by="pattern_check",
-                  output=dict(gr.load(name, garment)["steps"]["4"].get("output") or {}, pieces=list(B["pieces"])),
-                  gate={"verdict": v, "rows": rows}, look=gr.load(name, garment)["steps"]["4"].get("look"), back_to="4")
+    rec = gr._try(gr.write, name, garment, gr.FLAT, "done" if v == "PASS" else "failed", by="pattern_check",
+                  output=dict(gr.load(name, garment)["steps"][gr.FLAT].get("output") or {}, pieces=list(B["pieces"])),
+                  gate={"verdict": v, "rows": rows}, look=gr.load(name, garment)["steps"][gr.FLAT].get("look"), back_to="4")
     lines = [f"{name}:{garment} pattern_check (own draft, the flat gate): {v}"]
     lines += [ln for r in rows for ln in row_lines(r)]
     lines.append(f"  {rec}" if rec else f"  record: step 4 written ({gr.path(name, garment)})")
@@ -157,8 +157,8 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
                               "or the path to its .mjs file")
     if not isinstance(declarations, dict):
         raise do.DraftRefused("declarations: {pieces, edges, seams, stiff, folds, closures, omit}: guide(topic=\"draft_pattern\")")
-    declarations = draft_vents.with_marks(declarations, gr.reads(name, garment, "4")["1"])
-    rd = gr.reads(name, garment, "4")
+    declarations = draft_vents.with_marks(declarations, gr.reads(name, garment, gr.FLAT)["1"])
+    rd = gr.reads(name, garment, gr.FLAT)
     meas = measurements(rd["3"])
     d = gr.look_dir(name, garment) / "draft"
     from . import pattern_parts as pp  # (the design's FULL list, before drafting: a block without one crashes inside it)
@@ -231,7 +231,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
                                                               list(B["pieces"]))
     from . import draft_tapes  # (P1: which tape each edge laid on the body lies along: step 5 lays it there)
     out["edge_tapes"] = draft_tapes.edge_tapes(declarations, list(B["pieces"]), B.get("edge_arcs"))
-    rec = gr._try(gr.write, name, garment, "4", "done" if v == "PASS" else "failed", output=out, by="draft_pattern",
+    rec = gr._try(gr.write, name, garment, gr.FLAT, "done" if v == "PASS" else "failed", output=out, by="draft_pattern",
                   gate={"verdict": v, "rows": rows}, look=[str(sheet)], back_to="4")
     lines = [f"{name}:{garment} draft_pattern: {v} (spec v{ver}; draft {d})",
              f"  pieces {len(B['pieces'])}: {', '.join(B['pieces'])}",

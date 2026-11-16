@@ -361,6 +361,19 @@ def draft_pattern(name: str, garment: str, design: str, declarations: dict | str
 
 
 @mcp.tool(structured_output=False)
+def garment_toile(name: str, garment: str, declarations: dict | str):
+    """STEP 4: THE TOILE, the garment's 3D surface on the body (drape first): the body + step 0's ease per fit level
+    (calibrated to the planned girths), shaped by the parts you declare: parts [sleeves, opening, lapel, pad],
+    hang_from (a step-0 level or "none"), armhole {length_mm}, sleeves {ease_mm [top, wrist], crown_mm, hem},
+    opening {lap_mm, edge (a step-2 trace), buttons}, lapel {roll, top (traces), width_mm}, pad {thickness_mm}.
+    Refused by name when one is missing. Gate rows (girths, clearance, closed, outline vs step 2's traces), the look
+    (4 views beside the reference), step 4 written. guide(topic="garment_toile")."""
+    from . import toile_tool
+    sheet, txt = toile_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
+    return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
+
+
+@mcp.tool(structured_output=False)
 def pattern_parts(design: str, name: str = "", garment: str = "", part: str = "", options: dict | None = None,
                   look: bool = False):
     """SEE A FREESEWING DESIGN before you declare its edges. design: a pack design name (brian, bent, jaeger, carlton,

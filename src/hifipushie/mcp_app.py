@@ -30,7 +30,8 @@ plants, clutter) runs through call_tool(name, args): find_tool("what you want to
 parameters and an example call; find_tool("") lists every tool by domain. Domains have a guide topic (hair,
 cloth, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
 A person's head from pictures: the artist block-in (guide topic block_in) is the default.
-Clothes: garment_plan (read, parts, style plan) -> body_tape -> draft_pattern (your own FreeSewing design; its flat gate)
+Clothes: garment_plan (read, parts, style plan) -> body_tape -> garment_toile (step 4: the garment's 3D surface on the
+body; drape first: then 5 mark, 6 cut and flatten, whose flat gate is draft_pattern's)
 -> chain_garment (the only way a garment is built: the pattern's own lengths, in the planned state) -> garment_details ->
 look_chain beside the reference -> export_garment. garment_record shows every step. Never tune anything; a fault is fixed
 where its step says. guide(topic="cloth").
@@ -171,12 +172,12 @@ TOOL_GROUPS: dict[str, dict] = {
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"subject": "clothes clothing cloth garment outfit costume dress sew drape tailor fabric shirt blouse tee hoodie "
                          "sweater jacket trousers jeans skirt cloak robe",
-              "workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
+              "workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> garment_toile (step 4, the 3D surface on the body) -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
                           "is built) -> garment_details -> look_chain beside the reference -> garment_appearance -> export_garment; garment_record shows every step",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["garment_plan", "body_tape", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
+              "steps": ["garment_plan", "body_tape", "garment_toile", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "body_tape", "draft_pattern", "pattern_parts", "pattern_check", "chain_garment", "garment_details",
+              "tools": ["garment_plan", "body_tape", "garment_toile", "draft_pattern", "pattern_parts", "pattern_check", "chain_garment", "garment_details",
                         "look_chain", "garment_appearance", "export_garment", "garment_record"]},
     "terrain": {"subject": "terrain landscape mountain valley river hill island lake coast canyon heightmap",
                 "entry": "set_terrain", "about": "terrain and game levels (height fields in a level designer's words)",

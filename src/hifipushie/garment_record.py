@@ -43,9 +43,11 @@ STEPS = [
     ("2", "style", "the ONE worn state, as bends and targets; the pose", "garment_plan", "none", "1"),
     ("3", "measure", "every measurement steps 1-2 call for, by name", "body_tape", "none", "2"),  # (C354: it was None,
     # so "next:" said no tool writes step 3 though body_tape(garment=...) does)
-    ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "draft_pattern", "none", "4"),
-    ("5", "chains", "the pattern's edges as exact-length chains in the planned state", "chain_garment", "none", "4"),
-    ("6", "surfaces", "the garment surface; the structure gate", "chain_garment", "none", "4"),
+    # (drape first, R3a: 4 TOILE the garment's 3D surface on the body, 5 MARK its seam lines on it, 6 CUT AND FLATTEN
+    # it into the flat pattern (today's draft form: seam pairs, stiff pieces, folds, closures) + the flat gate; R3b)
+    ("4", "toile", "the garment's 3D surface on the body: the body + step 0's ease per level, the declared parts", "garment_toile", "none", "4"),
+    ("5", "mark", "the seam lines drawn on the toile, each a closed or end-to-end curve on its surface", None, "none", "4"),
+    ("6", "cut", "the toile cut on the marks, each piece flattened: the flat pattern (seam pairs, stiff pieces, folds, closures) + the flat gate", None, "none", "5"),
     ("7", "details", "buttons, braid, frogging on the surface, at the pattern's marks", "garment_details", "none", "6"),
     ("7a", "presim", "the built, detailed garment beside the reference, approved before the sim", None, "setting", "6"),
     ("8", "sim", "folds only: soft cloth under gravity, stiff parts and the state held", "chain_garment", "none", "4"),
@@ -54,11 +56,13 @@ STEPS = [
     ("10", "export", "game mesh, retopology, skinned to the rig", None, "none", "10"),
 ]
 IDS = [s[0] for s in STEPS]
-# the earlier steps a step reads beyond the one before it (T4: the draft needs step 1's seams AND step 3's measurements)
-READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("1", "2", "3")}  # (2: step 0's landmarks and heights too: C352)
+# the earlier steps a step reads beyond the one before it (the toile and the flat pattern need step 1's seams AND step 3's
+# measurements; the toile step 0's fit and heights)
+READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("0", "1", "2", "3"), "6": ("1", "2", "3")}
+FLAT = "6"  # the step whose output is the flat pattern (draft_pattern's form; the flat gate): every pattern reader reads it  # (2: step 0's landmarks and heights too: C352)
 STEP = {s[0]: dict(zip(("id", "key", "what", "tool", "approval", "back_to"), s)) for s in STEPS}
 for _s in STEPS:
-    STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "draft" == "4")
+    STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "toile" == "4")
 STORED = ("todo", "done", "failed")
 APPROVE = "/mnt/data/hifipushie/bin/approve"
 
