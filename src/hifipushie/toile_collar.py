@@ -11,10 +11,12 @@ where the collar end sits on the lapel).
 THE STAND rises from each neck-edge point ON the toile's surface above the seam (the neck: it leans back with the neck),
 square to the neck edge, by h(s): stand_mm behind the side neck point, tapering to H_MIN at the collar end; its top is
 the ROLL LINE. THE FALL turns down at the roll line: back down over the stand GAP outside it, then on down over the toile
-(the shoulders, the back below the neck seam; the lapel in front) square to the neck edge, GAP off it, to where a span
-of the fall's length from the roll lands: the fall is a SPAN from the roll to that landing (stiff cloth bridges the
-hollow at the neck's foot; hugging it made a fold the flat can't keep: 12 % strain), pushed out only where it would
-come nearer the toile than GAP; at the collar end it reaches the collar point (the notch trace's corner), the last columns'
+(the shoulders, the back below the neck seam; the lapel in front) square to the neck edge, GAP off it: its width
+(fall_mm at CB: roll to outer edge along the cloth) covers the stand (h) and LIES OUT on the toile for the rest, walked
+along the surface (R3f-2: a span of fall_mm from the roll landed 9.8 mm below the seam, close round the neck: a band,
+outer x0.996 the neck flat; a tailored collar's fall lies out over the shoulders, its outer edge ~1.2-1.3 x the neck
+edge). Between the roll and that outer edge the fall is a SPAN (stiff cloth bridges the hollow at the neck's foot;
+hugging it made a fold the flat can't keep: 12 % strain), pushed out only where it would come nearer the toile than GAP; at the collar end it reaches the collar point (the notch trace's corner), the last columns'
 walks turned toward it. The fall's OUTER EDGE is wherever the fall lands on the toile: its length follows, not a rule.
 The mesh is one grid (rows: neck edge -> roll -> outer edge; columns: the right end -> CB -> the left end), folded at
 the roll row; t.collar_grid = (rows, columns, the roll row). Nothing here knows a garment."""
@@ -175,9 +177,8 @@ def drape(t, toile):
             X[r, c] = _at(up, h[c] * r / KS)
         down = _walk(t, B[c] + GAP * t.grad(B[c][None])[0], T[c], -1, fl[c], lift[c] + GAP, aim=Pc, b=bt[c])
         R = X[KS, c] + GAP * t.grad(X[KS, c][None])[0]
-        far = np.linalg.norm(down - R, axis=1) >= fl[c]
-        L = down[int(np.argmax(far))] if far.any() else down[-1]  # (where a span of the fall's length from the roll lands)
-        L = (1 - bt[c]) * L + bt[c] * Pc
+        L = _at(down, max(fl[c] - h[c], GAP))  # (the fall comes back down over the stand, then lies OUT on the toile
+        L = (1 - bt[c]) * L + bt[c] * Pc       # for the rest of its width: over the shoulders, its outer edge long)
         for r in range(KS + 1, KS + KF + 1):
             X[r, c] = R + (L - R) * (r - KS) / KF  # (a span from the roll: the fall bridges the hollow at the neck's foot)
     X = fair_rows(t, X, KS, lift)
