@@ -110,8 +110,28 @@ in step 1's `define` {name: girth|arc|length|height} (measured by that kind at s
 closest valid names. Rewriting step 1 carries steps 2 and 3 forward when they still validate against it (re-stamped,
 said in the answer); only what no longer validates goes stale, with the reason.
 
+### `garment_toile`
+`garment_toile(name, garment, declarations)`: garment step 4 (drape first), THE TOILE: the garment's 3D surface on the
+body, as a draper pins muslin on the stand before any pattern exists. Needs steps 0 (fit levels + planned girths,
+heights), 1, 2 (traces) and 3 (tapes: neck among them). The toile = the body offset by step 0's ease at each fit level
+(calibrated: each level's tape equals the plan), with the parts YOU declare (never inferred from a garment's name):
+- `parts`: any of sleeves, opening, lapel, pad. `hang_from`: a step-0 fit level the garment drops straight from (a
+  jacket from the hips: flare to the lowest level's girth at the hem), or "none".
+- `armhole {length_mm}`; `sleeves {ease_mm: [top, wrist], crown_mm, hem}` (hem: a step-2 sleeve-end trace, its length past the picture's wrist
+  carried onto the model's wrist, or a step-0 height; smooth tubes
+  through the arm's sections, the armhole a cone from the shoulder joint); `opening {lap_mm, edge, buttons}` (edge: a
+  step-2 trace); `lapel {roll, top, width_mm}` (traces; turned about the roll line); `pad {thickness_mm}` (its own part).
+A missing key is refused by name. Writes `<look dir>/toile/` toile.npz (each part "<part>:V/F", the sleeve axis, the
+armhole, the roll line), toile.json, toile_sheet.png, and step 4 (output, gate rows, look). Gate rows: girth per level
+(+-6 mm), clearance (nothing inside the body), closed (one surface, its free loops), neck (no stand: the back no higher
+than the side neck points + 3 mm), outline vs step 2's traces LIKE WITH
+LIKE (the picture's body and pose are not the model's): a side as its profile (the width is the girths'), a hem as its
+height, a sleeve end as its length past the wrist, each from its own wrist (signed, +-10 mm); front edges, roll lines and the collar INFO
+(built closed; the collar is not part of the toile). Then step 5 marks the seams on it, step 6 cuts and flattens it
+(the flat pattern, draft_pattern's form, gated by pattern_check).
+
 ### `draft_pattern`
-`draft_pattern(name, garment, design, declarations, options=None, sa=10)`: garment step 4, YOUR OWN pattern (no published
+`draft_pattern(name, garment, design, declarations, options=None, sa=10)`: garment step 6 (the flat pattern; it was step 4 before drape first), YOUR OWN pattern (no published
 design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs steps 1 (parts, seams) and 3 (body_tape).
 - design: a FreeSewing 4 ES module. Import blocks and extend them: `import { Design } from '@freesewing/core'`,
   `import { back, front } from '@freesewing/brian'` (also bent, jaeger, carlton parts; `@freesewing/library`: sleeve,

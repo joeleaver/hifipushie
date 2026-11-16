@@ -312,7 +312,7 @@ def load_garment(model: str, garment: str, spec: dict | None = None) -> tuple:
     try:  # (F4: each piece's measurements and where step 3 took them: the build's starts, piece_start.py)
         from . import garment_record as gr, piece_start
         st_ = gr.load(model, garment)["steps"]
-        piece_start.attach(M, st_.get("3", {}).get("output") or {}, st_.get("4", {}).get("output") or {})
+        piece_start.attach(M, st_.get("3", {}).get("output") or {}, st_.get(gr.FLAT, {}).get("output") or {})
     except (FileNotFoundError, KeyError):
         M["starts"] = {}
     pat = pattern_from_mesh(M, cloth.interfacing(B, M), bending.weights(B, M, g), radius)

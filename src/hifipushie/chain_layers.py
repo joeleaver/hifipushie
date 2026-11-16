@@ -110,7 +110,7 @@ def under_for(model: str, garment: str) -> dict:
         st = cg.status(d)
         built = (d / "built.pkl").exists()
         rs = gr.states(gr.load(model, u))
-        miss = [f"its step {k} ({w}) is {rs[k]['status']}" for k, w in (("1", "parts: which are stiff"), ("4", "pattern"))
+        miss = [f"its step {k} ({w}) is {rs[k]['status']}" for k, w in (("1", "parts: which are stiff"), (gr.FLAT, "pattern"))
                 if rs[k]["status"] not in ("done", "approved")]
         ok = not miss
         if not built or (miss and not dev):

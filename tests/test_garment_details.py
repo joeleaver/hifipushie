@@ -1,6 +1,6 @@
 """Step 7, details and trims (T10, C290): marks on a synthetic flat pattern anchored barycentrically and carried onto a
 deformed copy; an edge-following trim; rows; refusals (positions at step 7, unknown names, outside the piece, unmarked,
-cloth-made); the marks' validation at step 4; the record write (7 + 7a) and chain_presim's step-7 hook. Cheap: no
+cloth-made); the marks' validation at the flat step (6); the record write (7 + 7a) and chain_presim's step-7 hook. Cheap: no
 builds, no renders."""
 import json
 import pickle
@@ -99,7 +99,7 @@ def test_rows_mirror_and_motif():
 def test_refusals():
     M = flat_M()
     fl = gd.Flat(M)
-    with pytest.raises(gd.DetailRefused, match="marked on the pattern at step 4"):
+    with pytest.raises(gd.DetailRefused, match="marked on the pattern at step 6"):
         gd.place(fl, "b", {"piece": "front.L", "points": "button*"}, {"kind": "point", "size_mm": 9, "at": []}, INV)
     with pytest.raises(gd.DetailRefused, match="not on the pattern"):
         gd.place(fl, "b", {"piece": "front.L", "at": [{"point": "nope"}]}, {"kind": "point", "size_mm": 9}, INV)
@@ -149,9 +149,9 @@ def _record(home, marks):
         "back_braid": {"what": "braid", "on": ["front.L"], "build": "omit", "why": "unseen"}}, "closures": {}})
     for sid in ("2", "3"):
         gr.write("m", "g", sid, "done", output={"n": sid})
-    gr.write("m", "g", "4", "done", output={"dir": str(ddir)})
-    for sid in ("5", "6"):
+    for sid in ("4", "5"):  # (drape first: 4 toile, 5 mark; the flat pattern is step 6, garment_record.FLAT)
         gr.write("m", "g", sid, "done", output={"n": sid})
+    gr.write("m", "g", gr.FLAT, "done", output={"dir": str(ddir)})
     M = flat_M()
     X = bent(gd.flat_positions(M))
     bV = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], float) * [0.1, 0.5, 0.1]
@@ -188,12 +188,12 @@ def test_tool_fails_and_refuses_by_name(home):
     for bad, why in (({"pocket": {"kind": "point", "size_mm": 9}}, "made of cloth"),
                      ({"back_braid": {"kind": "line", "width_mm": 3}}, "the inventory omits it"),
                      ({"zz": {"kind": "point", "size_mm": 9}}, "not in step 1's details"),
-                     ({"buttons": dict(GEOM["buttons"], points="button*")}, "marked on the pattern at step 4")):
+                     ({"buttons": dict(GEOM["buttons"], points="button*")}, "marked on the pattern at step 6")):
         _, txt = gdt.run("m", "g", bad, look=False)
         assert txt.startswith("garment_details REFUSED") and why in txt, txt
 
 
-def test_unmarked_detail_is_a_step4_fail(home):
+def test_unmarked_detail_is_a_flat_step_fail(home):
     _record(home, {"buttons": MARKS["buttons"]})
     _, txt = gdt.run("m", "g", {"buttons": GEOM["buttons"]}, look=False)
     assert "FAIL binding: no mark on the pattern" in txt

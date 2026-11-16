@@ -12,7 +12,7 @@ their own tools, and a finished model exports as a game-ready GLB.
 
 ## Tools
 
-113 tools in 15 domains. A small core is native MCP tools; every other tool runs through
+114 tools in 15 domains. A small core is native MCP tools; every other tool runs through
 `call_tool(name, args)`. An agent does not need this table: `guide` is the playbook (read first),
 `find_tool("<the job in plain words>")` names the tool for a job with an example call, and
 `guide(topic="<tool>")` gives any tool's full parameters. `guide(topic="example")` returns two whole models to
@@ -31,7 +31,7 @@ start from.
 | skin | A human's skin: description, measured from the reference pictures, close looks beside them | `skin`, `skin_from_reference`, `brow_read`, `look_skin`, `skin_reference`, `skin_project` |
 | likeness | Matching a real person's face and look from reference pictures | `likeness`, `fit_likeness`, `likeness_points`, `character_read`, `project_reference`, `texture_from_reference`, `reference_brief`, `check_references` |
 | hair | Hair: strand grooms, tied styles, stylised locks, look, reference, export | `groom_hair`, `tie_hair`, `look_hair`, `hair_reference`, `hair_from_reference`, `export_hair` |
-| cloth | Garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references | `garment_plan`, `body_tape`, `draft_pattern`, `pattern_parts`, `pattern_check`, `chain_garment`, `garment_details`, `look_chain`, `garment_appearance`, `export_garment`, `garment_record` |
+| cloth | Garments: design, the toile (drape first), the pattern and its gate, alterations, the chain build, references | `garment_plan`, `body_tape`, `garment_toile`, `draft_pattern`, `pattern_parts`, `pattern_check`, `chain_garment`, `garment_details`, `look_chain`, `garment_appearance`, `export_garment`, `garment_record` |
 | terrain | Terrain and game levels (height fields in a level designer's words) | `set_terrain`, `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history` |
 | plants | Trees and plants (grown, measured, exported), stands of them, wind | `grow_plant`, `edit_plant`, `get_plant`, `look_plant`, `look_plants`, `plant_form`, `plant_reference`, `export_plant`, `wind_plant`, `sync_plant`, `plant_history`, `grow_stand`, `look_stand`, `export_stand` |
 | clutter | Ground clutter kits (rocks, logs, leaves ...) for terrain | `make_clutter`, `look_clutter`, `clutter_kit` |

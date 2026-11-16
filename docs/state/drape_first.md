@@ -1,47 +1,46 @@
 # STATE: drape first (docs/proposals/drape_first.md; approved 2026-11-16)
 
 Steps 4-6 rebuilt the draper's way: TOILE (the garment's 3D surface on the body), MARK, CUT AND FLATTEN.
-Runs R1 (body + sleeves, C489) -> R2 (full toile, C490) -> R2b (armhole, pad, collar fall: C491) -> R3 (tools) -> trials.
+Runs R1 (C489) -> R2 (C490) -> R2b (C491) -> R3a (toile tool, this) -> R3b (mark + cut/flatten tools) -> R3c (collar).
+History of R1-R2b: docs/notes (grep C489-C491); spikes/r1_*, r2_*, r2b_* (R3b still reads r2b_flat.py's method).
 
-## R2 in short (spikes/r2_*.py, /mnt/data/hifipushie/r2)
-Full jacket toile (pad, smooth sleeve tubes, straight skirt, buttoned lap, lapel, collar), cut by scalars (a piece that
-is not ONE region is refused), flattened LSCM + ARAP, lapel unfolded about the roll line. Body and sleeves cuttable;
-faults: no sleeve crown (cap ease 3.8 %), front 66 % stretch at the shoulder (pad bump + crown in the body), the
-collar a straight band (fall edge only 4 % longer than the neck edge), lapel 56.5 mm.
+## R3a (2026-11-16): garment_toile = step 4 (src toile.py, toile_style.py, toile_gate.py, toile_geom.py, toile_tool.py)
+- Tool: garment_toile(name, garment, declarations) (tools_cloth). Reads steps 0-3 (garment_record.READS["4"]) and the
+  agent's declaration (parts [sleeves, opening, lapel, pad], hang_from, armhole.length_mm, sleeves {ease_mm, crown_mm,
+  hem}, opening {lap_mm, edge, buttons}, lapel {roll, top, width_mm}, pad {thickness_mm}); refused by name. Writes
+  <look dir>/toile/toile.npz (parts toile, lapel.L/R, pad.L/R as "<part>:V/F", cone, armhole, sleeve axis, roll line),
+  toile.json, toile_sheet.png; step 4 (output, gate rows, look).
+- Traces placed on the body by step 2's HEIGHT marks + step 1's centre column (the wrists' place across depends on the
+  arm pose: with them the jacket's traces sat 5 cm wide). The toile is kept >= 2 mm off the body (union with the body's
+  offset: R2b's arm push put it 14 mm in at the underarm).
+- Record: steps 4 toile (garment_toile), 5 mark (no tool yet), 6 cut (no tool yet; garment_record.FLAT = "6": every
+  pattern reader reads the flat pattern there: draft_own_tool, garment_details_tool, chain_garment piece_start,
+  chain_structure, chain_layers, garment_carry). draft_pattern / pattern_check now write step 6 (refused until 5 is
+  ready): the flat-pattern checker R3b feeds. chain_garment's from_chain still writes 5/6 (old route: R3b retires it).
+- Gate (C492): girth per level, clearance, closed, NECK (no back toile point over the side neck points + 3 mm: a cut at
+  the neck tape's back climbed the neck as a stand, +11 mm), outline LIKE WITH LIKE (the picture's body / pose are not
+  the model's): side = profile off the toile's torso edge less the median, arm zone left out; hem = height (median);
+  sleeve end = length PAST THE WRIST, each read from its own wrist along the arm (signed, +-10 mm; the R3a-2 row read the
+  photo on the model's axis and passed sleeves 24-32 mm short). sleeves.hem may name a step-2 trace (its distance past
+  the picture's wrist mark carried onto the model's wrist); the back neckline is drafted HPS - 15 mm at CB.
+- Proof (R3a-3): /mnt/data/hifipushie/r3a (ws = s4-31 copy, decl.json with sleeves.hem "sleeve_end.L", run.py, run3.log;
+  run with HIFIPUSHIE_ASSETS=<repo>/workspace/_templates). Sheet r3a/ws/garrett/garments/jacket/toile/toile_sheet.png.
+  ALL PASS: girths chest 1111.6 / 1108.2, waist 987.7 / 987.6, hips 1103.9 / 1103.1, hem 1135.7 / 1138.8; clearance
+  +1.6 mm; closed (3 loops); neck -0.7 mm (CB cut z 1.534, tape 1.560, HPS 1.549); side p95 4.0 / 3.6; hem height 8 mm;
+  sleeve end L 0.0 (by construction), R +3.0 mm short; sleeve hem z 0.987 (was 1.009). Looked: the sleeves end at the
+  traced lines; at CB the toile stops at z 1.534 where the back still slopes (the neck turns vertical ~1.56); the back
+  view still reads a round neck at the side neck points (no collar yet: R3c).
+- Tests: tests/test_toile.py (synthetic body: girths, clearance, closed, tube, lap, neck, a short sleeve FAILs, a hem
+  from the trace PASSes, a back-neck stand FAILs; refusals by name) PASS;
+  test_garment_record / test_draft_own / test_garment_details assert 4 toile, 5 mark, 6 flat; test_toolsets ADDED.
+- Step table (docs/state/garment_steps.md) rows 4 toile, 5 mark, 6 cut and flatten. draft_pattern / pattern_check
+  write step 6 (the flat-pattern checker R3b feeds); FreeSewing is no longer step 4's source.
 
-## R2b (2026-11-16): spikes/r2b_toile.py, r2b_flat.py, r2b_common.py; /mnt/data/hifipushie/r2b (run.sh, out/)
-- ARMHOLE (rule, r2b_common.Cone): the body's armhole (D4's loop: shoulder point at the pad's edge, front / back pitch
-  close in at the arm root, underarm) carried out along rays from the shoulder joint (apex 5 cm in along the arm's
-  axis): a cone, never a plane fitted to the loop. The sleeve tube now runs up into the shoulder (axis from -6 cm),
-  capped by the cone, swelling 10 mm from the biceps to the crown (6 mm gave cap ease 5.3 %), so the armhole cuts a crown. The torso is pushed off the arm only inside the cone above
-  the body's underarm, from 2 cm outside it below (the eased tube fuses with the torso under the arm: the armhole
-  dropped 9 cm, side+back seam 431; now 473, R2 519). Azimuth-varying pushes made fins at the pitch: z-switched only.
-- PAD: a wedge under the shell, its own piece (out/pad_sheet.png): T at the shoulder point, thinning to 0 13 cm toward
-  the neck and 3 cm past the point, cos^2 over +-11 cm front / back, 2 mm cloth gap. Sized to the reference's top line:
-  only the 4 mm floor is needed once the tube's crown rises (toile top at the tip 1.502 vs ref 1.4997); pad piece
-  93 x 62 x 31 mm box. Inward of the point the toile is still 5-7 mm under the reference (x 120-190 mm).
-- COLLAR: fall laid 40 mm along the toile from the neckline (r2b_common.march), stand leaning out 15 %: fall edge
-  +10 % in 3D (380 -> 413; R2 +4 %), flat 387 x 99 (s4-31 414 x 95), still 5 % mean strain, 66 % area > 2 %: the
-  flat has neck 407 / roll 414 / fall 408: a saddle (fall edge not longer than the roll). NOT cuttable yet.
-- LAPEL: widened square from the roll line x61/56.5: 60.7 mm (ref 59-63). Notch untouched.
-Flat (out/flat_sheet.png beside s4-31; cut_sheet.png; flat.json). Strain mean / area > 5 % / max:
-front 1.25 / 2.2 / 8.7 % stretch (R2 1.6 / 5.2 / 66), side 0.34 / 0.1, back 2.12 / 5.3 / 89 compression spot at
-the back pitch (blade: dart), top sleeve 1.03 / 1.2 (a 50 % spot at the front pitch), under sleeve 0.66 / 1.5.
-Top sleeve: a rounded cap, 102 mm rise across its armhole edge in the flat (R2: flat top with a spike).
-Seams flat a / b: front+side 514.8 / 518.4, side+back 471.1 / 466.0, shoulder 225.2 / 218.5 (+3.1 %, R2 +5.3),
-sleeve seams 863.1 / 879.9 (-1.9 %), cap 577.0 vs armhole 543.1: ease 6.2 % (s4-31 8.8 %; target 6-10).
-Girths on the flat less laps: waist 990.6 / 987.6, hips 1052.8 / 1103.1 (cutaway), chest at z 1.322 crosses the armholes.
-Bboxes r2b / s4-31: front 306 x 723 / 261 x 739, back 297 x 754 / 265 x 724, top sleeve 272 x 529 / 208 x 583,
-under 159 x 450 / 160 x 518. Toile girths: hem 1137.2 / 1138.8, hips 1102.1 / 1103.1, waist 986.1 / 987.6.
+## Left for R3b / R3c
+- R3b: MARK (step 5) and CUT AND FLATTEN (step 6) as tools from toile.npz (spikes/r2b_flat.py's method), the flat
+  pattern in draft_pattern's form so pattern_check gates it; retire chain_garment's from_chain writes of 5/6; the
+  ~120 "step 4" comments / messages in chain_* and draft_* still mean the flat pattern (only details / draft_own_tool
+  texts renamed).
+- R3c: the collar from its own flat fitted round the toile's neck.
 
-## Open faults (ranked)
-1. Collar: a saddle. Build it the tailor's way: lengths growing neck < roll < fall edge; likely from its flat (s4-31's
-   curved collar) fitted round the toile's neck by the chain route for stiff pieces, not lofted between curves.
-2. Crown: cap ease 6.2 % now (CROWN 10 mm), but the cap is lower than s4-31's and spots of 50-90 % strain sit at the
-   front / back pitch (the tube / torso junction); the pad is down to its 4 mm floor (a fragment at the 6 mm grid):
-   the tube's crown carries the top line, so a real 10-15 mm pad would lift the tip above the reference.
-3. Top sleeve 272 wide vs 208 (63 % share at the biceps): move the under sleeve seams per the rule or the reference.
-4. Back: 3.6 % of area over 5 % (blade): a shoulder dart / ease as output. Lapel notch weak; skin shows through at the
-   front shoulder in the render (toile within a few mm of the body there, as in R2).
-
-NEXT: R3 with the collar (fault 1) and crown fullness (fault 2) first, then steps 4-6 as tools (cone armhole into src).
+NEXT: Joe / the coordinator judges the R3a-3 sheet and approves step 4 on the jacket; then R3b mark + cut/flatten.
