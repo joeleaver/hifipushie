@@ -42,14 +42,30 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   place, panels, shape_fall 1.261, landing 1.000, shape_cap 0.70, sewn, closures; FAIL darts_drafted, style_lengths, girths.
 - Tests: tests/test_cut_r3e.py (eased band flattens longer by e, unstrained against rest; marks on both fronts).
 
-## R3f (2026-11-16, C497, in progress): the collar draped on the toile (step 4), cut and unfolded at step 6
-- Joe: "Drape it on the toile". The step-6 draft-and-fit collar route is being replaced.
+## R3f (2026-11-16, C497): the collar draped on the toile (step 4), cut and unfolded at step 6
+- toile_collar.py: garment_toile part `collar {stand_mm, fall_mm, notch}` (needs lapel): neck edge = the toile mesh's
+  neck free edge (CB -> the over front's corner) + the gorge across the lapel top to the notch trace's first point; the
+  stand walked up the toile by h(s) to the roll; the fall a SPAN of fall_mm from the roll to where it lands (hugging the
+  neck's foot made a fold the flat can't keep); gate row `collar`. cut_collar.py only cuts / flattens (the fall unfolds
+  about the roll row) and names edges; the draft / place / landing_line route deleted. Tests: test_toile_collar.py.
+- Heights: stand 20 / fall 32 from R3e's reading (collar top at CB ~5 mm above the side neck points, CB seam 15 under
+  them -> stand 20); fall 32 has no direct reading in the front view.
+- Proof /mnt/data/hifipushie/r3f (go.sh; toile6 / mark5 / cut5 logs): toile PASS (roll 18 mm above the seam, outer 9.8
+  below, 0.2 mm off the toile); mark PASS; cut collar FAIL: flat 382 x 75, outer 397 = 0.996 x neck (a straight band,
+  not s4-31's 414 x 95), strain 10.8 % (5-7 behind, 15-30 at the gorge corner), seams front 66 / 111, back 134 / 127;
+  shape_fall_landing PASS. Looks: toile/toile_sheet.png, cut/cut_3d.png, r3f/look_neck_cut3d.png. Judged: no ruffle,
+  lands on the shoulders, still reads as a band behind the neck; the flat is not an undercollar.
+- NOT DONE (budget): merge of main, deadcode check, test_toolsets / test_readme and tool texts (garment_toile's
+  description / cloth_tools.md may still describe the step-6 collar declaration with stand_mm / fall_mm / end_mm).
 
 ## Left
 - style_lengths: compare only where step 1 estimated the same line (collar neck edges, shoulder): R3d item 6.
 - Downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a FreeSewing
   draft dir, not pattern.json. ~120 "step 4" texts in chain_* / draft_* still mean the flat pattern.
 
-NEXT: R3f: darts from the strain ridge (darts_drafted; back blade and front chest strain show on flat_sheet); the
+NEXT: R3f-2: merge main + checks + tool texts (above); the fall must lie OUT over the shoulders (outer 0.996 x neck)
+and stand / fall develop together (lean the stand, or a shrunk-stand rest shape); the gorge corner's strain; the
+garment's front.L:neck runs to the collar point (lapel top = roll top + collar_top to its corner) and back.L:neck is
+127 vs the toile's 99 mm seam per half: find why before seams can equal. Then R3e's: darts from the strain ridge (darts_drafted; back blade and front chest strain show on flat_sheet); the
 collar's side curl (fall too long for its landing at the side: x0.959); girths: hips / seat rings (back.R), chest -44 at
 the underarm (which piece loses width), side / sleeve_under tapes; style_lengths (compares step 1's estimates).
