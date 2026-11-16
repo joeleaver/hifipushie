@@ -227,7 +227,7 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     from pathlib import Path
 
     from . import beside
-    from .tool_common import _png
+    from .tool_common import _png, save_path
     if on_purpose:
         beside.set_on_purpose(name, on_purpose)
     res = beside.compare(name, views, ignore, resolution, focus=focus)
@@ -235,7 +235,7 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     out = []
     for i, (title, pic) in enumerate(beside.layout(res, "sheet")):
         if save:
-            d = Path(save).expanduser()
+            d = save_path(save)
             if d.suffix.lower() == ".png":  # a file name: the first picture there, the rest beside it (e16, e17 got a
                 d.parent.mkdir(parents=True, exist_ok=True)  # folder called "x.png")
                 pic.save(d if i == 0 else d.with_name(f"{d.stem}_{title}.png"))

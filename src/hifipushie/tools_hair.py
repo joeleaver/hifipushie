@@ -293,7 +293,8 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
         lay = hair_drawn.layout(name, spec=spec)
         lp = None
         if save:
-            p = Path(save).expanduser()
+            from .tool_common import save_path
+            p = save_path(save)
             lp = str(p.with_name(p.stem + "_layout" + (p.suffix or ".png"))) if not only_layout else save
         out.append(_out(lay, lp))
     return [*out, text + "\n" + hair_route.look_next(name, stored, tier)]
