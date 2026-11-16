@@ -72,7 +72,8 @@ def _way(vec: np.ndarray) -> str:
     return " and ".join(words) or "toward the camera's side"
 
 
-def view(name: str, prims, whole, ig: set, meant: list[dict], used: set, known: set, width: int = 448) -> dict:
+def view(name: str, prims, whole, ig: set, meant: list[dict], used: set, known: set, width: int = 448,
+         focus: set | None = None) -> dict:
     """The painting's view for beside.compare: {"iou", "places", "on_purpose", "lines": [], "picture", "side", "fit"}."""
     from skimage.morphology import skeletonize
 
@@ -135,7 +136,8 @@ def view(name: str, prims, whole, ig: set, meant: list[dict], used: set, known: 
     inner = beside._model_lines(np.where(hit, depth, 0.0), hit, k)
     rgba = np.dstack([rgb, np.full(rgb.shape[:2], 255, np.uint8)])
     pic = beside._picture("painting", rgba, ref, hit, depth, sk, [], places, k, bool(ig), accepted,
-                          tint=beside.part_tint(prims, owner, hit), model_edge=(edge, inner))
+                          tint=beside.part_tint(prims, owner, hit), model_edge=(edge, inner),
+                          box=beside.focus_box(owner, hit, focus) if focus else None)
     return {"iou": iou, "places": places, "on_purpose": list(kept_on.values()), "lines": [], "picture": pic,
             "side": side(cam0), "fit": float(cam0.get("iou", 0.0))}
 

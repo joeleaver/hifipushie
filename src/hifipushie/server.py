@@ -41,7 +41,8 @@ from .tools_plan import (  # noqa: F401
     clearance, compare, feature_tiles, fit, fit_concept_camera, fit_matched, join_report, look_matched, set_plan,
     set_reference, style_check,
 )
-from .tools_reshape import carve, flap, fuse, grab, trim  # noqa: F401
+from .tools_flap import flap  # noqa: F401
+from .tools_reshape import carve, fuse, grab, trim  # noqa: F401
 from .tools_plants import (  # noqa: F401
     edit_plant, export_plant, export_stand, get_plant, grow_plant, grow_stand, look_plant, look_plants, look_stand,
     plant_form, plant_history, plant_reference, sync_plant, wind_plant,

@@ -194,3 +194,11 @@ def test_paired_masses_are_left_out_of_the_model_s_own_width(home):
     body = min((m for m in pr["landmarks"] if m["kind"] == "widest"), key=lambda m: abs(m["z"] - 0.2))
     assert abs(body["model"] - body["reference"]) < 0.015 and body["whole"] > body["model"] + 0.03
     assert pr["ratios"] == []  # a width with limbs in it is not set against another
+
+
+def test_focus_cuts_every_view_to_the_named_mass_and_draws_it_large(home):
+    whole = beside.compare("fig", resolution=144)["views"]["front"]["picture"]
+    near = beside.compare("fig", resolution=144, focus=["ear.L"])["views"]["front"]["picture"]
+    assert near.width > whole.width  # panels round one ear (squarer than the tall figure), drawn at the same height
+    with pytest.raises(ValueError, match="focus: no mass called"):
+        beside.compare("fig", focus=["nose"])

@@ -338,28 +338,23 @@ again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="
 
 ### `flap`
 
-`flap(name, mass, root, over, tip, width, thickness=None, pointed=0.6, cup=0.0, at=None, blend=None, part=None, note='')`
+`flap(name, mass, base, length, width, rise="up", face="forward", fold=0, fold_at=0.6, thickness=None, pointed=0.6, blend=None, part=None, note='')`
 
-A flap of clay that grows out of the figure, arches over and hangs: a folded ear, a comb, a tongue, a tab, a leaf.
-A modeller makes one as ONE leaf with thickness, rooted, bent over in a smooth arch. Three points say where it
-goes, each [x, y, z] in metres read off `look`'s rulers (x and z in the front view, y and z in the side view; the
-figure faces -y, so forward is the lower y):
-- root: the middle of where it grows out. Put it a little INSIDE the mass it grows from, or the flap floats (the
-  answer says so when it does).
-- over: the top of its arch.
-- tip: where its tip ends. For an ear folded forward: in front of `over` and below it.
-A flap bends about its own width, so its broad face is square to the plane the three points make: root, over and
-tip at about the same x give a broad face that shows from the front (a pig's or a dog's folded ear); the answer
-says which view shows the broad face.
-width: across it at the root, metres. thickness: default about a quarter of the width (clay ears are thick). pointed: 0 a
-round leaf .. 1 narrowing to a soft point. cup: metres its side edges curl toward the inside of the fold.
-mass: the flap's name; a name ending ".L" is made on the left (+x) and mirrored to ".R". at: the joint it rides on
-(default: the joint nearest the root). blend: how softly it joins what it grows from (small = a crease at the
-root). The same name again replaces it: to change it, call again with ONE point moved (tip: where it hangs; over:
-how high and which way it arches; root: where it grows from).
-In the spec it is a `"shape": "sheet"` blob (spine through the three points, stations for the width): `get_model`
-shows it, `fit` and `edit_model` can work on it, and a `put_model` of a whole new spec must carry it over.
-Use a blade blob only for a flat leaf that leans; a blade never reads as a folded ear.
+A flap of clay made as a modeller makes a folded ear: a thick lump standing on the figure, then its top folded over.
+For a folded or upright ear, a comb, a tongue, a tab.
+- base: [x, y, z], the middle of where it grows from, ON the surface of the mass it grows from (read off the rulers
+  of `look` or `look_beside`); it is sunk in a little by itself. Off the surface: the answer says it floats.
+- rise: the way it stands: words ("up", "up out", "up out back"; out is away from the centre line) or [x, y, z].
+- face: the way its broad face looks ("forward", "forward out"), made square to rise. The answer says from which
+  views it shows broad and from which edge-on.
+- length: base to tip as if laid flat; width: across its base; thickness: through its base (default 0.6 of the
+  width: a clay ear is a thick lump, not a strap); pointed: 0 round .. 1 narrowing to a soft point.
+- fold: degrees the top folds over toward its face (0 upright; 90 the top sticks out forward; 150 to 180 it lies
+  down along the standing part); fold_at: where along its length it folds (0.6: the top 40 % folds, round a knuckle).
+A name ending ".L" is made on the left (+x) and mirrored. The same name again replaces it: change ONE thing at a
+time, then `look_beside(name, focus=[mass])` to see it close up beside each reference view and the painting.
+In the spec: two bones, `<mass>` (base to fold, its numbers under "flap") and `<stem>_top<side>` (the folded part),
+oval round cones in one group, on joints `<stem>_root`, `_fold`, `_top`, `_tip`.
 
 ### `trim`
 
@@ -433,6 +428,9 @@ it is shown apart with its reason, drawn pale, and left out of the numbered list
 the mirrored side and for the view that shares the plane (front and back). A reason is required. A record whose
 place no longer differs is said, with the call that takes it back ("remove": true). The record is kept beside the
 reference's views, not in the spec, so a new spec does not lose it.
+focus: masses to see CLOSE UP (an ear, a snout): every view's three panels are cut to that mass (its own side,
+with its group: a flap's folded part) and drawn as large as a whole view, beside the same part of each reference
+view and the painting. A small part is a few pixels in a whole-figure view: judge it close up.
 ignore: masses left out of the model (a limb held away from the body for the rig, which the picture shows
 hanging); the reference's own limb still shows where the picture has it. views: which views (default: every flat
 view, and the painting when its camera is fitted). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one

@@ -332,34 +332,6 @@ def fig(tmp_path, monkeypatch):
     return "fig"
 
 
-def test_a_flap_grows_from_its_root_over_its_arch_to_its_tip_on_both_sides(fig):
-    from hifipushie import server
-    root, over, tip = [0.12, 0.0, 0.72], [0.17, -0.02, 0.82], [0.2, -0.1, 0.76]
-    out = server.flap(fig, "ear.L", root=root, over=over, tip=tip, width=0.09)
-    assert "mirrored as ear.R" in out and "OUTSIDE" not in out
-    b = store.load(fig)["blobs"]["ear.L"]
-    assert b["shape"] == "sheet" and b["at"] == "ear.L" and len(b["spine"]) == 3  # (the joint nearest its root)
-    prims = compile_prims(store.load(fig))
-    near_tip = np.array(tip) + 0.012 * (np.array(over) - tip) / np.linalg.norm(np.array(over) - tip)
-    pts = np.array([over, near_tip, [-over[0], over[1], over[2]], [-near_tip[0], near_tip[1], near_tip[2]]])
-    assert (field_at(prims, pts, clip=False) < 0).all()
-    beyond = np.array(tip) + 0.03 * (np.array(tip) - over) / np.linalg.norm(np.array(tip) - over)
-    assert field_at(prims, beyond[None], clip=False)[0] > 0
-    # the same name again replaces it; a root out in the air is said
-    out = server.flap(fig, "ear.L", root=[0.3, 0.0, 0.9], over=[0.33, -0.02, 0.98], tip=[0.36, -0.1, 0.92], width=0.09)
-    assert "OUTSIDE the clay" in out and len(store.load(fig)["blobs"]) == 3
-
-
-def test_a_flap_that_cannot_be_one_is_refused_with_what_to_move(fig):
-    from hifipushie import server
-    with pytest.raises(ValueError, match="in one line"):
-        server.flap(fig, "ear.L", root=[0.1, 0, 0.7], over=[0.1, 0, 0.8], tip=[0.1, 0, 0.9], width=0.08)
-    with pytest.raises(ValueError, match="name the left one"):
-        server.flap(fig, "ear.R", root=[-0.1, 0, 0.7], over=[-0.15, 0, 0.8], tip=[-0.2, -0.1, 0.76], width=0.08)
-    with pytest.raises(ValueError, match="thickness"):
-        server.flap(fig, "ear.L", root=[0.1, 0, 0.7], over=[0.15, 0, 0.8], tip=[0.2, -0.1, 0.76], width=0.02, thickness=0.05)
-
-
 def test_trim_and_carve_tools_cut_and_put_back(fig):
     from hifipushie import server
     out = server.trim(fig, of="all", view="side", a=[-0.14, 0.4], b=[-0.14, 0.8], off="front", label="face")
@@ -407,14 +379,6 @@ def test_the_grab_tool_says_when_it_is_made_on_both_sides(fig):
     assert "MADE ON BOTH SIDES" not in out  # (on the centre line, seen from the side: one grab)
 
 
-def test_a_flap_says_which_views_show_it_broad(fig):
-    from hifipushie import server
-    out = server.flap(fig, "ear.L", root=[0.12, 0.0, 0.72], over=[0.12, -0.02, 0.82], tip=[0.12, -0.1, 0.76], width=0.09)
-    assert "left to right (x)" in out and "broad in the front and back views" in out and "edge-on, in the side view" in out
-    out = server.flap(fig, "ear.L", root=[0.12, 0.0, 0.72], over=[0.17, 0.0, 0.82], tip=[0.24, 0.0, 0.76], width=0.09)
-    assert "front to back (y)" in out and "broad in the side view" in out
-
-
 def test_a_fuse_does_not_make_its_neighbours_reach_far():
     # (the fill counted for every neighbour: an ear beside a fused head and body was evaluated over the whole figure)
     s = _figure()
@@ -437,3 +401,38 @@ def test_the_grab_tool_refuses_a_small_pull_and_says_the_radius_a_broad_move_nee
     s = store.load(fig)  # the spec itself still takes any grab that does not fold the clay (the tool is the guard)
     s["grabs"]["small"] = {"of": ["head"], "view": "side", "at": [-0.15, 0.6], "to": [-0.17, 0.6], "radius": 0.05}
     compile_prims(s)
+
+
+def _inside(prims, pts):
+    return field_at(prims, np.asarray(pts, float), clip=False) < 0
+
+
+def test_a_flap_is_a_thick_lump_standing_on_its_base_and_folded_over_on_both_sides(fig):
+    from hifipushie import server
+    base = [0.11, 0.0, 0.73]  # (on the head's surface there)
+    out = server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, rise="up", face="forward", fold=120, fold_at=0.6)
+    assert "Mirrored as ear.R" in out and "OUTSIDE" not in out and "broad from the front" in out
+    s = store.load(fig)
+    assert {"ear.L", "ear_top.L"} <= set(s["bones"]) and s["bones"]["ear.L"]["flap"]["fold"] == 120
+    prims = compile_prims(s)
+    up = [0.11, 0.0, 0.73 + 0.05]  # the standing part, 5 cm above its base
+    assert _inside(prims, [up, [-0.11, 0.0, 0.78]]).all()
+    assert _inside(prims, [[0.11, 0.0, 0.78], [0.11 + 0.035, 0.0, 0.78]]).all()  # broad across x (it narrows toward the fold)
+    assert not _inside(prims, [[0.11, 0.035, 0.78]])[0]  # thin front to back: 6 cm thick
+    tip = np.array(s["joints"]["ear_tip.L"]["pos"])
+    assert tip[1] < -0.03 and tip[2] < 0.73 + 0.12  # folded forward: the tip is in front, below the straight length
+    server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, fold=0)
+    tip0 = np.array(store.load(fig)["joints"]["ear_tip.L"]["pos"])
+    assert abs(tip0[1]) < 0.01 and tip0[2] > tip[2] + 0.03  # unfolded: straight up
+
+
+def test_a_flap_says_when_its_base_floats_and_refuses_what_is_no_flap(fig):
+    from hifipushie import server
+    out = server.flap(fig, "ear.L", base=[0.3, 0.0, 0.95], length=0.1, width=0.08)
+    assert "OUTSIDE the clay" in out
+    with pytest.raises(ValueError, match="name the left one"):
+        server.flap(fig, "ear.R", base=[-0.1, 0, 0.74], length=0.1, width=0.08)
+    with pytest.raises(ValueError, match="face is where"):
+        server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.08, rise="up", face="up")
+    with pytest.raises(ValueError, match="thickness"):
+        server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.05, thickness=0.09)

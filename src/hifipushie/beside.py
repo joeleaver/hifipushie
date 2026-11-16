@@ -219,7 +219,8 @@ def _floating(prims) -> list[dict]:
     return [{"mass": n, "gap": g} for n, g in sorted(out.items())]
 
 
-def compare(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176) -> dict:
+def compare(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176,
+            focus: list[str] | None = None) -> dict:
     """{"views": {view: {"iou", "places": [...], "on_purpose": [...], "lines": [...], "picture": PIL image}},
     "ignored": [...], "stale": [on-purpose records with no difference at their place any more]}."""
     from . import beside_painting
@@ -245,12 +246,13 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
     prims, whole = _model(name, resolution)
     meant = on_purpose(name)
     used: set = set()
+    fn = focus_names(prims, spec, focus)
     out = {"views": {}, "ignored": sorted(ig), "floating": _floating(prims)}
     read_planes: set = set()
     core_grid = False  # (made when the first flat view asks for it)
     for v in todo:
         if v == "painting":
-            out["views"][v] = beside_painting.view(name, prims, whole, ig, meant, used, known)
+            out["views"][v] = beside_painting.view(name, prims, whole, ig, meant, used, known, focus=fn)
             continue
         rec, cam = refread.view_record(name, v), matched.load_camera(name, v)
         k = float(rec["m_per_px"])
@@ -350,7 +352,8 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
         out["views"][v] = {"iou": iou, "places": places, "on_purpose": list(kept_on.values()), "proportions": prop,
                            "lines": [{k2: m[k2] for k2 in ("length", "where", "run")} for m in missing],
                            "picture": _picture(v, rgba, ref, hit, depth, sk, missing, places, k, bool(ig), accepted,
-                                               tint=part_tint(prims, owner, hit))}
+                                               tint=part_tint(prims, owner, hit),
+                                               box=focus_box(owner, hit, fn) if fn else None)}
     planes = {"painting" if v == "painting" else GRAB_VIEW[v][0] for v in todo}
     out["stale"] = [e for i, e in enumerate(meant) if i not in used and e["plane"] in planes]
     return out
@@ -373,8 +376,54 @@ def part_tint(prims, owner: np.ndarray, hit: np.ndarray) -> np.ndarray | None:
     return tint
 
 
+def focus_names(prims, spec: dict, focus) -> set:
+    """The prim names a close-up looks at: each named mass, its mirror twin and the rest of its group (a flap's
+    folded part)."""
+    if not focus:
+        return set()
+    known = set(spec.get("bones") or {}) | set(spec.get("blobs") or {})
+    bad = [n for n in focus if n not in known]
+    if bad:
+        raise ValueError(f"focus: no mass called {bad} (the model's masses: {sorted(known)})")
+    els = {**(spec.get("bones") or {}), **(spec.get("blobs") or {})}
+    groups = {els[n].get("group") for n in focus if els[n].get("group")}
+    names = set(focus) | {n for n, e in els.items() if e.get("group") in groups}
+    names |= {mirror_name(n) for n in list(names) if mirror_name(n)}
+    return names | {n[:-2] + ".R" for n in list(names) if n.endswith(".L")}
+
+
+def focus_box(owner: np.ndarray, hit: np.ndarray, names: set, margin: float = 0.8):
+    """(y0, y1, x0, x1): the pixels of the named masses, grown by `margin` of their size; None when none show."""
+    own = sorted(n for n in names if not n.endswith(".R"))  # one side: both ears in one box is the whole head
+    m = hit & np.isin(owner, own)
+    if not m.any():
+        m = hit & np.isin(owner, sorted(names))
+    if not m.any():
+        return None
+    ys, xs = np.nonzero(m)
+    H, W = m.shape
+    side = max(ys.max() - ys.min(), xs.max() - xs.min(), 24) * (1 + 2 * margin)
+    cy, cx = (ys.max() + ys.min()) / 2, (xs.max() + xs.min()) / 2
+    y0, x0 = int(max(cy - side / 2, 0)), int(max(cx - side / 2, 0))
+    return y0, int(min(y0 + side, H)), x0, int(min(x0 + side, W))
+
+
+def _crop(box, rgba, ref, hit, depth, sk, missing, places, accepted, tint, model_edge):
+    y0, y1, x0, x1 = box
+    c = lambda a: None if a is None else a[y0:y1, x0:x1]  # noqa: E731
+    missing = [{**m, "mask": c(m["mask"])} for m in missing]
+    places = [{**p, "px": (p["px"][0] - y0, p["px"][1] - x0)} for p in places
+              if y0 <= p["px"][0] < y1 and x0 <= p["px"][1] < x1]
+    edge = None if model_edge is None else (c(model_edge[0]), c(model_edge[1]))
+    return c(rgba), c(ref), c(hit), c(depth), c(sk), missing, places, c(accepted), c(tint), edge
+
+
 def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ignoring: bool, accepted=None,
-             height: int = 560, tint=None, model_edge=None) -> Image.Image:
+             height: int = 560, tint=None, model_edge=None, box=None) -> Image.Image:
+    if box is not None:  # a close-up: every panel cut to the focus masses' box, then drawn as large as a whole view
+        rgba, ref, hit, depth, sk, missing, places, accepted, tint, model_edge = _crop(
+            box, rgba, ref, hit, depth, sk, missing, places, accepted, tint, model_edge)
+        k = k * ref.shape[0] / height
     H, W = ref.shape
     s = height / H
     size = (max(int(round(W * s)), 1), height)

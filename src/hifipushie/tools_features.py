@@ -208,7 +208,8 @@ def build_forms(name: str, how: dict, view: str | None = None, save: str | None 
 
 @mcp.tool(structured_output=False)
 def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | None = None,
-                on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None):
+                on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None,
+                focus: list[str] | None = None):
     """Compare the model with its reference pictures, view by view, and see what to change: the model beside each
     flat reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
     "painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
@@ -220,15 +221,16 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
     differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures
     that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
-    its reason and left out of the list and the overlap. ignore: masses to leave out. save: a folder for the
-    pictures. Details: guide(topic="look_beside")."""
+    its reason and left out of the list and the overlap. ignore: masses to leave out. focus: masses to see CLOSE
+    UP (an ear, a snout): every picture is cut to them and drawn large, beside the same part of each reference view
+    and the painting. save: a folder for the pictures. Details: guide(topic="look_beside")."""
     from pathlib import Path
 
     from . import beside
     from .tool_common import _png
     if on_purpose:
         beside.set_on_purpose(name, on_purpose)
-    res = beside.compare(name, views, ignore, resolution)
+    res = beside.compare(name, views, ignore, resolution, focus=focus)
     out = []
     for v, r in res["views"].items():
         if save:
