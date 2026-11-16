@@ -497,3 +497,17 @@ def test_a_bent_mass_is_the_forward_bent_clay(fig):
     x = np.array([[0.0, 0.0, s] for s in np.linspace(-0.05, 0.25, 31)] + [[0.01, 0.01, 0.04], [0.0, -0.02, 0.12]])
     assert np.allclose(bend.inverse(g, bend.forward(g, x)), x, atol=2e-3)  # there and back
 
+
+
+def test_a_lobe_bent_past_square_is_whole_below_where_the_bend_starts(fig):
+    """e18: clay before the bend's start plane was left unbent, so a lobe bent 140 degrees, hanging back below that
+    plane, was sliced flat there."""
+    from hifipushie import server
+    out = server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.2, width=0.12, thickness=0.05, fold=150,
+                      fold_at=0.25, round=0.03)
+    end = np.array(out.split("its end is at ")[1].split("]")[0].strip("[").split(","), float)
+    s = store.load(fig)
+    start = np.array(s["bends"]["flap:ear.L"]["path"][0])
+    assert end[2] < start[2]  # the end hangs below where the bend starts
+    toward = np.array(s["bends"]["flap:ear.L"]["path"][-1]) - end
+    assert _inside(compile_prims(s), [end + 0.01 * toward / np.linalg.norm(toward)])[0]

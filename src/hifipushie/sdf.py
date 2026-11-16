@@ -223,7 +223,7 @@ class _Undeformed:
 
     def of(self, p: Prim, idx):
         wp = p.params.get("warp") if p.kind == "csg" else None
-        if wp is None:
+        if wp is None or (wp[0] and "bend" in wp[0][-1]):  # (a bend is two pieces: sd_csg undoes it itself)
             return None
         k = id(wp[0])
         if k not in self.cache:

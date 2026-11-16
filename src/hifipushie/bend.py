@@ -120,12 +120,23 @@ def inverse(g: dict, p: np.ndarray, chunk: int = 20000) -> np.ndarray:
         s = S[i] + tt * np.sqrt(dd[i])
         o = q - c
         u, v = (o * Nf).sum(1), (o * Bf).sum(1)
-        res = C[0] + s[:, None] * g["T"][0] + u[:, None] * g["N"][0] + v[:, None] * g["B"][0]
-        # before the start the clay is where it was: inside a tight bend the path's far side can be nearer to such a
-        # point than the start is, and it was carried off (speckles on the stalk below an ear's bend)
-        behind = (q - C[0]) @ g["T"][0] < 0
-        out[a:a + chunk] = np.where(behind[:, None], q, res)
+        out[a:a + chunk] = C[0] + s[:, None] * g["T"][0] + u[:, None] * g["N"][0] + v[:, None] * g["B"][0]
     return out
+
+
+def field(g: dict, f, p: np.ndarray, prev=None) -> tuple[np.ndarray, np.ndarray]:
+    """(field, rest point) of clay with field f (a function of rest points) bent by g: the union of the clay before
+    the start, unbent, and the bent image of the clay past it. A rule "a point before the start plane is unbent"
+    sliced off a lobe bent past 90 degrees, which hangs back below that plane (e18). prev: earlier warps' undo."""
+    p = np.asarray(p, float)
+    und = prev or (lambda x: x)
+    xb = und(p)
+    db = np.maximum(f(xb), (p - g["C"][0]) @ g["T"][0])  # the unbent part, cut at the start plane
+    q = inverse(g, p)
+    xa = und(q)
+    da = np.maximum(f(xa), -((q - g["C"][0]) @ g["T"][0]))  # the bent part, from the start plane on
+    near = da < db
+    return np.where(near, da, db), np.where(near[:, None], xa, xb)
 
 
 def forward(g: dict, x: np.ndarray) -> np.ndarray:

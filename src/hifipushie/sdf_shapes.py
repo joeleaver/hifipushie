@@ -344,14 +344,24 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     style deformation), everything is evaluated at the undeformed point and the field divided by its stretch."""
     wp = pr.get("warp")
     p0 = p  # where the point is in the world: a trim (reshape.py) cuts there, after any bending
-    if wp is not None:
+    d = None
+    if wp is not None and wp[0] and "bend" in wp[0][-1]:  # a bend last (bend.py): two pieces, unioned
+        from . import bend
+        from .deform import undeform
+        rest = wp[0][:-1]
+        sh = p.shape
+        d, p = bend.field(wp[0][-1]["bend"], lambda x: SDF[pr["kind"]](x, pr["p"]), p.reshape(-1, 3),
+                          (lambda x: undeform(rest, x)) if rest else None)
+        d, p = d.reshape(sh[:-1]), p.reshape(sh)
+    elif wp is not None:
         if pre is not None:  # the caller undeformed these points once for all its primitives
             p = pre
         else:
             from .deform import undeform
             sh = p.shape
             p = undeform(wp[0], p.reshape(-1, 3)).reshape(sh)
-    d = SDF[pr["kind"]](p, pr["p"])
+    if d is None:
+        d = SDF[pr["kind"]](p, pr["p"])
     fr = pr.get("frame")
     q, s = (p, 1.0) if fr is None else (p @ fr[0].T + fr[1], fr[2])
     if pr.get("lumpy"):  # knots, axe marks, an uneven stone: noise on the surface itself (amount << scale)
