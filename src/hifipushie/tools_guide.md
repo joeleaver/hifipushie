@@ -356,6 +356,7 @@ over (the `bend` tool, made for you). For a folded or upright ear, a comb, a ton
 - flare: metres the root swells into the clay it grows from, a soft collar (default a quarter of the width; 0 none).
 A name ending ".L" is made on the left (+x) and mirrored. The same name again replaces it: change ONE thing at a
 time, then `look_beside(name, focus=[mass])` to see it close up beside each reference view and the painting.
+It builds only where the part has been read first (`study_part`, then `study_part` with your reading).
 In the spec: the bone `<mass>` (its numbers under "flap") on joints `<stem>_root`, `<stem>_tip`, and the bend
 `flap:<mass>` under "bends".
 
@@ -403,7 +404,7 @@ back=True makes the cutter clay again. A cutter can't be fused into other masses
 
 ### `study_part`
 
-`study_part(name, what, at, size=0.08)`
+`study_part(name, what, at, size=0.08, reading=None)`
 
 Before you model a part (an ear, a snout, a horn): the same part cut from every reference picture, each flat view
 and the painting, one large picture each, and an order to read it in, written out step by step: each picture on its
@@ -411,7 +412,9 @@ own, naming what hides what; the part split into sub-forms; each sub-form's size
 picture where nothing is in front of it; a check that the 3D shape makes every outline; only then the part in
 words. at: the part's middle [x, y, z] (read off the rulers; it need not be modelled yet); size: half the box's side.
 Why: where one part hides another in a view (a folded lobe in front of an ear's root, seen from the side), the
-outline reads as one broad shape; looking plainly, every reader in the blind trials got it wrong.
+outline reads as one broad shape; looking plainly, every reader in the blind trials got it wrong. Then call it
+again with `reading` (the five steps written out, each on its own line starting "1." to "5."): it is kept with the
+model, and `flap` builds a part only where it has been read.
 
 ### `review_part`
 

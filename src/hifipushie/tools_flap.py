@@ -50,7 +50,8 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     inside of the fold creases). The
     bend keeps the clay's thickness and makes the cup inside the fold. flare: metres the root swells into the clay
     it grows from (default a quarter of the width; 0 none). A name ending ".L" is made on the left (+x) and
-    mirrored. The same name again replaces it: change ONE thing at a time. Read the part first with study_part.
+    mirrored. The same name again replaces it: change ONE thing at a time. It builds only where the part has been
+    read first: study_part, then study_part with your reading.
     Then look_beside with focus=[mass]. The bend is the model's bend "flap:<mass>"; the bend tool bends any other
     mass the same way. Details: guide(topic="flap")."""
     from . import flap as flapmod
@@ -63,6 +64,12 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
         raise ValueError("base is a point [x, y, z] in metres on the surface it grows from (x, z in the front view; y, z "
                          "in the side view)")
     b0 = np.array(base, float)
+    from . import study
+    if study.reading_near(name, b0) is None:  # (e15 to e19: the one modeller who read the part first read it right;
+        # the ones who skipped it misread the ear the same way and turned it edge-on)
+        raise ValueError(f"read the part before you build it: study_part(\"{name}\", what=\"the left ear\", at={[round_(float(c), 3) for c in b0]}) "
+                         "shows it in every reference picture with the steps to read it in; write the steps out and pass "
+                         "them back as study_part(..., reading=...). Then flap builds here.")
     try:
         R, F = _aim_vec(rise, "rise"), _aim_vec(face, "face")
     except SpecError as e:

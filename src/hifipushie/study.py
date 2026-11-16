@@ -89,3 +89,49 @@ def crops(name: str, at, size: float) -> list[tuple[str, Image.Image, list[int]]
 
 def order(what: str) -> str:
     return ORDER.format(what=what)
+
+
+STEPS = 5
+MIN_STEP_CHARS = 40  # a step is a few words at least: "1. ok" is not a reading
+
+
+def _record_path(name: str):
+    from . import store
+    return store._dir(name) / "studies.json"
+
+
+def readings(name: str) -> list[dict]:
+    import json
+    p = _record_path(name)
+    return json.loads(p.read_text()) if p.exists() else []
+
+
+def save_reading(name: str, what: str, at, size: float, reading: str) -> dict:
+    """Keep a written reading of a part (study_part's five steps), checked to have its five steps."""
+    import json
+    import re
+    text = str(reading or "")
+    marks = [m.start() for k in range(1, STEPS + 1) for m in [re.search(rf"(?m)^\s*{k}[.):]", text)] if m]
+    if len(marks) < STEPS or marks != sorted(marks):
+        raise ValueError(f"reading: write the {STEPS} steps out, each starting on its own line with its number (\"1.\" to "
+                         f"\"{STEPS}.\"), in order: each picture alone and what hides what; the sub-forms; each sub-form's "
+                         "size on each axis and the picture you read it from; the check; the part in words")
+    parts = [text[a:b] for a, b in zip(marks, marks[1:] + [len(text)])]
+    short = [i + 1 for i, s in enumerate(parts) if len(s.strip()) < MIN_STEP_CHARS]
+    if short:
+        raise ValueError(f"reading: step {short[0]} says almost nothing; write what you see in it")
+    rec = {"what": what, "at": [float(c) for c in at], "size": float(size), "reading": text}
+    old = [r for r in readings(name) if not (r["what"] == what or np.linalg.norm(np.subtract(r["at"], rec["at"])) < 1e-6)]
+    _record_path(name).parent.mkdir(parents=True, exist_ok=True)
+    _record_path(name).write_text(json.dumps(old + [rec], indent=1))
+    return rec
+
+
+def reading_near(name: str, point) -> dict | None:
+    """The written reading whose box holds `point` (either side: a ".L" part read on the right counts), or None."""
+    for r in readings(name):
+        c, s = np.asarray(r["at"], float), 1.5 * float(r["size"])
+        for q in (np.asarray(point, float), np.asarray(point, float) * [-1, 1, 1]):
+            if np.all(np.abs(q - c) <= s):
+                return r
+    return None

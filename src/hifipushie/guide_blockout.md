@@ -20,7 +20,7 @@ The first pass on a figure. Later passes (big forms, medium forms, fine forms, a
    pieces show here.
 7. Stop when the big masses, their proportions and the silhouette are right. Features and surface are later passes.
 Your own verdict on the whole figure is worth trusting: say bluntly what is still wrong, biggest first.
-For a part's form (an ear, a snout): `study_part` first, to read it from the pictures before you model it; your own
+For a part's form (an ear, a snout): `study_part` first, and write its steps back (`flap` needs that); your own
 eyes then see what you meant, and `review_part` gets a fresh reviewer's.
 
 ## 2. Blockout pitfalls

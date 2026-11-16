@@ -329,7 +329,12 @@ def fig(tmp_path, monkeypatch):
     s = _figure()
     del s["blobs"]["ear.L"]
     store.save("fig", s, "start")
+    from hifipushie import study
+    study.save_reading("fig", "the ears", [0.11, 0.0, 0.8], 0.15, READING)
     return "fig"
+
+
+READING = "\n".join(f"{k}. " + "what this step of the reading says, in enough words to count as a step." for k in range(1, 6))
 
 
 def test_trim_and_carve_tools_cut_and_put_back(fig):
@@ -511,3 +516,17 @@ def test_a_lobe_bent_past_square_is_whole_below_where_the_bend_starts(fig):
     assert end[2] < start[2]  # the end hangs below where the bend starts
     toward = np.array(s["bends"]["flap:ear.L"]["path"][-1]) - end
     assert _inside(compile_prims(s), [end + 0.01 * toward / np.linalg.norm(toward)])[0]
+
+
+def test_flap_builds_only_where_the_part_has_been_read(fig, tmp_path):
+    from hifipushie import server, study
+    (tmp_path / "fig" / "studies.json").unlink()
+    with pytest.raises(ValueError, match="read the part before you build it"):
+        server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.12, width=0.1)
+    with pytest.raises(ValueError, match="write the 5 steps out"):
+        study.save_reading(fig, "the left ear", [0.11, 0.0, 0.76], 0.08, "it is an ear, folded over")
+    with pytest.raises(ValueError, match="step 3 says almost nothing"):
+        study.save_reading(fig, "the left ear", [0.11, 0.0, 0.76], 0.08, READING.replace(READING.split("\n")[2], "3. ok"))
+    study.save_reading(fig, "the left ear", [-0.11, 0.0, 0.76], 0.08, READING)  # read on the right: the left counts too
+    server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.12, width=0.1)
+
