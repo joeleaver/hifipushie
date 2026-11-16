@@ -197,9 +197,11 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     Z = np.load(s5["mark"])
     V, F, lab, names = Z["V"], Z["F"], Z["lab"], [str(x) for x in Z["names"]]
     pcs, edges, why = {}, {}, []
+    from .cut_ease import CapEase
+    ce = CapEase(rec["steps"]["4"].get("output") or {})
     for p, nm in enumerate(names):
         try:
-            f = flatten_piece(V, F, lab, p, nm)
+            f = flatten_piece(V, F, lab, p, nm, ce)
         except CutRefused as e:
             why.append(str(e))
             continue

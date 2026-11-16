@@ -15,7 +15,15 @@ section centres, its radius the section's tape / 2 pi + the declared ease (top -
 from the biceps up to the shoulder; the tube runs up into the shoulder (TUBE_INTO_M) and the ARMHOLE CONE (toile_geom,
 C491: the body's arm-root loop scaled about the shoulder point to the declared armhole length, carried out from the
 shoulder joint) cuts its crown. The torso is pushed off the arm only inside the cone above the underarm, from
-UNDER_PUSH_M outside it below (an eased tube fuses with the torso under the arm into a web).
+UNDER_PUSH_M outside it below (an eased tube fuses with the torso under the arm into a web). Below the underarm the
+tube and torso meet at a crease (their blend narrows to UNDER_BLEND_M): the sleeve's underarm is a tube's underside, not
+a web to the body (R3d: the web made the cap a saddle that flattened 2.5-8.8 % SHORT of its armhole).
+THE CAP'S EASE (C496): a tailor eases the cap into the armhole: the sleeve's crown stands proud of the armhole as a
+dome. The armhole line itself is untouched (the field changes only inside the cone, from zero at the cone with zero
+slope); inside it a roll CAP_BAND_M wide rises by CAP_RISE x the ease x the tube's top radius, full over the crown and
+nothing at the underarm (cos of the angle round the cone from the shoulder point, CAP_UNDER_COS). Flattened, the dome's
+lines parallel to the seam are longer than the seam: the cap comes out longer than its armhole by about the ease
+(`sleeves.cap_ease_pct`, default CAP_EASE_PCT: a set-in tailored sleeve's 6-9 %).
 HANG (declared hang_from: a step-0 fit level or "none"): below that level the torso's section is that level's, straight
 down, plus a flare meeting the lowest level's planned girth at the hem (a jacket hangs from the seat).
 PAD (declared): a wedge of the declared thickness under the shell (toile_geom.pad_thickness), its own part, the shell
@@ -43,6 +51,11 @@ CONE_BACK_M = 0.05    # the cone's apex: this far in along the arm's axis from t
 UNDER_PUSH_M = 0.02   # below the underarm the arm is pushed out of the torso from this far outside the cone
 PAD_GAP_M = 0.002     # the shell over the pad
 MIN_GAP_M = 0.002     # the cloth never nearer the body than this (the union with the body's offset)
+UNDER_BLEND_M = 0.004  # m: the tube / torso blend below the underarm (above it 0.015)
+CAP_EASE_PCT = 7.5    # % a tailored set-in sleeve's cap ease when the declaration states none (6-9 %)
+CAP_BAND_M = 0.05     # the cap's roll: this wide inside the armhole cone
+CAP_RISE = 2.0        # its rise = CAP_RISE x ease x the tube's top radius (ARAP gives the boundary part of the roll)
+CAP_UNDER_COS = -0.35  # the roll fades to nothing where cos(angle from the shoulder point) reaches this (underarm)
 CALIBRATE = 5         # ease calibration passes
 MIR = np.array([-1.0, 1, 1])
 
@@ -232,6 +245,7 @@ class Toile:
             below = smooth01((self.z_ua - P[:, 2]) / 0.03)
             Ar[i:i + 200000] = np.maximum(self.armness(P, UNDER_PUSH_M), self.armness(P, -UNDER_PUSH_M) * below)
         Tb, Ar = Tb.reshape(sh), Ar.reshape(sh)
+        kb = 0.015 - (0.015 - UNDER_BLEND_M) * smooth01((self.z_ua - self.zs[None, None, :]) / 0.03)
         hang = self.d.get("hang_from")
         z_hang = self.inp.levels[hang][0] if hang not in (None, "none") else -np.inf
         cal = sorted((z, n) for n, (z, _) in self.inp.levels.items() if z >= z_hang - 1e-6)
@@ -246,13 +260,31 @@ class Toile:
             KV = [k[n] for _, n in cal] + [EASE_ABOVE_MM[0] / 1000, EASE_ABOVE_MM[1] / 1000]
             E = np.interp(ZS, KZ, KV) * W
             Ft = ndimage.gaussian_filter(self.sdc - E, 0.8) + 0.08 * Ar
-            F0 = smin(Ft, Tb, 0.015) if "sleeves" in self.parts else Ft
+            F0 = smin(Ft, Tb, kb) if "sleeves" in self.parts else Ft
             got = {n: self.girth_slice(F0[:, :, self.kz(z)], z)[0] for z, n in cal}
             for z, n in cal:
                 k[n] += (self.inp.levels[n][1] - got[n]) / (2 * np.pi * 0.675)
         self.info["ease_k_mm"] = {n: round(k[n] * 1000, 1) for _, n in cal}
         self.z_hang = z_hang
-        return F0
+        return self.crown(F0) if "sleeves" in self.parts else F0
+
+    def crown(self, F0):
+        """The cap's ease (module doc): the field pulled out inside the armhole cone over the crown."""
+        pct = float((self.d.get("sleeves") or {}).get("cap_ease_pct", CAP_EASE_PCT))
+        rise = CAP_RISE * pct / 100 * float(self.RAX[1])
+        out = np.empty(len(self.G))
+        for i in range(0, len(self.G), 200000):
+            Q = folded(self.G[i:i + 200000])
+            s = self.cone.sdist(Q)
+            ps = self.cone.polar(Q)[0] - self.cone.polar(self.sp)[0][0]
+            t = np.clip((Q - self.sh) @ self.A, 0, self.alen)
+            dx = np.linalg.norm(Q - (self.sh + t[:, None] * self.A), axis=1)
+            band = np.where((s > 0) & (s < CAP_BAND_M), np.sin(np.pi * np.clip(s, 0, CAP_BAND_M) / CAP_BAND_M) ** 2, 0.0)
+            out[i:i + 200000] = rise * band * smooth01((np.cos(ps) - CAP_UNDER_COS) / (1 - CAP_UNDER_COS)) * \
+                np.clip((0.16 - dx) / 0.03, 0, 1)
+        self.info["sleeve"]["cap"] = {"ease_pct": pct, "rise_mm": round(rise * 1000, 1), "band_mm": CAP_BAND_M * 1000,
+                                      "underarm_blend_mm": UNDER_BLEND_M * 1000}
+        return F0 - out.reshape(self.shape)
 
     # ---------------------------------------------------------------- hang below a level, the pad
     def hang(self, F0):
