@@ -231,13 +231,14 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     if on_purpose:
         beside.set_on_purpose(name, on_purpose)
     res = beside.compare(name, views, ignore, resolution, focus=focus)
+    import os
     out = []
-    for v, r in res["views"].items():
+    for title, pic in beside.layout(res, os.environ.get("HIFIPUSHIE_BESIDE", "panels")):  # (blind trials compare layouts)
         if save:
             d = Path(save).expanduser()
             d.mkdir(parents=True, exist_ok=True)
-            r["picture"].save(d / f"beside_{v}.png")
-        out.append(_png(r["picture"]))
+            pic.save(d / f"{title}.png")
+        out.append(_png(pic))
     return [*out, beside.text(name, res)]
 
 

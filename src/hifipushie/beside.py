@@ -434,6 +434,7 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
     if tint is not None:
         clay = (clay * tint).astype(np.uint8)
     clay[~hit] = 232
+    ref_plain = left.copy()  # the reference alone (the painting gets the model's lines drawn over it below)
     if model_edge is not None:  # the painting: the model's outline and inside lines over it, in blue
         mo = np.zeros((H, W, 4), np.uint8)
         mo[model_edge[1]] = (30, 80, 235, 170)
@@ -441,6 +442,7 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
         left = Image.alpha_composite(left.convert("RGBA"), Image.fromarray(mo, "RGBA").resize(size, Image.NEAREST)).convert("RGB")
     edge = ref & ~ndimage.binary_erosion(ref, iterations=1)
     mid = Image.fromarray(clay).resize(size, Image.LANCZOS)
+    plain = mid.copy()  # the model alone, in clay (look_beside's other layouts show it beside the reference)
     over = np.zeros((H, W, 4), np.uint8)
     over[sk] = (225, 40, 40, 150)
     for m in missing:
@@ -473,7 +475,58 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
         x = i * (size[0] + gap)
         sheet.paste(im, (x, top))
         d.text((x + 4, 6), title[: max(int(size[0] / 8.2), 12)], font=small, fill=(0, 0, 0))
+    sheet.info["panels"] = {"reference": ref_plain, "clay": plain, "outline": mid, "difference": right}
     return sheet
+
+
+def layout(res: dict, how: str) -> list:
+    """look_beside's pictures as (title, image), in one of three layouts:
+    "panels": per view one strip: reference | model with the reference's lines | difference.
+    "sheet": first one picture of every view, the reference above the model in clay (same camera, same scale, no
+        lines or numbers), then the strips.
+    "separate": per view three pictures, each looked at on its own: reference | model in clay side by side; the
+        model with the reference's outline and lines; the difference."""
+    views = [(v, r["picture"], r["picture"].info.get("panels") or {}) for v, r in res["views"].items()]
+    strips = [(f"beside_{v}", pic) for v, pic, _ in views]
+    if how == "panels" or not all(p for _, _, p in views):
+        return strips
+    if how == "sheet":
+        h = 440
+        cols = []
+        for v, _, p in views:
+            a, b = p["reference"], p["clay"]
+            s = h / a.height
+            cols.append((v, a.resize((round(a.width * s), h)), b.resize((round(b.width * s), h))))
+        W = sum(c[1].width for c in cols) + 10 * (len(cols) + 1)
+        sheet = Image.new("RGB", (W, 2 * h + 50), (255, 255, 255))
+        d = ImageDraw.Draw(sheet)
+        x = 10
+        for v, a, b in cols:
+            d.text((x, 6), v, font=_font(15), fill=(0, 0, 0))
+            sheet.paste(a, (x, 30))
+            sheet.paste(b, (x, 40 + h))
+            x += a.width + 10
+        d.text((x - 4 - 200, 6), "", font=_font(15))
+        return [("beside_all", _titled(sheet, "every view: the reference above, the model in clay below (same camera, "
+                                              "same scale)")), *strips]
+    out = []
+    for v, _, p in views:
+        a, b = p["reference"], p["clay"]
+        pair = Image.new("RGB", (a.width + b.width + 10, a.height + 30), (255, 255, 255))
+        pair.paste(a, (0, 30))
+        pair.paste(b, (a.width + 10, 30))
+        ImageDraw.Draw(pair).text((4, 6), f"{v}: reference | model in clay", font=_font(15), fill=(0, 0, 0))
+        out += [(f"beside_{v}_pair", pair), (f"beside_{v}_outline", _titled(p["outline"], f"{v}: model, red = the "
+                                                                              "reference's outline and lines")),
+                (f"beside_{v}_difference", _titled(p["difference"], f"{v}: red = add clay, blue = take away"))]
+    return out
+
+
+def _titled(im, title: str):
+    out = Image.new("RGB", (im.width, im.height + 30), (255, 255, 255))
+    out.paste(im, (0, 30))
+    ImageDraw.Draw(out).text((4, 6), title, font=_font(15), fill=(0, 0, 0))
+    return out
 
 
 def text(name: str, res: dict) -> str:
