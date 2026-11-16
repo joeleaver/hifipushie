@@ -172,12 +172,12 @@ TOOL_GROUPS: dict[str, dict] = {
              "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"subject": "clothes clothing cloth garment outfit costume dress sew drape tailor fabric shirt blouse tee hoodie "
                          "sweater jacket trousers jeans skirt cloak robe",
-              "workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> garment_toile (step 4, the 3D surface on the body) -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
+              "workflow": "Clothes: garment_plan (read, parts, style) -> body_tape -> garment_toile (step 4, the 3D surface on the body) -> garment_mark (step 5, the seams on it) -> garment_cut (step 6, cut and flattened: the flat pattern) -> draft_pattern (your own FreeSewing design + its flat gate) -> chain_garment (the only way a garment "
                           "is built) -> garment_details -> look_chain beside the reference -> garment_appearance -> export_garment; garment_record shows every step",
               # the workflow's order (find_tool ranks a matched domain's early steps first)
-              "steps": ["garment_plan", "body_tape", "garment_toile", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
+              "steps": ["garment_plan", "body_tape", "garment_toile", "garment_mark", "garment_cut", "draft_pattern", "chain_garment", "garment_details", "look_chain", "garment_appearance", "export_garment"],
               "about": "garments: design, pattern, the pattern gate, alterations, the chain build (the only start), references",
-              "tools": ["garment_plan", "body_tape", "garment_toile", "draft_pattern", "pattern_parts", "pattern_check", "chain_garment", "garment_details",
+              "tools": ["garment_plan", "body_tape", "garment_toile", "garment_mark", "garment_cut", "draft_pattern", "pattern_parts", "pattern_check", "chain_garment", "garment_details",
                         "look_chain", "garment_appearance", "export_garment", "garment_record"]},
     "terrain": {"subject": "terrain landscape mountain valley river hill island lake coast canyon heightmap",
                 "entry": "set_terrain", "about": "terrain and game levels (height fields in a level designer's words)",

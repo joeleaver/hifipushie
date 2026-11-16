@@ -46,8 +46,8 @@ STEPS = [
     # (drape first, R3a: 4 TOILE the garment's 3D surface on the body, 5 MARK its seam lines on it, 6 CUT AND FLATTEN
     # it into the flat pattern (today's draft form: seam pairs, stiff pieces, folds, closures) + the flat gate; R3b)
     ("4", "toile", "the garment's 3D surface on the body: the body + step 0's ease per level, the declared parts", "garment_toile", "none", "4"),
-    ("5", "mark", "the seam lines drawn on the toile, each a closed or end-to-end curve on its surface", None, "none", "4"),
-    ("6", "cut", "the toile cut on the marks, each piece flattened: the flat pattern (seam pairs, stiff pieces, folds, closures) + the flat gate", None, "none", "5"),
+    ("5", "mark", "the seam lines drawn on the toile, each a closed or end-to-end curve on its surface", "garment_mark", "none", "4"),
+    ("6", "cut", "the toile cut on the marks, each piece flattened: the flat pattern (seam pairs, stiff pieces, folds, closures) + the flat gate", "garment_cut", "none", "5"),
     ("7", "details", "buttons, braid, frogging on the surface, at the pattern's marks", "garment_details", "none", "6"),
     ("7a", "presim", "the built, detailed garment beside the reference, approved before the sim", None, "setting", "6"),
     ("8", "sim", "folds only: soft cloth under gravity, stiff parts and the state held", "chain_garment", "none", "4"),
@@ -386,23 +386,11 @@ def _try(fn, *a, **k) -> str:
 
 
 def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
-    """chain_garment's worker at its end: step 5 (the chains), 6 (structure rows), 8 (the hang)."""
-    stage, sc = st.get("stage"), st.get("structure") or {}
+    """chain_garment's worker at its end: step 8 (the hang) only. Steps 5 / 6 are garment_mark / garment_cut (drape
+    first, R3b): the chain build no longer writes them."""
+    stage = st.get("stage")
     out = {"job": str(d), "wear": wear, "build": st.get("build_id")}
     msgs = []
-    if stage == "stage_failed":  # (F5: start / chains fail step 5, surfaces step 6, with the gate and its look)
-        g = st.get("stage_gate") or {}
-        return _try(write, model, garment, "6" if g.get("stage") == "surfaces" else "5", "failed", by="chain_garment",
-                    output=dict(out, stage_failed=g.get("stage")), gate={"verdict": g.get("verdict"), "stage": g.get("stage"),
-                    "rows": g.get("rows")}, back_to=g.get("back_to"), look=[p for _, p in st.get("stage_look") or []] or None)
-    if stage == "refused" and not (d / "final.pkl").exists():
-        return _try(write, model, garment, "5", "failed", output=dict(out, refused=st.get("refused")), by="chain_garment")
-    if stage not in ("structure_failed", "presim", "awaiting_approval", "done", "refused"):
-        return ""
-    msgs.append(_try(write, model, garment, "5", "done", output=dict(out, built=str(d / "built.pkl")), by="chain_garment"))
-    from .chain_structure import passed
-    msgs.append(_try(write, model, garment, "6", "done" if passed(sc) else "failed", by="chain_garment",
-                     output=dict(out, built=str(d / "built.pkl")), gate={"verdict": sc.get("verdict"), "rows": sc.get("rows")}))
     if stage in ("done", "refused") and (d / "final.pkl").exists():  # (step 8: its gate is the threads reading, T2)
         from .chain_presim import threads_gate
         g = threads_gate(st) or {}

@@ -374,6 +374,31 @@ def garment_toile(name: str, garment: str, declarations: dict | str):
 
 
 @mcp.tool(structured_output=False)
+def garment_mark(name: str, garment: str, declarations: dict | str):
+    """STEP 5: MARK the seams on the toile as body lines, each cut exactly into it. declarations: marks [{name, line
+    {kind: armhole | centre_back | panel (after: a step-2 panel, above: shoulder) | shoulder | under_sleeve (fore_in_mm,
+    hind_in_mm) | level (at)}, region (toile, or one a mark made), into [piece g<0, piece g>0]}] in order (".L" marks
+    mirror), absent {step-1 piece: why}, runs {"piece:edge": front|back|top|bottom}. A mark that doesn't cut its region
+    in two is refused by name. Rows: marks, separate, pieces, seams; the look (marks on the toile, 4 views); step 5.
+    guide(topic="garment_mark")."""
+    from . import mark_tool
+    sheet, txt = mark_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
+    return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
+
+
+@mcp.tool(structured_output=False)
+def garment_cut(name: str, garment: str, declarations: dict | str | None = None):
+    """STEP 6: CUT AND FLATTEN the marked toile: each piece cut on step 5's marks, flattened (strain per piece and
+    where: a dart or ease wanted), each seam trued, the flat pattern written in draft_pattern's form (every piece keeps
+    its 3D place) and today's flat gate run on it. declarations: free {piece: {step-1 edge: top | bottom | side |
+    [classes]}} names the toile's own edges (".L" serves ".R"), ease {"piece:edge": [lo, hi]}. Returns the flat pieces
+    (strain) + every row; step 6. guide(topic="garment_cut")."""
+    from . import cut_tool
+    sheet, txt = cut_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
+    return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
+
+
+@mcp.tool(structured_output=False)
 def pattern_parts(design: str, name: str = "", garment: str = "", part: str = "", options: dict | None = None,
                   look: bool = False):
     """SEE A FREESEWING DESIGN before you declare its edges. design: a pack design name (brian, bent, jaeger, carlton,

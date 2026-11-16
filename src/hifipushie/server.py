@@ -9,7 +9,7 @@ from . import moved
 from .mcp_app import CORE, INSTRUCTIONS, TOOL_GROUPS, _register_core, enable_all, mcp  # noqa: F401
 from .tools_cloth import (  # noqa: F401
     body_tape, chain_garment, draft_pattern, export_garment, garment_appearance, garment_details, garment_plan,
-    garment_record, garment_toile, look_chain, pattern_check, pattern_parts,
+    garment_cut, garment_mark, garment_record, garment_toile, look_chain, pattern_check, pattern_parts,
 )
 from .tools_clutter import (  # noqa: F401
     clutter_kit, look_clutter, make_clutter,
