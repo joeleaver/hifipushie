@@ -12,7 +12,7 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
 - p9 (organic-eye: proportions, grab limits; 44 calls): no grab at all, a clean surface, head the dominant mass;
   ears loop up as arches, a crease at the neck from the front, no hooves made.
 - Ears (ear-pad): cone flap, fat lobe, tip; one-sheet look_beside; pins; review_part. Root misread by every reader
-  until study_part. e15-17 two-cone flap peaked; e18 bend (sliced, fixed); e19 hooks: misread, no study_part.
+  until study_part. e15-17 two-cone flap peaked; e18 bend; e19 hooks (skipped reading); e20 reading required: best yet.
 - The agent's own whole-figure verdict was right nine times of nine. Runs differ most in how much they grab.
 
 ## Decisions in force (Joe, 2026-11-14 / 15; each is a memory file too)
@@ -57,4 +57,4 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
 - Pictures sent to Joe: workspace/drawing_board/ (p7_vs_p6_vs_p5.png, p7_painting_view.png, earlier sheets).
 - Record index of the older organic routes: memory `organic-from-concept-record`.
 
-NEXT (ask Joe): the tool can make the ear; agents misread it and skip study_part. Land ear-pad (bin/suite) or require it.
+NEXT (ask Joe): bin/suite and land ear-pad; agents' tool claims need checking (e19 buried base, e20 thin fold: both false).
