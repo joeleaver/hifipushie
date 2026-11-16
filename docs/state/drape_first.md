@@ -44,5 +44,16 @@ History: docs/notes (grep C489-C493); spikes/r1_*, r2_*, r2b_* (R3c still reads 
   FreeSewing draft dir; they don't read pattern.json yet. ~120 "step 4" texts in chain_* / draft_* still mean the flat
   pattern (only the tool texts touched here say step 6).
 
-NEXT: Joe / the coordinator judges r3b's mark_sheet + flat_sheet; then R3c (collar, lapel unfold, facing) and the
-step-6 FAIL rows (tapes, folds, darts).
+## Open on this branch (coordinator, after the fast suite; NOT fixed: the run's budget ran out before a test ran)
+- test_chain_garment::test_presim_awaits_approval_then_resumes_from_the_saved_build ('STOPPED BEFORE THE HANG' missing),
+  test_chain_garment::test_step8_fails_on_faces_past_the_cap ('todo' != 'failed'), test_chain_stages::
+  test_the_job_ends_stage_failed_and_the_record_shows_the_stage (KeyError 'step'): from_chain now writes only step 8, and
+  the presim (7a) / hang (8) bookkeeping still reads steps 5 / 6 as the chain build's. Fix the code for drape first (7a /
+  8 must not wait on 5 / 6 written by the chain build; the stage_failed answer must not index a step it no longer
+  writes), then change any test that asserts the old route, naming it.
+- test_find_tool::test_find_tool_gives_params_and_an_example: the Clothes workflow text (mcp_app) now names
+  garment_mark / garment_cut: update its expected text.
+- test_recolour_masks::test_bad_masks_refused timed out (load?): run it alone.
+
+NEXT: fix the four tests above on this branch (run only those files, -m ""), commit; then Joe / the coordinator judges
+r3b's mark_sheet + flat_sheet; then R3c (collar, lapel unfold, facing) and the step-6 FAIL rows (tapes, folds, darts).
