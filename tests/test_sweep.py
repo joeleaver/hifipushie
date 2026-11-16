@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 
 from hifipushie import sdf_shapes
-from hifipushie.spec import _sweep
+from hifipushie.spec_parts import _sweep
 
 
 def _band(**kw):

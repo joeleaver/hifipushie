@@ -25,7 +25,7 @@ def smin_var(a, b, k):
 
 
 def sides_mul(sides, pts: np.ndarray) -> np.ndarray:
-    """How much of a mass's fill holds at each point (spec._fuse_sides): all of it on the far half of the fuse,
+    """How much of a mass's fill holds at each point (spec_hands._fuse_sides): all of it on the far half of the fuse,
     easing from the fuse's middle to the side's own part at that side's face."""
     c, R, items = sides
     q = (np.asarray(pts, float) - np.asarray(c, float)) / np.asarray(R, float)
@@ -323,7 +323,7 @@ def sd_sweep(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray:
-    """An element with its own solid ops (spec._csg): optionally hollowed to a wall, then its targeted cuts.
+    """An element with its own solid ops (spec_hands._csg): optionally hollowed to a wall, then its targeted cuts.
     An instance's element takes its noise (lumpy, chips) in the prefab's frame ("frame": world -> prefab m, t and
     the instance's scale), so every instance of a prefab is the same shape. With "warp" (deform.py: the model's
     style deformation), everything is evaluated at the undeformed point and the field divided by its stretch."""

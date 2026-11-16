@@ -7,11 +7,11 @@ fuse: two (or more) masses worked into one. Elements that carry the same "fuse" 
     its own "fill" (how far that mass is worked into the others, the widest first), smooth by
     "fill" metres (how far the two are worked into each other: the hollow between them fills by about a sixth of
     it; 0.05 leaves a soft crease, 0.25 makes one mass with a slight pinch), and blended into the rest of the
-    model once (spec._fuse). The tools write the tag; by hand it is
+    model once (spec_hands._fuse). The tools write the tag; by hand it is
         "blobs": {"head": {..., "fuse": "head+torso", "fill": 0.08}, "torso": {..., "fuse": "head+torso", "fill": 0.08}}
     "fill_sides": {side: 0..1} (front, back, left, right, up, down; front is where the figure faces) works in only
     that part of the fill on that side of the fuse's middle: {"front": 0.2} leaves a head smooth into the body
-    behind and at the sides, and creased under the chin (spec._fuse_sides; the same fill all round can only trade
+    behind and at the sides, and creased under the chin (spec_hands._fuse_sides; the same fill all round can only trade
     a snowman's neck for a bean).
     `waist` measures the narrowest place between two stacked masses, so a fill can be set from the width the
     reference shows there (`solve_fill`).
@@ -111,7 +111,7 @@ def stretch(ops: list[dict], names: list[str]) -> tuple[float, float]:
     ds = [float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1])) for g in gs]
     reach = max(ds, default=0.0)
 
-    def centre(g):  # where the grab's ball is, once spec._grabs has found its depth
+    def centre(g):  # where the grab's ball is, once spec_hands._grabs has found its depth
         dep, i, j = GRAB_AXES[g["view"]]
         c = np.zeros(3)
         c[i], c[j], c[dep] = g["at"][0], g["at"][1], g["depth"]

@@ -259,7 +259,7 @@ def check_paths(spec: dict) -> None:
 def _path_mask(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
     from scipy.spatial import cKDTree
     from .sdf import PROFILES
-    from .spec import _profile_norm
+    from .spec_parts import _profile_norm
     prof_name = ly.get("profile", "flat")
     if prof_name not in PROFILES:
         raise SpecError(f"paint {name!r}: unknown profile {prof_name!r} (have {', '.join(PROFILES)})")
