@@ -19,6 +19,7 @@ from .toile_geom import clip, largest, weld
 
 LAP_UNDER_M = 0.002   # the under front's lap lies this far inside the over front
 LAPEL_LIFT_M = 0.004  # the turned lapel lies this far off the chest
+BACK_NECK_DEPTH_M = 0.015  # a draft's back neck: centre back this far below the side neck point (block drafting)
 MIR = np.array([-1.0, 1, 1])
 
 
@@ -39,8 +40,61 @@ def _folded(P):
     return P * np.where(P[:, :1] < 0, MIR, 1)
 
 
-def neck_and_wrists(t, V, F):
+def neckline(t) -> tuple:
+    """(the neck tape's points with the back lowered, the side neck points' height). The tape runs round the neck's
+    base, at the back where the neck turns vertical (the cervicale): cut there, the cloth climbs the back of the neck as
+    a stand. A draft's back neck runs from the side neck point (HPS) DOWN to centre back by BACK_NECK_DEPTH_M; the
+    back of the tape is lowered to that (cos^2 from the side to centre back); the front is the tape's."""
     neck = np.asarray(t.inp.tapes["neck"], float)
+    cn = t.cn
+    side = np.abs(neck[:, 0]) > np.abs(neck[:, 0]).max() - 0.005
+    z_hps, y_hps = float(neck[side, 2].mean()), float(neck[side, 1].mean())
+    back = np.clip((neck[:, 1] - y_hps) / max(neck[:, 1].max() - y_hps, 1e-6), 0, 1)
+    cap = z_hps - BACK_NECK_DEPTH_M * back ** 2
+    N = neck.copy()
+    N[:, 2] = np.where(neck[:, 1] > y_hps, np.minimum(neck[:, 2], cap), neck[:, 2])
+    t.info["neckline"] = {"hps_z": round(z_hps, 4), "hps_y": round(y_hps, 4), "cb_z_tape": round(float(neck[np.argmax(neck[:, 1]), 2]), 4),
+                          "cb_z": round(float(N[np.argmax(neck[:, 1]), 2]), 4), "back_depth_mm": BACK_NECK_DEPTH_M * 1000}
+    return N, z_hps, y_hps
+
+
+def _axis_dense(t, n=400):
+    tt = np.linspace(t.tax[0], t.tax[-1], n)
+    return np.c_[[np.interp(tt, t.tax, t.CAX[:, i]) for i in range(3)]].T
+
+
+def arm_dir(t) -> np.ndarray:
+    """The sleeve's down-the-arm direction in the front view (x out, z), unit: from the axis's end."""
+    A = t.CAX[-1] - t.CAX[-3]
+    return np.array([abs(A[0]), A[2]]) / np.hypot(A[0], A[2])
+
+
+def along_from_wrist(t, xz, wrist) -> float:
+    """A traced edge's place along the arm (front view, m) past a wrist mark (+ toward the hand), folded to +x."""
+    xz = np.asarray(xz, float)
+    Q = np.c_[np.abs(xz[:, 0]) - abs(wrist[0]), xz[:, 1] - wrist[1]]
+    return float(np.median(Q @ arm_dir(t)))
+
+
+def sleeve_hem_point(t) -> tuple:
+    """(the hem's point on the sleeve axis, how). `sleeves.hem` a step-2 trace: its place past the PICTURE's wrist
+    carried onto the MODEL's wrist along the arm (the length read like with like: the pose and the body differ); a
+    step-0 height: the axis point at that height."""
+    h = t.d["sleeves"]["hem"]
+    C = _axis_dense(t)
+    w = getattr(t.inp, "wrists", None) or {}
+    if h in t.inp.traces and "photo" in w and "model" in w:
+        s = along_from_wrist(t, t.inp.traces[h]["xz"], w["photo"])
+        m = np.asarray(w["model"], float)
+        al = np.c_[C[:, 0] - m[0], C[:, 2] - m[1]] @ arm_dir(t)
+        p = C[int(np.argmin(np.abs(al - s)))]
+        return p, f"step 2's {h!r}: {s * 1000:+.1f} mm past the picture's wrist, carried onto the model's"
+    z = float(t.inp.heights[h])
+    return C[int(np.argmin(np.abs(C[:, 2] - z)))], f"step 0's height {h!r} (z {z:.3f})"
+
+
+def neck_and_wrists(t, V, F):
+    neck, _, _ = neckline(t)
     cn = t.cn
     an = np.arctan2(neck[:, 1] - cn[1], neck[:, 0] - cn[0])
     o = np.argsort(an)
@@ -48,11 +102,10 @@ def neck_and_wrists(t, V, F):
     phi_neck = lambda P: np.interp(np.arctan2(P[:, 1] - cn[1], P[:, 0] - cn[0]), an_s, zn_s, period=2 * np.pi) - P[:, 2]
     V, F = largest(*clip(V, F, phi_neck(V)))
     if "sleeves" in t.parts:
-        z_sl = float(t.inp.heights[t.d["sleeves"]["hem"]])
-        k = int(np.argmin(np.abs(t.CAX[:, 2] - z_sl)))
-        p, A = t.CAX[k], (t.CAX[-1] - t.CAX[-3]) / np.linalg.norm(t.CAX[-1] - t.CAX[-3])
+        p, how = sleeve_hem_point(t)
+        A = (t.CAX[-1] - t.CAX[-3]) / np.linalg.norm(t.CAX[-1] - t.CAX[-3])
         phi = lambda P: np.maximum(-((_folded(P) - p) @ A), np.linalg.norm(np.cross(_folded(P) - p, A), axis=1) - 0.12)
-        t.info["sleeve"]["hem_z"] = round(z_sl, 3)
+        t.info["sleeve"].update(hem_z=round(float(p[2]), 3), hem_at=[round(float(p[0]), 4), round(float(p[2]), 4)], hem_from=how)
     else:  # (no sleeves: the armhole is cut on the cone)
         phi = lambda P: -t.cone.sdist(_folded(P))
     V, F = largest(*clip(V, F, phi(V)))

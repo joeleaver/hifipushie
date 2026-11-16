@@ -60,6 +60,7 @@ class Inputs:
     decl: dict
     traces: dict = field(default_factory=dict)
     marks: dict = field(default_factory=dict)
+    wrists: dict = field(default_factory=dict)  # {"photo": [x, z] from step 2's body marks, "model": [x, z]}, folded +x
 
 
 def folded(P):
