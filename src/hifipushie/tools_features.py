@@ -214,7 +214,8 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     "painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
     outline over it (the painting) | the model, its parts tinted, with the reference's outline and inside lines in
     red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists those
-    places biggest first, with the mass each is on, and the pieces that touch nothing. Seconds, no render: use it
+    places biggest first, with the mass each is on, the PROPORTIONS (how wide and deep the figure is where the
+    reference is widest and narrowest: the balance of the masses), and the pieces that touch nothing. Seconds, no render: use it
     after every change. LOOK at the pictures: the painting's view is where a figure reads as itself, and where a
     mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
     differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures

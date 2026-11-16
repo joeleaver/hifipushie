@@ -47,21 +47,20 @@ def test_a_model_that_is_its_reference_has_nothing_to_list(home):
     assert r["iou"] > 0.97 and r["places"] == []
 
 
-def test_a_short_ear_is_the_first_place_and_its_grab_mends_it(home):
-    from hifipushie import server
+def test_a_short_ear_is_the_first_place_said_once_and_the_mass_s_own_size_mends_it(home):
     s = store.load("fig")
+    tall = list(s["blobs"]["ear.L"]["size"])
     s["blobs"]["ear.L"]["size"] = [0.045, 0.025, 0.045]  # the ears end 2.5 cm lower than the reference's
     store.save("fig", s, "short ears")
     before = beside.compare("fig", resolution=144)["views"]["front"]
     p = before["places"][0]
     assert p["kind"] == "short" and p["mass"] == "ear.L" and p["at"][0] > 0  # said once, for the stored side
     assert not any(q["twin"] for q in before["places"])  # the right ear's same faults are not listed again
-    assert 0.015 < p["off"] < 0.035 and f'of=["ear.L"]' in p["grab"]
-    server.grab("fig", of=[p["mass"]], view="front", at=p["at"], to=p["to"], radius=p["radius"])
+    assert 0.015 < p["off"] < 0.035 and "grab" not in p  # where and how far: no fix handed over
+    s["blobs"]["ear.L"]["size"] = tall
+    store.save("fig", s, "the ear its own size again")
     after = beside.compare("fig", resolution=144)["views"]["front"]
-    assert after["iou"] > before["iou"] + 0.005
-    short = [q for q in after["places"] if q["mass"] == "ear.L" and q["kind"] == "short"]
-    assert not short or short[0]["area"] < 0.5 * p["area"]
+    assert after["iou"] > before["iou"] + 0.005 and not [q for q in after["places"] if q["mass"] == "ear.L"]
 
 
 def test_an_ignored_mass_is_left_out_and_a_view_that_is_not_there_is_named(home):
@@ -168,3 +167,30 @@ def test_the_painting_without_a_camera_is_asked_for_by_name(home):
     with pytest.raises(ValueError, match="fit_concept_camera"):
         beside.compare("fig", views=["painting"])
     assert "fit_concept_camera" in beside.text("fig", beside.compare("fig", resolution=144))
+
+
+def test_a_place_names_its_mass_and_no_grab_and_the_proportions_are_read(home):
+    s = store.load("fig")
+    s["blobs"]["head"]["size"] = [0.17, 0.15, 0.14]  # a head 6 cm narrower than the reference's
+    store.save("fig", s, "a small head")
+    res = beside.compare("fig", resolution=144)
+    said = beside.text("fig", res)
+    assert "grab(" not in said and "a grab from" not in said and "on head" in said
+    pr = res["views"]["front"]["proportions"]
+    wide = [m for m in pr["landmarks"] if m["kind"] == "widest"]
+    assert len(wide) >= 2  # the head and the body, found on the reference itself
+    head = min(wide, key=lambda m: abs(m["z"] - 0.53))
+    assert abs(head["reference"] - 0.40) < 0.015 and abs(head["model"] - 0.34) < 0.015
+    assert pr["ratios"] and pr["ratios"][0]["model"] < pr["ratios"][0]["reference"] - 0.08
+    assert "proportions:" in said and "the model's upper mass is small against its lower" in said
+
+
+def test_paired_masses_are_left_out_of_the_model_s_own_width(home):
+    s = store.load("fig")
+    s["joints"]["arm.L"] = {"pos": [0.19, 0, 0.2]}  # (the reference picture is cut 2 cm outside the figure)
+    s["blobs"]["arm.L"] = {"at": "arm.L", "size": [0.03, 0.04, 0.04]}  # a stub of an arm at the body's widest
+    store.save("fig", s, "arms out")
+    pr = beside.compare("fig", resolution=144)["views"]["front"]["proportions"]
+    body = min((m for m in pr["landmarks"] if m["kind"] == "widest"), key=lambda m: abs(m["z"] - 0.2))
+    assert abs(body["model"] - body["reference"]) < 0.015 and body["whole"] > body["model"] + 0.03
+    assert pr["ratios"] == []  # a width with limbs in it is not set against another

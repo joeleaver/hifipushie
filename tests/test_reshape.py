@@ -134,7 +134,7 @@ def test_the_tools_save_a_version_and_say_what_they_did(tmp_path, monkeypatch):
     assert "worked into one mass" in out and "before:" in out
     assert abs(float(re.search(r"them: (\d+\.\d) cm across", out).group(1)) - 30.0) < 0.4
     assert store.load("fig")["blobs"]["head"]["fuse"] == "head+torso"
-    out = server.grab("fig", ["ear.L"], "front", [0.13, 0.8], [0.14, 0.82], 0.06, label="tip")
+    out = server.grab("fig", ["ear.L"], "front", [0.13, 0.8], [0.135, 0.81], 0.06, label="tip")
     assert "grab 'tip'" in out and store.load("fig")["grabs"]["tip"]["radius"] == 0.06
     out = server.grab("fig", [], "front", [0, 0], [0, 0], 0.1, label="tip", remove=True)
     assert "taken off" in out and "grabs" not in store.load("fig")
@@ -401,9 +401,9 @@ def test_a_grab_moves_a_ball_of_clay_not_the_whole_depth_of_its_view():
 
 def test_the_grab_tool_says_when_it_is_made_on_both_sides(fig):
     from hifipushie import server
-    out = server.grab(fig, of=["torso"], view="front", at=[0.19, 0.25], to=[0.22, 0.25], radius=0.12)
+    out = server.grab(fig, of=["torso"], view="front", at=[0.19, 0.25], to=[0.22, 0.25], radius=0.16)
     assert "MADE ON BOTH SIDES" in out
-    out = server.grab(fig, of=["torso"], view="side", at=[0.17, 0.25], to=[0.2, 0.25], radius=0.12, label="grab1")
+    out = server.grab(fig, of=["torso"], view="side", at=[0.17, 0.25], to=[0.2, 0.25], radius=0.16, label="grab1")
     assert "MADE ON BOTH SIDES" not in out  # (on the centre line, seen from the side: one grab)
 
 
@@ -422,3 +422,18 @@ def test_a_fuse_does_not_make_its_neighbours_reach_far():
         s["blobs"][n].update(fuse="h", fill=0.25)
     prims = {p.name: p for p in compile_prims(s)}
     assert float(np.max(prims["ear.L"].reach)) < 0.12 and float(np.max(prims["head"].reach)) > 0.25
+
+
+def test_the_grab_tool_refuses_a_small_pull_and_says_the_radius_a_broad_move_needs(fig):
+    from hifipushie import server
+    # 3.3 cm with a radius of 13: the pull that creased a belly (p8). A fifth of the radius at most: 16.5 cm.
+    with pytest.raises(ValueError, match="radius of 16.5 cm or more"):
+        server.grab(fig, of=["torso"], view="front", at=[0.0, 0.07], to=[0.0, 0.103], radius=0.13)
+    # 1 cm with a radius of 6 on a mass 36 cm across: small against its mass, whatever the move
+    with pytest.raises(ValueError, match="torso is 40 cm across"):
+        server.grab(fig, of=["torso"], view="front", at=[0.19, 0.25], to=[0.2, 0.25], radius=0.06)
+    assert "grabs" not in store.load(fig)  # (nothing was saved)
+    server.grab(fig, of=["torso"], view="front", at=[0.0, 0.07], to=[0.0, 0.103], radius=0.17)  # broad: taken
+    s = store.load(fig)  # the spec itself still takes any grab that does not fold the clay (the tool is the guard)
+    s["grabs"]["small"] = {"of": ["head"], "view": "side", "at": [-0.15, 0.6], "to": [-0.17, 0.6], "radius": 0.05}
+    compile_prims(s)
