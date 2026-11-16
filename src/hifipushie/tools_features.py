@@ -262,7 +262,10 @@ def review_part(name: str, masses: list[str], region: str, context: str = "a gam
     matched.render(name, label)
     r = matched.tiles(name, {region: list(masses)}, label)
     ref, ours, box = r["tiles"][region]
+    # (a first run spent half its faults on clay texture and colour: a blockout is judged on its big form)
     out = review_view(region=region, reference=ref, result=ours, context=context,
+                      stage="blockout: the big form of this part (its shape, size, thickness, fold and how it meets "
+                            "the head) and where it sits", not_stages="surface texture, colour, material, fine creases",
                       out_dir=str(Path(r["dir"]) / "review"))
     text = out[-1] if isinstance(out, (list, tuple)) else str(out)
     return [*out[:-1], f"{region}: the painting | the model, through the painting's camera (box {box}).\n{text}\n"
