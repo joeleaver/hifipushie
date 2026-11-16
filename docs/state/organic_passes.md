@@ -11,8 +11,8 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
   (bugs in fuse and grab); p5 clean, teddy ears (bugs fixed); p6 ears fold, duck face, lumps (+ flap, trim, carve).
 - p9 (organic-eye: proportions, grab limits; 44 calls): no grab at all, a clean surface, head the dominant mass;
   ears loop up as arches, a crease at the neck from the front, no hooves made.
-- Ears: flap is a thick lump (two oval cones) with its top folded, judged with look_beside focus. e5, e6 (blind,
-  ear-only, after the fold_at fix): folded pig ears from every side, closest yet. Slab, masked strokes: dead ends.
+- Ears (branch ear-pad): cone flap with fat lobe, wedge base, tip target; look_beside's first picture is one sheet
+  (refs above, clay below); camera pins; review_part. e13/e14 closest yet. Open: tip re-aims face; no hollow.
 - The agent's own whole-figure verdict was right nine times of nine. Runs differ most in how much they grab.
 
 ## Decisions in force (Joe, 2026-11-14 / 15; each is a memory file too)
