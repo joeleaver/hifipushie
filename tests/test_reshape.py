@@ -436,3 +436,14 @@ def test_a_flap_says_when_its_base_floats_and_refuses_what_is_no_flap(fig):
         server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.08, rise="up", face="up")
     with pytest.raises(ValueError, match="thickness"):
         server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.05, thickness=0.09)
+
+
+def test_fold_at_moves_the_knuckle_and_the_answer_says_where_the_folded_part_points(fig):
+    from hifipushie import server
+    kw = dict(base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.08, fold=120)
+    out = server.flap(fig, "ear.L", fold_at=0.4, **kw)
+    low = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
+    server.flap(fig, "ear.L", fold_at=0.7, **kw)
+    high = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
+    assert high - low > 0.03  # (a thick lump's knuckle hardly moved: 1 mm for 0.5 -> 0.4, e2)
+    assert "folded part points down and forward" in out

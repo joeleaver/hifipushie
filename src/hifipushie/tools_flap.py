@@ -11,6 +11,15 @@ from .mcp_app import mcp
 from .spec import compile_prims
 
 
+def _words(v) -> str:
+    v = np.asarray(v, float)
+    out = []
+    for i, (pos, neg) in ((2, ("up", "down")), (1, ("back", "forward")), (0, ("out", "in"))):
+        if abs(v[i]) > 0.3:
+            out.append(pos if v[i] > 0 else neg)
+    return " and ".join(out) or "sideways"
+
+
 def _views_broad(F) -> str:
     k = int(np.argmax(np.abs(F)))
     return ("from the side (it is edge-on from the front)", "from the front and back (it is edge-on from the side)",
@@ -95,6 +104,10 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
              f"{_views_broad(g['face'])}. " + (f"It folds {fold:.0f} degrees toward its face at {r3(g['hinge'])}; its tip is "
                                               f"at {r3(g['tip'])}." if fold else "It is not folded.")
              + (f" Mirrored as {twin}." if twin and bool(spec.get("symmetry", True)) else "")]
+    if fold:
+        lines.append(f"Its folded part points {_words(g['toward'])} (a fold turns the top over toward the face, so past 90 "
+                     "degrees it comes back against the way the flap rises: a flap leaning out folds back in). For a top "
+                     "that hangs out as well as forward, give face the outward part and rise less of it.")
     if off > 0.004:
         lines.append(f"ITS BASE IS {off * 100:.1f} cm OUTSIDE the clay it should grow from: it floats. Put base on that "
                      "mass's surface (read it off look_beside's or look's rulers).")

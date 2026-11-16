@@ -11,6 +11,8 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
   (bugs in fuse and grab); p5 clean, teddy ears (bugs fixed); p6 ears fold, duck face, lumps (+ flap, trim, carve).
 - p9 (organic-eye: proportions, grab limits; 44 calls): no grab at all, a clean surface, head the dominant mass;
   ears loop up as arches, a crease at the neck from the front, no hooves made.
+- Ears: flap is a thick lump with its top folded, judged with look_beside focus. Ear-only blind runs e1, e2 (from
+  p9's model, 25 calls): folded pig ears from every side; still too high for the painting, tubes not leaves.
 - The agent's own whole-figure verdict was right nine times of nine. Runs differ most in how much they grab.
 
 ## Decisions in force (Joe, 2026-11-14 / 15; each is a memory file too)
@@ -55,4 +57,4 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
 - Pictures sent to Joe: workspace/drawing_board/ (p7_vs_p6_vs_p5.png, p7_painting_view.png, earlier sheets).
 - Record index of the older organic routes: memory `organic-from-concept-record`.
 
-NEXT (ask Joe): land organic-eye (bin/suite); the same page on a second concept; ears that lie down (p9: arches).
+NEXT (ask Joe): land ear-pad (bin/suite); then the same blockout page on a second concept (Scraps).

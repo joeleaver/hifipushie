@@ -42,7 +42,9 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
     rf = ra * (1 - 0.45 * pointed)
     rt = max(ra * (1 - 0.9 * pointed), 0.15 * ra)
     root = np.asarray(base, float) - SINK * ra * flat[1] * R
-    hinge = np.asarray(base, float) + max(fold_at * length - rf * flat[1], 0.3 * length) * R
+    # (it was max(fold_at * length - rf * flat, 0.3 * length): for a thick lump the clamp won and fold_at moved the
+    # knuckle by a millimetre, e2)
+    hinge = np.asarray(base, float) + fold_at * length * R
     D = np.cos(th) * R + np.sin(th) * F  # the folded part's direction
     up2 = -np.sin(th) * R + np.cos(th) * F  # its thickness direction, turned with it
     tip = hinge + max((1 - fold_at) * length, 1.2 * rt) * D
@@ -57,6 +59,6 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
     group = f"flap:{stem}{mass[-2:] if mass.endswith(('.L', '.R')) else ''}"
     bones = {mass: {"a": J["root"], "b": J["fold"], "r_a": round(ra, 4), "r_b": round(rf, 4), "flat": flat,
                     "up": r3(F), "group": group, "join": round(0.6 * rf * flat[1], 4)},
-             top: {"a": J["top"], "b": J["tip"], "r_a": round(rf, 4), "r_b": round(rt, 4), "flat": flat,
+             top: {"a": J["top"], "b": J["tip"], "r_a": round(rf, 4), "r_b": round(rt, 4), "flat": [1.0, 0.75 * flat[1]],
                    "up": r3(up2), "group": group, "join": round(0.6 * rf * flat[1], 4)}}
-    return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip}
+    return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip, "toward": D}
