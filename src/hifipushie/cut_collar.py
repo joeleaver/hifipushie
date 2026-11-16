@@ -1,50 +1,34 @@
-"""garment_cut's COLLAR, the tailor's way (R2 / R2b's lofted collars were saddles whose fall edge was no longer than their
-roll line: C490-C491): drafted FLAT first, as a pattern maker drafts it, then fitted round the toile's neck by the
-stiff-piece chain route (chain_net.project: every link of the flat at its exact length, only bends free).
+"""garment_cut's COLLAR (R3f, C497): the collar is DRAPED ON THE TOILE at step 4 (toile_collar.py: the stand rising from
+the neck seam to the roll line, the fall turned down over it and lying on the shoulders), so step 6 only cuts it and
+flattens it, as the lapel: the folded surface flattened by UNFOLDING the fall about the roll line (the flatten is
+intrinsic: each triangle keeps its own shape, so the fall comes off the stand across the roll row, landing on the far
+side of it). Five runs (R2-R3e) drafted the collar flat here and fitted it round the neck afterwards: it always stood
+round the neck like a band. Nothing is drafted or fitted here.
 
-THE DRAFT (one piece symmetric about CB, s along the neck edge from CB): its neck edge = the garment's neck line, the
-declared neck edges' flat lengths (the front's from the gorge / notch, the back's to CB): N per half; its width w(s) =
-stand + fall at CB and behind the shoulder, tapering in front to the collar end's length; its roll line at the stand's
-height h(s) (stand behind the shoulder, tapering in front to H_MIN: the collar turns with the lapel there). Its OUTER
-(fall) edge is longer than its neck edge by what the fall needs to lie out over the shoulders: draft_fall's rule (the
-neck line walked at depth d = fall - stand into each back piece's flat, a front's neck edge at its own length, plus the
-cloth's lift), so shape_fall_landing measures what was drafted. The neck edge is a circular arc of the curvature that
-gives that outer length (a crescent: never a band, never a saddle); the outer edge its offset by w(s).
-THE PIECES: each declared collar piece (an undercollar, a top collar) gets this outline; its neck-side edges are named by
-step 1: the edge sewn to the garment's neck edge, or to a layer cut from it (a facing's gorge), or caught in that seam
-(a top collar's stand in the back neck seam); ".L" names serve the ".R" half.
-THE FIT: the neck row held on the toile's neckline (the garment's neck edges in 3D, from the notch round to CB), the
-stand rising square to it (leaning in by LEAN), the fall TURNED DOWN from the start (R3c's flared start stood up like a
-band: C494): back down over the stand GAP outside it, then laid on the toile along lay_down's lines (walked square to the
-neck line in the toile's surface); then project() until every length holds (the neck row's own links at most their flat
-length), the fall kept off the toile (chain_net.Contact). Rows: lengths (worst %), where the outer edge lands below the
-neck seam at CB against d, the start's landing line behind the shoulder against the flat outer (over 1: the rule drafts
-a fall too short to reach d on this toile), the fall's clearance off the toile, the flat's span and bow.
+THE PIECES: each declared collar piece (an undercollar, a top collar) gets the flat; its edges are named from the toile:
+the neck row's runs by the garment neck edge each lies on in 3D (the nearest of the declared neck edges and their
+mirrors), named by step 1 (the collar's edge sewn to that garment edge, or to a layer cut from its piece: a facing's
+gorge, or caught in its seam: a top collar's stand in the back neck seam); the outer row `outer`; the ends `end` (the
+left end, +X) and its ".R" mirror. The roll row is the fold (planned_folds' row). Rows: the neck edge's flat length per
+garment edge against that edge's own flat (the seams equal), the outer edge flat / where it lies on the toile (both
+halves), the roll, the flat's span and the neck edge's bow (a crescent, not a band), the strain left.
 
-THE DECLARATION (garment_cut's `collar`): {"pieces": [collar pieces], "neck": [garment neck edges of the left half from
-the front end to CB], "stand_mm", "fall_mm" (at CB), "end_mm" (the collar end), "outer": edge name, "end": edge name
-(".L"), "fold": step 2's roll fold name, "fold_on": the piece step 2 turns it on}. Nothing here knows a garment."""
+THE DECLARATION (garment_cut's `collar`): {"pieces": [collar pieces], "neck": [garment neck edges of the left half, from
+the front end to CB], "outer": edge name, "end": edge name (".L"), "fold": step 2's roll fold name, "fold_on": the piece
+step 2 turns it on}; the collar's heights are step 4's (garment_toile's collar part). Nothing here knows a garment."""
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 import numpy as np
 
-H_MIN = 0.010    # m: the stand at the collar end (the roll line meets the end ~1 cm above the gorge corner)
-NS, KS, KF = 40, 3, 5  # columns per half, stand rows, fall rows
-GAP = 0.003      # m: the fall turns over the stand this far out (the cloth's thickness)
-NECK_R = 0.006   # m: a neck point may sit this far from its place on the toile's neck line (the flatten's own mismatch)
-SPREAD_ROUNDS = 4  # drafts at most: the outer edge lengthened by what the fit stretched it, until it lies
-SPREAD_TOL = 0.002  # the fitted outer edge within this of its flat length: it lies as drafted
-CONTACT = True   # the fall kept GAP off the toile while it is fitted
-ITERS = 400      # project() passes (each moves the worst point at most 2 cm)
-LEAN = -0.25     # the stand leans (in > 0, back out < 0) by this much per unit of rise at the start (R3e: in 0.4 lands
-                 # 0.7 mm, 0.15 4.7 mm, -0.25 9.4 mm of d 12 on the jacket, stand 20 / fall 32 read off the reference)
-WALK_STEP = 0.002  # m: the fall's line laid down over the toile in steps of this
+NEEDS = ("pieces", "neck", "outer", "end")
 
 
 class CollarRefused(ValueError):
-    """A collar declaration the garment can't answer (named)."""
+    """A collar declaration the garment can't answer, or a toile with no collar part (named)."""
 
 
 def mirror(e: str) -> str:
@@ -67,298 +51,120 @@ def neck_edge(c: str, g: str, s1: dict, layers: dict) -> str | None:
     return None
 
 
-def outer_target(necks: list, d: float, decl: dict, s1: dict) -> float:
-    """Half the outer edge's length by draft_fall's rule: [(piece, flat outline P, edge points E)] of one half."""
-    from . import draft_fall, draft_shape, pattern
-    line = 0.0
-    for p, P, E in necks:
-        front = draft_shape._role(p, decl, s1) in draft_shape.LAPEL_ROLES
-        line += pattern.length(E) if front else draft_fall.offset_length(E, P, d)
-    return line + np.pi * draft_fall.LIFT
-
-
-def _pt(s, w, k):
-    if abs(k) < 1e-9:
-        return np.c_[s, w]
-    R = 1 / k
-    return np.c_[(R + w) * np.sin(s / R), (R + w) * np.cos(s / R) - R]
-
-
-def draft(Lb: float, Lf: float, W: float, stand: float, end: float, O_half: float):
-    """(U (rows x cols, 2) flat grid, s per column, h, w, curvature): the crescent whose outer edge is O_half per half."""
-    N = Lb + Lf
-    s = np.r_[np.linspace(-N, -Lb, NS // 2, endpoint=False), np.linspace(-Lb, Lb, NS, endpoint=False),
-              np.linspace(Lb, N, NS // 2 + 1)]
-    a = np.abs(s)
-    tf = np.clip((a - Lb) / max(Lf, 1e-9), 0, 1)
-    w = W + (end - W) * tf
-    h = stand + (H_MIN - stand) * tf
-    half = s >= 0
-
-    def outer_len(k):
-        Q = _pt(s[half], w[half], k)
-        return float(np.linalg.norm(np.diff(Q, axis=0), axis=1).sum())
-    lo, hi = 0.0, 2.6 / N
-    if outer_len(lo) >= O_half:
-        k = 0.0
-    else:
-        for _ in range(60):
-            k = 0.5 * (lo + hi)
-            lo, hi = (k, hi) if outer_len(k) < O_half else (lo, k)
-    rows = []
-    for r in range(KS + KF + 1):
-        fr = (r / KS) * h if r <= KS else h + (r - KS) / KF * (w - h)
-        rows.append(_pt(s, fr, k))
-    return np.stack(rows), s, h, w, k
-
-
-def grid_faces(nr, nc):
-    F = []
-    for r in range(nr - 1):
-        for c in range(nc - 1):
-            a, b, cc, d = r * nc + c, r * nc + c + 1, (r + 1) * nc + c + 1, (r + 1) * nc + c
-            F += [[a, b, cc], [a, cc, d]]
-    return np.array(F)
-
-
 def grid_loop(nr, nc):
     return ([c for c in range(nc)] + [r * nc + nc - 1 for r in range(1, nr)] +
             [(nr - 1) * nc + c for c in range(nc - 2, -1, -1)] + [r * nc for r in range(nr - 2, 0, -1)])
 
 
-def curve3d(polys):
-    """The neck line from the front end to CB: [(n, 3) polylines], each oriented to follow the one before."""
-    out = [np.asarray(polys[0], float)]
-    for P in polys[1:]:
-        P = np.asarray(P, float)
-        if len(out) == 1:
-            ends = [(np.linalg.norm(out[0][i] - P[j]), i, j) for i in (0, -1) for j in (0, -1)]
-            _, i, j = min(ends)
-            if i == 0:
-                out[0] = out[0][::-1]
-            out.append(P if j == 0 else P[::-1])
-        else:
-            out.append(P if np.linalg.norm(out[-1][-1] - P[0]) < np.linalg.norm(out[-1][-1] - P[-1]) else P[::-1])
-    return out
+def _len(P):
+    return float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
 
 
-def at_len(P, frac):
-    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
-    t = np.clip(frac, 0, 1) * s[-1]
-    return np.c_[[np.interp(t, s, P[:, k]) for k in range(3)]].T
+def _edge_pts(f, idx, key="V"):
+    pos = list(idx) + [(idx[-1] + 1) % len(f["lp"])]
+    return f[key][np.asarray(f["lp"])[pos]]
 
 
-def walk_len(P):
-    return max(float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum()), 1e-9)
+def toile_collar(out4: dict):
+    """(V, F, (rows, cols, roll row), step 4's collar numbers) from step 4's toile; refused without a collar part."""
+    Z = np.load(out4["toile"])
+    if "collar:V" not in Z.files or "collar_grid" not in Z.files:
+        raise CollarRefused("collar: step 4's toile has no collar part: garment_toile parts \"collar\" {stand_mm, "
+                            "fall_mm, notch} (the collar is draped on the toile, then cut here)")
+    info = {}
+    if out4.get("numbers") and Path(out4["numbers"]).exists():
+        info = json.loads(Path(out4["numbers"]).read_text()).get("collar") or {}
+    return Z["collar:V"].astype(float), Z["collar:F"].astype(int), tuple(int(x) for x in Z["collar_grid"]), info
 
 
-def landing_line(Q, s, Lb, toile, d):
-    """(behind, whole) in m, both halves: the toile's line the fall lands on: the contour on the toile at distance d
-    (per neck point: the fall's depth below the roll, w - 2h) from the neck line Q; behind = its part whose nearest
-    neck point is behind the shoulders (|s| <= Lb); whole = all of it but its caps round the neck line's ends. A contour, not walks square to the neck line: where the neck line
-    turns sharply those walks fan out (and cross where it turns in): on the jacket they overstated the line behind
-    the shoulders x1.16 (R3d); a contour turns a corner by d x its angle, exactly."""
-    from scipy.spatial import cKDTree
-    V, F = np.asarray(toile[0], float), np.asarray(toile[1], int)
-    t = np.linspace(0, 1, 8, endpoint=False)
-    dense = lambda A: np.r_[np.concatenate([A[i] + np.multiply.outer(t, A[i + 1] - A[i]) for i in range(len(A) - 1)]),
-                            A[-1:]]
-    Qd, sd, dd = dense(Q), dense(np.asarray(s, float)), dense(np.broadcast_to(np.asarray(d, float), (len(s),)).copy())
-    tree = cKDTree(Qd)
-    dist, j = tree.query(V)
-    dist = dist - dd[j]
-    segs = []
-    for f in F[(np.abs(dist[F]) < 0.03).any(1)]:
-        x = [V[a] + dist[a] / (dist[a] - dist[b]) * (V[b] - V[a]) for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0]))
-             if (dist[a] < 0) != (dist[b] < 0)]
-        if len(x) == 2:
-            segs.append(x)
-    if not segs:
-        return 0.0, 0.0
-    S = np.asarray(segs)
-    ln = np.linalg.norm(S[:, 1] - S[:, 0], axis=1)
-    sm = np.abs(sd[tree.query(S.mean(1))[1]])
-    ends = sm >= np.abs(sd).max() - 1e-9  # (the contour's cap round the neck line's front end: past the collar's end)
-    return float(ln[sm <= Lb + 1e-9].sum()), float(ln[~ends].sum())
-
-
-def lay_down(Q, T, up, ct, length):
-    """[(n, 3) per neck point]: the line the turned-down fall lies along, GAP off the toile, walked from the neck seam
-    away from it square to the neck line in the toile's own surface (down over the shoulders, out over the lapel)."""
-    out = []
-    for q, t, u in zip(Q, T, up):
-        d, n = ct.query(q[None])
-        P = [q + (GAP - d[0]) * n[0]]
-        while walk_len(np.asarray(P)) < length:
-            n = ct.query(P[-1][None])[1][0]
-            g = np.cross(n, t)
-            g -= (g @ n) * n
-            g *= np.sign(-(g @ u)) or 1.0
-            p = P[-1] + WALK_STEP * g / (np.linalg.norm(g) + 1e-12)
-            d, n = ct.query(p[None])
-            P.append(p + (GAP - d[0]) * n[0])
-        out.append(np.asarray(P))
-    return out
-
-
-def neck_points(s, front3, back3, Lb, Lf):
-    """(nc, 3): each column's neck point on the toile's neck line (s from CB along it)."""
-    nc = len(s)
-    half = {}
-    for sg, (fr, bk) in ((1, (front3[0], back3[0])), (-1, (front3[1], back3[1]))):
-        f_, b_ = curve3d([fr, bk])  # front end -> shoulder, shoulder -> CB
-        half[sg] = (f_, b_)
-    Q = np.zeros((nc, 3))
-    for c in range(nc):
-        f_, b_ = half[1 if s[c] >= 0 else -1]
-        a = abs(s[c])
-        Q[c] = at_len(b_[::-1], a / Lb)[0] if a <= Lb else at_len(f_[::-1], (a - Lb) / Lf)[0]
-    return Q
-
-
-def place(U, s, h, w, front3, back3, Lb, Lf, toile):
-    """3D start: the neck row on the toile's neck line, the stand up, the fall down outward; then project()."""
-    from .chain_net import Contact, project
-    nr, nc = U.shape[:2]
-    Q = neck_points(s, front3, back3, Lb, Lf)
-    cen = Q.mean(0)
-    T = np.gradient(Q, axis=0)
-    T /= np.linalg.norm(T, axis=1, keepdims=True) + 1e-12
-    up = np.array([0, 0, 1.0]) - (T @ [0, 0, 1.0])[:, None] * T
-    up /= np.linalg.norm(up, axis=1, keepdims=True)
-    out = np.cross(T, up)
-    hz = Q - cen
-    hz[:, 2] = 0
-    out *= np.sign((out * hz).sum(1))[:, None]
-    ct = Contact(*toile)
-    far = toile[0].mean(0) + np.array([0, -1.0, 0])
-    if ct.query(far[None])[0][0] < 0:
-        ct = Contact(*toile, side=-1.0)
-    lean = up - LEAN * out
-    lean /= np.linalg.norm(lean, axis=1, keepdims=True)
-    walk = lay_down(Q, T, up, ct, float((w - 2 * h).max()) + GAP)
-    X = np.zeros((nr, nc, 3))
-    for r in range(nr):
-        if r <= KS:
-            X[r] = Q + ((r / KS) * h)[:, None] * lean
-            continue
-        a = ((r - KS) / KF) * (w - h)  # (the fall's length from the roll: down over the stand, then on over the toile)
-        over = a <= h
-        X[r] = Q + np.maximum(h - a, 0)[:, None] * lean + GAP * out
-        for c in np.where(~over)[0]:
-            X[r, c] = at_len(walk[c], (a[c] - h[c]) / walk_len(walk[c]))[0]
-    bk = np.abs(s) <= Lb  # (behind the shoulder: in front the fall lies on the lapel at the neck edge's own length)
-    o_lay = float(np.linalg.norm(np.diff(X[-1][bk], axis=0), axis=1).sum()) / max(
-        float(np.linalg.norm(np.diff(U[-1][bk], axis=0), axis=1).sum()), 1e-9)  # (where the fall lands / flat)
-    X = X.reshape(-1, 3)
-    Uf = U.reshape(-1, 2)
-    F = grid_faces(nr, nc)
-    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [0, 2]]], axis=1), axis=0)
-    L = np.linalg.norm(Uf[E[:, 0]] - Uf[E[:, 1]], axis=1)
-    cb = int(np.argmin(np.abs(s)))
-    exact = np.ones(len(E), bool)
-    held = np.zeros(len(X), bool)
-    held[cb] = True  # (CB on the toile's neck; every other neck point within NECK_R of its place on the neck line)
-    lim = [(c, Q[c], NECK_R) for c in range(nc) if c != cb]
-    fall = np.arange((KS + 1) * nc, nr * nc)
-    X, read = project(X, E[:, 0], E[:, 1], L, exact, held=held, contacts=[(ct, fall, GAP)] if CONTACT else (), iters=ITERS,
-                      limit=lim)
-    off = np.abs(np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) - L)[exact]
-    nk = lambda Z: float(np.linalg.norm(np.diff(Z, axis=0), axis=1).sum()) * 500  # (mm per half)
-    wk = int(np.argmax(np.where(exact, np.abs(np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) - L), 0)))
-    read = dict(read, outer_laid=round(o_lay, 4), worst_at=np.round(0.5 * (X[E[wk, 0]] + X[E[wk, 1]]), 3).tolist(), neck_3d_half_mm=round(nk(Q), 1), neck_fit_half_mm=round(nk(X[:nc]), 1), worst_mm=round(float(off.max()) * 1000, 2),
-                worst_pct_5mm=round(float((off / L[exact])[L[exact] > 0.005].max()) * 100, 3))
-    return X, F, E, L, exact, read, ct, Q
-
-
-def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, toile):
-    """({piece: f}, {piece: edges}, folds, report, bad): the collar pieces drafted, named and fitted (module doc)."""
-    for k in ("pieces", "neck", "stand_mm", "fall_mm", "end_mm", "outer", "end"):
+def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
+    """({piece: f}, {piece: edges}, folds, report, bad): the toile's collar cut, unfolded and named (module doc)."""
+    from .cut import _group
+    from .flatten import flatten, strain
+    from .mark_split import areas
+    for k in NEEDS:
         if k not in d:
             raise CollarRefused(f"collar: needs {k!r} (module doc)")
-    necks, polys3 = [], {}
+    V, F, (nr, nc, ks), info = toile_collar(out4)
+    garm = {}
     for g in d["neck"]:
-        p, e = g.split(":", 1)
         for gg in (g, mirror(g)):
             pp, ee = gg.split(":", 1)
             if pp not in pcs or ee not in edges.get(pp, {}):
                 raise CollarRefused(f"collar: neck edge {gg!r} is not a cut edge")
-            f = pcs[pp]
-            idx = edges[pp][ee]
-            pos = list(idx) + [(idx[-1] + 1) % len(f["lp"])]
-            lp = np.asarray(f["lp"])[pos]
-            polys3[gg] = f["V"][lp]
-            if gg == g:
-                necks.append((p, f["U"][np.asarray(f["lp"])], f["U"][lp]))
-    from . import pattern
-    lens = [pattern.length(E) for _, _, E in necks]
-    Lf, Lb = sum(lens[:-1]), lens[-1]
-    stand, fall, end = (float(d[k]) / 1000 for k in ("stand_mm", "fall_mm", "end_mm"))
-    if fall <= stand:
-        raise CollarRefused(f"collar: fall {fall * 1000:.0f} mm is no deeper than the stand {stand * 1000:.0f} mm")
-    from . import draft_fall
-    O_rule = O_half = outer_target(necks, fall - stand, {"pieces": {}}, s1)
-    front3 = (np.concatenate([polys3[g] for g in d["neck"][:-1]]), np.concatenate([polys3[mirror(g)] for g in d["neck"][:-1]]))
-    back3 = (polys3[d["neck"][-1]], polys3[mirror(d["neck"][-1])])
-    U, s, h, w, k = draft(Lb, Lf, stand + fall, stand, end, O_half)  # (s, h, w: the outer edge's length changes none)
-    Q0 = neck_points(s, front3, back3, Lb, Lf)
-    land_b, land = landing_line(Q0, s, Lb, toile, np.maximum(w - 2 * h, 0.0))
-    O_half = 0.5 * land + np.pi * draft_fall.LIFT  # (drape first: the toile decides the outer edge, C495)
-    spread = []
-    for _ in range(SPREAD_ROUNDS):  # (the pattern maker's second look: lay it on, spread the fall where it pulls)
-        U, s, h, w, k = draft(Lb, Lf, stand + fall, stand, end, O_half)
-        nr, nc = U.shape[:2]
-        X, F, E, L, exact, read, ct, Q = place(U, s, h, w, front3, back3, Lb, Lf, toile)
-        o_fit = float(np.linalg.norm(np.diff(X.reshape(nr, nc, 3)[-1], axis=0), axis=1).sum())
-        o_flat = float(np.linalg.norm(np.diff(U[-1], axis=0), axis=1).sum())
-        spread.append(round(o_fit / o_flat, 4))
-        if o_fit <= o_flat * (1 + SPREAD_TOL):
-            break
-        O_half *= o_fit / o_flat
+            garm[gg] = _edge_pts(pcs[pp], edges[pp][ee])
+    U, S, Fk = flatten(V, F)
+    bad_f = strain(S)
     loop = np.asarray(grid_loop(nr, nc))
-    Uf = U.reshape(-1, 2)
+    P = U[loop]
+    if np.dot(P[:, 0], np.roll(P[:, 1], -1)) - np.dot(P[:, 1], np.roll(P[:, 0], -1)) < 0:
+        U = U * [-1.0, 1.0]  # (the flat seen from the cloth's right side: the outline anticlockwise)
+    Ug = U.reshape(nr, nc, 2)
+    Vg = V.reshape(nr, nc, 3)
+    # the neck row's runs: by the garment neck edge each lies on in 3D
+    seg_g = []
+    for c in range(nc - 1):
+        m = 0.5 * (Vg[0, c] + Vg[0, c + 1])
+        seg_g.append(min(garm, key=lambda g: np.min(np.linalg.norm(garm[g] - m, axis=1))))
     out_pcs, out_edges, bad = {}, {}, []
-    for c in d["pieces"]:
-        names = [neck_edge(c, g, s1, layers) for g in d["neck"]]
-        if None in names:
-            bad.append(f"collar: {c} has no edge sewn to (or caught in) {d['neck'][names.index(None)]} in step 1")
+    for cp in d["pieces"]:
+        names = {g: neck_edge(cp, g, s1, layers) for g in garm}
+        miss = [g for g in d["neck"] if names[g] is None]
+        if miss:
+            bad.append(f"collar: {cp} has no edge sewn to (or caught in) {miss[0]} in step 1")
             continue
         keys = []
         for i in range(len(loop)):
             a, b = loop[i], loop[(i + 1) % len(loop)]
             ra, ca, rb, cb = a // nc, a % nc, b // nc, b % nc
             if ra == 0 and rb == 0:
-                sm = 0.5 * (abs(s[ca]) + abs(s[cb]))
-                e = names[-1] if sm <= Lb else names[0]
-                keys.append(e if s[ca] + s[cb] > 0 else mirror(e))
+                keys.append(names[seg_g[min(ca, cb)]])
             elif ra == nr - 1 and rb == nr - 1:
                 keys.append(d["outer"])
             else:
                 keys.append(d["end"] if ca == nc - 1 else mirror(d["end"]))
-        from .cut import _group
-        out_edges[c] = {key: idx for key, idx in _group(keys)}
-        out_pcs[c] = {"name": c, "U": Uf, "F": F, "V": X, "bad": np.zeros(len(F)), "lp": loop, "loop": list(loop),
-                      "rep": {"faces": int(len(F)), "strain_mean_pct": 0.0, "area_over_2pct": 0.0, "drafted": True},
-                      "landing": {"line": land, "behind": land_b, "d": fall - stand}}
-    roll = U[KS]
-    folds = [{"name": d["fold"], "piece": d.get("fold_on") or d["pieces"][-1], "line": roll.tolist(), "kind": "roll"}] \
+        out_edges[cp] = {key: idx for key, idx in _group(keys)}
+        ar = areas(V, Fk)
+        out_pcs[cp] = {"name": cp, "U": U, "F": Fk, "V": V, "bad": bad_f, "lp": loop, "loop": list(loop),
+                       "rep": {"faces": int(len(Fk)), "area_cm2": round(float(ar.sum()) * 1e4, 1),
+                               "strain_mean_pct": round(float((bad_f * ar).sum() / ar.sum() * 100), 2),
+                               "area_over_2pct": round(float(ar[bad_f > 0.02].sum() / ar.sum() * 100), 1),
+                               "from_toile": True},
+                       "landing": {"line": _len(Vg[-1]) - 2 * np.pi * _lift(), "behind": _behind(Vg, seg_g, d),
+                                   "d": (info.get("fall_mm", 0) - info.get("stand_mm", 0)) / 1000}}
+    folds = [{"name": d["fold"], "piece": d.get("fold_on") or d["pieces"][-1], "line": Ug[ks].tolist(), "kind": "roll"}] \
         if d.get("fold") else []
-    o3 = X.reshape(nr, nc, 3)[-1]
-    cb = int(np.argmin(np.abs(s)))
-    sd = ct.query(X[(KS + 1) * nc:])[0]
-    chord = U[0, -1] - U[0, 0]
-    cu, dv = chord / np.linalg.norm(chord), U[0] - U[0, 0]
+    seams = {}
+    for g in garm:
+        cols = [c for c in range(nc - 1) if seg_g[c] == g]
+        if not cols:
+            bad.append(f"collar: no part of its neck edge lies on {g} on the toile")
+            continue
+        flat_c = sum(float(np.linalg.norm(Ug[0, c + 1] - Ug[0, c])) for c in cols)
+        pp, ee = g.split(":", 1)
+        seams[g] = {"collar_mm": round(flat_c * 1000, 1), "garment_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee], "U")) * 1000, 1)}
+    chord = Ug[0, -1] - Ug[0, 0]
+    cu, dv = chord / np.linalg.norm(chord), Ug[0] - Ug[0, 0]
     bow = float(np.abs(cu[0] * dv[:, 1] - cu[1] * dv[:, 0]).max())
-    rep = {"neck_mm": {"front": round(Lf * 1000, 1), "back": round(Lb * 1000, 1), "half": round((Lf + Lb) * 1000, 1)},
-           "outer_half_mm": round(O_half * 1000, 1), "outer_rule_half_mm": round(O_rule * 1000, 1),
-           "spread_rounds": spread, "outer_over_neck": round(O_half / (Lf + Lb), 3),
-           "curvature_per_m": round(k, 3),
+    Uf = U.reshape(-1, 2)
+    neck_f, outer_f = _len(Ug[0]), _len(Ug[-1])
+    rep = {"neck_flat_mm": round(neck_f * 1000, 1), "outer_flat_mm": round(outer_f * 1000, 1),
+           "outer_3d_mm": round(_len(Vg[-1]) * 1000, 1), "roll_flat_mm": round(_len(Ug[ks]) * 1000, 1),
+           "roll_3d_mm": round(_len(Vg[ks]) * 1000, 1), "outer_over_neck": round(outer_f / neck_f, 3),
            "flat_span_mm": [round(float(np.ptp(Uf[:, 0])) * 1000, 1), round(float(np.ptp(Uf[:, 1])) * 1000, 1)],
-           "neck_bow_mm": round(bow * 1000, 1),
-           "lengths": read,
-           "outer_3d_mm": round(float(np.linalg.norm(np.diff(o3, axis=0), axis=1).sum()) * 1000, 1),
-           "outer_flat_mm": round(float(np.linalg.norm(np.diff(U[-1], axis=0), axis=1).sum()) * 1000, 1),
-           "laid_over_flat_back": read["outer_laid"], "landing_mm": {"behind": round(land_b * 1000, 1), "whole":
-                                                                      round(land * 1000, 1)}, "lands_below_neck_cb_mm": round(float(Q[cb, 2] - o3[cb, 2]) * 1000, 1), "d_mm": round((fall - stand) * 1000, 1),
-           "fall_clear_min_mm": round(float(sd.min()) * 1000, 1)}
+           "neck_bow_mm": round(bow * 1000, 1), "seams": seams,
+           "strain_mean_pct": next(iter(out_pcs.values()))["rep"]["strain_mean_pct"] if out_pcs else None,
+           "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")}}
     return out_pcs, out_edges, folds, rep, bad
+
+
+def _lift():
+    from . import draft_fall
+    return draft_fall.LIFT
+
+
+def _behind(Vg, seg_g, d):
+    """The outer edge's 3D length over the columns whose neck run lies on the back neck edge (d's last)."""
+    back = {d["neck"][-1], mirror(d["neck"][-1])}
+    cols = [c for c in range(len(seg_g)) if seg_g[c] in back]
+    return float(sum(np.linalg.norm(Vg[-1, c + 1] - Vg[-1, c]) for c in cols))

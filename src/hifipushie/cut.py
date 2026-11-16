@@ -24,8 +24,8 @@ MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked
          (cut_flap.py); the roll becomes a fold of the flat.
   layers {piece: {"host", "line": [[edge, mm, toward], ...], "keeps", "edges", "inner"}}: a facing / canvas traced off
          its host's flat (cut_layers.py); its seams are the host's runs.
-  collar {"pieces", "neck", "stand_mm", "fall_mm", "end_mm", "outer", "end", "fold", "fold_on"}: drafted flat, fitted
-         round the toile's neck with its fall turned down and every flat length held (cut_collar.py).
+  collar {"pieces", "neck", "outer", "end", "fold", "fold_on"}: the collar draped on the toile at step 4 (its part)
+         cut and flattened, the fall unfolded about the roll line (cut_collar.py).
 Writes <look dir>/cut/flat.npz (per piece U, F, V, strain), pattern.json (the block), cut.json, cut_3d.png (the pieces
 where they lie, beside the reference); record step 6."""
 from __future__ import annotations

@@ -194,7 +194,7 @@ def lapel(t, V, F):
 
 
 def cut(t, V, F) -> dict:
-    """{part: (V, F)}: the toile (neck, sleeve hems, the opening) and its turned flaps."""
+    """{part: (V, F)}: the toile (neck, sleeve hems, the opening), its turned flaps and the collar (toile_collar.py)."""
     V, F = neck_and_wrists(t, V, F)
     full = (V, F)
     x_edge = closure(t)
@@ -204,4 +204,7 @@ def cut(t, V, F) -> dict:
         Vl, Fl = lapel(t, *full)
         out["lapel.L"] = (Vl, Fl)
         out["lapel.R"] = (Vl * MIR, Fl[:, ::-1].copy())
+    if "collar" in t.parts:
+        from .toile_collar import drape
+        out["collar"] = drape(t, out["toile"])
     return out

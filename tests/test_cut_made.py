@@ -1,9 +1,9 @@
 """Step 6's made pieces (R3c, cut_made.py): a turned flap unfolded across its roll edge onto its piece (cut_flap.py), a
-facing traced off its host's flat with its seam equal to the host's edge (cut_layers.py), a collar drafted flat and
-fitted round a cylinder neck with every flat length held and its fall turned down (cut_collar.py)."""
+facing traced off its host's flat with its seam equal to the host's edge (cut_layers.py); neck_toile serves the
+collar's test (test_toile_collar.py: the collar draped on the toile, cut and unfolded)."""
 import numpy as np
 
-from hifipushie import cut, cut_collar
+from hifipushie import cut
 from hifipushie.cut_flap import unfold
 from hifipushie.cut_layers import cut_layer
 
@@ -102,24 +102,3 @@ def neck_toile():
     free = {n: {"neck": "top", "hem": "bottom"} for n in names}
     pcs, edges = pieces(V, F, lab, names, s1, free)
     return pcs, edges, s1, (V, F)
-
-
-def test_collar_drafted_and_fitted_round_a_neck_lengths_held_fall_turned_down():
-    pcs, edges, s1, toile = neck_toile()
-    d = {"pieces": ["collar"], "neck": ["front.L:neck", "back.L:neck"], "stand_mm": 25, "fall_mm": 40, "end_mm": 30,
-         "outer": "fall", "end": "end.L", "fold": "collar_roll", "fold_on": "collar"}
-    c_pcs, c_edges, folds, rep, bad = cut_collar.build(pcs, edges, d, s1, {}, toile)
-    assert not bad, bad
-    neck = sum(edge_len(pcs[p], edges[p]["neck"]) for p in ("front.L", "back.L")) * 1000  # (the flats' neck edges)
-    assert abs(rep["neck_mm"]["half"] - neck) < 0.5 and neck > np.pi * 65, rep["neck_mm"]
-    assert rep["outer_half_mm"] > rep["neck_mm"]["half"] and rep["neck_bow_mm"] > 5, rep  # (a crescent, not a band)
-    L = rep["lengths"]
-    assert L["worst_pct_5mm"] < 1.0 or L["worst_mm"] < 0.5, L  # (every flat length held round the neck)
-    assert abs(rep["outer_3d_mm"] / rep["outer_flat_mm"] - 1) < 0.01, rep
-    # (turned down: the outer edge back down at the neck seam's level at CB, where a standing band's sits ~25 mm above it;
-    # the rule's outer edge is shorter than the line it lands on here (laid_over_flat_back > 1), so not d below: C494)
-    assert rep["lands_below_neck_cb_mm"] > -3, rep
-    assert rep["fall_clear_min_mm"] > 0, rep
-    assert sorted(c_edges["collar"]) == ["end.L", "end.R", "fall", "neck_back.L", "neck_back.R", "neck_front.L",
-                                         "neck_front.R"], c_edges
-    assert folds and folds[0]["name"] == "collar_roll"

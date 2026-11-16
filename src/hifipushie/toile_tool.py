@@ -4,7 +4,8 @@ DECLARATION; writes the toile's parts (toile.npz), its numbers (toile.json) and 
 and step 4 (output, gate rows, look) into the record. Joe approves it as any step.
 
 THE DECLARATION (what the garment has, said by the agent, never inferred from a garment's name; refused by name):
-  parts      a list from PARTS: "sleeves", "opening", "lapel" (needs "opening"), "pad". The body is always built.
+  parts      a list from PARTS: "sleeves", "opening", "lapel" (needs "opening"), "pad", "collar" (needs "lapel").
+             The body is always built.
   hang_from  a step-0 fit level the garment hangs straight down from (a jacket from its hips), or "none"
   armhole    {"length_mm"}: the garment's armhole round the body (the arm-root loop is scaled about the shoulder point)
   sleeves    {"ease_mm": [top, wrist], "crown_mm", "hem": a step-2 sleeve-end trace (its length past the picture's
@@ -13,6 +14,8 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
   opening    {"lap_mm", "edge": a step-2 trace (the over front's edge), "buttons": a step-2 row id (optional)}
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}
+  collar     {"stand_mm", "fall_mm" (at CB, read off the reference), "notch": a step-2 trace from the collar end's gorge
+             corner to the collar point (its first corner)}: needs "lapel"; draped on the toile (toile_collar.py)
 TODAY'S DRAFT ROUTE: draft_pattern (an agent-written FreeSewing design) no longer writes step 4; its flat gate is what
 step 6 (cut and flatten, R3b) runs on the flattened pieces."""
 from __future__ import annotations
@@ -22,9 +25,9 @@ import time
 
 import numpy as np
 
-PARTS = ("sleeves", "opening", "lapel", "pad")
+PARTS = ("sleeves", "opening", "lapel", "pad", "collar")
 NEEDS = {"sleeves": ("ease_mm", "crown_mm", "hem"), "opening": ("lap_mm", "edge"), "lapel": ("roll", "top"),
-         "pad": ("thickness_mm",)}
+         "pad": ("thickness_mm",), "collar": ("stand_mm", "fall_mm", "notch")}
 TAPES = ("neck", "chest", "armhole_front", "armhole_back", "shoulderToWrist", "wrist")
 HEAVY_GB = 3.0  # the field (~2 M grid points x a few float64 copies) + the body's contact tree
 
@@ -66,7 +69,13 @@ def validate(decl: dict, s0: dict, s2: dict) -> list:
         bad += [f"{p}.{k}: missing" for k in NEEDS[p] if blk.get(k) in (None, "")]
     if "lapel" in parts and "opening" not in parts:
         bad.append("lapel: needs \"opening\" in parts (a lapel turns back from the front's opening)")
-    for p, k in (("opening", "edge"), ("lapel", "roll"), ("lapel", "top")):
+    if "collar" in parts and "lapel" not in parts:
+        bad.append("collar: needs \"lapel\" in parts (the collar meets the lapel at the notch)")
+    nt = (decl.get("collar") or {}).get("notch") if "collar" in parts else None
+    tr_c = {t["id"]: t for t in s2.get("traces") or []}
+    if nt and nt in tr_c and not (tr_c[nt].get("corners") or []):
+        bad.append(f"collar.notch: {nt!r} has no corner (the collar point)")
+    for p, k in (("opening", "edge"), ("lapel", "roll"), ("lapel", "top"), ("collar", "notch")):
         v = (decl.get(p) or {}).get(k) if p in parts else None
         if v and v not in traces:
             bad.append(f"{p}.{k}: {v!r} is not a step-2 trace ({', '.join(sorted(traces))})")
@@ -164,6 +173,8 @@ def save(t, d) -> tuple:
         arrs[f"{k}:V"], arrs[f"{k}:F"] = V, F
     arrs.update(cone_O=t.cone.O, cone_A=t.cone.A, cone_PS=t.cone.PS, cone_AL=t.cone.AL, armhole=t.armhole,
                 shoulder_line=t.shoulder_line, sleeve_axis=t.CAX, sleeve_r=t.RAX, yc=t.yc)
+    if getattr(t, "collar_grid", None) is not None:
+        arrs["collar_grid"] = np.asarray(t.collar_grid, int)
     if getattr(t, "roll_line", None) is not None:
         arrs["roll_line"] = t.roll_line
     np.savez(d / "toile.npz", **arrs)
@@ -175,7 +186,7 @@ def answer_text(name, garment, v, rows, info, look, msg) -> str:
     lines = [f"{name}:{garment} step 4 TOILE: {v}"]
     for r in rows:
         lines.append(f"  {r['status']:4s} {r['id']}: {r.get('value')} ({r.get('target')}) {r.get('why') or ''}")
-    for k in ("armhole", "sleeve", "hang", "pad", "opening", "lapel", "ease_k_mm"):
+    for k in ("armhole", "sleeve", "hang", "pad", "opening", "lapel", "collar", "ease_k_mm"):
         if k in info:
             lines.append(f"  {k}: {json.dumps(info[k], default=float)}")
     lines.append(f"  look: {look}")
