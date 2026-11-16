@@ -105,7 +105,8 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, toile, log=la
                                f"= {rep['outer_over_neck']} x neck, flat {rep['flat_span_mm'][0]} x {rep['flat_span_mm'][1]} "
                                f"mm, neck bow {rep['neck_bow_mm']} mm; fitted: lengths worst {lw} % ({lmm} mm), outer 3D "
                                f"{rep['outer_3d_mm']} / flat {rep['outer_flat_mm']} mm, lands {rep['lands_below_neck_cb_mm']}"
-                               f" mm below the neck seam at CB (d {rep['d_mm']}), fall clear of the toile >= "
+                               f" mm below the neck seam at CB (d {rep['d_mm']}; its landing line on the toile behind the shoulder x"
+                               f"{rep['laid_over_flat_back']} the flat outer), fall clear of the toile >= "
                                f"{rep['fall_clear_min_mm']} mm"),
                      "target": "drafted flat (outer longer than neck by the fall's landing), fitted with every flat "
                                "length held", "why": "; ".join(fails[:6])})
