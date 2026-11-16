@@ -6,10 +6,12 @@ why, back_to):
                   closer than CLOSE_MM is reported (cloth touching the body there).
   closed          the toile is ONE surface, every edge used by at most two faces, its free edges in the loops its
                   parts make: neck + hem (one loop with the opening), a sleeve hem or an armhole per side.
-  outline:<id>    step 2's traced edge vs the toile's outline seen from the reference's view (its silhouette and
-                  its parts' free edges, front-facing, and where one part passes in front of another), mm off per trace point: p95 within SILHOUETTE_MM for the
-                  edges the toile builds in the reference's own state (KINDS_GATED); the rest (an edge the closed toile
-                  can't show open, a collar not built here) INFO.
+  outline:<id>    step 2's traced edge vs the toile's outline seen from the reference's view, LIKE WITH LIKE (the
+                  picture's body and pose are not the model's): a side outline as its PROFILE (distance off the toile's
+                  torso edge less its median; the width is the girth rows'; the arm zone above the underarm left out),
+                  a hem as its HEIGHT (median), a sleeve end as placed (a FAIL there sends back to step 0's height);
+                  p95 within SILHOUETTE_MM for KINDS_GATED, the rest (an edge the closed toile can't show open, a
+                  collar not built here) INFO.
 The look: the toile with its parts beside the reference, four views, shape only (every number in the text answer)."""
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ GIRTH_TOL_MM = 6.0    # a tape read on a 6 mm grid's surface
 CLOSE_MM = 2.0        # cloth closer than this to the body is touching it
 SILHOUETTE_MM = 20.0  # a toile is the shape before the hang: its outline within 2 cm of the traced edge
 KINDS_GATED = ("hem", "outline", "sleeve_end")
+ARM_ZONE_M = 0.03     # the side outline above the underarm less this is the picture's arm pose, not the toile
 DEPTH_STEP_M = 0.03   # an outline inside the silhouette: the depth jumps this much between neighbouring pixels
 LOOK_BOX = None
 
@@ -91,6 +94,78 @@ def _outline_px(t, view, box, mpp):
     return np.concatenate(pts)
 
 
+def _torso_edges(mask, uc):
+    """Per pixel row, the torso's outline columns (left, right): walked out from the centre column uc until the
+    silhouette ends (a hanging hand beside the hip is not the torso's edge); -1 where the row is empty at the centre."""
+    H, W = mask.shape
+    lo, hi = np.full(H, -1), np.full(H, -1)
+    for r in range(H):
+        row = mask[r]
+        if not row[uc]:
+            continue
+        gl = np.nonzero(~row[:uc])[0]
+        gr_ = np.nonzero(~row[uc:])[0]
+        lo[r] = (gl[-1] + 1) if len(gl) else 0
+        hi[r] = (uc + gr_[0] - 1) if len(gr_) else W - 1
+    return lo, hi
+
+
+def _like_rows(t, tid, tr, mask, box, mpp, sg):
+    """A side outline or a hem compared like with like (the picture's body is not the model's): a SIDE as its profile
+    (the traced edge's distance off the toile's torso edge, less its median: the width itself is the girth rows'),
+    skipping the arm zone above the toile's underarm less ARM_ZONE_M (there the picture's outline is its arm pose);
+    a HEM as its height (the toile's lowest point in each traced column; columns past the toile's width left out)."""
+    (u0, _), (_, z1) = box
+    xz = np.asarray(tr["xz"], float)
+    u = np.clip(((sg * xz[:, 0] - u0) / mpp).astype(int), 0, mask.shape[1] - 1)
+    v = np.clip(((z1 - xz[:, 1]) / mpp).astype(int), 0, mask.shape[0] - 1)
+    uc = int(round(-u0 / mpp))  # (the centre line x = 0 in either view)
+    lo, hi = _torso_edges(mask, uc)
+    if tr.get("what") == "hem":
+        cols = [np.nonzero(mask[:, c])[0] for c in u]
+        rh = max(int(np.nonzero(lo >= 0)[0].max()) - 2, 0)  # (the torso's width just above its hem)
+        keep = np.array([len(c) > 0 for c in cols]) & (u >= lo[rh]) & (u <= hi[rh])
+        if not keep.any():
+            return None
+        dz = np.array([(c.max() - vv) * mpp * 1000 for c, vv, k in zip(cols, v, keep) if k])
+        off, n = float(np.median(dz)), int(keep.sum())
+        d = np.array([abs(off)])  # (the hem's HEIGHT is one number; its curve up to the front edge is the opening's)
+        how = (f"the hem's height: the toile's hem {abs(off):.1f} mm {'below' if off > 0 else 'above'} the traced one "
+               f"(median over {n} columns inside the toile's width; the range {dz.min():+.1f} .. {dz.max():+.1f} mm)")
+    else:
+        ua = float(t.info.get("armhole", {}).get("underarm_z", np.inf)) - ARM_ZONE_M
+        keep = (xz[:, 1] < ua) & (lo[v] >= 0)
+        if keep.sum() < 3:
+            return None
+        edge = np.where(u > uc, hi[v], lo[v])
+        dx = (np.abs(u - uc) - np.abs(edge - uc))[keep] * mpp * 1000
+        off = float(np.median(dx))
+        d, n = np.abs(dx - off), int(keep.sum())
+        how = (f"the side's profile below z {ua:.3f} (the arm zone left out): the traced edge {off:+.1f} mm (median) "
+               f"outside the toile's: that offset read, not gated (the picture's body is not the model's: the girth rows gate the width)")
+    return d, how, xz[keep]
+
+
+def _sleeve_end(t, tr):
+    """A sleeve end compared as the sleeve's LENGTH: the traced end's place along the toile's arm axis (seen in the
+    view) less the toile's hem's; across the arm is the picture's arm pose, read not gated. + = the trace runs past
+    the toile's hem (the toile's sleeve is short)."""
+    if "sleeves" not in t.parts or "hem_z" not in t.info.get("sleeve", {}):
+        return None
+    xz = np.asarray(tr["xz"], float)
+    k = int(np.argmin(np.abs(t.CAX[:, 2] - t.info["sleeve"]["hem_z"])))
+    p, A = t.CAX[k], t.CAX[-1] - t.CAX[-3]
+    a = np.array([abs(A[0]), A[2]]) / np.hypot(A[0], A[2])
+    Q = np.c_[np.abs(xz[:, 0]) - abs(p[0]), xz[:, 1] - p[2]]
+    along, across = Q @ a, Q @ np.array([-a[1], a[0]])
+    off = float(np.median(along))
+    how = (f"the sleeve's length: the traced end {abs(off) * 1000:.1f} mm {'past' if off > 0 else 'short of'} the "
+           f"toile's hem along the arm (the hem where step 0's height {t.d['sleeves']['hem']!r} puts it, z "
+           f"{t.info['sleeve']['hem_z']:.3f}); {np.median(np.abs(across)) * 1000:.0f} mm across it read, not gated (the "
+           f"picture's arm pose)")
+    return np.array([abs(off) * 1000]), how, xz
+
+
 def outline_rows(t, view="front") -> list:
     if not t.inp.traces:
         return []
@@ -99,22 +174,37 @@ def outline_rows(t, view="front") -> list:
         return [{"id": "outline", "status": "INFO", "why": f"the reference's view {view!r}: only front / back compared"}]
     O = _outline_px(t, view, box, mpp) * mpp * 1000
     kd = cKDTree(O)
+    torso = [(V, F, np.full((len(F), 3), 200)) for k, (V, F) in t.meshes.items() if k == "toile"]
+    mask = np.isfinite(zbuffer(torso, view, box, mpp)[1])
     (u0, _), (_, z1) = box
     sg = 1.0 if view == "front" else -1.0
     rows = []
     for tid, tr in sorted(t.inp.traces.items()):
+        what = tr.get("what")
         xz = np.asarray(tr["xz"], float)
-        P = np.c_[(sg * xz[:, 0] - u0) / mpp, (z1 - xz[:, 1]) / mpp] * mpp * 1000
-        d = kd.query(P)[0]
+        like = (_like_rows(t, tid, tr, mask, box, mpp, sg) if what in ("hem", "outline") else
+                _sleeve_end(t, tr) if what == "sleeve_end" else None)
+        if like is not None:
+            d, how, xz = like
+        else:
+            P = np.c_[(sg * xz[:, 0] - u0) / mpp, (z1 - xz[:, 1]) / mpp] * mpp * 1000
+            d = kd.query(P)[0]
+            how = ""
         p95, mx = float(np.percentile(d, 95)), float(d.max())
-        gated = tr.get("what") in KINDS_GATED
+        worst = xz[int(np.argmax(d))] if len(d) == len(xz) else xz[int(np.argmin(np.abs(xz[:, 1] - np.median(xz[:, 1]))))]
+        gated = what in KINDS_GATED
         st = ("PASS" if p95 <= SILHOUETTE_MM else "FAIL") if gated else "INFO"
-        worst = xz[int(np.argmax(d))]
-        why = (f"p95 {p95:.1f} / max {mx:.1f} mm; worst at x {worst[0]:.3f} z {worst[1]:.3f}" +
-               ("" if gated else f" (a {tr.get('what')} edge: the toile is built closed / without it; read, not gated)"))
+        back = None
+        if st == "FAIL":
+            back = "4"
+            if what == "sleeve_end" and like is not None:  # (the toile builds the hem where step 0 says)
+                back = "0"
+                how += ": step 0's height and step 2's trace disagree: fix the one the picture contradicts"
+        why = (f"p95 {p95:.1f} / max {mx:.1f} mm; worst at x {worst[0]:.3f} z {worst[1]:.3f}" + (f"; {how}" if how else "") +
+               ("" if gated else f" (a {what} edge: the toile is built closed / without it; read, not gated)"
+                if what != "outline" else ""))
         rows.append({"id": f"outline:{tid}", "status": st, "value": round(p95, 1),
-                     "target": f"p95 <= {SILHOUETTE_MM:g} mm" if gated else "read", "why": why,
-                     "back_to": "4" if st == "FAIL" else None})
+                     "target": f"p95 <= {SILHOUETTE_MM:g} mm" if gated else "read", "why": why, "back_to": back})
     return rows
 
 

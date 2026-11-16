@@ -262,12 +262,20 @@ class Toile:
         cols = (np.abs(self.xs) <= xt + 0.02)[:, None]
         SEAT = np.where(cols, F0[:, :, ks], 1.0)
         below = [(z, n) for n, (z, _) in self.inp.levels.items() if z < self.z_hang - 1e-6]
-        flare = 0.0
+        flare, F_in = 0.0, F0.copy()
         if below:
             zl, nl = min(below)
             flare = max(0.0, (self.inp.levels[nl][1] - g_seat) / (2 * np.pi)) / max(self.zs[ks] - max(zl, self.hem), 1e-3)
-        for kk in range(ks):
-            F0[:, :, kk] = np.where(cols, SEAT - flare * (self.zs[ks] - self.zs[kk]), F0[:, :, kk])
+        for it in range(1 + CALIBRATE * bool(below)):  # (the flare calibrated where the gate reads that level's tape)
+            F0 = F_in.copy()
+            for kk in range(ks):
+                F0[:, :, kk] = np.where(cols, SEAT - flare * (self.zs[ks] - self.zs[kk]), F_in[:, :, kk])
+            if not below or it == CALIBRATE:
+                break
+            zr = max(zl, self.hem + 0.004)
+            kr = self.kz(zr)
+            short = self.inp.levels[nl][1] - self.girth_slice(np.where(cols, F0[:, :, kr], 1.0), self.zs[kr])[0]  # (the hands beside it left out)
+            flare = max(0.0, flare + short / (2 * np.pi) / max(self.zs[ks] - self.zs[kr], 1e-3))
         self.info["hang"] = {"from": self.d.get("hang_from"), "z": round(float(self.zs[ks]), 3),
                              "round_mm": round(g_seat * 1000, 1), "flare_mm_per_m": round(flare * 1000, 1)}
         return F0
