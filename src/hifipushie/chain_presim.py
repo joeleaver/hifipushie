@@ -72,8 +72,9 @@ def write_presim(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
 
 
 def write_7a(model: str, garment: str, out: dict, st: dict, look: list | None = None) -> str:
-    """Step 7a: the (detailed) build beside the reference; look: garment_details' look, else step 6's."""
-    look = look or gr.load(model, garment)["steps"]["6"].get("look") or []
+    """Step 7a: the (detailed) build beside the reference; look: garment_details' look, else the build's (look_chain's on
+    step 7; step 6's look is the cut's flat sheet, never the build)."""
+    look = look or gr.load(model, garment)["steps"]["7"].get("look") or []
     sc = st.get("structure") or {}
     return gr._try(gr.write, model, garment, "7a", "done", by="chain_garment", look=look,
                    output=dict(out, structure=sc.get("verdict"),
@@ -146,13 +147,14 @@ def threads_gate(st: dict) -> dict | None:
                 "back_to": None, "change": "", "line": f"  step 8 threads: PASS: {value}"}
     if built:
         why = f"the build was already past the cap ({built} faces) before any hang: the chains start stretched"
-        change = ("find the stretched piece (look_chain focus=<piece> on the build), then fix it in the chains (step 5) or "
-                  "its pattern; never raise the cap: it is the cloth's")
+        change = ("find the stretched piece (look_chain focus=<piece> on the build), then fix it where the piece is cut "
+                  "(step 6, garment_cut) or its toile (step 4); never raise the cap: it is the cloth's")
     else:
         why = "the hang stretched them (the build had none past the cap); which step causes it can't be told from the numbers"
         change = ("look_chain on the hung garment, find where the cloth is pulled tight (a piece too small for the body, "
-                  "or held too far), fix it in the chains (step 5) or the pattern (step 4); never raise the cap: it is the cloth's")
+                  "or held too far), fix it where the piece is cut (step 6, garment_cut) or its toile (step 4); never raise the cap: "
+                  "it is the cloth's")
     row = {"id": "threads_past_cap", "status": "FAIL", "value": value, "target": "0 faces", "why": why, "fix": change,
-           "back_to": "5"}
-    return {"verdict": "FAIL", "rows": [row], "back_to": "5", "change": change,
-            "line": f"  STEP 8 FAIL threads: {value}; {why}; back to step 5\n  change: {change}"}
+           "back_to": "6"}
+    return {"verdict": "FAIL", "rows": [row], "back_to": "6", "change": change,
+            "line": f"  STEP 8 FAIL threads: {value}; {why}; back to step 6\n  change: {change}"}

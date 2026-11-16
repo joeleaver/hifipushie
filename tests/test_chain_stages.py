@@ -62,7 +62,7 @@ def test_a_misplaced_start_fails_start_by_row():
     v = b.net.verts("front.R")
     X[v] += [0.20, 0.0, 0.0]  # (the right leg's front panel started over the left leg)
     g = cst.gate_start(b, X)
-    assert g["verdict"] == "FAIL" and g["back_to"] == "5"
+    assert g["verdict"] == "FAIL" and g["back_to"] == "6"  # (drape first: the build is made from step 6's cut)
     assert {"mirror", "round"} <= _fails(g)
     X2 = b.soft_start()
     v = b.net.verts("back.L")
@@ -153,6 +153,7 @@ def test_the_job_ends_stage_failed_and_the_record_shows_the_stage(monkeypatch, t
     st = cg.status(d)
     assert st["stage"] == "stage_failed" and st["stage_failed"] == "start" and seen["check"] == 0 and seen["hang"] == 0
     assert (d / "stage.pkl").exists() and not (d / "built.pkl").exists()
-    assert rec["step"] == "5" and rec["status"] == "failed" and rec["gate"]["stage"] == "start" and rec["back_to"] == "5"
+    # (drape first, R3b-2: a build stage failure is step 7's, the first step reading the build; back to step 6's cut)
+    assert rec["step"] == "7" and rec["status"] == "failed" and rec["gate"]["stage"] == "start" and rec["back_to"] == "6"
     txt = cst.answer("m", "trousers", "closed", st, "AGAIN", "LOOK")
-    assert "stage_failed: start" in txt and "FAIL mirror:front" in txt and "back to step 5" in txt and "LOOK" in txt
+    assert "stage_failed: start" in txt and "FAIL mirror:front" in txt and "back to step 6" in txt and "LOOK" in txt

@@ -44,16 +44,16 @@ History: docs/notes (grep C489-C493); spikes/r1_*, r2_*, r2b_* (R3c still reads 
   FreeSewing draft dir; they don't read pattern.json yet. ~120 "step 4" texts in chain_* / draft_* still mean the flat
   pattern (only the tool texts touched here say step 6).
 
-## Open on this branch (coordinator, after the fast suite; NOT fixed: the run's budget ran out before a test ran)
-- test_chain_garment::test_presim_awaits_approval_then_resumes_from_the_saved_build ('STOPPED BEFORE THE HANG' missing),
-  test_chain_garment::test_step8_fails_on_faces_past_the_cap ('todo' != 'failed'), test_chain_stages::
-  test_the_job_ends_stage_failed_and_the_record_shows_the_stage (KeyError 'step'): from_chain now writes only step 8, and
-  the presim (7a) / hang (8) bookkeeping still reads steps 5 / 6 as the chain build's. Fix the code for drape first (7a /
-  8 must not wait on 5 / 6 written by the chain build; the stage_failed answer must not index a step it no longer
-  writes), then change any test that asserts the old route, naming it.
-- test_find_tool::test_find_tool_gives_params_and_an_example: the Clothes workflow text (mcp_app) now names
-  garment_mark / garment_cut: update its expected text.
-- test_recolour_masks::test_bad_masks_refused timed out (load?): run it alone.
+## R3b-2 (2026-11-16): the coordinator's fast-suite failures fixed in the code
+- The build is made FROM step 6's cut and never writes 5 / 6. garment_record.from_chain: a build that stops (stage gate,
+  structure, refusal before any hang) is step 7's failure (the first step reading the build; back to the gate's step);
+  the hang stays step 8. chain_stages.BACK: arrange / sew / start / chains / surfaces go back to step 6 (crease: 2).
+  chain_presim.threads_gate: back to step 6 (the cut) or the toile (4), not "the chains (step 5)". look_chain's build look
+  goes on 7 / 7a (was 6: now the cut's flat sheet); write_7a's fallback look is step 7's.
+- Tests changed to the new route: test_chain_garment (_presim_model writes 0-6 as mark / cut would; step 8 back to 6),
+  test_chain_stages (back_to 6; a stage failure on step 7), test_find_tool (7 results: the workflow now leads with
+  toile / mark / cut). test_recolour_masks passed alone (load). test_toolsets::test_short_descriptions_point_at_the_guide
+  fails on main too (export_asset's description 727 > 700 chars; not this branch).
 
-NEXT: fix the four tests above on this branch (run only those files, -m ""), commit; then Joe / the coordinator judges
-r3b's mark_sheet + flat_sheet; then R3c (collar, lapel unfold, facing) and the step-6 FAIL rows (tapes, folds, darts).
+NEXT: the coordinator lands r3b-wip (bin/suite); Joe / the coordinator judges r3b's mark_sheet + flat_sheet; then R3c
+(collar, lapel unfold, facing) and the step-6 FAIL rows (tapes, folds, darts).

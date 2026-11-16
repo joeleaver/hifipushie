@@ -386,11 +386,23 @@ def _try(fn, *a, **k) -> str:
 
 
 def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
-    """chain_garment's worker at its end: step 8 (the hang) only. Steps 5 / 6 are garment_mark / garment_cut (drape
-    first, R3b): the chain build no longer writes them."""
-    stage = st.get("stage")
+    """chain_garment's worker at its end. Steps 5 / 6 are garment_mark / garment_cut (drape first, R3b): the chain build
+    never writes them; it builds FROM step 6's cut. A build that stops (a stage's gate, the structure, a refusal before
+    any hang) is step 7's failure (step 7 is the first step that reads the build; back to the gate's step); the hang is
+    step 8. Each write is refused by the record when the step before it isn't ready (the answer says so)."""
+    stage, sc = st.get("stage"), st.get("structure") or {}
     out = {"job": str(d), "wear": wear, "build": st.get("build_id")}
     msgs = []
+    if stage == "stage_failed":  # (F5: start / chains / surfaces: the gate, its step to go back to, its look)
+        g = st.get("stage_gate") or {}
+        return _try(write, model, garment, "7", "failed", by="chain_garment",
+                    output=dict(out, stage_failed=g.get("stage")), gate={"verdict": g.get("verdict"), "stage": g.get("stage"),
+                    "rows": g.get("rows")}, back_to=g.get("back_to"), look=[p for _, p in st.get("stage_look") or []] or None)
+    if stage == "refused" and not (d / "final.pkl").exists():
+        return _try(write, model, garment, "7", "failed", output=dict(out, refused=st.get("refused")), by="chain_garment")
+    if stage == "structure_failed":
+        return _try(write, model, garment, "7", "failed", by="chain_garment", output=dict(out, built=str(d / "built.pkl")),
+                    gate={"verdict": sc.get("verdict"), "rows": sc.get("rows")})
     if stage in ("done", "refused") and (d / "final.pkl").exists():  # (step 8: its gate is the threads reading, T2)
         from .chain_presim import threads_gate
         g = threads_gate(st) or {}
@@ -402,9 +414,10 @@ def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
 
 
 def from_look_chain(model: str, garment: str, wear: str, hung: bool, paths: list) -> str:
-    """look_chain: the build's look goes on step 6; the hung garment's look is step 9's output (then approval)."""
+    """look_chain: the build's look goes on steps 7 / 7a (step 6's look is the cut's flat sheet); the hung garment's look
+    is step 9's output (then approval)."""
     if not hung:
-        attach_look(model, garment, "6", paths)
+        attach_look(model, garment, "7", paths)
         attach_look(model, garment, "7a", paths)  # (the build is what 7a approves)
         return ""
     return _try(write, model, garment, "9", "done", output={"wear": wear, "views": [str(p) for p in paths]},
