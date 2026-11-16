@@ -14,13 +14,14 @@ def _ends(idx, n):
     return idx[0], idx[len(idx) // 2], (idx[-1] + 1) % n
 
 
-def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict) -> tuple[dict, dict, list]:
-    """(B: cloth.pieces' block, decl, truing rows' facts) from the flattened pieces and their named edges."""
+def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict, folds=()) -> tuple[dict, dict, list]:
+    """(B: cloth.pieces' block, decl, truing rows' facts) from the flattened pieces and their named edges; folds: the
+    flat pattern's folds (a flap's roll line, a collar's roll) as the flat gate reads them."""
     out, arcs, fwd3 = {}, {}, {}
     for p, f in pcs.items():
         n = len(f["loop"])
         P = f["U"][f["lp"]]
-        names, arcs[p], fwd3[p] = {}, {}, {}
+        names, arcs[p], fwd3[p] = dict(f.get("names") or {}), {}, {}
         for e, idx in edges[p].items():
             a, m, b = _ends(idx, n)
             names[f"{e}.a"], names[f"{e}.m"], names[f"{e}.b"] = a, m, b
@@ -70,9 +71,9 @@ def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict) -> tuple[d
             if eo in arcs[ps[0]] and eu in arcs[ps[1]]:
                 closures.append({"name": nm, "over": ps[0], "under": ps[1], "edge": {"over": eo, "under": eu}})
     decl = {"pieces": {p: {"part": p} for p in pcs}, "edges": arcs, "seams": dseams, "omit": dict(absent),
-            "closures": closures, "stiff": [], "folds": []}
+            "closures": closures, "stiff": [], "folds": list(folds)}
     trued = true_seams(out, seams, notes)
-    B = {"pieces": out, "seams": seams, "stitches": [], "interfaced": [], "vents": [], "folds": [], "closures": closures,
+    B = {"pieces": out, "seams": seams, "stitches": [], "interfaced": [], "vents": [], "folds": list(folds), "closures": closures,
          "seam_notes": notes, "edge_arcs": arcs, "decl": decl, "darts": [], "draft": {"design": "toile"}, "trued": trued}
     return B, decl
 
@@ -150,6 +151,24 @@ def look(pcs, path, S_=500):
     return path
 
 
+def look3d(pcs, ref, path):
+    """The cut pieces where they lie (the toile's, a flap turned, the collar fitted; layers hidden under their hosts),
+    4 views and the neck close, beside the reference."""
+    from .mark_tool import PAL
+    from .toile_geom import render, sheet
+    shown = [(f["V"], f["F"], np.tile(PAL[k % len(PAL)], (len(f["F"]), 1))) for k, (p, f) in enumerate(pcs.items())
+             if "host" not in f["rep"]]
+    V = np.concatenate([m[0] for m in shown])
+    lo, hi = V.min(0), V.max(0)
+    box, sbox = ((lo[0] - 0.03, hi[0] + 0.03), (lo[2] - 0.04, hi[2] + 0.04)), ((lo[1] - 0.12, hi[1] + 0.12), (lo[2] - 0.04, hi[2] + 0.04))
+    nb = ((-0.2, 0.2), (hi[2] - 0.32, hi[2] + 0.04))
+    nsb = ((lo[1] - 0.05, hi[1] + 0.05), nb[1])
+    tiles = [render(shown, view=v, box=box if v in ("front", "back") else sbox) for v in ("front", "left", "back")]
+    tiles += [render(shown, view=v, box=nb if v in ("front", "back") else nsb, mpp=0.0008) for v in ("front", "left", "back")]
+    sheet(tiles, ref, labels=["reference", "front", "left", "back", "neck front", "neck left", "neck back"]).save(path)
+    return path
+
+
 def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     """(look sheet or None, text)."""
     from . import garment_record as gr
@@ -191,9 +210,13 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
         why += b
         pcs[nm] = f
         log(f"{nm}: {f['rep']}; edges {sorted(edges[nm])}")
-    B, decl = block(pcs, edges, rd["1"], m5.get("absent") or {}, declarations.get("ease") or {})
+    from .cut_made import made
+    folds, made_rows = made(pcs, edges, declarations, rd["1"], rec["steps"]["4"]["output"], (V, F), log)
+    absent = {p: w for p, w in (m5.get("absent") or {}).items() if p not in pcs}
+    B, decl = block(pcs, edges, rd["1"], absent, declarations.get("ease") or {}, folds)
     rows = [{"id": "cut_flatten", "status": "FAIL" if why else "PASS", "value": f"{len(pcs)} pieces cut and flattened, edges named",
              "target": "every marked piece one disc, every edge named", "why": "; ".join(why[:8]), "back_to": "6"},
+            *made_rows,
             {"id": "strain", "status": "INFO", "value": "; ".join(f"{p} {f['rep']['strain_mean_pct']} % mean, "
                                                                  f"{f['rep']['area_over_2pct']} % of area > 2 %" for p, f in pcs.items()),
              "target": "info: where the flat isn't the toile (a dart or ease wanted): cut.json per piece"}]
@@ -214,15 +237,18 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
             "trued": B["trued"], "seams": [{k: r.get(k) for k in ("a", "b", "len_a_mm", "len_b_mm", "ease", "ok")} for r in seams]}
     (d / "cut.json").write_text(json.dumps(info, indent=1, default=js))
     lp = look(pcs, d / "flat_sheet.png")
+    ref = ((rec["steps"]["0"].get("output") or {}).get("views") or [{}])[0].get("image")
+    l3 = look3d(pcs, ref if ref and Path(ref).exists() else None, d / "cut_3d.png")
     out = {"flat": str(d / "flat.npz"), "pattern": str(d / "pattern.json"), "numbers": str(d / "cut.json"),
            "pieces": list(pcs), "seams": len(B["seams"]), "omit": decl["omit"], "declarations": declarations}
     msg = gr._try(gr.write, name, garment, "6", "done" if v == "PASS" else "failed", output=out,
-                  gate={"verdict": v, "rows": json.loads(json.dumps(rows, default=js))}, look=[str(lp)], back_to="6",
+                  gate={"verdict": v, "rows": json.loads(json.dumps(rows, default=js))}, look=[str(lp), str(l3)], back_to="6",
                   by="garment_cut")
     lines = [f"{name}:{garment} step 6 CUT AND FLATTEN: {v}"]
     from .draft_own_tool import row_lines
     lines += [ln for r in rows for ln in row_lines(r)]
     lines.append(f"  look: {lp} (flat pieces, strain red at 6 %; every number is in this text)")
+    lines.append(f"  look: {l3} (the pieces where they lie, the collar fitted, beside the reference)")
     if msg:
         lines.append(f"  record: {msg}")
     lines.append("next: " + ("compare the flat pieces' shapes with the reference; then the details (step 7)" if v == "PASS"

@@ -55,5 +55,21 @@ History: docs/notes (grep C489-C493); spikes/r1_*, r2_*, r2b_* (R3c still reads 
   toile / mark / cut). test_recolour_masks passed alone (load). test_toolsets::test_short_descriptions_point_at_the_guide
   fails on main too (export_asset's description 727 > 700 chars; not this branch).
 
-NEXT: the coordinator lands r3b-wip (bin/suite); Joe / the coordinator judges r3b's mark_sheet + flat_sheet; then R3c
-(collar, lapel unfold, facing) and the step-6 FAIL rows (tapes, folds, darts).
+## R3c (2026-11-16, budget hit before tests / ledger): step 6 makes the lapel, facings, canvases and collar
+- cut_made.py (order: flaps, layers, collar; ".L" serves ".R"), cut_flap.py (toile part unfolded about its roll edge onto
+  its piece, reflected, zipped to it; fold row <fold>.a/.b), cut_layers.py (a layer traced off its host's flat by a line of
+  anchors [edge, mm, toward]), cut_collar.py (crescent drafted from the neck edges' flat lengths, outer by draft_fall's
+  rule, then fitted by chain_net.project with the toile as contact; outer spread until the fit stops stretching it).
+  cut_tool: block(folds), look3d -> cut/cut_3d.png.
+- Proof /mnt/data/hifipushie/r3c (ws = r3b copy, cut_decl.json, cut.log): PASS flaps (hinge 2.7 mm mean, roll 367 / 358
+  mm, across), layers (facing 890 cm2, canvas 851), seams 32, sewn 28/28, cut 16, caught, shape_fall 1.094,
+  shape_fall_landing 1.032; FAIL collar (lengths held to 0.58 mm worst at the front neck [-0.075, -0.053, 1.53]:
+  contact vs exact links), darts, style_lengths (neck edges vs step 1's estimates, shoulder, back armhole), girths,
+  piece_tapes, planned_folds (only the sleeve hems now). Collar flat 488 x 104 mm, bow 32 mm (a crescent).
+- Judged: the flat collar is curved; on the toile it STANDS like a ruffled band (lands 2 mm below the neck seam at CB
+  vs d 12): it does not roll and fall like the reference. Canvas is a wedge (line to the front 150 mm above the hem).
+- NOT DONE: tests/test_cut_made.py (written in the transcript: flap unfold, layer seam, collar draft+fit on a cylinder),
+  ledger row (next free C494), cut.py docstring, README / toolset text for the new garment_cut declarations, deadcode.
+
+NEXT: R3c-2: write tests/test_cut_made.py + ledger C494; make the collar's fall turn DOWN (start the fall lying on the
+toile below the neck seam, not flared; stand lean); then R3d (darts, hems, tapes, cap ease).
