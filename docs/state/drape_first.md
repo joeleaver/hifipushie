@@ -51,5 +51,7 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - Downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a FreeSewing
   draft dir, not pattern.json. ~120 "step 4" texts in chain_* / draft_* still mean the flat pattern.
 
-NEXT: R3e: darts from the strain ridge (darts_drafted), style_lengths like with like, girths' closure marks and
+## R3e (2026-11-16, C496): in progress (branch r3e-drape; proof /mnt/data/hifipushie/r3e)
+
+NEXT (R3d's): R3e: darts from the strain ridge (darts_drafted), style_lengths like with like, girths' closure marks and
 underarm rings; then why the collar stands (stand 30 mm vs the reference's).
