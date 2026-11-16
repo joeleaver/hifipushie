@@ -175,11 +175,12 @@ with resources.heavy(f"d1 {tag}", gb=4, kind="chain_build", log=log):
     Xf, rf = cs.solve(c, X, body if use_body else None, ties, folds, pulls, plies=plies, log=None)
     sec = round(time.time() - t0, 1)
 r = {"exp": exp, "opts": opt, "seconds": sec, "start": read(c, X, keep_piece), "solved": read(c, Xf, keep_piece),
-     "folds": rf.get("folds"), "ties": rf.get("ties"), "plies": rf.get("plies"),
+     "folds": rf.get("folds"), "ties": rf.get("ties"), "plies": rf.get("plies"), "contact": rf.get("contact"),
+     "pulls": rf.get("pulls"),
      "final_converged": rf.get("final_converged"), "timing": rf.get("timing")}
 np.save(os.path.join(out, f"{tag}_X.npy"), Xf)
 json.dump(r, open(os.path.join(out, f"{tag}.json"), "w"), indent=1, default=str)
 s = r["solved"]
 log(f"{tag}: {sec} s; over 2 % {s['over_2pct']} of {s['links']} (stretched {s['stretched']}, short {s['short']}), worst "
     f"{s['worst_pct']} %, by piece {s['by_piece']}, by kind {s['by_kind']}, seam gap {s['seam_gap_mm']}, "
-    f"converged {rf.get('final_converged')}")
+    f"converged {rf.get('final_converged')}, contact {rf.get('contact')}")
