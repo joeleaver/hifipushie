@@ -1,6 +1,13 @@
-"""R2 step 4 (TOILE) of drape first: the suit jacket's FULL toile (docs/proposals/drape_first.md; R1: spikes/r1_toile.py).
+"""R2b step 4 (TOILE) of drape first: R2's full jacket toile (spikes/r2_toile.py) with R2b's changes:
+  - the ARMHOLE is a cone from the shoulder joint through D4's loop (r2b_common.Cone), not a plane; the sleeve tube
+    runs up into the shoulder (axis from -6 cm) capped by it, its crown swelling CROWN (10 mm) above the biceps, so the
+    armhole cuts a crown; the torso is pushed off the arm only inside the cone above the underarm, from 2 cm outside
+    it below (the eased tube fused with the torso under the arm into a web);
+  - the PAD is a wedge under the shell, its own piece (r2b_common.pad_thickness), the shell over it at a 2 mm gap;
+  - the COLLAR's fall edge lies FALL along the toile from the neckline (r2b_common.march); the stand leans out;
+  - the LAPEL widened square from the roll line to the reference's 59-63 mm.
 
-  HIFIPUSHIE_HOME=<ws> slot uv run python spikes/r2_toile.py <out> <loaded.pkl> <jacket.json> <d4 lines.json> <ref.png> <r1 girths.json>
+  HIFIPUSHIE_HOME=<ws> slot uv run python spikes/r2b_toile.py <out> <loaded.pkl> <jacket.json> <d4 lines.json> <ref.png> <r1 girths.json>
 
 R1's body field (the body's SDF closed by 25 mm minus the calibrated ease k(z) w(theta); R1's k per level reused) plus:
  1 SHOULDER PAD: an ellipsoid smooth-unioned on the shoulder, its top at the reference's jacket top line (read from the
@@ -137,6 +144,8 @@ kb = int(np.argmin(np.abs(Ts - 0.30 * alen)))  # the biceps: 30 % down the arm
 mono[:kb] = mono[kb]
 smooth_r = np.convolve(np.r_[mono[0], mono, mono[-1]], [0.25, 0.5, 0.25], "valid")
 RAX = np.r_[smooth_r[0], smooth_r, smooth_r[-1]]
+CROWN = 0.010  # the crown's fullness: the tube swells up to 10 mm from the biceps to the shoulder (a sleeve head is fuller than its arm)
+RAX = RAX + CROWN * np.clip((Ts[kb] - tax) / max(Ts[kb], 1e-3), 0, 1)
 info["sleeve"] = {"t_mm": np.round(Ts * 1000).tolist(), "arm_tape_mm": np.round(Gr * 1000, 1).tolist(),
                   "tube_round_mm": np.round(2 * np.pi * smooth_r * 1000, 1).tolist(),
                   "bumps_bridged_mm": round(float((smooth_r - raw_r).max() * 1000), 1),

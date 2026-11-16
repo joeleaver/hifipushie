@@ -1,6 +1,7 @@
-"""R2 steps 5-6 of drape first on the FULL toile (spikes/r2_toile.py): mark, cut, flatten, unfold, true, compare.
+"""R2b steps 5-6 (R2's spikes/r2_flat.py; R2b: the sleeves come off along the armhole CONE, r2b_common.Cone, and the
+armhole / cap lengths are read where body and sleeve share their cut): mark, cut, flatten, unfold, true, compare.
 
-  slot uv run python spikes/r2_flat.py <toile dir> <loaded.pkl> <jacket.json> <d4 lines.json>
+  slot uv run python spikes/r2b_flat.py <toile dir> <loaded.pkl> <jacket.json> <d4 lines.json>
 
 CUT, every line an exact clip by a scalar (no edge paths): sleeves off along the armhole's plane (R1); the body by D4's
 marks as scalars: front / side by front_side's angle round the torso axis (D4's line moved out horizontally keeps its
