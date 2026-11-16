@@ -59,7 +59,7 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
     prims0 = compile_prims(bare)
     how = None
     if sides:  # the sides as the compiler reads them (their middle and size come from the two masses)
-        from .spec import _fuse_sides
+        from .spec_hands import _fuse_sides
         how = _fuse_sides(f"{a}+{b}", sides, [p for p in prims0 if p.name in (a, b)])
     k0 = max(float(els[n].get("blend", spec.get("blend", 0.03)) or 0.0) for n in (a, b))
     before = reshape.waist(prims0, a, b, k0)

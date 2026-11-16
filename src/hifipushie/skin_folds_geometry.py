@@ -44,7 +44,7 @@ def _keep_tree(pr: dict):
 
 def mod_tissue(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.ndarray:
     """sdf's modifier "tissue": the field moved by `profile` of the distance across the fold's line. Smooth along the
-    line (a normalised Gaussian over the nearest samples, as sdf.mod_fold); it fades over the line's ends (`taper`),
+    line (a normalised Gaussian over the nearest samples, as sdf_shapes.mod_fold); it fades over the line's ends (`taper`),
     past `reach` along the normal, toward the keep-out lines (lid margins, lips: `keep`), and where it pushes the
     skin IN it stops BALL outside each eyeball (`balls`: centre + radius)."""
     P, Nn, U, T = pr["pts"], pr["nrm"], pr["up"], pr["along"]

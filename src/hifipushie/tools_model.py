@@ -367,7 +367,6 @@ def _stroke_paths(spec: dict, frames: list[dict], mesh=None, voxel: float = 0.0,
     """Every stroke's seated path (mirrored ones too), with per-view visibility: a point is hidden when the
     built mesh is nearer the camera there (by more than the stroke's own height and a little slack).
     parts: only strokes on these parts (the others are hidden in this look)."""
-    from . import sdf
     from .spec import compile_prims, expand_mirror
     s = expand_mirror(spec)
     prims = compile_prims(spec)

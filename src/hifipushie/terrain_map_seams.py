@@ -114,13 +114,14 @@ def _job_sides(a):
 def _side_pool(todo):
     """`_map_sides` of each (key, files key, args) across a fork pool (decoding the maps was 80% of the checks)."""
     from . import resources
+    from . import resources_guard
     if len(todo) <= 2:
         return [_job_sides(t[2]) for t in todo]
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
     ex = ProcessPoolExecutor(max_workers=resources.workers(1.0, cap=16, jobs=len(todo)),
                              mp_context=multiprocessing.get_context("fork"), initializer=resources._worker_init)
-    with resources.guarded(ex, "map seams") as ex:
+    with resources_guard.guarded(ex, "map seams") as ex:
         return list(ex.map(_job_sides, [t[2] for t in todo], chunksize=2))
 
 

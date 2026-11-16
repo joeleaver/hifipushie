@@ -53,7 +53,8 @@ def export_gb(spec: dict, name: str | None = None) -> float:
     """The memory an export declares to resources.heavy: the measured estimate for export_asset, and for a human
     character (a spec with base, skin or hair) at least resources.EXPORT_HUMAN_GB (24 GB: v7e was OOM-killed at less)."""
     from . import resources
-    gb = resources.estimate("export_asset", name)
+    from . import resources_queue
+    gb = resources_queue.estimate("export_asset", name)
     if any(k in spec for k in ("base", "skin", "hair")):
         gb = max(gb, resources.EXPORT_HUMAN_GB)
     return float(gb)

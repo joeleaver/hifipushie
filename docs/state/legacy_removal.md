@@ -26,7 +26,7 @@ Rule (Joe, 2026-11-10): no backwards compatibility. No gate, no switch, no shim;
     vegetation.py, terrain_design.py (5.7k) -> 9, 6, 7. 8 (C427) rig, retopo, hair_cards, hair_flow, veg_style, asset,
     lods, paint, terrain_style, humanfit, hair_read, images (19.5k) -> 71; asset.export stays (the export scripts call it).
   9 (landed 2026-11-12; C428) skin, skin_features, terrain_cliffs, onemesh, scene, veg_export, terrain_stream,
-    hair_strands, veg_tools, assemble (11.4k) -> 43 modules. 10 (2026-11-14; C447) veg_leaf, skin_layers, faceslide, judge, blockin_eyes, terrain_caves, skin_marks, gnm_fold, terrain_swatch, terrain_bake, gnm_controls, eye_ruler (10.7k) -> 54. 11 (C459) hair_loose, terrain_ground, terrain_sea, skin_folds (3.4k) -> 14.
+    hair_strands, veg_tools, assemble (11.4k) -> 43 modules. 10 (2026-11-14; C447) veg_leaf, skin_layers, faceslide, judge, blockin_eyes, terrain_caves, skin_marks, gnm_fold, terrain_swatch, terrain_bake, gnm_controls, eye_ruler (10.7k) -> 54. 11 (C459) hair_loose, terrain_ground, terrain_sea, skin_folds (3.4k) -> 14. 12 (2026-11-15; C485) resources, sdf, spec (2.8k) -> 8, cut by what other files read: the widely read names stay in the base (heavy, field_at, SpecError, expand_mirror, compile_prims), so 45 caller files changed and no clothes file.
 - CONSTANTS STAY (C422): scripts outside the repo set module.NAME (assembly/exp.py HP_FS_SET, assembly_garrett/s15/
   sh4t.py, haircards/t47/r47.sh). A family's base holds every constant and alone runs code at import (rule test).
 - MOVED NAMES (C427): 7,470 uses in scripts outside the repo named functions the splits moved. The AttributeError now
@@ -50,11 +50,11 @@ cloth_background) are what was left after the old paragraphs went: they need one
 
 ## Tools (not in the repo): /mnt/data/hifipushie/deadcode/
 Dead code: dead.py, why.py, frontier.py, hyp.py, apply.py, check.py. A split: sections.py, rebound.py, external_uses.py
-(before; units_brief.py lists a file's units for the plan); pipeline.sh <root> <tag> <module> runs split_module / split_class / rehome / add_modules / regap / retail /
+(before; units_brief.py lists a file's units for the plan; name_uses.py and name_readers.py say which names other files read); pipeline.sh <root> <tag> <module> runs split_module / split_class / rehome / add_modules / regap / retail /
 repoint, the proof, same_comments and same_order (a rehome plan needs MID_IMPORTS too). Proofs: same_units, same_members, rehomed_all, shadow_check, surface.
 
 ## Also unreachable today, outside clothes (not touched; check blender_* by hand, Blender runs them by path)
 faceext 376 lines, terrain_seams 201 of 308 (its measure side), flipfit 137, faceatlas 105, gnm_controls 90. NOT unreachable: blender_cards, blender_lashes (blender_scene imports both inside functions).
 
 Full run of every test after the splits (C430): nothing of the splits fails. Area re-review 2026-11-12: reports in /mnt/data/hifipushie/review_20261112/; its fixes: docs/state/mcp_rules.md.
-NEXT: Joe's call. The giant functions are done (docs/state/export_stages.md: _export C468, _export_tiles C470, grow C474, write_glb C475, cards_job C479; its proof found a caller the hair_clumps split had broken, fixed first: C478). Long files still whole outside clothes and Blender scripts: resources (908), sdf (904), spec (781): sdf and spec are the core (check every code key first). The clothes files wait for the chain-build cut.
+NEXT: Joe's call. Nothing long is left outside the clothes files and the Blender-side scripts: the giant functions are stages (docs/state/export_stages.md) and the core files are split (C485). Owed: one full run of every test (-m "", hours) after the five stagings and this split. The clothes files wait for the chain-build cut.

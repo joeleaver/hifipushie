@@ -16,7 +16,7 @@ The neckline is measured on the body: round the neck, where it flares into the s
 high at the sides), never dipping behind the sides (a collar rides up the nape). The kit works on any shirt part with
 a body under it (garment or plain shell); give the shirt no neck cut of its own.
 
-What it makes (all ordinary blobs, shape "sweep": sdf.sd_sweep):
+What it makes (all ordinary blobs, shape "sweep": sdf_shapes.sd_sweep):
 - `<kit>_hole`: a cut in the shirt part along the neckline (everything above the neckline's surface inside it),
   `<kit>_v`: the front opening cut down to the first closed button, as wide as `spread` (half) at the top, so the
   body shows through it;

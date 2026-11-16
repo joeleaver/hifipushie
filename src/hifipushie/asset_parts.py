@@ -113,8 +113,9 @@ def flatten_parts(high: Path, path: Path, names: list, plane_tol: float) -> str:
         jobs.append((V[used], remap[F[sel]], plane_tol))
     order = sorted(range(len(jobs)), key=lambda i: -len(jobs[i][1]))  # biggest first: they set the wall time
     from . import resources
+    from . import resources_guard
     ex = ProcessPoolExecutor(max_workers=resources.workers(1.5, jobs=len(jobs)), initializer=resources._worker_init)
-    with resources.guarded(ex, "flatten parts") as ex:
+    with resources_guard.guarded(ex, "flatten parts") as ex:
         got = dict(zip(order, ex.map(planar._flatten_job, [jobs[i] for i in order])))
     arrays = {"key": np.array(key), "names": np.array(todo)}
     for i in range(len(todo)):

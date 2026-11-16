@@ -22,10 +22,11 @@ from .terrain_tiles_manifest import _finish, _manifest
 def export_tiles(T, out_dir, cfg: dict | None = None, log=print) -> dict:
     """See `_export_tiles`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
     from . import resources
+    from . import resources_guard
     # (PSS every 2 s: reading every worker's smaps_rollup each 0.5 s kept a parent thread ~40% busy)
     name = (cfg or {}).get("name") or Path(str(out_dir)).name
     with resources.heavy(f"terrain tiles {name}", log=log, kind="terrain_tiles", model=name,
-                         gb=(cfg or {}).get("heavy_gb")), resources.peak_memory(every=2.0) as peak:
+                         gb=(cfg or {}).get("heavy_gb")), resources_guard.peak_memory(every=2.0) as peak:
         return _export_tiles(T, out_dir, cfg, log, peak)
 
 

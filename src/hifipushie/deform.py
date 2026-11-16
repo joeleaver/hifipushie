@@ -13,7 +13,7 @@ spec["style"]["shape"]["deform"] = [op, ...], applied in order, each {"<kind>": 
   twist:  {"center": [x, y], "deg": per m, "from": z0}  turn about a vertical line with height above z0
   wobble: {"amount": m, "scale": m, "seed": n}  a smooth displacement a few `scale`s across (a hand-drawn line)
 
-How it works (sdf.sd_csg): every primitive of the building (not prefab instances: they stay rigid and move with
+How it works (sdf_shapes.sd_csg): every primitive of the building (not prefab instances: they stay rigid and move with
 the ground under them, so instances still share one mesh) is evaluated at the undeformed point, found by
 inverting p = x + D(x) with fixed-point steps, and its field divided by the deformation's stretch (`lip`) so
 the field never over-estimates the distance (the narrow-band mesher relies on that). A grab (kind "grab",
@@ -86,7 +86,7 @@ def displacement(ops: list, x: np.ndarray) -> np.ndarray:
             dep, i, j = GRAB_AXES[p["view"]]  # `radius` of the point taken hold of follows by (1 - t^2)^2
             c, t, r = p["at"], p["to"], float(p["radius"])
             q = (x[..., i] - c[0]) ** 2 + (x[..., j] - c[1]) ** 2
-            if p.get("depth") is not None:  # a ball round the clay taken hold of (spec._grabs finds its depth)
+            if p.get("depth") is not None:  # a ball round the clay taken hold of (spec_hands._grabs finds its depth)
                 q = q + (x[..., dep] - p["depth"]) ** 2
             w = np.clip(1.0 - q / (r * r), 0.0, None) ** 2
             D[..., i] += (t[0] - c[0]) * w
