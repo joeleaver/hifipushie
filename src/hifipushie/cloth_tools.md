@@ -146,9 +146,14 @@ step 1 doesn't name). Writes `<look dir>/mark/` mark.npz, mark.json, mark_sheet.
 `garment_cut(name, garment, declarations=None)`: garment step 6 (drape first), CUT AND FLATTEN (src/hifipushie/cut.py's
 docstring is the spec): every marked piece flattened with least distortion; strain per piece and where (compression: a
 dart wanted; stretch: ease); edges named by step 1's seams, `free` {piece: {edge: top | bottom | side | [classes]}} names
-the toile's own edges (hem, neckline, opening, sleeve end); plain seams trued; `ease` {"piece:edge": [lo, hi]}. The flat
-pattern (draft_pattern's block form, each piece with its 3D outline) gets today's flat gate. Writes `<look dir>/cut/`
-flat.npz, pattern.json, cut.json, flat_sheet.png; step 6.
+the toile's own edges (hem, neckline, opening, sleeve end); plain seams trued; `ease` {"piece:edge": [lo, hi]}. Pieces
+the toile turns or hides are made here (cut_made.py, in this order): `flaps` {toile part: {onto, fold, edges}} unfolds a
+turned flap (a lapel) across its roll edge onto its piece (cut_flap.py); `layers` {piece: {host, line: [[edge, mm,
+toward], ...], keeps, edges, inner}} traces a facing / canvas off its host's flat (cut_layers.py); `collar` {pieces,
+neck, stand_mm, fall_mm, end_mm, outer, end, fold, fold_on} drafts the collar flat and fits it round the toile's neck,
+fall turned down, every flat length held (cut_collar.py). The flat pattern (draft_pattern's block form, each piece with
+its 3D outline) gets today's flat gate. Writes `<look dir>/cut/` flat.npz, pattern.json, cut.json, flat_sheet.png,
+cut_3d.png; step 6.
 
 ### `draft_pattern`
 `draft_pattern(name, garment, design, declarations, options=None, sa=10)`: garment step 6 (the flat pattern; it was step 4 before drape first), YOUR OWN pattern (no published
