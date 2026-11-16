@@ -74,7 +74,8 @@ def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict, folds=()) 
             "closures": closures, "stiff": [], "folds": list(folds)}
     trued = true_seams(out, seams, notes)
     B = {"pieces": out, "seams": seams, "stitches": [], "interfaced": [], "vents": [], "folds": list(folds), "closures": closures,
-         "seam_notes": notes, "edge_arcs": arcs, "decl": decl, "darts": [], "draft": {"design": "toile"}, "trued": trued}
+         "seam_notes": notes, "edge_arcs": arcs, "decl": decl, "darts": [], "draft": {"design": "toile"}, "trued": trued,
+         "landing": {p: f["landing"] for p, f in pcs.items() if f.get("landing")}}
     return B, decl
 
 

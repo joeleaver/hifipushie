@@ -151,6 +151,36 @@ def walk_len(P):
     return max(float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum()), 1e-9)
 
 
+def landing_line(Q, s, Lb, toile, d):
+    """(behind, whole) in m, both halves: the toile's line the fall lands on: the contour on the toile at distance d
+    (per neck point: the fall's depth below the roll, w - 2h) from the neck line Q; behind = its part whose nearest
+    neck point is behind the shoulders (|s| <= Lb); whole = all of it but its caps round the neck line's ends. A contour, not walks square to the neck line: where the neck line
+    turns sharply those walks fan out (and cross where it turns in): on the jacket they overstated the line behind
+    the shoulders x1.16 (R3d); a contour turns a corner by d x its angle, exactly."""
+    from scipy.spatial import cKDTree
+    V, F = np.asarray(toile[0], float), np.asarray(toile[1], int)
+    t = np.linspace(0, 1, 8, endpoint=False)
+    dense = lambda A: np.r_[np.concatenate([A[i] + np.multiply.outer(t, A[i + 1] - A[i]) for i in range(len(A) - 1)]),
+                            A[-1:]]
+    Qd, sd, dd = dense(Q), dense(np.asarray(s, float)), dense(np.broadcast_to(np.asarray(d, float), (len(s),)).copy())
+    tree = cKDTree(Qd)
+    dist, j = tree.query(V)
+    dist = dist - dd[j]
+    segs = []
+    for f in F[(np.abs(dist[F]) < 0.03).any(1)]:
+        x = [V[a] + dist[a] / (dist[a] - dist[b]) * (V[b] - V[a]) for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0]))
+             if (dist[a] < 0) != (dist[b] < 0)]
+        if len(x) == 2:
+            segs.append(x)
+    if not segs:
+        return 0.0, 0.0
+    S = np.asarray(segs)
+    ln = np.linalg.norm(S[:, 1] - S[:, 0], axis=1)
+    sm = np.abs(sd[tree.query(S.mean(1))[1]])
+    ends = sm >= np.abs(sd).max() - 1e-9  # (the contour's cap round the neck line's front end: past the collar's end)
+    return float(ln[sm <= Lb + 1e-9].sum()), float(ln[~ends].sum())
+
+
 def lay_down(Q, T, up, ct, length):
     """[(n, 3) per neck point]: the line the turned-down fall lies along, GAP off the toile, walked from the neck seam
     away from it square to the neck line in the toile's own surface (down over the shoulders, out over the lapel)."""
@@ -170,10 +200,9 @@ def lay_down(Q, T, up, ct, length):
     return out
 
 
-def place(U, s, h, w, front3, back3, Lb, Lf, toile):
-    """3D start: the neck row on the toile's neck line, the stand up, the fall down outward; then project()."""
-    from .chain_net import Contact, project
-    nr, nc = U.shape[:2]
+def neck_points(s, front3, back3, Lb, Lf):
+    """(nc, 3): each column's neck point on the toile's neck line (s from CB along it)."""
+    nc = len(s)
     half = {}
     for sg, (fr, bk) in ((1, (front3[0], back3[0])), (-1, (front3[1], back3[1]))):
         f_, b_ = curve3d([fr, bk])  # front end -> shoulder, shoulder -> CB
@@ -183,6 +212,14 @@ def place(U, s, h, w, front3, back3, Lb, Lf, toile):
         f_, b_ = half[1 if s[c] >= 0 else -1]
         a = abs(s[c])
         Q[c] = at_len(b_[::-1], a / Lb)[0] if a <= Lb else at_len(f_[::-1], (a - Lb) / Lf)[0]
+    return Q
+
+
+def place(U, s, h, w, front3, back3, Lb, Lf, toile):
+    """3D start: the neck row on the toile's neck line, the stand up, the fall down outward; then project()."""
+    from .chain_net import Contact, project
+    nr, nc = U.shape[:2]
+    Q = neck_points(s, front3, back3, Lb, Lf)
     cen = Q.mean(0)
     T = np.gradient(Q, axis=0)
     T /= np.linalg.norm(T, axis=1, keepdims=True) + 1e-12
@@ -258,9 +295,14 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, toile):
     stand, fall, end = (float(d[k]) / 1000 for k in ("stand_mm", "fall_mm", "end_mm"))
     if fall <= stand:
         raise CollarRefused(f"collar: fall {fall * 1000:.0f} mm is no deeper than the stand {stand * 1000:.0f} mm")
+    from . import draft_fall
     O_rule = O_half = outer_target(necks, fall - stand, {"pieces": {}}, s1)
     front3 = (np.concatenate([polys3[g] for g in d["neck"][:-1]]), np.concatenate([polys3[mirror(g)] for g in d["neck"][:-1]]))
     back3 = (polys3[d["neck"][-1]], polys3[mirror(d["neck"][-1])])
+    U, s, h, w, k = draft(Lb, Lf, stand + fall, stand, end, O_half)  # (s, h, w: the outer edge's length changes none)
+    Q0 = neck_points(s, front3, back3, Lb, Lf)
+    land_b, land = landing_line(Q0, s, Lb, toile, np.maximum(w - 2 * h, 0.0))
+    O_half = 0.5 * land + np.pi * draft_fall.LIFT  # (drape first: the toile decides the outer edge, C495)
     spread = []
     for _ in range(SPREAD_ROUNDS):  # (the pattern maker's second look: lay it on, spread the fall where it pulls)
         U, s, h, w, k = draft(Lb, Lf, stand + fall, stand, end, O_half)
@@ -295,7 +337,8 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, toile):
         from .cut import _group
         out_edges[c] = {key: idx for key, idx in _group(keys)}
         out_pcs[c] = {"name": c, "U": Uf, "F": F, "V": X, "bad": np.zeros(len(F)), "lp": loop, "loop": list(loop),
-                      "rep": {"faces": int(len(F)), "strain_mean_pct": 0.0, "area_over_2pct": 0.0, "drafted": True}}
+                      "rep": {"faces": int(len(F)), "strain_mean_pct": 0.0, "area_over_2pct": 0.0, "drafted": True},
+                      "landing": {"line": land, "behind": land_b, "d": fall - stand}}
     roll = U[KS]
     folds = [{"name": d["fold"], "piece": d.get("fold_on") or d["pieces"][-1], "line": roll.tolist(), "kind": "roll"}] \
         if d.get("fold") else []
@@ -314,6 +357,7 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, toile):
            "lengths": read,
            "outer_3d_mm": round(float(np.linalg.norm(np.diff(o3, axis=0), axis=1).sum()) * 1000, 1),
            "outer_flat_mm": round(float(np.linalg.norm(np.diff(U[-1], axis=0), axis=1).sum()) * 1000, 1),
-           "laid_over_flat_back": read["outer_laid"], "lands_below_neck_cb_mm": round(float(Q[cb, 2] - o3[cb, 2]) * 1000, 1), "d_mm": round((fall - stand) * 1000, 1),
+           "laid_over_flat_back": read["outer_laid"], "landing_mm": {"behind": round(land_b * 1000, 1), "whole":
+                                                                      round(land * 1000, 1)}, "lands_below_neck_cb_mm": round(float(Q[cb, 2] - o3[cb, 2]) * 1000, 1), "d_mm": round((fall - stand) * 1000, 1),
            "fall_clear_min_mm": round(float(sd.min()) * 1000, 1)}
     return out_pcs, out_edges, folds, rep, bad
