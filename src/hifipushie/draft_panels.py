@@ -115,7 +115,8 @@ def rows(B: dict, step2: dict | None, step3: dict | None, decl: dict | None = No
                     if d > 0 or not give:  # (a pair off both ways: the wide one names it, once)
                         _hints(B, bw, b, give or opp or nb, diff, lines, d, moves)
     return [dict(rid, status="FAIL" if why else "PASS", value="; ".join(vals) or "no stated girth placed",
-                 why="; ".join(why), fix=_fix([draft_moves.entry(m["seam"], m["at"]) for m in moves.values()
+                 why="; ".join(why), fix=_fix([draft_moves.entry(m["seam"], draft_moves.ends(m["at"], m["len"]))
+                                       for m in moves.values()
                                        if any(abs(v) >= 1 for v in m["at"].values())]) if why else "")]
 
 
@@ -131,7 +132,7 @@ def _crossings(B: dict, ring: set, lines: dict, moves: dict) -> None:
         for q in sorted(q for q in _neighbours(B, p, ring) if q > p):
             c = draft_moves.crossing(B, p, q, lines[p])
             if c:
-                moves.setdefault(tuple(c[0]), {"seam": c[0], "at": {}})["at"].setdefault(round(c[1]), 0.0)
+                moves.setdefault(tuple(c[0]), {"seam": c[0], "at": {}, "len": c[2]})["at"].setdefault(round(c[1]), 0.0)
 
 
 def _hints(B: dict, bw: dict, b: str, give: list, diff: dict, lines: dict, d: float, moves: dict) -> None:
@@ -150,8 +151,8 @@ def _hints(B: dict, bw: dict, b: str, give: list, diff: dict, lines: dict, d: fl
     w = {n: max(0.0, -np.sign(d) * diff[n]) for n in can}
     for n, hits in can.items():
         mm = abs(d) * (w[n] / sum(w.values()) if sum(w.values()) > 0 else 1.0 / len(can))
-        for (seam, at), sg in hits:
-            m = moves.setdefault(tuple(seam), {"seam": seam, "at": {}})["at"]
+        for (seam, at, ln), sg in hits:
+            m = moves.setdefault(tuple(seam), {"seam": seam, "at": {}, "len": ln})["at"]
             m[round(at)] = m.get(round(at), 0.0) + sg * mm
 
 
@@ -161,8 +162,9 @@ def _fix(moves: list) -> str:
         return ("move the seams between the named pieces by the named mm (the design's seam points at that level; back "
                 "to step 4); step 2's shares if the reference says otherwise")
     return ("declare (the converter re-cuts both pieces, the seam still sews; one entry a seam, its levels in one "
-            f"'at' list, every level it crosses): moves [{', '.join(moves)}]. Form: {draft_moves.FORM}. Step 2's shares if the reference says "
-            "otherwise")
+            f"'at' list, every level it crosses; an end on a curve (the armhole) slides along it by its mm, so the piece "
+            f"gaining width takes that much of the curve): moves [{', '.join(moves)}]. Form: {draft_moves.FORM}. Step 2's "
+            "shares if the reference says otherwise")
 
 
 def _form() -> str:
