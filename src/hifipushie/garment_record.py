@@ -58,7 +58,7 @@ STEPS = [
 IDS = [s[0] for s in STEPS]
 # the earlier steps a step reads beyond the one before it (the toile and the flat pattern need step 1's seams AND step 3's
 # measurements; the toile step 0's fit and heights)
-READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("0", "1", "2", "3"), "6": ("1", "2", "3")}
+READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("0", "1", "2", "3"), "5": ("0", "1", "2", "4"), "6": ("1", "2", "3")}
 FLAT = "6"  # the step whose output is the flat pattern (draft_pattern's form; the flat gate): every pattern reader reads it  # (2: step 0's landmarks and heights too: C352)
 STEP = {s[0]: dict(zip(("id", "key", "what", "tool", "approval", "back_to"), s)) for s in STEPS}
 for _s in STEPS:
