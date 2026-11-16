@@ -473,13 +473,11 @@ def test_a_stroke_masked_to_a_mass_leaves_the_mass_beside_it_alone(fig):
     assert np.abs(masked - before).max() < 1e-4 and np.abs(loose - before).max() > 0.002
 
 
-def test_a_flap_s_tip_target_lobe_and_wedge_base(fig):
+def test_a_flap_s_tip_target_and_lobe(fig):
     from hifipushie import server
     tip = [0.17, -0.08, 0.76]
     server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.05, fold_at=0.45,
-                lobe_thickness=0.08, base_thickness=0.1, tip=tip)
+                lobe_thickness=0.08, tip=tip)
     s = store.load(fig)
     assert np.allclose(s["joints"]["ear_tip.L"]["pos"], tip, atol=0.01)  # the tip hangs where it was put
-    assert "ear_base.L" in s["bones"] and s["bones"]["ear_top.L"]["flat"][1] > s["bones"]["ear.L"]["flat"][1]
-    server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.05)
-    assert "ear_base.L" not in store.load(fig)["bones"]  # (a call without it takes the old wedge away)
+    assert s["bones"]["ear_top.L"]["flat"][1] > s["bones"]["ear.L"]["flat"][1]

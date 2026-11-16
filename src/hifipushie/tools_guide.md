@@ -350,8 +350,6 @@ For a folded or upright ear, a comb, a tongue, a tab.
 - length: base to tip as if laid flat; width: across its base; thickness: through its base (default 0.6 of the
   width: a clay ear is a thick lump, not a strap); pointed: 0 round .. 1 narrowing to a soft point.
 - lobe_thickness: the folded part's own thickness (a pig's ear is a fat rolled lobe on a thinner stalk).
-- base_thickness: the thickness where it meets the head, tapering up to `thickness`: a wedge, broad from the front
-  AND the side, instead of a post.
 - tip: [x, y, z] where the tip should hang; the fold's direction, angle and the folded part's length follow from it
   (face and fold are then not used). Easier to aim than an angle.
 - fold: degrees the top folds over toward its face (0 upright; 90 the top sticks out forward; 150 to 180 it lies

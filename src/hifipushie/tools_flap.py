@@ -29,7 +29,7 @@ def _views_broad(F) -> str:
 @mcp.tool(structured_output=False)
 def flap(name: str, mass: str, base: list[float], length: float, width: float, rise: str | list = "up",
          face: str | list = "forward", fold: float = 0.0, fold_at: float = 0.6, thickness: float | None = None,
-         pointed: float = 0.6, lobe_thickness: float | None = None, base_thickness: float | None = None,
+         pointed: float = 0.6, lobe_thickness: float | None = None,
          tip: list[float] | None = None, blend: float | None = None, part: str | None = None, note: str = ""):
     """A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, its top folded over. A
     folded ear, a comb, a tongue, a tab. base: [x, y, z], the middle of where it grows from, ON the surface of the
@@ -40,8 +40,7 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     0..1 (0 round, 1 narrowing to a soft point). fold: degrees its top folds over toward its face (0 none; 90 the top sticks out
     forward; 150 to 180 it lies down along the standing part); fold_at: where along its length the fold is (0.6:
     the top 40 % folds over, round a knuckle). lobe_thickness: the folded part's own thickness (a fat rolled lobe);
-    base_thickness: its thickness where it meets the head, tapering up to `thickness` (a wedge broad from the front
-    and the side); tip: [x, y, z] where the tip should hang: the fold's direction, angle and length follow from it
+    tip: [x, y, z] where the tip should hang: the fold's direction, angle and length follow from it
     (face and fold are then not used). A name ending ".L" is made on
     the left (+x) and mirrored. The same name again replaces it: change ONE thing at a time. Then look_beside with
     focus=[mass] to see it close up beside the reference. Details: guide(topic="flap")."""
@@ -77,7 +76,7 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
                          "name of its own (e.g. \"ear.L\"); where it grows from is `base`")
     try:
         g = flapmod.lump(mass, b0, R, F, length, width, thick, float(fold_at), float(fold), float(pointed),
-                         lobe_thickness=lobe_thickness, base_thickness=base_thickness, tip=tip)
+                         lobe_thickness=lobe_thickness, tip=tip)
         fold = g["fold"]
     except ValueError as e:
         raise ValueError(str(e)) from None
@@ -102,7 +101,7 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     bones[mass]["flap"] = {"base": [float(x) for x in b0], "rise": rise, "face": face, "length": length,
                            "width": width, "thickness": thick, "fold": float(fold), "fold_at": float(fold_at),
                            "pointed": float(pointed), "lobe_thickness": lobe_thickness,
-                           "base_thickness": base_thickness, "tip": tip}
+                           "tip": tip}
     try:
         compile_prims(spec)
     except SpecError as e:

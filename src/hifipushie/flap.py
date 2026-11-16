@@ -27,14 +27,14 @@ def parts(mass: str) -> tuple[str, dict, str]:
 
 
 def lump(mass: str, base, rise, face, length: float, width: float, thickness: float, fold_at: float, fold: float,
-         pointed: float, lobe_thickness: float | None = None, base_thickness: float | None = None,
-         tip=None) -> dict:
+         pointed: float, lobe_thickness: float | None = None, tip=None) -> dict:
     """{"joints", "bones", "face", "rise", "hinge", "tip"} (world positions) for the module's flap.
     lobe_thickness: the folded part's own thickness (a pig's ear: a fat rolled lobe on a thinner stalk).
-    base_thickness: the standing part's thickness where it meets the head, tapering to `thickness` by a third of
-    the way up (a wedge broad from the front AND the side, not a post). tip: [x, y, z] where the tip should hang;
+    tip: [x, y, z] where the tip should hang;
     the fold's direction, angle and the folded part's length follow from it (face and fold are then ignored).
-    (Four blind runs, e9 to e12, each asked for exactly these three.)"""
+    (Blind runs e9 to e12 asked for both. They also asked for a base broad from the side, a wedge: that was a
+    misreading of the side view, where the broad shape is the lobe hanging forward and the root is the ear's edge;
+    built, it made the root long front to back, the opposite of the concept, e13 / e14. Removed.)"""
     R = np.asarray(rise, float)
     R = R / np.linalg.norm(R)
     hinge = np.asarray(base, float) + fold_at * length * R
@@ -78,12 +78,5 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
                     "up": r3(F), "group": group, "join": join},
              top: {"a": J["top"], "b": J["tip"], "r_a": round(rf, 4), "r_b": round(rt, 4), "flat": flat2,
                    "up": r3(up2), "group": group, "join": join}}
-    if base_thickness and base_thickness > thickness:
-        fb = min(float(base_thickness) / float(width), 1.0)
-        mid = np.asarray(base, float) + 0.35 * fold_at * length * R
-        jm = f"{stem}_mid{side}"
-        joints[jm] = {"pos": r3(mid), "r": round(ra * 0.92, 4)}
-        bones[f"{stem}_base{side}"] = {"a": J["root"], "b": jm, "r_a": round(ra, 4), "r_b": round(ra * 0.92, 4),
-                                       "flat": [1.0, fb], "up": r3(F), "group": group, "join": join}
     return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip, "toward": D,
             "fold": float(fold)}
