@@ -1,52 +1,51 @@
 # STATE: drape first (docs/proposals/drape_first.md; approved 2026-11-16)
 
-Steps 4-6 rebuilt the draper's way: TOILE (the garment's 3D surface on the body), MARK (seam lines on it), CUT AND
-FLATTEN (pieces from the toile, already in 3D where they belong). Runs R1 (body + sleeves) -> R2 (lapel, collar) ->
-R3 (tools) -> blind trials.
+Steps 4-6 rebuilt the draper's way: TOILE (the garment's 3D surface on the body), MARK, CUT AND FLATTEN.
+Runs R1 (body + sleeves, done: C489) -> R2 (full toile, done) -> R3 (tools) -> blind trials.
 
-## R1 (2026-11-16): proof on the suit jacket's body + sleeves (spike; /mnt/data/hifipushie/r1: ws, toile/, run.sh)
-Code: `spikes/r1_common.py` (exact clip by a scalar, components, CPU 4-view rasterizer: no GPU), `spikes/r1_toile.py`
-(toile + marks), `spikes/r1_flat.py` (cut, LSCM + ARAP flatten, seams, girths, compare). `run.sh [flat]` runs both.
-TOILE: body SDF on a 6 mm grid, closed by 25 mm (a jacket bridges hollows), minus an ease field: torso k(z) w(theta),
-w = 0.35 + 0.65 cos^2 (full front / back, 35 % under the arm), k per step-0 level CALIBRATED so the section as a tape
-(convex hull, sleeves out) = step 0's garment girth; sleeves 18 -> 22 mm. SDF not a mesh offset: an offset mesh folds
-in the armpit / spine / crotch; the field rounds them and joins the sleeves by itself. Cuts exact: hem = grid floor,
-neck along D4's body neckline (by angle), opening along step 2's roll line (gorge -> break) + front edge (break -> hem),
-sleeve square to the forearm at step 0's sleeve_hem.
-Girths (toile, as a tape): chest 1108.5 / plan 1108.2, waist 988.0 / 987.6, hips 1103.3 / 1103.1, hem 1138.7 / 1138.8.
-Offsets that took: front 36 / 50 / 40 / 52 mm (chest / waist / hips / hem), sides 13 / 17 / 14 / 18 mm.
-LOOK (toile_sheet.png beside the reference): reads as the jacket: length to the crotch, open front to the break, waist
-suppression, sleeves to the wrist. Faults: no shoulder pad (shoulders slope with the body); sleeves follow the arm's
-bumps (ripples; a sleeve should hang as a smooth tube); the back neck rises as a short stand (the neck base line).
-MARK: D4's lines out onto the toile: body normal for neck / shoulder / armhole, horizontal from the torso axis for CB
-and side seams (the body normal swings sideways in the seat cleft: CB was spaghetti), square out from the arm axis
-for the sleeve seams. Armhole = the plane of D4's body armhole (off its plane 4 mm mean, 9 max) through the toile.
-CUT AND FLATTEN (flat.json, cut_sheet.png, flat_sheet.png). Strain = max(s1 - 1, 1 - s2):
-| piece | area cm2 | mean | area > 2 % | area > 5 % | where |
-| front.L | 970 | 1.1 % | 14 % | 0.9 % | compression over the chest at the armhole (z 1.38): a chest dart / canvas |
-| side.L | 490 | 0.3 % | 0.3 % | 0 | flat: a side body is developable |
-| back.L | 1476 | 2.1 % | 42 % | 2.6 % | blade and back neck: a shoulder dart / ease into the shoulder seam |
-| sleeve_top.L | 1106 | 2.4 % | 52 % | 6.3 % | crown stretch (z 1.45) + ripples from the arm's bumps |
-| sleeve_under.L | 631 | 1.4 % | 20 % | 0.9 % | underarm; a flap where the cap's plane meets the web |
-Seams (flat a / b): front+side 475.8 / 475.5, side+back 442.6 / 441.5, shoulder 195.5 / 198.0 (-1.3 %), sleeve seams
-768.8 / 788.9 (-2.6 %), armhole 405 vs cap 450 (+11 %: the domed crown flattens long; s4-31 declares 8.8 %).
-Girth row on the flat (pieces x 2): waist 843 (their 3D 841), hips 890 (893): flattening keeps girths within 0.5 %;
-the rest of the plan (145, 213 mm) is the front opening (the lapel / wrap R2 adds). Chest taken at the underarm
-(z 1.33, crosses the armholes: not comparable). Shares at the waist front / side / back 0.30 / 0.24 / 0.46.
-vs s4-31 (half widths, mm): waist front 128 / 199, side 102 / 125, back 192 / 189; hips 115 / 203, 120 / 118,
-210 / 236. Side and back agree; the front differs by the opening + lap + lapel (s4-31's front runs to CF + lap).
-The today's step-4 gate(B) was NOT run: it needs step 4's edge arcs and declarations; the girth / seam / share rows
-were computed in their own terms (draft_girths' underarm rule, PLAIN_TOL 1 %) on the flat.
-Verdict: drape first gives sane body pieces (the side and back near s4-31's, seams true within 0.3 % except the
-shoulder) and every piece in 3D where it belongs, with no placement and no solve. Not yet a jacket pattern: the
-toile lacks the pad, the lapel / wrap, a smooth sleeve, and the sleeve fore / hind split (taken from D4's split) is
-uneven (top 64 %); the left sleeve's marks did not cut it into two (the right one did: flattened mirrored).
+## R2 (2026-11-16): the jacket's full toile, cut and flattened (spike; /mnt/data/hifipushie/r2: ws, out/, run.sh)
+Code: `spikes/r2_toile.py` (toile), `spikes/r2_flat.py` (cut, flatten, unfold, compare), `spikes/r2_common.py`
+(flatten, one_piece refusal, strip mesh, reference top line). R1's k per level reused (r1/toile/girths.json).
+Toile (out/toile_sheet.png, collar_sheet.png; toile.json):
+- PAD: ellipsoid (55/55/28 mm) smooth-unioned, top at the reference's jacket top line (picture x scaled so the
+  shoulder_w row's point lands on D4's shoulder point, x1.148: the model's shoulders are wider than the picture's).
+  Top line after: 1-8 mm above the reference over x 150-230 mm. Reads padded and square; a slight ledge at the tip.
+- SLEEVES: a tube round a quadratic axis through the arm's section centres (pitch 3 deg forward), radius = section
+  tape / 2pi + R1's 18-22 mm ease, monotone from the wrist up, held at the biceps: smooth, no bumps (round 395 -> 300).
+- SKIRT: below step 0's hips level the seat's section straight down + 5.8 mm flare: hem 1137.2 / plan 1138.8.
+- FRONT: buttoned, lap 20 mm past CF (convention: steps 1-2 give no lap), cutaway below the bottom button from step
+  2's front_edge trace. LAPEL: roll line moved with the closure (break at CF + lap), lapel = toile under step 2's
+  outline lifted 4 mm. Width 56.5 mm vs the reference's 59-63: a touch narrow; the notch barely reads.
+- COLLAR: stand 28 + fall 40 (s4-31's) from the toile's neckline to the gorge. BACK NECK: no closing within 11 cm of
+  the neck, the body cut at D4's neckline: no stand on the back body now.
+- Girths (toile): chest 1097.5 / 1108.2 (-1 %: the tube's web), waist 986.1 / 987.6, hips 1102.1 / 1103.1.
+Cut: every line an exact clip by a scalar (body marks as angle round the torso / shoulder y(x); sleeve by the rule
+fore seam 30 mm in from the arm's front line, hind 20 mm in from its back line). Each piece must be ONE region, else
+REFUSED with the mark named (one_piece): it fired on R1's armhole cut (plane AND radius + 35 mm bit an island out of the
+side body, a hole into the under sleeve); armhole now = the plane alone, the sleeve = the part past it reaching the
+wrist. All 8 pieces one region; body partition 3490.5 / 3490.5 cm2.
+Flat (out/flat_sheet.png beside s4-31, cut_sheet.png; flat.json). Strain mean / area > 2 %:
+front 1.6 / 30 % (66 % stretch at the shoulder by the pad: the pad belongs in its own piece), side 0.4 / 0.5 %,
+back 2.0 / 39 % (blade: a shoulder dart / ease), top sleeve 1.2 / 13 % (crown), under sleeve 0.5 / 0.4 %,
+lapel 0.06 / 0 %, under / top collar 5.5 / 63 % (bad).
+Seams (flat a / b): front+side 531.1 / 532.6, side+back 518.8 / 516.0, shoulder 218.7 / 207.7 (+5.3 %: the pad),
+sleeve seams 924.0 / 926.1, cap 476.9 vs armhole 459.6 (+3.8 %; s4-31 8.8 %). Lapel unfolded by reflection about the
+roll line: hinge 3.7 mm mean (8.6 max), lands across the roll line. Top sleeve 62.7 % at the biceps (D4's split 53.5 %).
+Girths on the flat less 2 laps: waist 990.8 / 987.6, hips 1052.8 / 1103.1 (the cutaway takes the lap there: not -40),
+chest at the underarm (crosses the armholes) 962.8. Shares at the waist front / side / back 0.43 / 0.20 / 0.37.
+vs s4-31 half widths (mm): waist front 221 / 199, side 102 / 125, back 192 / 189; hips 219 / 203, 120 / 116, 208 / 236.
+Bboxes: front+lapel 307 x 724 / 261 x 739, back 279 x 753 / 265 x 724, top sleeve 250 x 535 / 208 x 583.
+Verdict: body and sleeves are cuttable (side, under sleeve, sleeve seams, front/side/back seams true within 0.6 %);
+the front + lapel is a forepart a cutter would recognise but its shoulder is distorted by the pad; the collar is NOT
+cuttable: its fall edge is only 4 % longer than its neck edge in 3D (396 / 380 mm), so it flattens as a straight band
+(388 x 79) with 40 % compression at CB, where s4-31's is a curved 414 x 95.
 
 ## Open faults (ranked)
-1. Toile style: shoulder pad (a style blob at the shoulder point), sleeves as a smooth hull round the arm (bridge
-   the muscle bumps), a straight-hanging skirt below the seat (today it follows the hips).
-2. R2: the front extension to CF + lap, the lapel turned about the roll line, the collar's stand and fall.
-3. Cut robustness: a mark that does not separate a piece must be refused (left sleeve), not mirrored round.
-4. Dart / ease reading as output: compression islands -> darts (front chest, back blade), crown stretch -> cap ease.
+1. Collar: the fall must spread over the shoulders (fall edge ~25 % longer than the neck edge); build the fall from the
+   roll line out to an edge on the toile at the fall's width measured along the surface, not 12 mm past the neckline.
+2. Pad as its own piece (shoulder pad / canvas), not a bump in the shell: the front's shoulder strain and shoulder seam
+   +5.3 % come from it.
+3. Lapel 56.5 mm vs 59-63, notch weak; collar / lapel meeting at the gorge unchecked.
+4. Darts as output: back blade, front chest compression islands; crown stretch -> cap ease.
 
-NEXT: R2 (lapel + collar on the toile, flatten a folded piece about its roll line) with fault 1's toile styling first.
+NEXT: R3 with faults 1-2 first (collar fall width along the surface; pad out of the shell), then steps 4-6 as tools.
