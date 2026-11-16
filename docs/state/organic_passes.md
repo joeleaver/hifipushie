@@ -9,7 +9,9 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
   head small against the body, no clean jaw. /mnt/data/hifipushie/drawing_board/trials/p7, p8 (page, out/, home/).
 - Earlier: p1 teddy bear (no new tools); p2 bean (+ fuse, grab); p3 reads at blockout level (+ look_beside); p4 worse
   (bugs in fuse and grab); p5 clean, teddy ears (bugs fixed); p6 ears fold, duck face, lumps (+ flap, trim, carve).
-- The agent's own whole-figure verdict was right eight times of eight. Runs differ most in how much they grab.
+- p9 (organic-eye: proportions, grab limits; 44 calls): no grab at all, a clean surface, head the dominant mass;
+  ears loop up as arches, a crease at the neck from the front, no hooves made.
+- The agent's own whole-figure verdict was right nine times of nine. Runs differ most in how much they grab.
 
 ## Decisions in force (Joe, 2026-11-14 / 15; each is a memory file too)
 - Model with intent, never by numbers: judged by a critical eye and by intent (an arm is an arm, riggable). Never
@@ -29,10 +31,8 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
   the painting's lines over the model, places as questions, on purpose with a reason, pieces that float.
 
 ## Open faults, by evidence (trials that hit them)
-1. The balance of the masses (p7, p8: a head too small read as "a 1.8 cm strip"): look_beside now reads the
-   proportions (branch organic-eye, e5e1969f): unproven in blind hands. A mass that is missing shows nowhere yet.
-2. Grabs chased the outline and dented the clay (p2, p5, p6, p8). Now no place line names a grab and the tool
-   refuses a small pull (organic-eye): unproven in blind hands.
+1. Proportions (organic-eye): p9 read them and its head and body came within ~2 cm. A missing mass (a jaw) still
+   shows nowhere. 2. Grabs: p9 made none and no dents; one run.
 3. The model can't be put in the painting's pose for the comparison: the arms are recorded on purpose instead.
 4. Relative paths resolve in the server's folder: read_reference (p5, p6, p7), look's and look_beside's save.
 5. Wasted calls: guides (10 of 39 in p7, 14 of 52 in p8), read_reference's patch table, fuse by width topping out.
@@ -55,6 +55,4 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
 - Pictures sent to Joe: workspace/drawing_board/ (p7_vs_p6_vs_p5.png, p7_painting_view.png, earlier sheets).
 - Record index of the older organic routes: memory `organic-from-concept-record`.
 
-NEXT (ask Joe before any agent): a blind run from branch organic-eye (worktree .claude/worktrees/organic-eye, not
-landed) on the same page, to prove the proportion read and the grab limits; then land it (merge main first: another
-session is splitting spec.py and sdf.py); then the same page on a second concept.
+NEXT (ask Joe): land organic-eye (bin/suite); the same page on a second concept; ears that lie down (p9: arches).
