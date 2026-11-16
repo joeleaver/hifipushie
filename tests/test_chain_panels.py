@@ -321,3 +321,15 @@ def test_start_inside_a_body_moved_out_by_panel_numbers_then_contact_keeps_links
     Xf, rep = cs.solve(c, X, body=body)
     assert rep["contact"]["inside"] == 0, rep["contact"]
     assert rep["links"]["worst_pct"] < 2.0, rep["links"]
+
+
+def test_fused_finds_a_piece_closed_on_itself_through_others():
+    """D4 (C488): a node joining two far points of one piece only through another piece is reported; a dart's own
+    pair (sewn to each other) is not."""
+    from hifipushie.chain_seams import fused
+    uv = np.array([[0, 0], [0.2, 0], [1, 0], [0.5, 0.5], [0.52, 0.5]], float)
+    M = {"uv": uv, "piece": np.array([0, 0, 1, 0, 0]), "names": ["front", "sleeve"],
+         "sew": np.array([[0, 2], [1, 2], [3, 4]])}
+    assert fused(M) == [("front", 0, 1, 200.0)]
+    M["sew"] = np.array([[0, 2], [3, 4]])
+    assert fused(M) == []
