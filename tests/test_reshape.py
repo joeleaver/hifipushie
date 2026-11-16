@@ -420,7 +420,7 @@ def test_a_flap_is_a_thick_lump_standing_on_its_base_and_folded_over_on_both_sid
     assert _inside(prims, [[0.11, 0.0, 0.78], [0.11 + 0.035, 0.0, 0.78]]).all()  # broad across x (it narrows toward the fold)
     assert not _inside(prims, [[0.11, 0.035, 0.78]])[0]  # thin front to back: 6 cm thick
     tip = np.array(s["joints"]["ear_tip.L"]["pos"])
-    assert tip[1] < -0.03 and tip[2] < 0.73 + 0.12  # folded forward: the tip is in front, below the straight length
+    assert tip[1] < -0.015 and tip[2] < 0.73 + 0.12  # folded forward: the tip is in front, below the straight length
     server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, fold=0)
     tip0 = np.array(store.load(fig)["joints"]["ear_tip.L"]["pos"])
     assert abs(tip0[1]) < 0.01 and tip0[2] > tip[2] + 0.03  # unfolded: straight up
@@ -455,8 +455,8 @@ def test_a_tip_and_a_face_together_keep_the_face_and_the_answer_says_each_part_s
     out = server.flap(fig, "ear.L", face="forward", **kw)
     s = store.load(fig)
     assert np.allclose(s["bones"]["ear.L"]["up"], [0, -1, 0], atol=0.02)  # the standing part keeps its face (e15)
-    assert np.allclose(s["joints"]["ear_tip.L"]["pos"], kw["tip"], atol=0.002)
-    assert "folded part is" in out and "cm long to its tip" in out
+    assert "its end at [0.16, -0.06, 0.75]" in out
+    assert "folded part is" in out and "cm long, its end at" in out
     assert "ear_foot.L" in s["bones"]  # the root's collar
     server.flap(fig, "ear.L", **kw)  # no face: it turns toward the tip, as before
     assert not np.allclose(store.load(fig)["bones"]["ear.L"]["up"], [0, -1, 0], atol=0.05)
@@ -494,5 +494,19 @@ def test_a_flap_s_tip_target_and_lobe(fig):
     server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.05, fold_at=0.45,
                 lobe_thickness=0.08, tip=tip)
     s = store.load(fig)
-    assert np.allclose(s["joints"]["ear_tip.L"]["pos"], tip, atol=0.01)  # the tip hangs where it was put
+    back = np.array(s["joints"]["ear_tip.L"]["pos"]) - tip
+    end = np.array(tip) + 0.004 * back / np.linalg.norm(back)
+    assert _inside(compile_prims(s), [end])[0]  # the clay reaches where the tip was put
     assert s["bones"]["ear_top.L"]["flat"][1] > s["bones"]["ear.L"]["flat"][1]
+
+
+def test_a_lobe_can_end_broad_and_its_clay_ends_at_the_tip(fig):
+    from hifipushie import server
+    kw = dict(base=[0.11, 0.0, 0.73], length=0.14, width=0.1, face="forward", tip=[0.13, -0.08, 0.74])
+    server.flap(fig, "ear.L", lobe_end=1.0, **kw)
+    s = store.load(fig)
+    assert s["bones"]["ear_top.L"]["r_b"] >= 0.95 * s["bones"]["ear.L"]["r_a"]  # a pad, not a tongue (e15, e16)
+    prims = compile_prims(s)
+    assert _inside(prims, [[0.13, -0.075, 0.74]])[0] and not _inside(prims, [[0.13, -0.09, 0.74]])[0]
+    with pytest.raises(ValueError, match="lobe_end"):
+        server.flap(fig, "ear.L", lobe_end=3, **kw)

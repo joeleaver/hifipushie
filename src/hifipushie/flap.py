@@ -27,13 +27,17 @@ def parts(mass: str) -> tuple[str, dict, str]:
 
 
 def lump(mass: str, base, rise, face, length: float, width: float, thickness: float, fold_at: float, fold: float,
-         pointed: float, lobe_thickness: float | None = None, tip=None, flare: float = 0.0) -> dict:
+         pointed: float, lobe_thickness: float | None = None, tip=None, flare: float = 0.0,
+         lobe_end: float | None = None) -> dict:
     """{"joints", "bones", "face", "rise", "hinge", "tip"} (world positions) for the module's flap.
     lobe_thickness: the folded part's own thickness (a pig's ear: a fat rolled lobe on a thinner stalk).
     tip: [x, y, z] where the tip should hang: the fold's direction, angle and the folded part's length follow from
     it (fold is then ignored). face None with a tip: the broad face turns toward the tip (the fold bends square to
     it); face given with a tip: the standing part keeps that face and the fold leans off it toward the tip (e15
     could not have both: an ear broad from the front whose tip hangs forward AND out).
+    lobe_end: the folded part's width at its end, as a part of the base width (None: it narrows by `pointed`); 0.8
+    to 1.2 makes a broad rolled pad, round at its end, not a paddle (e15 and e16 could make only a tapering tongue).
+    The clay ends at the tip: the end's round cap is inside the length, not past it.
     flare: metres the root swells into what it grows from, a soft collar of clay round its foot (0 none): a clay
     ear's root is smoothed into the head, not stuck on as a stalk (e15).
     (Blind runs e9 to e12 asked for both. They also asked for a base broad from the side, a wedge: that was a
@@ -67,7 +71,7 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
     flat = [1.0, float(thickness) / float(width)]
     flat2 = [1.0, (float(lobe_thickness) / float(width)) if lobe_thickness else 0.75 * flat[1]]
     rf = ra * (1 - 0.45 * pointed)
-    rt = max(ra * (1 - 0.9 * pointed), 0.15 * ra)
+    rt = float(lobe_end) * ra if lobe_end is not None else max(ra * (1 - 0.9 * pointed), 0.15 * ra)
     root = np.asarray(base, float) - SINK * ra * flat[1] * R
     if tip is not None:
         D = D0  # the folded part goes where the tip was put
@@ -77,7 +81,8 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
     else:
         D = np.cos(th) * R + np.sin(th) * F  # the folded part's direction
         up2 = -np.sin(th) * R + np.cos(th) * F  # its thickness direction, turned with it
-    tip = hinge + max(L2, 1.2 * rt) * D
+    end = hinge + L2 * D  # where the clay ends
+    tip = hinge + max(L2 - rt, 0.35 * L2) * D  # the end joint: its round cap reaches the end
     # a round cone's end cap is not flattened: it stands rf past its joint along the bone, and two of them met at the
     # fold as a ball. Each part ends short of the fold by what its cap overshoots the clay's own thickness there.
     end1, start2 = hinge - (1 - flat[1]) * rf * R, hinge + (1 - flat2[1]) * rf * D
@@ -100,5 +105,5 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
                                        "r_b": round(0.85 * ra, 4), "flat": [1.0, min(1.0, 1.15 * flat[1])],
                                        "up": r3(F), "blend": round(float(flare), 4)}
     return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip, "toward": D,
-            "fold": float(fold), "lengths": (float(np.linalg.norm(hinge - np.asarray(base, float))),
-                                             float(np.linalg.norm(tip - hinge)))}
+            "fold": float(fold), "end": end, "lengths": (float(np.linalg.norm(hinge - np.asarray(base, float))),
+                                                         float(np.linalg.norm(end - hinge)))}
