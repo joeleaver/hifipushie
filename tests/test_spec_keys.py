@@ -65,10 +65,12 @@ def test_a_hollow_or_chipped_bone_is_a_bone():
 
 
 def test_every_key_the_compile_reads_off_any_element_is_in_both_lists():
-    """spec.py reads these off `el` whatever the element is (bone or blob): a key missing from either list refuses a
-    spec the compile would have built. (The lists were first read off the saved specs: no saved bone was hollow.)"""
+    """The compile (spec.py and the modules split off it) reads these off `el` whatever the element is (bone or blob):
+    a key missing from either list refuses a spec the compile would have built. (The lists were first read off the
+    saved specs: no saved bone was hollow.)"""
     import re
-    src = (ROOT / "src/hifipushie/spec.py").read_text()
+    from hifipushie import moved
+    src = "".join((ROOT / "src/hifipushie" / f).read_text() for f in moved.files("spec"))
     keys = set(re.findall(r'\bel\.get\("(\w+)"', src)) | set(re.findall(r'\bel\["(\w+)"\]', src))
     assert {"hollow", "chips", "lumpy", "targets", "local"} <= keys
     assert keys <= set(spec_keys.BONE_KEYS) and keys <= set(spec_keys.BLOB_KEYS), keys - set(spec_keys.BONE_KEYS) & set(spec_keys.BLOB_KEYS)
