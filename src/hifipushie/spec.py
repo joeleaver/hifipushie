@@ -318,7 +318,7 @@ def _compile(spec: dict) -> list[Prim]:
                                "bend": bend, "lip": lip},
                               reach=lip * max(W, L) / T))  # a thin sheet under-reports distance off its edge
             continue
-        if bl.get("shape") == "collar":  # a folded shirt collar round a neck (sdf.sd_collar)
+        if bl.get("shape") == "collar":  # a folded shirt collar round a neck (sdf_shapes.sd_collar)
             rx, ry, hs = (float(v) for v in size)
             cp = {"c": c, "rot": rot, "rx": rx, "ry": ry, "stand": hs, "t": float(bl.get("thickness", 0.0025)),
                   "lean": float(bl.get("lean", 0.004)), "fall": float(bl.get("fall", 0.035)),
@@ -330,7 +330,7 @@ def _compile(spec: dict) -> list[Prim]:
             prims.append(Prim(name, "collar", bl.get("op", "add"), k, int(bl.get("layer", 0)), c - ext, c + ext,
                               cp, reach=4.0))
             continue
-        if bl.get("shape") == "sweep":  # a profile swept along a path (sdf.sd_sweep): collars, plackets, necklines
+        if bl.get("shape") == "sweep":  # a profile swept along a path (sdf_shapes.sd_sweep): collars, plackets, necklines
             prims.append(_sweep(name, bl, k))
             continue
         if bl.get("shape") == "super":
@@ -590,7 +590,7 @@ def _grabs(s: dict, prims: list[Prim]) -> list[Prim]:
                 prev = p.params.get("warp") if p.kind == "csg" else None
                 sets.setdefault((id(prev[0]) if prev else 0, hit), []).append(i)
     from .deform import GRAB_AXES
-    from .sdf import SDF
+    from .sdf_shapes import SDF
     for op, of in eff:  # each grab's depth: the middle of its clay on its view's ray through `at`
         mine_p = [p for p in prims if p.name in of and p.instance is None and p.op in ("add", "subtract", "intersect")
                   and p.kind in SHAPES]

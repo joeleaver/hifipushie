@@ -219,7 +219,7 @@ def _seg_d(P, a, b, ra, rb):
 def field(P: np.ndarray, h: dict, parts: tuple | None = None, rail: bool = True, with_part: bool = False):
     """Distance from points to the hanger (and rail): negative inside. with_part: also the nearest part's name per
     point."""
-    from .sdf import smin
+    from .sdf_shapes import smin
     P = np.atleast_2d(np.asarray(P, float))
     D, names = [], []
     for a, b, ra, rb, p in h["segments"]:

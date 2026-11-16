@@ -13,7 +13,7 @@ spec["style"]["shape"]["deform"] = [op, ...], applied in order, each {"<kind>": 
   twist:  {"center": [x, y], "deg": per m, "from": z0}  turn about a vertical line with height above z0
   wobble: {"amount": m, "scale": m, "seed": n}  a smooth displacement a few `scale`s across (a hand-drawn line)
 
-How it works (sdf.sd_csg): every primitive of the building (not prefab instances: they stay rigid and move with
+How it works (sdf_shapes.sd_csg): every primitive of the building (not prefab instances: they stay rigid and move with
 the ground under them, so instances still share one mesh) is evaluated at the undeformed point, found by
 inverting p = x + D(x) with fixed-point steps, and its field divided by the deformation's stretch (`lip`) so
 the field never over-estimates the distance (the narrow-band mesher relies on that). A grab (kind "grab",

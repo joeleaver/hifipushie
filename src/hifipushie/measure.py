@@ -465,7 +465,7 @@ def check_doorways(spec: dict, height: float = 1.8, radius: float = 0.25) -> lis
                     continue
                 if np.any(p.hi < pts.min(0) - radius) or np.any(p.lo > pts.max(0) + radius):
                     continue
-                from .sdf import SDF
+                from .sdf_shapes import SDF
                 if p.kind not in SDF:
                     continue
                 dmin = float(SDF[p.kind](pts, p.params).min())
@@ -485,7 +485,7 @@ def prop_clashes(spec: dict, voxel: float = 0.015, tol: float = 0.008) -> list[s
     things (a window or door frame in its wall: prefabs.<p>.embed = true) isn't checked, and parts that give
     (parts.<p>.soft = true: rugs, bedding, cushions) aren't clashed into."""
     from .assemble_expand import placements
-    from .sdf import SDF
+    from .sdf_shapes import SDF
     prims = compile_prims(spec)
     pls = placements(spec)
     embed = {inst for inst, pl in pls.items() if ((spec.get("prefabs") or {}).get(pl["use"]) or {}).get("embed")}
@@ -551,13 +551,13 @@ def _blocked(prims, eyes: np.ndarray, target: np.ndarray, samples: int = 400):
 
 
 def _element_at(prims, p: np.ndarray) -> str:
-    from . import sdf
+    from . import sdf_shapes
     best, name = np.inf, "?"
     for q in prims:
-        if q.op != "add" or q.kind not in sdf.SDF:
+        if q.op != "add" or q.kind not in sdf_shapes.SDF:
             continue
         try:
-            d = float(sdf.SDF[q.kind](p[None], q.params)[0])
+            d = float(sdf_shapes.SDF[q.kind](p[None], q.params)[0])
         except Exception:  # noqa: BLE001 - a kind needing context (a shell's base): skip
             continue
         if d < best:

@@ -217,7 +217,7 @@ def _pair(prims, a: str, b: str):
 
 
 def _field(pa, pb, pts, fill: float, sides=None):
-    from .sdf import SDF, sides_mul, smin, smin_var
+    from .sdf_shapes import SDF, sides_mul, smin, smin_var
     da = np.min([SDF[p.kind](pts, p.params) for p in pa], 0)
     db = np.min([SDF[p.kind](pts, p.params) for p in pb], 0)
     return smin(da, db, fill) if sides is None else smin_var(da, db, fill * sides_mul(sides, pts))

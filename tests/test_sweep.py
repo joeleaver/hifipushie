@@ -1,4 +1,4 @@
-"""The sweep blob (sdf.sd_sweep): a band along a straight path is a rounded box; mirror makes both sides; a collar
+"""The sweep blob (sdf_shapes.sd_sweep): a band along a straight path is a rounded box; mirror makes both sides; a collar
 profile has its stand and fall where the numbers put them.
 
 Run: uv run python tests/test_sweep.py   (or pytest)."""
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from hifipushie import sdf
+from hifipushie import sdf_shapes
 from hifipushie.spec import _sweep
 
 
@@ -23,8 +23,8 @@ def test_band_is_a_box():
     box = {"c": np.array([0.0, -0.002, 0.05]), "size": np.array([0.01, 0.002, 0.05]), "rot": np.eye(3), "round": 0.0}
     rng = np.random.default_rng(1)
     q = rng.uniform([-0.03, -0.03, -0.02], [0.03, 0.03, 0.12], (2000, 3))
-    a = sdf.sd_sweep(q, p.params)
-    b = sdf.sd_box(q, box)
+    a = sdf_shapes.sd_sweep(q, p.params)
+    b = sdf_shapes.sd_box(q, box)
     assert np.abs(a - b).max() < 1e-9, np.abs(a - b).max()
 
 
@@ -32,7 +32,7 @@ def test_mirror():
     path = [[0.02, 0.0, 0.0], [0.02, 0.0, 0.1]]
     p = _band(path=path, mirror=True)  # a path off the mirror plane: both ends capped
     q = np.array([[0.02, -0.002, 0.05], [-0.02, -0.002, 0.05], [0.0, -0.002, 0.05]])
-    d = sdf.sd_sweep(q, p.params)
+    d = sdf_shapes.sd_sweep(q, p.params)
     assert d[0] < 0 and d[1] < 0 and d[2] > 0, d
     assert p.lo[0] < -0.02 and p.hi[0] > 0.02
 
@@ -47,7 +47,7 @@ def test_collar_profile():
                   [0, -0.0025, 0.015],  # in the fall, in front of it
                   [0, -0.0025, -0.004], # the fall reaches below the neckline
                   [0, -0.008, 0.015]])  # outside both
-    d = sdf.sd_sweep(q, p.params)
+    d = sdf_shapes.sd_sweep(q, p.params)
     assert d[0] < 0 and d[1] < 0 and d[2] < 0 and d[3] > 0, d
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from . import assemble, render, sdf, store
+from . import sdf_shapes
 from . import assemble_expand
 from . import asset_split
 from .spec import SpecError
@@ -152,7 +153,7 @@ def _clash_at(P, depth_own, rest, tol: float, shift=np.zeros(3), names: bool = T
         return [(float(depth.max()), None)] if len(deep) else []
     out = {}
     for i in deep[np.argsort(depth[deep])[-300:]]:  # name each clash by the other element nearest the point
-        el = min(near, key=lambda p: float(sdf.SDF[p.kind](Q[i:i + 1], p.params)[0]))
+        el = min(near, key=lambda p: float(sdf_shapes.SDF[p.kind](Q[i:i + 1], p.params)[0]))
         out[el.name] = max(out.get(el.name, 0.0), float(depth[i]))
     return sorted(((d, n) for n, d in out.items()), reverse=True)
 

@@ -5,7 +5,8 @@ import math
 
 import numpy as np
 
-from . import sdf, veg_mesh
+from . import veg_mesh
+from . import sdf_shapes
 from . import vegetation_kernels, vegetation_tree
 
 # ---------------------------------------------------------------- wood: the limbs that are drawn
@@ -280,7 +281,7 @@ def wood_field(segs: list, p: np.ndarray, blend: float, node: bool = False):
             da = np.where(better, di, da)
             na = np.where(better, nodes[i], na)
         nn[m] = np.where(da < d[m], na, nn[m])
-        d[m] = sdf.smin(d[m], da, k)
+        d[m] = sdf_shapes.smin(d[m], da, k)
     return (d, nn) if node else d
 
 

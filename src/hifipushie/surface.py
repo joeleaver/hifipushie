@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import sdf
+from . import sdf_shapes
 
 FIELD_INPUTS = ("ao", "curvature", "thickness", "sky")
 INPUTS_VERSION = 4  # bump when how any input is measured changes: the scene's cached inputs are redone
@@ -230,7 +231,7 @@ def grain(streams: dict, X: np.ndarray, part: np.ndarray, names: list, voxel: fl
             if wp is not None:  # a deformed model: the element's own shape is where the point was before bending
                 from .deform import undeform
                 Pn = undeform(wp[0], Pn)
-            d = np.abs(sdf.SDF[kind](Pn, pr))  # the element's own shape: cuts and noise don't move its axis
+            d = np.abs(sdf_shapes.SDF[kind](Pn, pr))  # the element's own shape: cuts and noise don't move its axis
             win = d < best[near]
             if not win.any():
                 continue
