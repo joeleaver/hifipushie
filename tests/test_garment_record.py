@@ -91,7 +91,7 @@ def test_tool_answer_and_sheet(home):
     from hifipushie import server
     _upto(home, "m", "shirt", "4")
     txt = server.garment_record("m", "shirt")
-    assert "  4 toile     done" in txt and "step 5 (mark)" in txt and "next: no tool writes step 5 (mark) yet" in txt
+    assert "  4 toile     done" in txt and "step 5 (mark)" in txt and "garment_mark" in txt.split("next:")[-1]
     look = home / "look.png"
     Image.new("RGB", (50, 50), (40, 200, 40)).save(look)
     gr.attach_look("m", "shirt", "4", [look])
@@ -100,7 +100,8 @@ def test_tool_answer_and_sheet(home):
     assert p.exists() and "sheet:" in ims[-1] and Image.open(p).size[0] > 360
 
 
-def test_chain_worker_writes_steps_5_6_8(home, monkeypatch):
+def test_chain_worker_writes_only_step_8(home, monkeypatch):
+    """(R3b, C493: steps 5 / 6 are garment_mark / garment_cut; the chain build writes the hang only)"""
     from hifipushie import chain_garment as cg, resources
     _upto(home, "m", "shirt", "4")
     monkeypatch.setattr(resources, "heavy", lambda *a, **k: contextlib.nullcontext())
@@ -109,15 +110,13 @@ def test_chain_worker_writes_steps_5_6_8(home, monkeypatch):
         raise cg.ChainRefused("front.L 3 % off its cut")
     monkeypatch.setattr(cg, "load_garment", refuse)
     cg.worker("m", "shirt", {"state": "closed"})
-    st = gr.load("m", "shirt")["steps"]["5"]
-    assert st["status"] == "failed" and "3 %" in st["output"]["refused"]
+    assert gr.load("m", "shirt")["steps"]["5"]["status"] == "todo"
     d = cg.job_dir("m", "shirt", "closed")
     (d / "final.pkl").write_bytes(b"x")
-    gr.from_chain("m", "shirt", "closed", d, {"stage": "done", "structure": {"verdict": "PASS", "rows": [{"id": "a", "status": "PASS"}]}})
-    s = gr.states(gr.load("m", "shirt"))
-    assert s["5"]["ready"] and s["6"]["ready"] and s["8"]["status"] == "todo"  # (8 refused: steps 7, 7a not ready)
     msg = gr.from_chain("m", "shirt", "closed", d, {"stage": "done", "structure": {"verdict": "PASS", "rows": []}})
-    assert "step 8 (sim) refused: step 7a (presim)" in msg
+    s = gr.states(gr.load("m", "shirt"))
+    assert s["5"]["status"] == "todo" and s["6"]["status"] == "todo" and s["8"]["status"] == "todo"
+    assert "step 8 (sim) refused" in msg
 
 
 def test_look_chain_writes_step9(home, monkeypatch):
