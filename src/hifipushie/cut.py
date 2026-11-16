@@ -13,7 +13,11 @@ own edge: hem, neckline, opening, sleeve end) is named by THE DECLARATION:
          more up than across, else "top" / "bottom" by its height against the piece's middle; neighbouring segments of
          one edge's classes are one run; runs under FREE_MERGE_MM join their neighbours. ".L" pieces' maps serve their
          ".R" mirror. A free run no edge takes, or an edge in two runs, is refused by name (row cut_flatten).
-  ease   {"piece:edge": [lo, hi]}: a seam with a declared ease (a sleeve cap), else +-1 % (draft_own.PLAIN_TOL).
+  ease   {"piece:edge": [lo, hi]}: a seam with a declared ease (a sleeve cap) is left as cut (never trued) and held to
+         its band; else trued, +-1 % (draft_own.PLAIN_TOL). ".L" entries serve ".R".
+  folds  {piece: {fold name: edge}}: a planned fold (step 2's sleeve hem) along a cut edge: a press fold (cut_tapes.py).
+TAPES and PLACE: each piece names the step-3 tapes it lies on and its place (torso front / back / side, a limb), read
+off the toile where it was cut (cut_tapes.py): never declared.
 MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked pieces are flattened, in this order:
   flaps  {toile part: {"onto", "fold", "edges"}}: a turned flap (a lapel) unfolded across its roll edge onto its piece
          (cut_flap.py); the roll becomes a fold of the flat.
