@@ -146,9 +146,10 @@ def test_a_move_keeps_every_girth_the_armhole_the_other_seams_and_takes_the_canv
                             stops)
     assert abs(L("front.L:side") - L("back.L:side")) < 1e-4, rec  # (the moved seam sews)
     dg = np.abs(girth() - g0)
-    assert dg[levels < 0.415].max() < 1e-6 and dg.max() < 2e-3, np.round(1000 * (girth() - g0), 1)  # (what the back
+    assert dg[levels < 0.415].max() < 1e-4 and dg.max() < 2e-3, np.round(1000 * (girth() - g0), 1)  # (what the back
     # gains at a level the front loses there: moved along each piece's normal, the bent top moved up as much as across,
-    # s4-29 chest +49; the last 2 cm under the end: the run on to where the end slid along the armhole)
+    # s4-29 chest +49; the last 2 cm under the end: the run on to where the end slid along the armhole; 0.1 mm: the
+    # slide blended down the seam moves its points along it too, F6b)
     assert abs(L("front.L:arm") + L("back.L:arm") - arm0) < 5e-4, 1000 * (L("front.L:arm") + L("back.L:arm") - arm0)
     assert abs(L("back.L:centre") / L("c.L:edge") - other0) < 1e-4  # (the moved piece's other seam keeps its ease)
     assert np.abs(np.asarray(pcs["c.L"]["P"]) - P0["c.L"]).max() < 1e-9  # (a neighbour drafted in the front's frame
@@ -256,11 +257,11 @@ def _u_body():
     Bk = up(0.30)[::-1] + [(0.55, 0.0), (0.55, 0.62), (0.45, 0.62)] + arc(1.2, tb, 40)[:-1]
     pcs = {"front.L": (F, {"cf": 0, "hem": 1, "pit": 30, "sh": 69, "top": 71}),
            "side.L": (S, {"ftop": 0, "fhem": 29, "bhem": 30, "btop": 59}),
-           "back.L": (Bk, {"btop": 0, "bhem": 29, "cb": 30, "cbTop": 31, "sh": 32, "pit": 71})}
+           "back.L": (Bk, {"btop": 0, "bhem": 29, "cb": 30, "cbTop": 31, "sh": 32})}
     pcs = {k: {"name": k, "P": np.asarray(P, float), "names": n, "wrap": {"to": "torso"}} for k, (P, n) in pcs.items()}
     arcs = {"front.L": {"side": "hem>pit", "arm": "pit>sh"}, "side.L": {"front": "fhem>ftop", "back": "bhem>btop",
                                                                       "arm": "ftop>btop"},
-            "back.L": {"side": "bhem>btop", "arm": "sh>pit"}}
+            "back.L": {"side": "bhem>btop", "arm": "sh>btop"}}
     ix = lambda e: pattern.arc_indices(pcs[e.split(":")[0]], arcs[e.split(":")[0]][e.split(":", 1)[1]])
     stops = {p: {pattern.index_of(pcs[p], n) for s in a.values() for n in (s.split(">")[0], s.split(">")[-1])}
              for p, a in arcs.items()}
@@ -279,7 +280,9 @@ def test_a_side_body_widened_70mm_at_the_underarm_re_splits_the_armhole(monkeypa
     pcs, ix, stops, seams = _u_body()
     L = lambda e: pattern.length(np.asarray(pcs[e.split(":")[0]]["P"])[ix(e)])
     arms = ("front.L:arm", "side.L:arm", "back.L:arm")
-    arm0, turn0 = sum(L(e) for e in arms), _turn(np.asarray(pcs["front.L"]["P"])[ix("front.L:arm")]).max()
+    arm0 = sum(L(e) for e in arms)
+    turn0 = max(_turn(np.asarray(pcs[e.split(":")[0]]["P"])[ix(e)]).max() for e in arms)  # (the armhole's own
+    # turn per point, at its coarsest sampling)
     ys = {"chest": 0.40, "waist": 0.25, "hips": 0.05}
     girth = lambda y: sum(dg.width(np.asarray(pcs[p]["P"], float), np.array([0.0, y]), np.array([1.0, 0.0]))[0]
                           for p in ("front.L", "side.L", "back.L"))

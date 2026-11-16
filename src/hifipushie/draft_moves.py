@@ -12,15 +12,19 @@ a garment.
 
 FORM: moves [{"seam": ["pieceA:edge", "pieceB:edge"] (two declared edges sewn to each other), "at": [[mm along A's edge
   from its start, mm the seam moves toward B], ...], "why"?}]. A grows, B shrinks (a negative mm: the other way). Between
-  the listed points the move is linear; past the first / last it holds (list [0, 0] and [A's length, 0] to taper it out).
-  A ".L" move brings its ".R" twin unless that is declared too.
-HOW (`apply`): each point of both edges moves along its piece's normal by the move at its share of the edge (A outward,
-  B inward). At an end that moves, the piece giving up width is trimmed along the edge beyond (the armhole, the hem)
-  and the piece gaining it takes that strip of the edge on beyond its own end (the armhole runs on as one line; what one
-  loses the other gains), that edge's points respaced over max(3 x the strip, SPREAD), none added. Then B's end that
-  crosses it squarest (the hem, not the armhole: the cap's ease stays) is lengthened or shortened along the seam until
-  the two edges are one length (with the seam's declared ease: its range's middle), so the seam sews, and a seam drafted
-  off its length is trued by the same entry. A piece drawn on a re-cut piece's points (canvas, facing) moves with it. The re-cut is recorded in the block's `moves` (what moved, both lengths after).
+  the listed points the move is one smooth curve through them (PCHIP, no overshoot); past the first / last it holds
+  (list [0, 0] and [A's length, 0] to taper it out). A ".L" move brings its ".R" twin unless that is declared too.
+HOW (`apply`): each point of both edges moves across the levels (_axis) by the move at its share of the edge (A out,
+  B in), so every level keeps its girth. An end that moves lies on another edge of both pieces (the armhole, a
+  neckline, the hem): it SLIDES ALONG that edge, as a pattern maker re-splits an armhole (F6, s4-30: jaeger's 48 mm
+  side body). The giver loses the run of that curve, measured along it; the gainer takes the same run (the same
+  points, inserted beyond its end), so the curve's total over both pieces stays (the sleeve's cap ease with it).
+  Where the curve can't give the end's move across, the seam leans down from the new end at most 1 in LEAN (_lean,
+  a smooth min); the slide past the levels is blended down each seam over BLEND x its length (_blend: no corner).
+  Then B's end that crosses it squarest (the hem, not the armhole) is lengthened or shortened along the seam until
+  the two edges are one length (with the seam's declared ease: its range's middle), so the seam sews, and a seam
+  drafted off its length is trued by the same entry. A piece drawn on a re-cut piece's points (canvas, facing) moves
+  with it. The re-cut is recorded in the block's `moves` (what moved, both lengths after).
 `crossing` / `entry` give the declaration the panels row's FAIL names, so the agent's next call is the fix.
 """
 from __future__ import annotations
@@ -28,6 +32,8 @@ from __future__ import annotations
 import numpy as np
 
 SPREAD = 0.03  # m: the least run of the edge beyond a moved end that eases the slide
+BLEND = 3.0  # a seam's run-on to its slid end is blended into the seam below over this x its length (_blend)
+SOFT = 0.01  # m: the lean's cap meets the levels' profile in a smooth min this wide (_lean)
 LEAN = 3.0  # a seam under an end its curve can't take as far across leans at most 1 in this (_lean)
 EXACT = 1e-5  # m: a point of another piece this near a host's point is drawn from it (FreeSewing copies points exactly;
 # t s4-29: the back, drafted in the front's frame, lay 0.2-0.5 mm off three of its points and was dragged as a follower)
@@ -179,11 +185,14 @@ def _profile(prof: np.ndarray, t) -> np.ndarray:
 def _lean(prof: np.ndarray, LA0: float, end: int, e: float, s: float) -> np.ndarray:
     """The profile near an end that can give only e m across (_reach): each point's move at most e + (its distance
     from the end + the slide s) / LEAN, so the seam leans from its new end down to the levels at most 1 in LEAN, never
-    hooks (t s4-30: a seam moved 33 mm a level 13 mm under an end that kept its place hooked the side body's top)."""
+    hooks (t s4-30: a seam moved 33 mm a level 13 mm under an end that kept its place hooked the side body's top);
+    the cap met smoothly (SOFT)."""
     t = np.union1d(np.linspace(0.0, LA0, max(int(LA0 / 0.002), 2) + 1), prof[:, 0][(prof[:, 0] >= 0) & (prof[:, 0] <= LA0)])
     v = _profile(prof, t)
     cap = e + (np.abs(t - (0.0 if end == 0 else LA0)) + s) / LEAN
-    return np.stack([t, np.sign(v) * np.minimum(np.abs(v), cap)], axis=1)
+    a = np.abs(v)  # (a smooth min, never above either: a hard one left a corner where the lean met the levels, F6b)
+    m = np.maximum(0.5 * (a + cap - np.sqrt((a - cap) ** 2 + SOFT ** 2)), 0.0)
+    return np.stack([t, np.sign(v) * m], axis=1)
 
 
 def _at(Q: np.ndarray, s: float) -> tuple:
@@ -194,9 +203,17 @@ def _at(Q: np.ndarray, s: float) -> tuple:
     return k, Q[k] + f * (Q[k + 1] - Q[k])
 
 
-def _between(Pt: np.ndarray, Q: np.ndarray, m: int) -> np.ndarray:
-    """m points evenly on the line from Pt to Q, both left out."""
-    return Pt + np.outer(np.arange(1, m + 1) / (m + 1), Q - Pt) if m > 0 else np.zeros((0, 2))
+def _blend(P: np.ndarray, O: np.ndarray, ix: list, end: int, extra: np.ndarray, D: float) -> None:
+    """The seam's points within D of its end (by its old arcs) take the end's slide past the levels (`extra`: where it
+    slid along its curve less where the levels put it) in part, all of it at the end, none at D (a smoothstep), so the
+    seam bends into its new end as one line. Run on in a straight line, each seam kept a corner where the line met the
+    moved levels (t s4-30: the back's side seam top, the side body's back seam, F6b). Both pieces take the same slide
+    in their own frames (the run the gainer takes is the giver's, mapped), so what one gives at a level the other takes."""
+    E = list(ix) if end == 0 else list(ix)[::-1]
+    L = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(O[E], axis=0), axis=1))])
+    x = np.clip(L / max(D, 1e-12), 0.0, 1.0)
+    w = 1.0 - x * x * (3.0 - 2.0 * x)
+    P[E[1:]] += np.outer(w[1:], extra)
 
 
 def _insert(pc: dict, a: int, b: int, pts: np.ndarray, idmap: np.ndarray) -> None:
@@ -253,19 +270,18 @@ def _ends(sA: tuple, sB: tuple, v: float, end: int, adds: list) -> None:
         raise Refused("is shorter than the run the end slides along it")
     new = _resample(np.vstack([X, keep]), len(rs) + 1)
     E = Os[is_]
-    gap = float(np.median(np.linalg.norm(np.diff(E, axis=0), axis=1))) or SPREAD
-    nb = is_[1] if end == 0 else is_[-2]  # (the seam's point next to its end)
-    m = int(np.linalg.norm(new[0] - Ps[nb]) / gap)
+    xs = new[0] - Ps[is_[end]]  # (the giver's end: its slide past where the levels put it)
+    D = min(max(BLEND * float(np.linalg.norm(xs)), SPREAD), 0.5 * _len(E))
     Ps[is_[end]] = new[0]
     Ps[rs] = new[1:]
-    adds.append((ps, is_[end], nb, _between(new[0], Ps[nb], m)))
+    _blend(Ps, Os, is_, end, xs, D)
     rel = strip - Cs  # (the run in the gaining piece's frame: along its seam, out past it)
     mapped = Cg + np.outer(rel @ ts, tg) + np.outer(-(rel @ ns), ng)
     step = _frame(Og, ig, end)[0]
-    nb = ig[1] if end == 0 else ig[-2]
+    xg = mapped[-1] - Pg[ig[end]]
     Pg[ig[end]] = mapped[-1]
     adds.append((pg, ig[end], (ig[end] + step) % len(Og), mapped[::-1][1:]))
-    adds.append((pg, ig[end], nb, _between(mapped[-1], Pg[nb], int(np.linalg.norm(mapped[-1] - Pg[nb]) / gap))))
+    _blend(Pg, Og, ig, end, xg, D)
 
 
 def _recut(pa: dict, ia: list, pb: dict, ib: list, prof: np.ndarray, LA0: float, stops: tuple) -> dict:
