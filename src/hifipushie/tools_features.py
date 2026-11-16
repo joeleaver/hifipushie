@@ -244,6 +244,32 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
 
 
 @mcp.tool(structured_output=False)
+def study_part(name: str, what: str, at: list[float], size: float = 0.08):
+    """Study ONE part of the reference before you model it (an ear, a snout, a horn): the same part cut from every
+    reference picture (each flat view and the painting), one large picture each, and the order to read it in.
+    what: the part in plain words ("the left ear"); at: [x, y, z], its middle in metres (read off read_reference's or
+    look_beside's rulers; it need not exist in the model yet); size: half the box's side, m (the part and a little
+    of what it grows from). Why the order: where one part hides another in a view (a folded lobe in front of an
+    ear's root, seen from the side), the outline reads as one broad shape, and plain looking got it wrong every time
+    in blind trials; reading each view alone, naming what hides what and taking each size only from a view where
+    nothing is in front of it got it right. Seconds. Details: guide(topic="study_part")."""
+    from . import study
+    from .tool_common import _png
+    if not (isinstance(at, (list, tuple)) and len(at) == 3):
+        raise ValueError("at is the part's middle [x, y, z] in metres (x, z in the front view; y, z in the side view)")
+    if not 0.005 <= float(size) <= 1.0:
+        raise ValueError("size is half the box's side in metres: the part and a little round it (e.g. 0.06)")
+    got = study.crops(name, at, float(size))
+    if not got:
+        raise ValueError(f"the box {at} +- {size} m falls outside every reference picture: check at against the "
+                         "rulers (look_beside shows them), and that read_reference has been run")
+    lines = [f"{what}: {len(got)} pictures, one each: " + "; ".join(c for c, _, _ in got) + ".", "", study.order(what),
+             "", f"next: once step 5 is written, model {what}; then look_beside with focus on its masses, and "
+             f"review_part for a fresh reviewer's eyes."]
+    return [*[_png(p) for _, p, _ in got], "\n".join(lines)]
+
+
+@mcp.tool(structured_output=False)
 def review_part(name: str, masses: list[str], region: str, context: str = "a game character: a concept painting "
                 "and a clay blockout of it, seen from the same camera"):
     """A fresh pair of eyes on ONE part of the model: the part rendered in clay through the concept painting's own

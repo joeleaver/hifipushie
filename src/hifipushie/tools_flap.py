@@ -42,7 +42,8 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     the top 40 % folds over, round a knuckle). lobe_thickness: the folded part's own thickness (a fat rolled lobe);
     tip: [x, y, z] where the tip should hang: the fold's direction, angle and length follow from it
     (face and fold are then not used). A name ending ".L" is made on
-    the left (+x) and mirrored. The same name again replaces it: change ONE thing at a time. Then look_beside with
+    the left (+x) and mirrored. The same name again replaces it: change ONE thing at a time. Read the part first with study_part (where one part hides another, as
+    a fold hides an ear's root from the side, plain looking misreads it). Then look_beside with
     focus=[mass] to see it close up beside the reference. Details: guide(topic="flap")."""
     from . import flap as flapmod
     from .spec import SpecError, mirror_name

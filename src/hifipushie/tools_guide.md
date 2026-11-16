@@ -389,6 +389,18 @@ spec: move, resize or reshape it and the hollow follows. soft: how far the hollo
 back=True makes the cutter clay again. A cutter can't be fused into other masses.
 (In the spec: the cutter carries "op": "subtract" and "targets": [masses].)
 
+### `study_part`
+
+`study_part(name, what, at, size=0.08)`
+
+Before you model a part (an ear, a snout, a horn): the same part cut from every reference picture, each flat view
+and the painting, one large picture each, and an order to read it in, written out step by step: each picture on its
+own, naming what hides what; the part split into sub-forms; each sub-form's size on each axis, read only from a
+picture where nothing is in front of it; a check that the 3D shape makes every outline; only then the part in
+words. at: the part's middle [x, y, z] (read off the rulers; it need not be modelled yet); size: half the box's side.
+Why: where one part hides another in a view (a folded lobe in front of an ear's root, seen from the side), the
+outline reads as one broad shape; looking plainly, every reader in the blind trials got it wrong.
+
 ### `review_part`
 
 `review_part(name, masses, region, context=...)`

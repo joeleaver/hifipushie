@@ -147,7 +147,7 @@ TOOL_GROUPS: dict[str, dict] = {
                           "features as marks on it (the feature map), build the masses from their marks, measure a "
                           "model feature by feature",
                  "subject": "feature features turnaround",
-                 "tools": ["read_reference", "look_beside", "mark_features", "build_masses", "build_forms", "feature_report", "review_part"]},
+                 "tools": ["read_reference", "look_beside", "mark_features", "build_masses", "build_forms", "feature_report", "review_part", "study_part"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",

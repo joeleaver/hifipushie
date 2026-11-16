@@ -205,6 +205,17 @@ def test_focus_cuts_every_view_to_the_named_mass_and_draws_it_large(home):
         beside.compare("fig", focus=["nose"])
 
 
+def test_studying_a_part_cuts_it_from_each_picture_large_and_gives_the_reading_order(home):
+    from hifipushie import server
+    out = server.study_part("fig", "the left ear", [0.13, 0, 0.69], 0.08)
+    import io
+    pic = Image.open(io.BytesIO(out[0].data))
+    assert len(out) == 2 and max(pic.size) >= 560  # one picture (the one view), drawn large
+    assert "hidden in" in out[-1] and "the front view" in out[-1]
+    with pytest.raises(ValueError, match="outside every reference picture"):
+        server.study_part("fig", "the ear", [5, 5, 5], 0.05)
+
+
 def test_a_part_review_needs_the_painting_s_camera(home):
     from hifipushie import server
     with pytest.raises(ValueError, match="fit_concept_camera"):

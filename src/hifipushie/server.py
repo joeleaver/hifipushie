@@ -19,6 +19,7 @@ from .tools_export import (  # noqa: F401
 )
 from .tools_features import (  # noqa: F401
     build_forms, build_masses, feature_report, look_beside, mark_features, read_reference, review_part,
+    study_part,
 )
 from .tools_find import (  # noqa: F401
     call_tool, find_tool, guide,
