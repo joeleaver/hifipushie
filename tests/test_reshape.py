@@ -447,3 +447,12 @@ def test_fold_at_moves_the_knuckle_and_the_answer_says_where_the_folded_part_poi
     high = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
     assert high - low > 0.03  # (a thick lump's knuckle hardly moved: 1 mm for 0.5 -> 0.4, e2)
     assert "folded part points down and forward" in out
+
+
+def test_a_flap_never_replaces_a_mass_that_is_there(fig):
+    from hifipushie import server
+    with pytest.raises(ValueError, match="name of the NEW flap"):
+        server.flap(fig, "head", base=[0.11, 0.0, 0.73], length=0.1, width=0.08)
+    assert store.load(fig)["blobs"]["head"].get("shape") is None
+    server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.1, width=0.08)
+    server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.12, width=0.08)  # (its own name again: replaced)

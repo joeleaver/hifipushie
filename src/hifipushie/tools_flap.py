@@ -62,8 +62,15 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
                          f"no more than the width and the length over 1.2 times the thickness (got {width:g}, {length:g}, {thick:g})")
     if not (0 <= float(pointed) <= 1 and 0.15 <= float(fold_at) <= 0.95 and 0 <= float(fold) <= 180):
         raise ValueError("pointed is 0..1, fold_at 0.15..0.95 (where along its length it folds), fold 0..180 degrees")
-    if mass in (spec.get("blobs") or {}) and (spec["blobs"][mass].get("shape") != "sheet"):
-        raise ValueError(f"{mass!r} is a blob of this model: give the flap another name")
+    # mass is the NEW flap's name: an existing mass that is no flap is refused, never replaced (e4 passed the head's
+    # name for "the mass it grows from" and the head became an ear)
+    stem0, J0, top0 = flapmod.parts(mass)
+    taken = [n for n in (mass, top0) if (n in (spec.get("blobs") or {}) and spec["blobs"][n].get("shape") != "sheet")
+             or (n in (spec.get("bones") or {}) and "flap" not in spec["bones"][n] and n != top0)]
+    taken += [j for j in J0.values() if j in (spec.get("joints") or {}) and not (spec.get("bones") or {}).get(mass, {}).get("flap")]
+    if taken:
+        raise ValueError(f"mass is the name of the NEW flap, and {taken[0]!r} is already part of this model: give the flap a "
+                         "name of its own (e.g. \"ear.L\"); where it grows from is `base`")
     try:
         g = flapmod.lump(mass, b0, R, F, length, width, thick, float(fold_at), float(fold), float(pointed))
     except ValueError as e:
