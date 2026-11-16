@@ -136,9 +136,11 @@ def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], 
     of the masses `of` at the point `at` goes to `to`, and the clay within `radius` of it follows, less the
     further out it is (a ball of clay round where you took hold, not the whole depth of the view), so the surface
     stays smooth and the form stays round. view "front" (points are [x, z]),
-    "side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres, read off look's rulers. Use it wherever an
-    outline is off against the reference: a round end pulled to a point, a cheek out, a face pushed flatter. A grab
-    moves clay by at most half its radius. label names it: the same label replaces it, remove=True takes it off.
+    "side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres, read off look's rulers. Use it where the
+    WHOLE FORM of a mass should lean, swell or flatten in a way its own numbers can't say: a head's corner out, a
+    belly fuller low down. It is a BROAD move: the clay goes at most a fifth of the radius, and the radius is at
+    least 0.3 of the mass (a smaller pull dents the clay: it is refused, with the radius it needs). It is not for an
+    outline's last centimetre: that is the mass's size or place. label names it: the same label replaces it, remove=True takes it off.
     Mirrored on a symmetric model. Details: guide(topic="grab")."""
     spec = store.load(name)
     grabs = dict(spec.get("grabs") or {})
@@ -156,6 +158,12 @@ def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], 
                 i += 1
             label = f"grab{i}"
         g = reshape.check(label, {"of": of, "view": view, "at": at, "to": to, "radius": radius})
+        dep, i, j = reshape.GRAB_AXES[g["view"]]
+        across = {}
+        for p in compile_prims(spec):  # each named mass's smaller size across the view
+            if p.name in of:
+                across[p.name] = max(across.get(p.name, 0.0), float(min(p.hi[i] - p.lo[i], p.hi[j] - p.lo[j])))
+        reshape.broad(label, g, across)
         grabs[label] = {k: g[k] for k in ("of", "view", "at", "to", "radius")}
         d = float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1]))
         ax = {"front": "x, z", "side": "y, z", "top": "x, y"}[view]

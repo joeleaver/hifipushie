@@ -53,7 +53,7 @@ match the description is wrong, however good its numbers.
 | # | Stage | Tools | Gate |
 |---|---|---|---|
 | 1 | Plan | `set_plan` (front / side outlines, landmark heights, 3-4 sections), `set_reference` | Proportions match the description: fix them here, where it costs one edit |
-| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; `look_beside` after every change (the model beside each reference view and, once `fit_concept_camera` has the painting's camera, from the painting's own angle with its outline over the model; the biggest differences); then on the figure itself: `fuse` (two masses that are one form), `grab` (an outline that is off), `flap` (an ear, comb or tongue that folds over), `trim` (a face that should be flat), `carve` (a hollow of a shape: a mouth, a socket) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
+| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; `look_beside` after every change (the model beside each reference view and, once `fit_concept_camera` has the painting's camera, from the painting's own angle with its outline over the model; the biggest differences); then on the figure itself: `fuse` (two masses that are one form), `grab` (a broad move of a whole form), `flap` (an ear, comb or tongue that folds over), `trim` (a face that should be flat), `carve` (a hollow of a shape: a mouth, a socket) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
 | 3 | Secondary forms | strokes (`look(strokes=True)`, `shading="raking"`), `feature_report` | Every FORM of the feature map made; masses read; the silhouette barely moved |
 | 4 | Detail | strokes with repeat / scatter, in close-ups | Details at the right scale, judged in close-ups |
 | 5 | Parts | parts (eyes, teeth, clothing shells), seated joints | Each part its own mesh, nothing cutting into another |
@@ -107,9 +107,10 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 - Two masses that are ONE form in the reference read as two (a neck crease between head and body, a snowman): `fuse`
   them. Don't fill the gap with another blob (it makes a ring, a scarf) and don't raise one mass's `blend` (it rounds
   it against everything).
-- A mass's outline is off against the reference (a round end that should come to a point, a tip that should lean, a
-  face that should be flatter): `grab` the clay there and move it to where the reference has it, in the view that
-  shows it. Don't rebuild the mass from new numbers to find out how they turn it.
+- A mass's outline is off against the reference: first ask what the MASS is (too small, too low, the wrong shape:
+  look_beside's proportions say how wide and deep the figure is where the reference is widest and narrowest) and
+  change that. `grab` is only for a broad move of a whole form its numbers can't make (a head's corners out, a
+  belly fuller low down): never for the last centimetre of an outline, where it dents the clay.
 - An ear, a comb, a tongue or a tab that folds over and hangs: `flap` (three points: where it grows from, the top
   of its arch, where its tip ends). A blade blob is a flat leaf that can only lean: it never reads as a folded ear.
 - A face that should be FLAT (the front of a snout, a sole, a seat): `trim` it with a line drawn in the view that
@@ -133,7 +134,8 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
 | Speculative fixes stacked on a defect | Isolate it first |
 | Heavy-handed weathering | Restraint: a shift of tone, centimetres of sag |
 | Calling a blockout done on its outline | `feature_report`: nothing NOT MADE (an outline can match round a box) |
-| Filling a join with another blob, or rebuilding a mass to change its outline | `fuse` the two masses; `grab` the outline |
+| Filling a join with another blob | `fuse` the two masses |
+| Pulling at an outline's listed place with small grabs to raise the overlap | Change the mass (size, place, shape); the overlap is not the goal |
 | A blade for a folded ear; a squashed ellipsoid for a flat face | `flap`; `trim` |
 | Calling it done on numbers | The self-review beside the reference |
 

@@ -52,6 +52,18 @@ def _model(name: str, resolution: int):
     return prims, sdf.Grid(field, np.asarray(frame[0], float), float(frame[1]))
 
 
+def _core(prims, resolution: int):
+    """The model without its paired masses (ears, arms, legs: the ".L" / ".R" ones), on the whole model's own grid:
+    what its head and body measure by themselves. (Told apart by which mass owns a pixel instead, the arm's clay
+    beside the shoulder counted as body.) None when nothing is paired or nothing is left."""
+    keep = [p for p in prims if not (mirror_name(p.name) or p.name.endswith(".R"))]  # (mirror_name knows ".L" only)
+    if len(keep) == len(prims) or not any(p.op == "add" for p in keep):
+        return None
+    frame = sdf.frame(prims, resolution)
+    fields = [sdf.evaluate(ps, at=frame).field for ps in sdf.streams(keep) if any(p.op == "add" for p in ps)]
+    return sdf.Grid(np.min(fields, 0), np.asarray(frame[0], float), float(frame[1])) if fields else None
+
+
 def _owners(prims, P: np.ndarray) -> np.ndarray:
     """For each point on the model's surface, the name of the mass it belongs to."""
     adds = [p for p in prims if p.op == "add"]
@@ -233,6 +245,8 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
     meant = on_purpose(name)
     used: set = set()
     out = {"views": {}, "ignored": sorted(ig), "floating": _floating(prims)}
+    read_planes: set = set()
+    core_grid = False  # (made when the first flat view asks for it)
     for v in todo:
         if v == "painting":
             out["views"][v] = beside_painting.view(name, prims, whole, ig, meant, used, known)
@@ -279,10 +293,6 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
             return None
 
         places, kept_on = [], {}
-        extent = {}  # each mass's smaller size in this view's plane
-        for q in prims:
-            e = float(min(q.hi[GRAB_VIEW[v][1]] - q.lo[GRAB_VIEW[v][1]], q.hi[GRAB_VIEW[v][2]] - q.lo[GRAB_VIEW[v][2]]))
-            extent[q.name] = max(extent.get(q.name, 0.0), e)
         accepted = np.zeros(hit.shape, bool)
         for kind, only, other in (("short", ref & ~hit, hit), ("out", hit & ~ref, ref)):
             for r in _places(only, other, k):
@@ -304,13 +314,9 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
                     mass, twin = _stored(str(owner[yy[j], xx[j]]), known)
                 if twin and gv == "front":
                     at, to = [-at[0], at[1]], [-to[0], to[1]]
-                rad = float(np.clip(max(2.2 * r["off"], 0.6 * np.sqrt(r["area"])), 0.02, 0.3))
-                if mass:  # a grab small against its mass dents the form (a trench across a back): move the form
-                    rad = max(rad, min(0.3, 0.35 * extent.get(mass, 0.0)))
-                call = (f'grab("{name}", of=["{mass}"], view="{gv}", at={at}, to={to}, radius={rad:.3f})'
-                        if mass else "(on a kit's own piece: no grab)")
+                # (no fix is handed over with a place: a ready-made grab was run as given and dented the clay, p5 to p8)
                 places.append({"kind": kind, "off": r["off"], "area": r["area"], "at": at, "to": to, "mass": mass,
-                               "radius": rad, "grab": call, "px": r["far"], "twin": twin})
+                               "px": r["far"], "twin": twin})
         places.sort(key=lambda r: (r["twin"], -r["area"]))
         kept = []  # a mirrored model is off the same way on both sides: say it once, on the side the spec stores
         for p in places:
@@ -329,7 +335,18 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
         for m in missing:
             m["where"] = world(int(m["at"][0]), int(m["at"][1]))
         iou = float((ref & hit & ~accepted).sum() / max(((ref | hit) & ~accepted).sum(), 1))
-        out["views"][v] = {"iou": iou, "places": places, "on_purpose": list(kept_on.values()),
+        prop = None
+        if gv not in read_planes:  # the balance of the masses: once a plane (front and back are one)
+            read_planes.add(gv)
+            from . import beside_proportion
+            if core_grid is False:
+                core_grid = _core(prims, resolution)
+            core = np.isfinite(depth_image(core_grid, cam)) if core_grid is not None else hit
+            zs = (wpt(0, 0)[1], wpt(H - 1, 0)[1])
+            u0, u1 = wpt(0, 0)[0], wpt(0, W - 1)[0]
+            cx = -u0 / (u1 - u0) * (W - 1) if abs(u1 - u0) > 1e-9 else W / 2
+            prop = beside_proportion.read(ref, hit, core & hit, zs, cx, k, gv)
+        out["views"][v] = {"iou": iou, "places": places, "on_purpose": list(kept_on.values()), "proportions": prop,
                            "lines": [{k2: m[k2] for k2 in ("length", "where", "run")} for m in missing],
                            "picture": _picture(v, rgba, ref, hit, depth, sk, missing, places, k, bool(ig), accepted,
                                                tint=part_tint(prims, owner, hit))}
@@ -421,17 +438,13 @@ def text(name: str, res: dict) -> str:
             what = "SHORT (add clay)" if p["kind"] == "short" else "STICKS OUT (take away)"
             ax = "x, z" if GRAB_VIEW[v][0] == "front" else "y, z"
             lines.append(f"  {i}. the model {what} by up to {p['off'] * 100:.1f} cm round ({ax}) {p['at']}, {p['area'] * 1e4:.0f} cm2"
-                         + (f", on {p['mass']}: its size or place first. Only if the mass is right and this stretch of its "
-                            f"outline alone is off: a grab from {p['at']} to {p['to']}, radius {p['radius']:.2f} or more"
-                            if p["mass"] else ""))
+                         + (f", on {p['mass']}" if p["mass"] else ""))
         for o in r.get("on_purpose", []):
             lines.append(f"  on purpose (kept on record with the model: no need to give it again), not listed and not "
                          f"counted: {o['why']} (round {o['at']}, {o['area'] * 1e4:.0f} cm2, up to {o['off'] * 100:.1f} cm)")
-        if r["lines"]:
-            lines.append("  lines inside the reference's outline with no line of the model near them (form the outline can't "
-                         "show: a mass in front of another, a crease; some are paint):")
-            ax = "x, z" if GRAB_VIEW[v][0] == "front" else "y, z"
-            lines += [f"    a line {m['length'] * 100:.0f} cm long running {m['run']}, round ({ax}) {m['where']}" for m in r["lines"]]
+        if r.get("proportions"):
+            from . import beside_proportion
+            lines += beside_proportion.text(r["proportions"])
     for fl in res.get("floating", []):
         lines.append(f"FLOATS: {fl['mass']} touches nothing ({fl['gap'] * 100:.1f} cm of air to the nearest clay): move it "
                      "into the mass it belongs to, or it is a loose piece on purpose.")
@@ -441,9 +454,10 @@ def text(name: str, res: dict) -> str:
         lines.append(f"recorded as on purpose, but nothing differs there now ({e['plane']} {e['at']}: {e['why']}): take it "
                      f"back with on_purpose=[{{\"view\": \"{e['plane']}\", \"at\": {e['at']}, \"remove\": true}}]")
     lines.append("next: one picture per view: look at each. Fix the BIGGEST difference on the whole figure first: a mass in "
-                 "the wrong place or of the wrong size is its own joint or size (most differences are); an outline that is off "
-                 "on a mass that is otherwise right is a grab; two masses that should be one are a fuse; a "
-                 "folded ear is a flap; a face that should be flat is a trim. The overlap is NOT the goal: it "
+                 "the wrong place or of the wrong size is its own joint or size (most differences are, and the proportions "
+                 "say which); two masses that should be one are a fuse; a folded ear is a flap; a face that should be "
+                 "flat is a trim. A listed place is a question about its MASS, never a spot to pull at: a grab is only "
+                 "for a broad move of a whole form. The overlap is NOT the goal: it "
                  "rises when clay is piled wherever the outline is short, and the figure gets worse (lumps, shelves, "
                  "saddlebags). After every change look at the clay from three-quarter; if the overlap rose and the clay "
                  "looks worse, the clay is right: undo it and change the mass or the fuse instead. A red line with no line of "

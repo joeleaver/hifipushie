@@ -294,11 +294,13 @@ the centre line is made on both sides: never add the other side's yourself.
 view: "front" (at, to are [x, z]), "side" ([y, z]; the figure faces -y, so its front is the lower y) or "top"
 ([x, y]): metres, read off the rulers of `look` (grid=True helps). of: names of bones or blobs (the centre or the
 ".L" one).
-Use it wherever a mass's outline is off against the reference and retyping its numbers would mean guessing: a
-round end pulled out to a point, a tip tipped forward (in the side view), a cheek pulled out, a domed face pushed
-flatter, a back line pulled straight.
-A grab moves clay by at most half its radius (further would fold it): a bigger move takes a bigger radius, or is
-a move of the mass itself (its joint, its `at`), followed by a grab for the rest. Grabs on the same mass add up.
+Use it where the WHOLE FORM of a mass should lean, swell or flatten in a way its own numbers can't say: a head's
+upper corners out, a belly fuller low down, a back line straighter. It is a broad move, as a modeller's is at the
+blockout: the clay goes at most a fifth of the radius, and the radius is at least 0.3 of the mass it moves (a
+smaller pull is refused, with the radius it needs: pulls of a few centimetres with a small radius left shelves,
+trenches and creases in four blind blockouts).
+It is NOT for the last centimetre of an outline, nor for a place look_beside lists: an outline that is off along a
+mass is the mass's own size, place or shape. Grabs on the same mass add up.
 label names the grab (default grab1, grab2 ...): the same label replaces it; remove=True with a label takes it
 off. On a symmetric model a grab on a ".L" mass is made on its ".R" twin, and a grab off the centre line of a
 centre mass is made on the other side too. Returns the look from that view and three-quarter. In the spec:
@@ -401,10 +403,14 @@ the difference (red = only the reference has clay there: add; blue = only the mo
 numbered. Look at each picture: an outline can match round the wrong figure (a bean where the reference has a head
 on a body), and the red lines inside it are what show that.
 The text lists, per view, the numbered places biggest first: how far the outline is off, where (in the view's own
-axes: front and back x, z; side y, z), on which mass, and the points a `grab` would move if the mass itself is
-right (a mirrored model is off the same way on both sides: it is said once, for the ".L" mass). Then the
-reference's inside lines that the model has no line near: one mass standing in front of another, a crease, an
-opening; some are paint (an eye, a patch of colour).
+axes: front and back x, z; side y, z) and on which mass (a mirrored model is off the same way on both sides: it is
+said once, for the ".L" mass). No fix comes with a place: it is a question about its mass.
+Then the PROPORTIONS, once for the front and once for the side: the figure's width (front: across the middle;
+side: from its foremost to its hindmost clay) by height, at the places where the reference itself is widest and
+narrowest (a head, a waist, a belly on one figure; a head, a neck, a chest on another), for the reference and for
+the model, and each widest place against the next one down. This is the balance of the masses, which a difference
+map can't show: a head small against its body reads there as a thin strip. The model's width is given without its
+paired masses (ears, arms, legs) and with them; the reference's limbs count where they lie against it.
 The painting's own angle (view "painting"): once `fit_concept_camera(name, image=<the concept painting>)` has found
 the camera the painting was made from, look_beside shows the model from there as well, with the flat views or
 alone (views=["painting"]). Its picture: the painting with the model's outline and inside lines over it in blue |
@@ -415,8 +421,8 @@ the mass they are on (the nearer limbs are as often the ".R" twins: the text say
 on) and which way the model's outline would move to meet the painting's. Kept on purpose:
 on_purpose=[{"view": "painting", "at": [px, py] as listed, "why": "..."}].
 What to do with it: fix the BIGGEST difference on the whole figure first. A mass in the wrong place or of the
-wrong size is its own joint or size (most differences are); an outline off on a mass that is otherwise right is a
-`grab`; two masses that should be one form are a `fuse`; a folded ear is a `flap`; a face that should be flat is a
+wrong size is its own joint or size (most differences are, and the proportions say which); two masses that
+should be one form are a `fuse`; a whole form that should lean or swell is a broad `grab`; a folded ear is a `flap`; a face that should be flat is a
 `trim`; a red line with nothing under it is form still to make. The overlap is not the goal: it rises when clay is
 piled wherever an outline is short, and the figure gets worse. After every change look at the clay itself.
 Pieces that touch nothing are listed (FLOATS): an outline can't show one.
