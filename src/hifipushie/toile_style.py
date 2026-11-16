@@ -142,7 +142,8 @@ def closure(t):
     z_btm = float(np.min(bt[:, 1])) if bt is not None and len(bt) else min(z_brk, float(LOW[:, 1].max()))
     x0 = np.interp(z_btm, LOW[:, 1], LOW[:, 0])
     dx_cut = lambda z: np.where(z < z_btm, np.interp(z, LOW[:, 1], LOW[:, 0]) - x0, 0.0)
-    t.info["opening"].update(lowest_button_z=round(z_btm, 3), break_z=None if not np.isfinite(z_brk) else round(float(z_brk), 3))
+    t.info["opening"].update(buttons_z=sorted(round(float(z), 4) for z in bt[:, 1]) if bt is not None else [],
+                             lowest_button_z=round(z_btm, 3), break_z=None if not np.isfinite(z_brk) else round(float(z_brk), 3))
     if x_roll is None:
         return lambda z: -lap + dx_cut(z)
     return lambda z: np.where(z >= z_brk, x_roll(z), -lap + dx_cut(z))

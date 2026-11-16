@@ -69,7 +69,7 @@ def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict, folds=()) 
         if len(ps) == 2 and all(p in pcs for p in ps) and len(es) == 2:
             eo, eu = es[0].split(":", 1)[1], es[1].split(":", 1)[1]
             if eo in arcs[ps[0]] and eu in arcs[ps[1]]:
-                closures.append({"name": nm, "over": ps[0], "under": ps[1], "edge": {"over": eo, "under": eu}})
+                closures.append({"name": nm, "over": ps[0], "under": ps[1], "edge": {"over": arcs[ps[0]][eo], "under": arcs[ps[1]][eu]}})
     decl = {"pieces": {p: {"part": p} for p in pcs}, "edges": arcs, "seams": dseams, "omit": dict(absent),
             "closures": closures, "stiff": [], "folds": list(folds)}
     trued = true_seams(out, seams, notes)
@@ -216,7 +216,7 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     from .cut_made import made
     folds, made_rows = made(pcs, edges, declarations, rd["1"], rec["steps"]["4"]["output"], (V, F), log)
     from .cut_made import _mir
-    from .cut_tapes import folds as planned, piece_tapes, places
+    from .cut_tapes import closure_marks, folds as planned, piece_tapes, places
     hems, b = planned(declarations, edges)
     folds, why = folds + hems, why + b
     absent = {p: w for p, w in (m5.get("absent") or {}).items() if p not in pcs}
@@ -226,6 +226,8 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     decl["tapes"] = piece_tapes(pcs, rd["3"], edges)  # (each piece lies where it was cut from: the tapes there are its own)
     for p, w in places(pcs, rd["3"]).items():
         B["pieces"][p]["wrap"] = w
+    from .cut_ease import step4_numbers
+    why += closure_marks(B, pcs, (step4_numbers(rec["steps"]["4"].get("output") or {}).get("opening") or {}).get("buttons_z") or ())
     rows = [{"id": "cut_flatten", "status": "FAIL" if why else "PASS", "value": f"{len(pcs)} pieces cut and flattened, edges named",
              "target": "every marked piece one disc, every edge named", "why": "; ".join(why[:8]), "back_to": "6"},
             *made_rows,

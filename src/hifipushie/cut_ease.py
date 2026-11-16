@@ -20,15 +20,20 @@ W_FLOOR = 0.25  # the ease's weight at the underarm (the crown's 1): the under s
 SEAM_TOL_M = 0.002  # a loop vertex this near the cone is on the armhole seam
 
 
+def step4_numbers(s4: dict) -> dict:
+    """Step 4's numbers (toile.json; the record holds its path)."""
+    import json
+    from pathlib import Path
+    nb = s4.get("numbers")
+    nb = json.loads(Path(nb).read_text()) if isinstance(nb, str) and Path(nb).exists() else nb
+    return nb if isinstance(nb, dict) else {}
+
+
 class CapEase:
     """From step 4's output (numbers.sleeve.cap) and its toile.npz (the cone)."""
 
     def __init__(self, s4: dict):
-        import json
-        from pathlib import Path
-        nb = s4.get("numbers")
-        nb = json.loads(Path(nb).read_text()) if isinstance(nb, str) and Path(nb).exists() else (nb or {})
-        cap = ((nb if isinstance(nb, dict) else {}).get("sleeve") or {}).get("cap")
+        cap = (step4_numbers(s4).get("sleeve") or {}).get("cap")
         self.ok = bool(cap) and bool(s4.get("toile"))
         if not self.ok:
             return
