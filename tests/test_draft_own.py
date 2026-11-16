@@ -983,6 +983,19 @@ def test_piece_tapes_row_fails_each_way_and_passes():
     assert _tape_row(DECL)["status"] == "PASS"
 
 
+def test_piece_tapes_row_refuses_what_step5_refuses():  # (D3: s4-31's facing on a length, collar on two half tapes)
+    s3 = {"measurements": STEP3["measurements"] + [
+        {"name": "length", "mm": 700.0, "kind": "length", "path": [[0.1, -0.1, 1.4], [0.1, -0.1, 0.7]]},
+        {"name": "half", "mm": 100.0, "kind": "length", "path": [[0.0, 0.1, 1.5], [0.07, 0.0, 1.5]]}]}
+    from hifipushie import draft_tapes as dt
+    row = lambda tapes: dt.row({"pieces": {"panel.L": {}, "panel.R": {}}}, dict(DECL, tapes=tapes), s3)
+    r = row({"panel.L": ["length"], "panel.R": ["waist"]})
+    assert r["status"] == "FAIL" and "panel.L names no girth (length)" in r["why"] and "panel.R names" not in r["why"], r
+    r = row({"panel.L": {"side": "waist", "back": "half"}, "panel.R": ["waist", "length"]})
+    assert r["status"] == "FAIL" and "panel.L's edges name 2 tapes (half, waist)" in r["why"], r
+    assert row({"panel.L": {"side": "half", "back": "half"}, "panel.R": ["waist", "length"]})["status"] == "PASS"
+
+
 SLEEVE = """import { Design } from '@freesewing/core'
 import { topsleeve, undersleeve } from '@freesewing/jaeger'
 const hide = { from: true, inherited: true }

@@ -13,7 +13,9 @@ says which tape each edge LAID ON THE BODY lies along (a collar's neck edge on t
 - `edge_tapes(decl, pieces, arcs)`: {piece: {edge: {"tape", "arc"}}} for the record (step 5 lays the edge on its tape).
 - `row(B, decl, step3)`: flat gate row `piece_tapes`: FAIL when a cut piece declares no step-3 tape with geometry, when
   a named tape isn't in step 3 (back to step 3: measure that line), when a STIFF piece sewn to a soft one names no edge
-  tape for that sewn edge.
+  tape for that sewn edge, and what step 5's panel start (panel_start.starts) would refuse (D3, 2026-11-16: a jacket
+  passed here and step 5 refused it twice): a piece on a seam with no edge map must name a GIRTH (a loop: it is rolled
+  round it); an edge map must name ONE tape (its edge is laid on it from the centre line).
 """
 from __future__ import annotations
 
@@ -108,6 +110,12 @@ def _sewn_edges(decl: dict, stiff: set) -> dict:
     return out
 
 
+def _on_seams(decl: dict) -> set:
+    """The piece names (as the seams write them) on any declared seam."""
+    sides = lambda v: [v] if isinstance(v, str) else list(v or [])
+    return {str(e).split(":", 1)[0] for s in decl.get("seams") or [] for k in ("a", "b") for e in sides(s.get(k))}
+
+
 def row(B: dict, decl: dict, step3: dict) -> dict:
     from . import tape_geom
     T = tape_geom.tapes(step3)
@@ -134,6 +142,17 @@ def row(B: dict, decl: dict, step3: dict) -> dict:
     for n in sorted(nogeo):
         bad.append(f"tape {n!r} has no line in step 3 (only a number): retake it with body_tape so it records where "
                    "it was taken")
+    on_seam = _on_seams(decl)
+    for p in pieces:
+        names, em = names_of(decl, p), _edge_map(decl, p)
+        if em and len(set(em.values())) > 1:
+            bad.append(f"{p}'s edges name {len(set(em.values()))} tapes ({', '.join(sorted(set(em.values())))}): step 5 "
+                       "lays an edge-taped piece on ONE tape from the centre line: name the one step-3 tape all its laid "
+                       "edges lie along (the whole neckline, not its halves)")
+        elif not em and (p in on_seam or p[:-2] in on_seam) and names and any(n in T for n in names) \
+                and not any(T.get(n, {}).get("kind") == "loop" for n in names):
+            bad.append(f"{p} names no girth ({', '.join(names)}): step 5 rolls a sewn piece round the girths it was "
+                       "drafted on: add the step-3 girths it spans (e.g. the chest / waist / hips its host piece names)")
     stiff = set(decl.get("stiff") or [])
     for p, es in sorted(_sewn_edges(decl, stiff).items()):
         if p not in (B.get("pieces") or {p: 1}):
