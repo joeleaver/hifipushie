@@ -6,10 +6,12 @@ why, back_to):
                   closer than CLOSE_MM is reported (cloth touching the body there).
   closed          the toile is ONE surface, every edge used by at most two faces, its free edges in the loops its
                   parts make: neck + hem (one loop with the opening), a sleeve hem or an armhole per side.
+  neck            no stand at the back: no toile point behind the side neck points above them + NECK_RISE_MM.
   outline:<id>    step 2's traced edge vs the toile's outline seen from the reference's view, LIKE WITH LIKE (the
                   picture's body and pose are not the model's): a side outline as its PROFILE (distance off the toile's
                   torso edge less its median; the width is the girth rows'; the arm zone above the underarm left out),
-                  a hem as its HEIGHT (median), a sleeve end as placed (a FAIL there sends back to step 0's height);
+                  a hem as its HEIGHT (median), a sleeve end as its LENGTH past the wrist (each read from its own
+                  wrist along the arm, signed, within SLEEVE_MM);
                   p95 within SILHOUETTE_MM for KINDS_GATED, the rest (an edge the closed toile can't show open, a
                   collar not built here) INFO.
 The look: the toile with its parts beside the reference, four views, shape only (every number in the text answer)."""
@@ -22,6 +24,8 @@ from .toile_geom import boundary_loops, edge_counts, render, sheet, slice_points
 
 GIRTH_TOL_MM = 6.0    # a tape read on a 6 mm grid's surface
 CLOSE_MM = 2.0        # cloth closer than this to the body is touching it
+NECK_RISE_MM = 3.0    # the back neck may rise this far over the side neck points (no stand)
+SLEEVE_MM = 10.0      # the sleeve's length past the wrist, toile vs trace (signed)
 SILHOUETTE_MM = 20.0  # a toile is the shape before the hang: its outline within 2 cm of the traced edge
 KINDS_GATED = ("hem", "outline", "sleeve_end")
 ARM_ZONE_M = 0.03     # the side outline above the underarm less this is the picture's arm pose, not the toile
@@ -67,6 +71,22 @@ def closed_row(t) -> dict:
     return {"id": "closed", "status": "PASS" if ok else "FAIL", "value": len(loops),
             "target": f"one surface, no edge on 3+ faces, {want} free loops", "back_to": None if ok else "4",
             "why": f"{ncomp} component(s), {nonman} non-manifold edges, free loops of {sorted(len(l) for l in loops)} edges"}
+
+
+def neck_row(t) -> dict:
+    """No stand at the back neck: no toile point behind the side neck points higher than them + NECK_RISE_MM (a cut at
+    the neck tape's back, where the neck turns vertical, climbs the back of the neck)."""
+    nl = t.info.get("neckline")
+    if not nl:
+        return {"id": "neck", "status": "INFO", "value": None, "target": "read", "why": "no neckline read", "back_to": None}
+    V = t.meshes["toile"][0]
+    B = V[V[:, 1] > nl["hps_y"]]
+    rise = (float(B[:, 2].max()) - nl["hps_z"]) * 1000 if len(B) else -np.inf
+    ok = rise <= NECK_RISE_MM
+    return {"id": "neck", "status": "PASS" if ok else "FAIL", "value": round(rise, 1),
+            "target": f"the back no higher than the side neck points + {NECK_RISE_MM:g} mm", "back_to": None if ok else "4",
+            "why": f"the back's top {rise:+.1f} mm off the side neck points (z {nl['hps_z']:.3f}); centre back cut at z "
+                   f"{nl.get('cb_z', float('nan')):.3f} (the neck tape crosses it at {nl.get('cb_z_tape', float('nan')):.3f})"}
 
 
 def _outline_px(t, view, box, mpp):
@@ -147,23 +167,31 @@ def _like_rows(t, tid, tr, mask, box, mpp, sg):
 
 
 def _sleeve_end(t, tr):
-    """A sleeve end compared as the sleeve's LENGTH: the traced end's place along the toile's arm axis (seen in the
-    view) less the toile's hem's; across the arm is the picture's arm pose, read not gated. + = the trace runs past
-    the toile's hem (the toile's sleeve is short)."""
-    if "sleeves" not in t.parts or "hem_z" not in t.info.get("sleeve", {}):
+    """A sleeve end compared as the sleeve's LENGTH past the WRIST, each read from its own wrist along the arm (the
+    picture's arm is not the model's: across leaks into along when both are read on one axis): the traced end past the
+    picture's wrist mark less the toile's hem past the model's wrist, signed (+ = the toile's sleeve is short); FAIL
+    past SLEEVE_MM either way. Without step 2's wrist marks: INFO."""
+    from .toile_style import along_from_wrist, arm_dir
+    s = t.info.get("sleeve", {})
+    if "sleeves" not in t.parts or "hem_at" not in s:
         return None
-    xz = np.asarray(tr["xz"], float)
-    k = int(np.argmin(np.abs(t.CAX[:, 2] - t.info["sleeve"]["hem_z"])))
-    p, A = t.CAX[k], t.CAX[-1] - t.CAX[-3]
-    a = np.array([abs(A[0]), A[2]]) / np.hypot(A[0], A[2])
-    Q = np.c_[np.abs(xz[:, 0]) - abs(p[0]), xz[:, 1] - p[2]]
-    along, across = Q @ a, Q @ np.array([-a[1], a[0]])
-    off = float(np.median(along))
-    how = (f"the sleeve's length: the traced end {abs(off) * 1000:.1f} mm {'past' if off > 0 else 'short of'} the "
-           f"toile's hem along the arm (the hem where step 0's height {t.d['sleeves']['hem']!r} puts it, z "
-           f"{t.info['sleeve']['hem_z']:.3f}); {np.median(np.abs(across)) * 1000:.0f} mm across it read, not gated (the "
-           f"picture's arm pose)")
-    return np.array([abs(off) * 1000]), how, xz
+    w = t.inp.wrists or {}
+    if "photo" not in w or "model" not in w:
+        return {"status": "INFO", "value": None, "why": "step 2 has no wrist body marks: the sleeve's length not compared"}
+    st = along_from_wrist(t, np.asarray(tr["xz"], float), w["photo"])
+    sh = float((np.asarray(s["hem_at"], float) - np.asarray(w["model"], float)) @ arm_dir(t))
+    d = (st - sh) * 1000
+    ok = abs(d) <= SLEEVE_MM
+    from_trace = t.d["sleeves"]["hem"] in t.inp.traces
+    why = (f"the sleeve's length past the wrist: traced {st * 1000:+.1f} mm past the picture's wrist, the toile's hem "
+           f"{sh * 1000:+.1f} mm past the model's: the toile {abs(d):.1f} mm {'short' if d > 0 else 'long'} "
+           f"(hem from {s.get('hem_from', '?')})")
+    back = None
+    if not ok:
+        back = "4" if from_trace else "0"
+        why += "" if from_trace else ": step 0's height and step 2's trace disagree: declare sleeves.hem as the trace"
+    return {"status": "PASS" if ok else "FAIL", "value": round(d, 1), "why": why, "back_to": back,
+            "target": f"signed, within +-{SLEEVE_MM:g} mm (+ = short)"}
 
 
 def outline_rows(t, view="front") -> list:
@@ -182,8 +210,12 @@ def outline_rows(t, view="front") -> list:
     for tid, tr in sorted(t.inp.traces.items()):
         what = tr.get("what")
         xz = np.asarray(tr["xz"], float)
-        like = (_like_rows(t, tid, tr, mask, box, mpp, sg) if what in ("hem", "outline") else
-                _sleeve_end(t, tr) if what == "sleeve_end" else None)
+        if what == "sleeve_end":
+            r = _sleeve_end(t, tr)
+            if r is not None:
+                rows.append(dict({"id": f"outline:{tid}", "target": "read", "back_to": None}, **r))
+                continue
+        like = _like_rows(t, tid, tr, mask, box, mpp, sg) if what in ("hem", "outline") else None
         if like is not None:
             d, how, xz = like
         else:
@@ -197,9 +229,6 @@ def outline_rows(t, view="front") -> list:
         back = None
         if st == "FAIL":
             back = "4"
-            if what == "sleeve_end" and like is not None:  # (the toile builds the hem where step 0 says)
-                back = "0"
-                how += ": step 0's height and step 2's trace disagree: fix the one the picture contradicts"
         why = (f"p95 {p95:.1f} / max {mx:.1f} mm; worst at x {worst[0]:.3f} z {worst[1]:.3f}" + (f"; {how}" if how else "") +
                ("" if gated else f" (a {what} edge: the toile is built closed / without it; read, not gated)"
                 if what != "outline" else ""))
@@ -209,7 +238,7 @@ def outline_rows(t, view="front") -> list:
 
 
 def rows(t, view="front") -> list:
-    return girth_rows(t) + [clearance_row(t), closed_row(t)] + outline_rows(t, view)
+    return girth_rows(t) + [clearance_row(t), closed_row(t), neck_row(t)] + outline_rows(t, view)
 
 
 def verdict(rs: list) -> str:

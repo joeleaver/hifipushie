@@ -17,16 +17,21 @@ History of R1-R2b: docs/notes (grep C489-C491); spikes/r1_*, r2_*, r2b_* (R3b st
   pattern reader reads the flat pattern there: draft_own_tool, garment_details_tool, chain_garment piece_start,
   chain_structure, chain_layers, garment_carry). draft_pattern / pattern_check now write step 6 (refused until 5 is
   ready): the flat-pattern checker R3b feeds. chain_garment's from_chain still writes 5/6 (old route: R3b retires it).
-- Gate on the jacket (R3a-2, C492): the outline compared LIKE WITH LIKE (the picture's body / pose are not the model's):
-  side = its profile off the toile's torso edge less the median, the arm zone (above underarm - 3 cm) left out; hem =
-  its height (median); sleeve end = its length along the arm (a FAIL -> back to step 0's height). The drop's flare is
-  calibrated where the hem tape is read (was 6.3 mm short).
-- Proof: /mnt/data/hifipushie/r3a (ws = s4-31 copy, decl.json, run.py, run2.log; run.log the first run); sheet
-  r3a/ws/garrett/garments/jacket/toile/toile_sheet.png. ~40 s. ALL PASS: girths chest 1111.6 / 1108.2, waist 987.7 /
-  987.6, hips 1103.9 / 1103.1, hem 1135.7 / 1138.8 (R2b 1137.2); clearance +1.5 mm; closed (1 surface, 3 loops); outline
-  side p95 4.0 / 3.6 mm (offset +34 / +30 read: the photo's man is wider), hem height 8 mm, sleeve length 15 / 12 mm.
-  front_edge / roll / collar_top INFO (built closed / no collar). Lapel 60.9 mm (R2b 60.7), pad 4 mm.
-- Tests: tests/test_toile.py (synthetic capsule body: girths, clearance, closed, tube, lap; refusals by name) PASS;
+- Gate (C492): girth per level, clearance, closed, NECK (no back toile point over the side neck points + 3 mm: a cut at
+  the neck tape's back climbed the neck as a stand, +11 mm), outline LIKE WITH LIKE (the picture's body / pose are not
+  the model's): side = profile off the toile's torso edge less the median, arm zone left out; hem = height (median);
+  sleeve end = length PAST THE WRIST, each read from its own wrist along the arm (signed, +-10 mm; the R3a-2 row read the
+  photo on the model's axis and passed sleeves 24-32 mm short). sleeves.hem may name a step-2 trace (its distance past
+  the picture's wrist mark carried onto the model's wrist); the back neckline is drafted HPS - 15 mm at CB.
+- Proof (R3a-3): /mnt/data/hifipushie/r3a (ws = s4-31 copy, decl.json with sleeves.hem "sleeve_end.L", run.py, run3.log;
+  run with HIFIPUSHIE_ASSETS=<repo>/workspace/_templates). Sheet r3a/ws/garrett/garments/jacket/toile/toile_sheet.png.
+  ALL PASS: girths chest 1111.6 / 1108.2, waist 987.7 / 987.6, hips 1103.9 / 1103.1, hem 1135.7 / 1138.8; clearance
+  +1.6 mm; closed (3 loops); neck -0.7 mm (CB cut z 1.534, tape 1.560, HPS 1.549); side p95 4.0 / 3.6; hem height 8 mm;
+  sleeve end L 0.0 (by construction), R +3.0 mm short; sleeve hem z 0.987 (was 1.009). Looked: the sleeves end at the
+  traced lines; at CB the toile stops at z 1.534 where the back still slopes (the neck turns vertical ~1.56); the back
+  view still reads a round neck at the side neck points (no collar yet: R3c).
+- Tests: tests/test_toile.py (synthetic body: girths, clearance, closed, tube, lap, neck, a short sleeve FAILs, a hem
+  from the trace PASSes, a back-neck stand FAILs; refusals by name) PASS;
   test_garment_record / test_draft_own / test_garment_details assert 4 toile, 5 mark, 6 flat; test_toolsets ADDED.
 - Step table (docs/state/garment_steps.md) rows 4 toile, 5 mark, 6 cut and flatten. draft_pattern / pattern_check
   write step 6 (the flat-pattern checker R3b feeds); FreeSewing is no longer step 4's source.
@@ -38,24 +43,4 @@ History of R1-R2b: docs/notes (grep C489-C491); spikes/r1_*, r2_*, r2b_* (R3b st
   texts renamed).
 - R3c: the collar from its own flat fitted round the toile's neck.
 
-## R3a-3 (coordinator's two faults; budget hit mid-fix, UNPROVEN WIP in the last commit)
-1. Sleeves short: the sheet shows the toile's sleeve ending above the traced wrist line; the sleeve-end row passed it
-   (it projected the photo's points on the MODEL's arm axis: the photo arm is 3 cm further in, so across leaked into
-   along and flipped the sign). Found: the photo's sleeve end sits AT the photo's wrist mark (step 2 body mark
-   wrist.L 1005,880 px -> x 0.40 z 0.999; trace median z ~0.995); the toile's hem ~24-32 mm short of the model's wrist
-   (0.433, 0.98). Also toile_style took the hem point as the NEAREST of 9 axis points by z (4-5 cm apart). The TRACE is
-   right (it is read off the picture's own wrist; step 0's 0.973 of shoulder->wrist maps onto a different arm length).
-   Done (untested): toile_style.sleeve_hem_point (dense axis; `sleeves.hem` may name a step-2 trace: its place past the
-   picture's wrist carried onto the model's wrist along the arm), along_from_wrist, arm_dir; Inputs.wrists field.
-   TODO: toile_tool.inputs fills Inputs.wrists ({"photo": mapped body-mark wrist.L (folded), "model": at["wrist.L"]
-   x,z}) from _mapped's placement; validate() accepts a step-2 trace for sleeves.hem; toile_gate._sleeve_end = d =
-   along_from_wrist(trace, photo wrist) - along of the hem point from the model wrist (signed: + = toile short), FAIL
-   past SLEEVE_MM 10; decl.json sleeves.hem "sleeve_end.L"; rerun; a test (short sleeve FAILs).
-2. Back neck stand: the neck tape's back point (cb_neck z 1.560) is where the neck turns vertical, 11 mm ABOVE the side
-   neck points (hps z 1.549): cut there, the toile climbs the back of the neck (R2b hid it under its collar; same
-   neckline, d4 lines.json). Done (untested): toile_style.neckline lowers the tape's back to hps - BACK_NECK_DEPTH_M
-   (15 mm, cos^2 to CB). TODO: gate row `neck` (back toile points, y > hps y, no higher than hps z + 3 mm: catches the
-   old cut at +11), rerun, look at the side / back tiles, a test.
-
-NEXT: R3a-3 finish the two TODOs above (start: toile_tool.inputs wrists), rerun the jacket, then Joe / the coordinator
-judges the sheet; then R3b mark + cut/flatten.
+NEXT: Joe / the coordinator judges the R3a-3 sheet and approves step 4 on the jacket; then R3b mark + cut/flatten.

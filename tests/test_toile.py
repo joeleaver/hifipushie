@@ -46,9 +46,13 @@ def _inputs(decl):
     heights = {"hem": 0.92, "sleeve_hem": 0.98}
     traces = {"front_edge.L": {"xz": np.array([[0.0, 1.40], [0.0, 1.20], [0.0, 1.0], [0.04, 0.95], [0.08, 0.92]]),
                                "corners": [], "what": "front_edge"},
-              "hem.L": {"xz": np.array([[0.05, 0.92], [0.10, 0.92], [0.15, 0.92]]), "corners": [], "what": "hem"}}
+              "hem.L": {"xz": np.array([[0.05, 0.92], [0.10, 0.92], [0.15, 0.92]]), "corners": [], "what": "hem"},
+              # (across the arm, ~3 cm above the wrist)
+              "sleeve_end.L": {"xz": np.array([[0.397, 0.8985], [0.425, 0.91], [0.453, 0.9215]]), "corners": [],
+                               "what": "sleeve_end"}}
     marks = {"buttons": np.array([[0.0, 1.15], [0.0, 1.05]])}
-    return Inputs(V=V, T=T, tapes=tapes, levels=levels, heights=heights, decl=decl, traces=traces, marks=marks)
+    return Inputs(V=V, T=T, tapes=tapes, levels=levels, heights=heights, decl=decl, traces=traces, marks=marks,
+                  wrists={"photo": [0.437, 0.88], "model": [0.437, 0.88]})
 
 
 DECL = {"parts": ["sleeves", "opening", "pad"], "hang_from": "hips", "armhole": {"length_mm": 470},
@@ -71,6 +75,29 @@ def test_synthetic_toile_girths_clearance_sleeves_opening():
     front = (V[:, 1] < t.yc) & (np.abs(V[:, 2] - 1.2) < 0.02)
     assert V[front, 0].min() < -0.015  # the over front runs past centre front by the lap
     assert {"pad.L", "pad.R"} <= set(t.meshes)
+    assert rows["neck"]["status"] == "PASS", rows["neck"]
+    # the hem at step 0's height 0.98 ends ~8 cm above the traced sleeve end: a short sleeve FAILs (signed, + = short)
+    se = rows["outline:sleeve_end.L"]
+    assert se["status"] == "FAIL" and se["value"] > 50, se
+
+
+@pytest.mark.timeout(600)
+def test_sleeve_hem_from_the_trace_ends_at_it():
+    t = Toile(_inputs(dict(DECL, sleeves=dict(DECL["sleeves"], hem="sleeve_end.L"))), log=lambda *_: None).build()
+    se = {r["id"]: r for r in toile_gate.rows(t)}["outline:sleeve_end.L"]
+    assert se["status"] == "PASS" and abs(se["value"]) < 5, se
+
+
+def test_a_back_neck_stand_fails():
+    """A cut at the neck tape's back (11 mm over the side neck points, as the jacket's first toile) FAILs the neck row."""
+    from types import SimpleNamespace
+    a = np.linspace(0, 2 * np.pi, 64, endpoint=False)
+    def toile(cb_rise):
+        ring = np.c_[0.07 * np.cos(a), 0.06 * np.sin(a), 1.55 + cb_rise * np.clip(np.sin(a), 0, 1) ** 2]
+        return SimpleNamespace(meshes={"toile": (np.r_[ring, ring - [0, 0, 0.2]], np.zeros((0, 3), int))},
+                               info={"neckline": {"hps_z": 1.55, "hps_y": 0.0}})
+    assert toile_gate.neck_row(toile(0.011))["status"] == "FAIL"
+    assert toile_gate.neck_row(toile(-0.015))["status"] == "PASS"
 
 
 def test_a_missing_declaration_is_refused_by_name():
@@ -84,5 +111,7 @@ def test_a_missing_declaration_is_refused_by_name():
     assert any("lapel: needs \"opening\"" in b for b in bad)
     bad = toile_tool.validate(dict(DECL, hang_from="seat"), s0, s2)
     assert any("hang_from: 'seat'" in b for b in bad)
+    bad = toile_tool.validate(dict(DECL, sleeves=dict(DECL["sleeves"], hem="nope")), s0, s2)
+    assert any(b.startswith("sleeves.hem: 'nope'") for b in bad)
     bad = toile_tool.validate(dict(DECL, opening={"lap_mm": 20, "edge": "nope"}), s0, s2)
     assert any("opening.edge: 'nope'" in b for b in bad)

@@ -7,7 +7,8 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
   parts      a list from PARTS: "sleeves", "opening", "lapel" (needs "opening"), "pad". The body is always built.
   hang_from  a step-0 fit level the garment hangs straight down from (a jacket from its hips), or "none"
   armhole    {"length_mm"}: the garment's armhole round the body (the arm-root loop is scaled about the shoulder point)
-  sleeves    {"ease_mm": [top, wrist], "crown_mm", "hem": a step-0 height}
+  sleeves    {"ease_mm": [top, wrist], "crown_mm", "hem": a step-2 sleeve-end trace (its length past the picture's
+             wrist mark carried onto the model's wrist along the arm) or a step-0 height}
   opening    {"lap_mm", "edge": a step-2 trace (the over front's edge), "buttons": a step-2 row id (optional)}
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}
@@ -72,8 +73,11 @@ def validate(decl: dict, s0: dict, s2: dict) -> list:
     if b and b not in rows:
         bad.append(f"opening.buttons: {b!r} is not a step-2 row")
     h = (decl.get("sleeves") or {}).get("hem") if "sleeves" in parts else None
-    if h and h not in heights:
-        bad.append(f"sleeves.hem: {h!r} is not a step-0 height ({', '.join(sorted(heights))})")
+    if h and h not in heights and h not in traces:
+        bad.append(f"sleeves.hem: {h!r} is neither a step-2 trace (a sleeve end) nor a step-0 height "
+                   f"({', '.join(sorted(heights))})")
+    elif h in traces and not any(k in (bm.get("at") or {}) for bm in s2.get("body_marks") or [] for k in ("wrist.L", "wrist.R")):
+        bad.append(f"sleeves.hem: the trace {h!r} is placed from the picture's wrist: step 2 has no body mark wrist.L / wrist.R")
     if "sleeves" in parts and len((decl.get("sleeves") or {}).get("ease_mm") or []) != 2:
         bad.append("sleeves.ease_mm: [top, wrist] in mm")
     return bad
@@ -113,7 +117,12 @@ def _mapped(s0: dict, s2: dict, at: dict, centre=None) -> tuple:
     marks = {r["id"]: xz(r["at"], int(r.get("view", 0))) for r in s2.get("rows") or []
              if r.get("at") and int(r.get("view", 0)) in pl and all(len(a) == 2 for a in r["at"])}
     view = pl[min(pl)][1] if pl else "front"
-    return traces, marks, view, {k: v[0] for k, v in pl.items()}
+    wr = [np.abs(xz([bm["at"][k]], int(bm.get("view", 0)))[0]) for bm in s2.get("body_marks") or []
+          if int(bm.get("view", 0)) in pl for k in ("wrist.L", "wrist.R") if k in bm["at"]]
+    wrists = {"photo": np.mean(wr, axis=0).tolist()} if wr else {}
+    if wrists and "wrist.L" in at:
+        wrists["model"] = [abs(float(at["wrist.L"][0])), float(at["wrist.L"][2])]
+    return traces, marks, view, {k: v[0] for k, v in pl.items()}, wrists
 
 
 def inputs(name: str, garment: str, decl: dict):
@@ -131,12 +140,13 @@ def inputs(name: str, garment: str, decl: dict):
     V = np.asarray(b["V"], float)
     T = tailor.triangles(b["F"])
     at = body_tape.Tape(V, b["F"], b["J"]).R["at"]
-    traces, marks, view, pl = _mapped(s0, s2, at, rd["1"].get("centre"))
+    traces, marks, view, pl, wrists = _mapped(s0, s2, at, rd["1"].get("centre"))
     levels = {k: (float(v["level_z_m"]), float(v["garment_girth_mm"]) / 1000) for k, v in (s0.get("fit") or {}).items()
               if isinstance(v, dict) and "level_z_m" in v and "garment_girth_mm" in v}
     heights = {k: float(v["z_mm"]) / 1000 for k, v in (s0.get("heights") or {}).items() if isinstance(v, dict) and "z_mm" in v}
     ref = ((s0.get("views") or [{}])[0]).get("image")
-    return Inputs(V=V, T=T, tapes=tp, levels=levels, heights=heights, decl=decl, traces=traces, marks=marks), ref, view, pl
+    return Inputs(V=V, T=T, tapes=tp, levels=levels, heights=heights, decl=decl, traces=traces, marks=marks,
+                  wrists=wrists), ref, view, pl
 
 
 def build(inp, log=print):
