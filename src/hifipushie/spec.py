@@ -383,6 +383,7 @@ def _compile(spec: dict) -> list[Prim]:
     prims = _deform(s, prims)
     prims = spec_hands._grabs(s, prims)
     prims = spec_hands._trims(s, prims)
+    _masks(s, prims)
     out = spec_parts._parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
     if s.get("base"):  # the upper lids' fold (base.head.fold, lidfold.py): modifiers right after the base, seated on
         # the base as it is finally built (seated on the base as first made, the lines stood 4 mm off the meshed lid)
@@ -522,3 +523,24 @@ def summarize(spec: dict) -> str:
 # The modules this one was split into (as C424). Its constants stay HERE (C422): tests/test_constants_address.py.
 MODULES = ("spec_hands", "spec_parts")
 __getattr__ = moved.refuse(__name__, MODULES)  # a name that moved says where it is now (C426)
+
+
+
+def _masks(s: dict, prims: list[Prim]) -> None:
+    """A stroke's "only" (strokes.py): the prims of those masses, their mirror twins and their group mates go into
+    the modifier's params["prims"] (skipped by the fingerprint; the names stay under "only"), as its mask."""
+    els = {**(s.get("bones") or {}), **(s.get("blobs") or {})}
+    for p in prims:
+        if p.op != "modify" or not isinstance(p.params, dict):
+            continue
+        names = (els.get(p.name) or {}).get("only")
+        if not names:
+            continue
+        want = set(names) | {mirror_name(n) for n in names if mirror_name(n)} | {n[:-2] + ".R" for n in names if n.endswith(".L")}
+        groups = {els[n].get("group") for n in want if n in els and els[n].get("group")}
+        want |= {n for n, e in els.items() if e.get("group") in groups}
+        mask = [q for q in prims if q.name in want and q.op == "add"]
+        if not mask:
+            raise SpecError(f"stroke {p.name!r}: only names no mass of this model ({', '.join(names)})")
+        p.params["only"] = sorted(want)
+        p.params["prims"] = mask

@@ -456,3 +456,18 @@ def test_a_flap_never_replaces_a_mass_that_is_there(fig):
     assert store.load(fig)["blobs"]["head"].get("shape") is None
     server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.1, width=0.08)
     server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.12, width=0.08)  # (its own name again: replaced)
+
+
+def test_a_stroke_masked_to_a_mass_leaves_the_mass_beside_it_alone(fig):
+    from hifipushie import server
+    server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.12, width=0.1, thickness=0.06)
+    s = store.load(fig)
+    near_head = np.array([[0.0, -0.17, 0.62], [0.06, -0.12, 0.7]])
+    before = field_at(compile_prims(s), near_head, clip=False)
+    stroke = {"op": "flatten", "path": [{"bone": "ear.L", "t": 0.3, "side": [0, -1, 0]}, {"t": 0.8}], "width": 0.12,
+              "depth": 0.03}
+    s["strokes"] = {"cut.L": dict(stroke)}
+    loose = field_at(compile_prims(s), near_head, clip=False)
+    s["strokes"] = {"cut.L": dict(stroke, only=["ear.L"])}
+    masked = field_at(compile_prims(s), near_head, clip=False)
+    assert np.abs(masked - before).max() < 1e-4 and np.abs(loose - before).max() > 0.002

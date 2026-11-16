@@ -24,6 +24,9 @@ instead of cutting a chord.
   soft, blend (flatten): width of the fade-out ring beyond `width` (0.8*width), rounding where the plane
           meets the surface (0.2*width).
   part:   the part it shapes and is laid on (default "body"); e.g. folds on a "vest" shell part.
+  only:   [mass names]: a mask, as a sculptor masks everything else: the stroke shapes only the clay of these
+          masses (and their mirror twins and group: a flap's folded part), fading out at their edge, and leaves
+          the mass they grow from alone (flattening an ear's face no longer shaves the head beside it).
   layer:  strokes apply after everything else in their layer (default 0), in the order given; later layers
           (the face kit's lids, lips, eyeballs) sit on top unaffected.
   repeat: {"count": n, "shift": {"t": dt, "around": deg, "offset": [x,y,z]}, "scale": f}
@@ -463,6 +466,8 @@ def _one(surf: Surface, gen: dict, what: str, op: str, st: dict, pts: list[dict]
     extra = {"layer": int(st["layer"])} if st.get("layer") else {}
     if st.get("part"):
         extra["part"] = st["part"]
+    if st.get("only"):  # a mask: the stroke shapes only these masses' clay (spec._masks)
+        extra["only"] = [st["only"]] if isinstance(st["only"], str) else list(st["only"])
 
     if op == "flatten":
         nrm = _unit(N.mean(0))

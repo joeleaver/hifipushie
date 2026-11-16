@@ -33,7 +33,7 @@ BLOB_KEYS = (
     "upper", "lower", "r", "width",                                               # lids
     "lean", "fall", "points", "spread", "spread_back", "gap", "stand_gap",        # collar
     "path", "profile", "values", "lip", "mirror", "open_start",                   # sweep
-    "pts", "nrm", "depth", "height", "soft")                                      # displace, flatten
+    "pts", "nrm", "depth", "height", "soft", "only")                              # displace, flatten
 KEYS = {"joints": ("joint", JOINT_KEYS), "bones": ("bone", BONE_KEYS), "blobs": ("blob", BLOB_KEYS)}
 
 

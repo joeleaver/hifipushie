@@ -98,6 +98,7 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     except SpecError as e:
         raise ValueError(f"{e}") from None
     bare = copy.deepcopy(spec)
+    bare.pop("strokes", None)  # (strokes laid on the flap can't be seated without it; they don't change its base)
     for n in (mass, mirror_name(mass), top, mirror_name(top)):
         (bare.get("bones") or {}).pop(n, None)
     from .sdf import field_at
