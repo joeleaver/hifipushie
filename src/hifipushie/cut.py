@@ -14,7 +14,15 @@ own edge: hem, neckline, opening, sleeve end) is named by THE DECLARATION:
          one edge's classes are one run; runs under FREE_MERGE_MM join their neighbours. ".L" pieces' maps serve their
          ".R" mirror. A free run no edge takes, or an edge in two runs, is refused by name (row cut_flatten).
   ease   {"piece:edge": [lo, hi]}: a seam with a declared ease (a sleeve cap), else +-1 % (draft_own.PLAIN_TOL).
-Writes <look dir>/cut/flat.npz (per piece U, F, V, strain), pattern.json (the block), cut.json; record step 6."""
+MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked pieces are flattened, in this order:
+  flaps  {toile part: {"onto", "fold", "edges"}}: a turned flap (a lapel) unfolded across its roll edge onto its piece
+         (cut_flap.py); the roll becomes a fold of the flat.
+  layers {piece: {"host", "line": [[edge, mm, toward], ...], "keeps", "edges", "inner"}}: a facing / canvas traced off
+         its host's flat (cut_layers.py); its seams are the host's runs.
+  collar {"pieces", "neck", "stand_mm", "fall_mm", "end_mm", "outer", "end", "fold", "fold_on"}: drafted flat, fitted
+         round the toile's neck with its fall turned down and every flat length held (cut_collar.py).
+Writes <look dir>/cut/flat.npz (per piece U, F, V, strain), pattern.json (the block), cut.json, cut_3d.png (the pieces
+where they lie, beside the reference); record step 6."""
 from __future__ import annotations
 
 import numpy as np

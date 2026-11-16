@@ -390,9 +390,10 @@ def garment_mark(name: str, garment: str, declarations: dict | str):
 def garment_cut(name: str, garment: str, declarations: dict | str | None = None):
     """STEP 6: CUT AND FLATTEN the marked toile: each piece cut on step 5's marks, flattened (strain per piece and
     where: a dart or ease wanted), each seam trued, the flat pattern written in draft_pattern's form (every piece keeps
-    its 3D place) and today's flat gate run on it. declarations: free {piece: {step-1 edge: top | bottom | side |
-    [classes]}} names the toile's own edges (".L" serves ".R"), ease {"piece:edge": [lo, hi]}. Returns the flat pieces
-    (strain) + every row; step 6. guide(topic="garment_cut")."""
+    its 3D place) and today's flat gate run on it. declarations: free {piece: {edge: top | bottom | side}} (the toile's
+    own edges), ease {"piece:edge": [lo, hi]}, flaps (a lapel unfolded onto its piece), layers (facings / canvases
+    traced off a host), collar (drafted flat, fitted round the neck); ".L" serves ".R". Returns the flat pieces + every
+    row; step 6. guide(topic="garment_cut")."""
     from . import cut_tool
     sheet, txt = cut_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
