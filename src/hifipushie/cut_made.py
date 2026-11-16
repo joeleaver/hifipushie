@@ -59,6 +59,10 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, log=lambda *_
                                         f"{r['roll_flat_mm']['flap']} mm, across {r['lands_across_roll']}" for r in reps),
                      "target": "each turned flap unfolded about its roll edge onto its piece, landing across the roll",
                      "why": "; ".join(why[:6])})
+    if decl.get("collar"):
+        from .cut_collar import split_gorge
+        for m in split_gorge(pcs, edges, decl["collar"], out4):
+            log(m)
     layers = _both(decl.get("layers") or {})
     if layers:
         reps, why = [], []

@@ -15,7 +15,7 @@ halves), the roll, the flat's span and the neck edge's bow (a crescent, not a ba
 
 THE DECLARATION (garment_cut's `collar`): {"pieces": [collar pieces], "neck": [garment neck edges of the left half, from
 the front end to CB], "outer": edge name, "end": edge name (".L"), "fold": step 2's roll fold name, "fold_on": the piece
-step 2 turns it on}; the collar's heights are step 4's (garment_toile's collar part). Nothing here knows a garment."""
+step 2 turns it on, "past": the name of a neck edge's run past the gorge corner (default "notch", split_gorge)}; the collar's heights are step 4's (garment_toile's collar part). Nothing here knows a garment."""
 from __future__ import annotations
 
 import json
@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 
 NEEDS = ("pieces", "neck", "outer", "end")
+SPLIT_ON_M = 0.006  # m: the collar's neck end this near a garment neck edge is on it (else that edge is not cut)
 
 
 class CollarRefused(ValueError):
@@ -75,6 +76,39 @@ def toile_collar(out4: dict):
     if out4.get("numbers") and Path(out4["numbers"]).exists():
         info = json.loads(Path(out4["numbers"]).read_text()).get("collar") or {}
     return Z["collar:V"].astype(float), Z["collar:F"].astype(int), tuple(int(x) for x in Z["collar_grid"]), info
+
+
+def split_gorge(pcs: dict, edges: dict, d: dict, out4: dict) -> list:
+    """The garment's neck edges cut where the collar's neck edge ends (the gorge corner, where the collar meets the
+    lapel): a front's neck edge runs on along the lapel's top to its point, but only the run from the shoulder to the
+    gorge corner is sewn to the collar; the rest is named d["past"] (default "notch"), a free edge. Before the layers
+    are traced, so a facing's gorge is the same run. Returns what was cut (for the log)."""
+    Z = np.load(out4["toile"])
+    if "collar:V" not in Z.files or "collar_grid" not in Z.files:
+        return []
+    nr, nc, _ = (int(x) for x in Z["collar_grid"])
+    row = Z["collar:V"].astype(float).reshape(nr, nc, 3)[0]
+    past, done = d.get("past", "notch"), []
+    for g in d.get("neck") or []:
+        for gg in (g, mirror(g)):
+            pp, ee = gg.split(":", 1)
+            if pp not in pcs or ee not in edges.get(pp, {}):
+                continue
+            segs = list(edges[pp][ee])
+            P = _edge_pts(pcs[pp], segs)
+            dist = np.min(np.linalg.norm(P[:, None] - row[None], axis=2), axis=1)
+            end = min((row[0], row[-1]), key=lambda q: np.min(np.linalg.norm(P - q, axis=1)))
+            k = int(np.argmin(np.linalg.norm(P - end, axis=1)))
+            if not 0 < k < len(segs):
+                continue
+            a, b = segs[:k], segs[k:]
+            far = b if dist[k:].mean() > dist[: k + 1].mean() else a
+            if np.linalg.norm(P[k] - end) > SPLIT_ON_M or float(np.max(dist[k:] if far is b else dist[: k + 1])) < SPLIT_ON_M:
+                continue
+            edges[pp][ee] = a if far is b else b
+            edges[pp][past] = far
+            done.append(f"{gg} cut at the gorge corner: {len(far)} segments past it named {pp}:{past}")
+    return done
 
 
 def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):

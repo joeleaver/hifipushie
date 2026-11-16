@@ -7,7 +7,8 @@ rule (R1 / R2b / D4, C489-C491) as a scalar field g whose zero set is the line. 
                 front's share of the half round from centre front), the share interpolated between the girth levels
                 (held above / below), placed by arc along the toile's own section (horizontal from the torso axis);
                 above the underarm (the armhole's lowest point) it runs on into `above` ("shoulder"): [ahead, behind]
-  shoulder      the toile's shoulder line (step 4) carried straight down / forward: [front, back]
+  shoulder      the toile's shoulder line (step 4) carried straight down / forward: [front, back]; its inner end leans
+                onto the toile's neck corner (toile.npz neck_corner: where the neck seam meets the opening)
   under_sleeve  the TAILOR'S rule on the sleeve tube: the under sleeve's two seams set in `fore_in_mm` from the arm's
                 front line and `hind_in_mm` from its back line (arc on the tube): [top sleeve, under sleeve]
   level         a horizontal cut at a step-0 fit level or height (`at`), `offset_mm`: [below, above]
@@ -19,6 +20,7 @@ import numpy as np
 MIR = np.array([-1.0, 1, 1])
 KINDS = ("armhole", "centre_back", "panel", "shoulder", "under_sleeve", "level")
 ARM_REACH_M = 0.05   # the armhole cut reaches this far past the sleeve's own radius from its axis
+NECK_LEAN_M = 0.04  # m: the shoulder line's inner end leans onto the toile's neck corner over this much of its run
 SHOULDER_K = 5.0     # 1/m: the shoulder line's field in the panel's units (radians ~ m / torso radius)
 Z_STEP = 0.01        # m: the panel's section spacing
 
@@ -69,6 +71,13 @@ class Lines:
         S = Z["shoulder_line"]
         o = np.argsort(np.abs(S[:, 0]))
         self.sx, self.sy = np.abs(S[o, 0]), S[o, 1]
+        if "neck_corner" in Z.files:  # (the shoulder seam meets the neck where the toile's neck seam ends: the opening
+            nc = np.asarray(Z["neck_corner"], float)  # may leave it behind the body's HPS; leaning the line's inner end
+            x0, y0 = abs(float(nc[0])), float(nc[1])  # onto it keeps the back's neck edge the neck seam alone)
+            if x0 < self.sx[0]:
+                self.sx, self.sy = np.r_[x0, self.sx], np.r_[np.interp(x0, self.sx, self.sy), self.sy]
+            w = np.clip(1 - (self.sx - x0) / NECK_LEAN_M, 0, 1)
+            self.sy = self.sy + (y0 - np.interp(x0, self.sx, self.sy)) * w
         self.z_under = float(Z["armhole"][:, 2].min())
 
     def theta(self, P):

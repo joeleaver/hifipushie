@@ -177,6 +177,12 @@ def save(t, d) -> tuple:
         arrs["collar_grid"] = np.asarray(t.collar_grid, int)
     if getattr(t, "roll_line", None) is not None:
         arrs["roll_line"] = t.roll_line
+    if "opening" in t.parts and getattr(t, "phi_neck", None) is not None:
+        from .toile_collar import CollarRefused, neck_half
+        try:  # (the left neck seam's front end: where the opening leaves the neck; step 5's shoulder seam meets it)
+            arrs["neck_corner"] = neck_half(t, t.meshes["toile"])[0][-1]
+        except CollarRefused:
+            pass
     np.savez(d / "toile.npz", **arrs)
     (d / "toile.json").write_text(json.dumps(t.info, indent=1, default=float))
     return d / "toile.npz", d / "toile.json"
