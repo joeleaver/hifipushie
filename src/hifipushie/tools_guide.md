@@ -338,7 +338,7 @@ again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="
 
 ### `flap`
 
-`flap(name, mass, base, length, width, rise="up", face="forward", fold=0, fold_at=0.6, thickness=None, pointed=0.6, blend=None, part=None, note='')`
+`flap(name, mass, base, length, width, rise="up", face=None, fold=0, fold_at=0.6, thickness=None, pointed=0.6, lobe_thickness=None, tip=None, flare=None, blend=None, part=None, note='')`
 
 A flap of clay made as a modeller makes a folded ear: a thick lump standing on the figure, then its top folded over.
 For a folded or upright ear, a comb, a tongue, a tab.
@@ -351,7 +351,9 @@ For a folded or upright ear, a comb, a tongue, a tab.
   width: a clay ear is a thick lump, not a strap); pointed: 0 round .. 1 narrowing to a soft point.
 - lobe_thickness: the folded part's own thickness (a pig's ear is a fat rolled lobe on a thinner stalk).
 - tip: [x, y, z] where the tip should hang; the fold's direction, angle and the folded part's length follow from it
-  (face and fold are then not used). Easier to aim than an angle.
+  (fold is then not used). Easier to aim than an angle. With face too, the standing part keeps that broad face and
+  the fold goes to the tip; without, the face turns toward the tip. The answer gives each part's length in cm.
+- flare: metres the root swells into the clay it grows from, a soft collar (default a quarter of the width; 0 none).
 - fold: degrees the top folds over toward its face (0 upright; 90 the top sticks out forward; 150 to 180 it lies
   down along the standing part); fold_at: where along its length it folds (0.6: the top 40 % folds, round a knuckle).
 A name ending ".L" is made on the left (+x) and mirrored. The same name again replaces it: change ONE thing at a
