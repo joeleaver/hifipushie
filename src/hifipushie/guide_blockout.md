@@ -31,8 +31,8 @@ Your own verdict on the whole figure is worth trusting: say bluntly what is stil
   nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
-- An ear, comb or tongue that stands up or folds over: the `flap` tool (its outline drawn flat, its thickness,
-  where it stands and looks, where and how far its top folds), judged close up with look_beside's focus.
+- An ear, comb or tongue that stands up or folds over: the `flap` tool (where it stands, which way it rises and
+  looks, its size, where and how far its top folds), judged close up with look_beside's focus.
 - Flat leaves that only lean (upright ears, leaves, fins, feathers, blades): a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
   point, `cup` for an ear's hollow, `bend` for a curling tip). Turn it by saying where it goes, not by angles:
   `"aim": {"point": "up out", "face": "forward"}` (its length rises and leans out, its hollow looks forward); the

@@ -23,13 +23,12 @@ JOINT_KEYS = ("pos", "r", "on", "lift", "shift")
 GENERIC = ("blend", "op", "layer", "group", "join", "fuse", "fill", "fill_sides", "part", "tags", "array", "between", "inset", "targets",
            "lumpy", "chips", "hollow",  # element-level solids (spec_hands._csg): on bones and shaped blobs
            "instance", "local")         # an element of a prefab's instance (written by the expansion)
-BONE_KEYS = ("a", "b", "r_a", "r_b", "flat", "bow", "up", "ends", *GENERIC)
+BONE_KEYS = ("a", "b", "r_a", "r_b", "flat", "bow", "up", "ends", "flap", *GENERIC)
 BLOB_KEYS = (
     "at", "offset", "size", "rot", "aim", "shape", *GENERIC,
     "round", "ends",                                                              # box, cylinder, blade
     "squareness", "exponents",                                                    # super
     "sections", "bottom", "top", "cup", "taper",                                  # loft
-    "rise", "face", "length", "tip_width", "tip_thickness", "fold_at", "flap",    # slab (the flap tool)
     "spine", "curve", "stations", "root", "tip", "width_axis", "fold", "bend", "thickness", "hand",  # sheet
     "upper", "lower", "r", "width",                                               # lids
     "lean", "fall", "points", "spread", "spread_back", "gap", "stand_gap",        # collar

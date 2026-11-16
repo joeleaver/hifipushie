@@ -111,8 +111,8 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
   look_beside's proportions say how wide and deep the figure is where the reference is widest and narrowest) and
   change that. `grab` is only for a broad move of a whole form its numbers can't make (a head's corners out, a
   belly fuller low down): never for the last centimetre of an outline, where it dents the clay.
-- An ear, a comb, a tongue or a tab that folds over and hangs: `flap` (a flat outline of clay with a rounded rim,
-  standing on its base, its top folded over), and judge it with `look_beside(name, focus=[the ear])`: close up, beside each reference.
+- An ear, a comb, a tongue or a tab that folds over and hangs: `flap` (a thick lump standing on its base, its top
+  folded over), and judge it with `look_beside(name, focus=[the ear])`: close up, beside each reference.
 - A face that should be FLAT (the front of a snout, a sole, a seat): `trim` it with a line drawn in the view that
   shows the face edge-on. A hollow of a SHAPE (a mouth, a socket, a nostril): make that shape as a mass and `carve`
   it out. Don't squash a round mass's numbers toward flat, and don't model a hollow by leaving a gap between blobs.

@@ -407,20 +407,23 @@ def _inside(prims, pts):
     return field_at(prims, np.asarray(pts, float), clip=False) < 0
 
 
-def test_a_flap_is_a_flat_outline_of_clay_folded_over_on_both_sides(fig):
+def test_a_flap_is_a_thick_lump_standing_on_its_base_and_folded_over_on_both_sides(fig):
     from hifipushie import server
     base = [0.11, 0.0, 0.73]  # (on the head's surface there)
-    out = server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, tip_width=0.0, thickness=0.04, rise="up",
-                      face="forward", fold=150, fold_at=0.6)
+    out = server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, rise="up", face="forward", fold=120, fold_at=0.6)
     assert "Mirrored as ear.R" in out and "OUTSIDE" not in out and "broad from the front" in out
-    b = store.load(fig)["blobs"]["ear.L"]
-    assert b["shape"] == "slab" and b["fold"] == 150
-    prims = compile_prims(store.load(fig))
-    assert _inside(prims, [[0.11, 0.0, 0.76], [-0.11, 0.0, 0.76], [0.11 + 0.04, 0.0, 0.745]]).all()  # broad at its base
-    assert not _inside(prims, [[0.11 + 0.04, 0.0, 0.8]])[0]  # narrowing to a point: a triangle, not a strip
-    assert not _inside(prims, [[0.11, 0.03, 0.76]])[0]  # thin front to back
-    assert _inside(prims, [[0.11, -0.045, 0.785]])[0]  # the folded part lies in front of the standing part
-    assert not _inside(prims, [[0.11, 0.0, 0.73 + 0.11]])[0]  # and nothing stands where the unfolded top would be
+    s = store.load(fig)
+    assert {"ear.L", "ear_top.L"} <= set(s["bones"]) and s["bones"]["ear.L"]["flap"]["fold"] == 120
+    prims = compile_prims(s)
+    up = [0.11, 0.0, 0.73 + 0.05]  # the standing part, 5 cm above its base
+    assert _inside(prims, [up, [-0.11, 0.0, 0.78]]).all()
+    assert _inside(prims, [[0.11, 0.0, 0.78], [0.11 + 0.035, 0.0, 0.78]]).all()  # broad across x (it narrows toward the fold)
+    assert not _inside(prims, [[0.11, 0.035, 0.78]])[0]  # thin front to back: 6 cm thick
+    tip = np.array(s["joints"]["ear_tip.L"]["pos"])
+    assert tip[1] < -0.03 and tip[2] < 0.73 + 0.12  # folded forward: the tip is in front, below the straight length
+    server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, fold=0)
+    tip0 = np.array(store.load(fig)["joints"]["ear_tip.L"]["pos"])
+    assert abs(tip0[1]) < 0.01 and tip0[2] > tip[2] + 0.03  # unfolded: straight up
 
 
 def test_a_flap_says_when_its_base_floats_and_refuses_what_is_no_flap(fig):
@@ -431,15 +434,16 @@ def test_a_flap_says_when_its_base_floats_and_refuses_what_is_no_flap(fig):
         server.flap(fig, "ear.R", base=[-0.1, 0, 0.74], length=0.1, width=0.08)
     with pytest.raises(ValueError, match="face is where"):
         server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.08, rise="up", face="up")
-    with pytest.raises(ValueError, match="thickness under the width"):
+    with pytest.raises(ValueError, match="thickness"):
         server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.05, thickness=0.09)
 
 
-def test_fold_at_moves_the_fold_and_the_answer_says_where_the_folded_part_points(fig):
+def test_fold_at_moves_the_knuckle_and_the_answer_says_where_the_folded_part_points(fig):
     from hifipushie import server
-    kw = dict(base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.05, fold=120)
+    kw = dict(base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.08, fold=120)
     out = server.flap(fig, "ear.L", fold_at=0.4, **kw)
+    low = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
+    server.flap(fig, "ear.L", fold_at=0.7, **kw)
+    high = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
+    assert high - low > 0.03  # (a thick lump's knuckle hardly moved: 1 mm for 0.5 -> 0.4, e2)
     assert "folded part points down and forward" in out
-    low = _top(compile_prims(store.load(fig)), 0.11)
-    server.flap(fig, "ear.L", fold_at=0.8, **kw)
-    assert _top(compile_prims(store.load(fig)), 0.11) > low + 0.04

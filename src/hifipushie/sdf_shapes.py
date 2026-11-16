@@ -5,7 +5,6 @@ import numpy as np
 
 from . import sdf
 from .sheet import sd_sheet
-from .slab import sd_slab
 from .softforms import sd_loft, sd_super
 from .sdf import _smoothstep, field_at
 
@@ -379,7 +378,7 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 
 
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
-       "blade": sd_blade, "collar": sd_collar, "sweep": sd_sweep, "super": sd_super, "loft": sd_loft, "sheet": sd_sheet, "slab": sd_slab,
+       "blade": sd_blade, "collar": sd_collar, "sweep": sd_sweep, "super": sd_super, "loft": sd_loft, "sheet": sd_sheet,
        "csg": sd_csg, "shell": sd_shell, "base": lambda p, pr: _sd_base(p, pr),
        "gnmpiece": lambda p, pr: _sd_gnm_piece(p, pr)}
 

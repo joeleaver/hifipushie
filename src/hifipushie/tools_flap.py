@@ -1,5 +1,5 @@
-"""The flap tool: an ear, a tab, a fin, as a modeller makes one: a flat outline of clay, thick, with a rounded rim,
-standing on the figure, its top folded over. slab.py is the spec of the shape."""
+"""The flap tool: a pad of clay that grows from the figure and folds over (an ear, a comb, a tongue, a tab).
+flap.py is the spec of the shape."""
 from __future__ import annotations
 
 import copy
@@ -28,20 +28,20 @@ def _views_broad(F) -> str:
 
 @mcp.tool(structured_output=False)
 def flap(name: str, mass: str, base: list[float], length: float, width: float, rise: str | list = "up",
-         face: str | list = "forward", tip_width: float = 0.0, thickness: float | None = None,
-         tip_thickness: float | None = None, fold: float = 0.0, fold_at: float = 0.6, blend: float | None = None,
-         part: str | None = None, note: str = ""):
-    """An ear, a tab, a fin, made as a modeller makes one: its outline drawn flat (a triangle or a tapering tab with
-    rounded corners), given a thickness with a rounded rim, stood on the figure, and its top folded over. base:
-    [x, y, z], the middle of its base, ON the surface of the mass it grows from (read off look's rulers). rise: the
-    way it stands ("up", "up out"; out is away from the centre line) or [x, y, z]. face: the way its broad face looks
-    ("forward", "forward out"), made square to rise. length: base to tip laid flat; width: across the base;
-    tip_width: across the tip (0: a point, a triangle; = width: a strip). thickness: through the base (default 0.35
-    of the width), tip_thickness (default half that). fold: degrees its top folds over toward its face (0 upright,
-    90 the top sticks out forward, 180 it lies flat against the standing part); fold_at: where along its length the
-    fold line is (0.6: the top 40 % folds). A name ending ".L" is made on the left (+x) and mirrored. The same name
-    again replaces it: change ONE thing at a time, then look_beside with focus=[mass] to see it close up beside the
-    reference. Details: guide(topic="flap")."""
+         face: str | list = "forward", fold: float = 0.0, fold_at: float = 0.6, thickness: float | None = None,
+         pointed: float = 0.6, blend: float | None = None, part: str | None = None, note: str = ""):
+    """A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, its top folded over. A
+    folded ear, a comb, a tongue, a tab. base: [x, y, z], the middle of where it grows from, ON the surface of the
+    mass it grows from (read off look's rulers; it is sunk in a little by itself). rise: the way it stands, words
+    ("up", "up out", "up out back": out is away from the centre line) or [x, y, z]. face: the way its broad face
+    looks ("forward", "forward out"); it is made square to rise. length: base to tip laid flat, m; width: across its
+    base, m; thickness: through its base (default 0.6 of the width: clay ears are thick lumps, not straps); pointed
+    0..1 (0 round, 1 narrowing to a soft point). fold: degrees its top folds over toward its face (0 none; 90 the top sticks out
+    forward; 150 to 180 it lies down along the standing part); fold_at: where along its length the fold is (0.6:
+    the top 40 % folds over, round a knuckle). A name ending ".L" is made on
+    the left (+x) and mirrored. The same name again replaces it: change ONE thing at a time. Then look_beside with
+    focus=[mass] to see it close up beside the reference. Details: guide(topic="flap")."""
+    from . import flap as flapmod
     from .spec import SpecError, mirror_name
     from .spec_hands import _aim_vec
     spec = store.load(name)
@@ -55,78 +55,68 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
         R, F = _aim_vec(rise, "rise"), _aim_vec(face, "face")
     except SpecError as e:
         raise ValueError(str(e)) from None
-    F = F - (F @ R) * R
-    if np.linalg.norm(F) < 0.2:
-        raise ValueError("face is where the flap's broad face looks: it has to be away from the way it rises (an ear "
-                         "rising up looks forward, not up)")
-    F = F / np.linalg.norm(F)
     width, length = float(width), float(length)
-    thick = float(thickness) if thickness is not None else 0.35 * width
-    tthick = float(tip_thickness) if tip_thickness is not None else 0.5 * thick
-    if not (0 < thick < width and 0 < tthick <= thick) or length < 1.5 * thick or not 0 <= float(tip_width) <= width:
-        raise ValueError(f"in metres: thickness under the width, tip_thickness up to the thickness, tip_width up to the "
-                         f"width, length over 1.5 times the thickness (got width {width:g}, length {length:g}, thickness "
-                         f"{thick:g}, tip_thickness {tthick:g}, tip_width {tip_width:g})")
-    if not (0.15 <= float(fold_at) <= 0.95 and 0 <= float(fold) <= 180):
-        raise ValueError("fold_at is 0.15..0.95 (where along its length it folds), fold 0..180 degrees")
-    blobs = spec.setdefault("blobs", {})
-    old = blobs.get(mass) or {}
-    if mass in (spec.get("bones") or {}):
-        raise ValueError(f"{mass!r} is a bone of this model: give the flap another name")
-    joints = spec.get("joints") or {}
-    if not joints:
-        raise ValueError("this model has no joints yet: a flap rides on one (put the skeleton in first)")
-    at = old.get("at") if isinstance(old.get("at"), str) and old.get("at") in joints else \
-        min(joints, key=lambda j: float(np.linalg.norm(np.array(joints[j]["pos"], float) - b0)))
-    from .spec import resolve_point
-    j = resolve_point(spec, at)
-    r4 = lambda p: [round(float(x), 4) for x in p]  # noqa: E731
-    new = {"shape": "slab", "at": at, "offset": r4(b0 - j), "rise": r4(R), "face": r4(F), "length": length,
-           "width": width, "tip_width": float(tip_width), "thickness": thick, "tip_thickness": tthick,
-           "fold": float(fold), "fold_at": float(fold_at)}
-    for k in ("part", "fuse", "fill", "fill_sides", "tags"):
-        if k in old:
-            new[k] = old[k]
+    thick = float(thickness) if thickness is not None else 0.6 * width
+    if not (0 < thick <= width) or length < 1.2 * thick:
+        raise ValueError(f"width across the base, length base to tip and thickness through it, in metres: the thickness "
+                         f"no more than the width and the length over 1.2 times the thickness (got {width:g}, {length:g}, {thick:g})")
+    if not (0 <= float(pointed) <= 1 and 0.15 <= float(fold_at) <= 0.95 and 0 <= float(fold) <= 180):
+        raise ValueError("pointed is 0..1, fold_at 0.15..0.95 (where along its length it folds), fold 0..180 degrees")
+    if mass in (spec.get("blobs") or {}) and (spec["blobs"][mass].get("shape") != "sheet"):
+        raise ValueError(f"{mass!r} is a blob of this model: give the flap another name")
+    try:
+        g = flapmod.lump(mass, b0, R, F, length, width, thick, float(fold_at), float(fold), float(pointed))
+    except ValueError as e:
+        raise ValueError(str(e)) from None
+    bones, joints = spec.setdefault("bones", {}), spec.setdefault("joints", {})
+    old = bones.get(mass) or {}
+    stem, J, top = flapmod.parts(mass)
+    for n in (mass, mirror_name(mass)):  # an older flap made as a sheet blob goes
+        (spec.get("blobs") or {}).pop(n, None)
+    joints.update(g["joints"])
+    for n, bdef in g["bones"].items():
+        keep = {k: (bones.get(n) or {})[k] for k in ("part", "tags") if k in (bones.get(n) or {})}
+        bones[n] = {**bdef, **keep}
     if part:
-        new["part"] = part
+        for n in g["bones"]:
+            bones[n]["part"] = part
     bl = blend if blend is not None else old.get("blend")
-    new["blend"] = float(bl) if bl is not None else min(float(spec.get("blend", 0.03)), 0.02)
-    blobs[mass] = new
+    bones[mass]["blend"] = float(bl) if bl is not None else min(float(spec.get("blend", 0.03)), 0.02)
+    bones[top]["blend"] = bones[mass]["blend"]
+    bones[mass]["flap"] = {"base": [float(x) for x in b0], "rise": rise, "face": face, "length": length,
+                           "width": width, "thickness": thick, "fold": float(fold), "fold_at": float(fold_at),
+                           "pointed": float(pointed)}
     try:
         compile_prims(spec)
     except SpecError as e:
-        raise ValueError(str(e)) from None
+        raise ValueError(f"{e}") from None
     bare = copy.deepcopy(spec)
-    for n in (mass, mirror_name(mass)):
-        bare["blobs"].pop(n, None)
+    for n in (mass, mirror_name(mass), top, mirror_name(top)):
+        (bare.get("bones") or {}).pop(n, None)
     from .sdf import field_at
     rest = [p for p in compile_prims(bare) if p.op == "add"] if (bare.get("bones") or bare.get("blobs")) else []
     off = float(field_at(rest, b0[None], clip=False)[0]) if rest else 0.0
     v = store.save(name, spec, note or f"flap {mass}: length {length:g}, fold {fold:g} at {fold_at:g}")
-    th = np.radians(float(fold))
-    toward = np.cos(th) * R + np.sin(th) * F
-    hinge = b0 + float(fold_at) * length * R
-    tip = hinge + (1 - float(fold_at)) * length * toward + (thick if fold else 0) * np.sin(th / 2) * F
     twin = mirror_name(mass)
     r3 = lambda p: [round(float(x), 3) for x in p]  # noqa: E731
-    lines = [f"{name} v{v}: {mass} is a slab of clay {width * 100:.1f} cm across its base narrowing to {tip_width * 100:.1f} at "
-             f"its tip, {length * 100:.0f} cm long, {thick * 100:.1f} cm thick at the base, standing from {r3(b0)} "
-             f"{_words(R)}, its broad face {_words(F)}: broad {_views_broad(F)}. "
-             + (f"Its top folds {fold:.0f} degrees toward its face along a line at {r3(hinge)}, so the folded part points "
-                f"{_words(toward)} and its tip is near {r3(tip)}." if fold else "It is not folded.")
+    lines = [f"{name} v{v}: {mass} is a lump {width * 100:.1f} cm across its base, {thick * 100:.1f} cm thick and {length * 100:.0f} "
+             f"cm long, standing from {r3(b0)} toward {r3(g['rise'])}, its broad face toward {r3(g['face'])}: broad "
+             f"{_views_broad(g['face'])}. " + (f"It folds {fold:.0f} degrees toward its face at {r3(g['hinge'])}; its tip is "
+                                              f"at {r3(g['tip'])}." if fold else "It is not folded.")
              + (f" Mirrored as {twin}." if twin and bool(spec.get("symmetry", True)) else "")]
+    if fold:
+        lines.append(f"Its folded part points {_words(g['toward'])} (a fold turns the top over toward the face, so past 90 "
+                     "degrees it comes back against the way the flap rises: a flap leaning out folds back in). For a top "
+                     "that hangs out as well as forward, give face the outward part and rise less of it.")
     if off > 0.004:
         lines.append(f"ITS BASE IS {off * 100:.1f} cm OUTSIDE the clay it should grow from: it floats. Put base on that "
                      "mass's surface (read it off look_beside's or look's rulers).")
     elif off < -0.03:
-        lines.append(f"Its base is {-off * 100:.1f} cm INSIDE the mass it grows from: part of it is buried. Put base on "
+        lines.append(f"Its base is {-off * 100:.1f} cm INSIDE the mass it grows from: part of the pad is buried. Put base on "
                      "that mass's surface.")
-    if fold > 90:
-        lines.append("Past 90 degrees the folded part comes back against the way the flap rises (a flap leaning out "
-                     "folds back in): for a top that hangs out as well as forward, give face the outward part and rise "
-                     "less of it.")
-    lines.append("In the spec it is a \"slab\" blob: a put_model of a whole new spec drops it unless that blob is carried over.")
+    lines.append(f"In the spec it is two bones, {mass} (base to fold, with the tool's numbers under \"flap\") and {top} (the "
+                 f"folded part), on joints {', '.join(J.values())}: a put_model of a whole new spec drops them unless carried over.")
     lines.append(f"next: look_beside(\"{name}\", focus=[\"{mass}\"]): the flap close up beside each reference view and the "
                  "painting. Then change ONE thing: where it stands (base), which way it rises or looks (rise, face), its "
-                 "outline (length, width, tip_width), its thickness, or the fold (fold, fold_at).")
+                 "size (length, width, thickness, pointed), or the fold (fold, fold_at).")
     return tools_reshape._with_look(name, ["front", "side", "three_quarter"], "\n".join(lines))
