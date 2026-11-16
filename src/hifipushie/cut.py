@@ -14,7 +14,8 @@ own edge: hem, neckline, opening, sleeve end) is named by THE DECLARATION:
          one edge's classes are one run; runs under FREE_MERGE_MM join their neighbours. ".L" pieces' maps serve their
          ".R" mirror. A free run no edge takes, or an edge in two runs, is refused by name (row cut_flatten).
   ease   {"piece:edge": [lo, hi]}: a seam with a declared ease (a sleeve cap) is left as cut (never trued) and held to
-         its band; else trued, +-1 % (draft_own.PLAIN_TOL). ".L" entries serve ".R".
+         its band; else trued, +-1 % (draft_own.PLAIN_TOL). ".L" entries serve ".R". The cap's ease itself comes from step 4
+         (cut_ease.py: the eased band flattened at its rest length, the cap longer than the toile's seam by the ease).
   folds  {piece: {fold name: edge}}: a planned fold (step 2's sleeve hem) along a cut edge: a press fold (cut_tapes.py).
 TAPES and PLACE: each piece names the step-3 tapes it lies on and its place (torso front / back / side, a limb), read
 off the toile where it was cut (cut_tapes.py): never declared.
@@ -31,7 +32,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .flatten import flatten, strain
+from .flatten import strain
 from .mark_split import areas, edge_faces, chains
 
 FREE_MERGE_MM = 15.0
@@ -159,14 +160,15 @@ def name_runs(p, rs, V, loop, s1, absent, runs_decl, free_decl):
     return out, bad
 
 
-def flatten_piece(V, F, lab, p, nm):
+def flatten_piece(V, F, lab, p, nm, ease=None):
     loop = outline(F, lab, p)
     fid = np.where(lab == p)[0]
     used = np.unique(F[fid])
     remap = -np.ones(len(V), int)
     remap[used] = np.arange(len(used))
     Vp, Fp = V[used], remap[F[fid]]
-    U, S, Fk = flatten(Vp, Fp)
+    from .cut_ease import flatten_eased
+    U, S, Fk, cap = flatten_eased(Vp, Fp, remap[loop], ease)
     bad = strain(S)
     ar = areas(Vp, Fk)
     lp = remap[loop]
@@ -183,4 +185,6 @@ def flatten_piece(V, F, lab, p, nm):
            "worst_2pct_at": np.round(Vp[Fk[worst]].mean((0, 1)), 3).tolist(),
            "worst_kind": "compression (a dart wanted)" if (1 - S[worst, 1]).mean() > (S[worst, 0] - 1).mean()
            else "stretch (ease wanted)"}
+    if cap:
+        rep["cap_ease"] = cap
     return {"name": nm, "loop": list(loop), "U": U, "F": Fk, "V": Vp, "bad": bad, "lp": lp, "rep": rep}

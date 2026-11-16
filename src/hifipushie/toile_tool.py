@@ -8,7 +8,8 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
   hang_from  a step-0 fit level the garment hangs straight down from (a jacket from its hips), or "none"
   armhole    {"length_mm"}: the garment's armhole round the body (the arm-root loop is scaled about the shoulder point)
   sleeves    {"ease_mm": [top, wrist], "crown_mm", "hem": a step-2 sleeve-end trace (its length past the picture's
-             wrist mark carried onto the model's wrist along the arm) or a step-0 height}
+             wrist mark carried onto the model's wrist along the arm) or a step-0 height, "cap_ease_pct" (optional:
+             the cap's ease built into the crown, toile.CAP_EASE_PCT when unsaid)}
   opening    {"lap_mm", "edge": a step-2 trace (the over front's edge), "buttons": a step-2 row id (optional)}
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}

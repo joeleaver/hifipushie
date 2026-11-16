@@ -16,6 +16,7 @@ import numpy as np
 NEAR = 0.06   # m: a tape point lies on the piece whose surface is nearest it, within this (the toile's ease + slack)
 MIN_PTS = 2   # tape points on a piece before it names that tape
 EDGE_NEAR = 0.04  # m: a drafted piece's edge lies along a girth whose tape is this near it on average
+MARK_NEAR_M = 0.015  # m: a fastening mark is mapped into the flat by the piece's points this near its height
 CROSS = 0.02  # m: a girth crosses a piece when the piece has cloth this far on both sides of its plane, near the tape
 
 
@@ -111,3 +112,30 @@ def places(pcs: dict, step3: dict) -> dict:
         if h in out:
             out[p] = dict(out[h])
     return out
+
+
+def closure_marks(B: dict, pcs: dict, buttons_z) -> list:
+    """The closures' fastening marks (C496): the toile is built closed, both fronts across the centre line (x = 0), so
+    a button on the over front and its buttonhole on the under front sit where x = 0 crosses each piece at the button's
+    height (step 4's numbers opening.buttons_z). Each is mapped into the flat by the piece's own 3D -> flat map (least
+    squares over its points within MARK_NEAR_M), written as the piece's marks and the closure's `pairs`. [why not]."""
+    why = []
+    for c in B.get("closures") or []:
+        pairs = []
+        for k, bz in enumerate(sorted(buttons_z, reverse=True)):
+            got = []
+            for p, nm in ((c["over"], f"button{k + 1}"), (c["under"], f"buttonhole{k + 1}")):
+                V, U = pcs[p]["V"], pcs[p]["U"]
+                ok = ~np.isnan(U[:, 0]) & (np.abs(V[:, 2] - bz) < MARK_NEAR_M) & (np.abs(V[:, 0]) < 2 * MARK_NEAR_M)
+                if ok.sum() < 6 or not V[ok, 0].min() <= 0 <= V[ok, 0].max():
+                    why.append(f"closure {c['name']!r}: {p} doesn't cross the centre line at the button's z {bz:.3f}")
+                    break
+                A = np.c_[V[ok][:, [0, 2]], np.ones(int(ok.sum()))]
+                uv = np.array([0.0, bz, 1.0]) @ np.linalg.lstsq(A, U[ok], rcond=None)[0]
+                B["pieces"][p]["marks"][nm] = [float(uv[0]), float(uv[1])]
+                got.append(nm)
+            if len(got) == 2:
+                pairs.append(got)
+        if pairs:
+            c["pairs"] = pairs
+    return why
