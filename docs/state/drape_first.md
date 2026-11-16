@@ -49,5 +49,8 @@ History: docs/notes (grep C489-C494); spikes/r1_*, r2_*, r2b_*.
 - Downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a FreeSewing
   draft dir, not pattern.json. ~120 "step 4" texts in chain_* / draft_* still mean the flat pattern.
 
-NEXT: decide the collar's outer-edge rule (draft_fall vs the toile's landing line), then R3d (darts, hems, tapes, cap
-ease, a chest-canvas line).
+## R3d (2026-11-16, in progress): step 6's gate honest on the jacket
+Coordinator: the toile decides the collar's outer edge. Order: collar outer, cap ease, folds, tapes; darts / style_lengths
+after. Proof /mnt/data/hifipushie/r3d (copy of r3c/ws).
+
+NEXT: R3d in progress.
