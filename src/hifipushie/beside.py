@@ -219,7 +219,8 @@ def _floating(prims) -> list[dict]:
     return [{"mass": n, "gap": g} for n, g in sorted(out.items())]
 
 
-def compare(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176) -> dict:
+def compare(name: str, views: list[str] | None = None, ignore: list[str] | None = None, resolution: int = 176,
+            focus: list[str] | None = None) -> dict:
     """{"views": {view: {"iou", "places": [...], "on_purpose": [...], "lines": [...], "picture": PIL image}},
     "ignored": [...], "stale": [on-purpose records with no difference at their place any more]}."""
     from . import beside_painting
@@ -245,12 +246,13 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
     prims, whole = _model(name, resolution)
     meant = on_purpose(name)
     used: set = set()
+    fn = focus_names(prims, spec, focus)
     out = {"views": {}, "ignored": sorted(ig), "floating": _floating(prims)}
     read_planes: set = set()
     core_grid = False  # (made when the first flat view asks for it)
     for v in todo:
         if v == "painting":
-            out["views"][v] = beside_painting.view(name, prims, whole, ig, meant, used, known)
+            out["views"][v] = beside_painting.view(name, prims, whole, ig, meant, used, known, focus=fn)
             continue
         rec, cam = refread.view_record(name, v), matched.load_camera(name, v)
         k = float(rec["m_per_px"])
@@ -350,7 +352,8 @@ def compare(name: str, views: list[str] | None = None, ignore: list[str] | None 
         out["views"][v] = {"iou": iou, "places": places, "on_purpose": list(kept_on.values()), "proportions": prop,
                            "lines": [{k2: m[k2] for k2 in ("length", "where", "run")} for m in missing],
                            "picture": _picture(v, rgba, ref, hit, depth, sk, missing, places, k, bool(ig), accepted,
-                                               tint=part_tint(prims, owner, hit))}
+                                               tint=part_tint(prims, owner, hit),
+                                               box=focus_box(owner, hit, fn) if fn else None)}
     planes = {"painting" if v == "painting" else GRAB_VIEW[v][0] for v in todo}
     out["stale"] = [e for i, e in enumerate(meant) if i not in used and e["plane"] in planes]
     return out
@@ -373,8 +376,54 @@ def part_tint(prims, owner: np.ndarray, hit: np.ndarray) -> np.ndarray | None:
     return tint
 
 
+def focus_names(prims, spec: dict, focus) -> set:
+    """The prim names a close-up looks at: each named mass, its mirror twin and the rest of its group (a flap's
+    folded part)."""
+    if not focus:
+        return set()
+    known = set(spec.get("bones") or {}) | set(spec.get("blobs") or {})
+    bad = [n for n in focus if n not in known]
+    if bad:
+        raise ValueError(f"focus: no mass called {bad} (the model's masses: {sorted(known)})")
+    els = {**(spec.get("bones") or {}), **(spec.get("blobs") or {})}
+    groups = {els[n].get("group") for n in focus if els[n].get("group")}
+    names = set(focus) | {n for n, e in els.items() if e.get("group") in groups}
+    names |= {mirror_name(n) for n in list(names) if mirror_name(n)}
+    return names | {n[:-2] + ".R" for n in list(names) if n.endswith(".L")}
+
+
+def focus_box(owner: np.ndarray, hit: np.ndarray, names: set, margin: float = 0.8):
+    """(y0, y1, x0, x1): the pixels of the named masses, grown by `margin` of their size; None when none show."""
+    own = sorted(n for n in names if not n.endswith(".R"))  # one side: both ears in one box is the whole head
+    m = hit & np.isin(owner, own)
+    if not m.any():
+        m = hit & np.isin(owner, sorted(names))
+    if not m.any():
+        return None
+    ys, xs = np.nonzero(m)
+    H, W = m.shape
+    side = max(ys.max() - ys.min(), xs.max() - xs.min(), 24) * (1 + 2 * margin)
+    cy, cx = (ys.max() + ys.min()) / 2, (xs.max() + xs.min()) / 2
+    y0, x0 = int(max(cy - side / 2, 0)), int(max(cx - side / 2, 0))
+    return y0, int(min(y0 + side, H)), x0, int(min(x0 + side, W))
+
+
+def _crop(box, rgba, ref, hit, depth, sk, missing, places, accepted, tint, model_edge):
+    y0, y1, x0, x1 = box
+    c = lambda a: None if a is None else a[y0:y1, x0:x1]  # noqa: E731
+    missing = [{**m, "mask": c(m["mask"])} for m in missing]
+    places = [{**p, "px": (p["px"][0] - y0, p["px"][1] - x0)} for p in places
+              if y0 <= p["px"][0] < y1 and x0 <= p["px"][1] < x1]
+    edge = None if model_edge is None else (c(model_edge[0]), c(model_edge[1]))
+    return c(rgba), c(ref), c(hit), c(depth), c(sk), missing, places, c(accepted), c(tint), edge
+
+
 def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ignoring: bool, accepted=None,
-             height: int = 560, tint=None, model_edge=None) -> Image.Image:
+             height: int = 560, tint=None, model_edge=None, box=None) -> Image.Image:
+    if box is not None:  # a close-up: every panel cut to the focus masses' box, then drawn as large as a whole view
+        rgba, ref, hit, depth, sk, missing, places, accepted, tint, model_edge = _crop(
+            box, rgba, ref, hit, depth, sk, missing, places, accepted, tint, model_edge)
+        k = k * ref.shape[0] / height
     H, W = ref.shape
     s = height / H
     size = (max(int(round(W * s)), 1), height)
@@ -385,6 +434,7 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
     if tint is not None:
         clay = (clay * tint).astype(np.uint8)
     clay[~hit] = 232
+    ref_plain = left.copy()  # the reference alone (the painting gets the model's lines drawn over it below)
     if model_edge is not None:  # the painting: the model's outline and inside lines over it, in blue
         mo = np.zeros((H, W, 4), np.uint8)
         mo[model_edge[1]] = (30, 80, 235, 170)
@@ -392,6 +442,7 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
         left = Image.alpha_composite(left.convert("RGBA"), Image.fromarray(mo, "RGBA").resize(size, Image.NEAREST)).convert("RGB")
     edge = ref & ~ndimage.binary_erosion(ref, iterations=1)
     mid = Image.fromarray(clay).resize(size, Image.LANCZOS)
+    plain = mid.copy()  # the model alone, in clay (look_beside's other layouts show it beside the reference)
     over = np.zeros((H, W, 4), np.uint8)
     over[sk] = (225, 40, 40, 150)
     for m in missing:
@@ -424,7 +475,48 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
         x = i * (size[0] + gap)
         sheet.paste(im, (x, top))
         d.text((x + 4, 6), title[: max(int(size[0] / 8.2), 12)], font=small, fill=(0, 0, 0))
+    sheet.info["panels"] = {"reference": ref_plain, "clay": plain, "outline": mid, "difference": right}
     return sheet
+
+
+def layout(res: dict, how: str) -> list:
+    """look_beside's pictures as (title, image), in one of two layouts (blind trials e9 to e12 compared them with
+    three separate pictures a view, which cost more calls and were stitched back into one sheet by hand):
+    "panels": per view one strip: reference | model with the reference's lines | difference.
+    "sheet": first one picture of every view, the reference above the model in clay (same camera, same scale, no
+        lines or numbers), then the strips. The default: with it every agent saw a turned painting camera and pinned
+        it; with the strips alone none did."""
+    views = [(v, r["picture"], r["picture"].info.get("panels") or {}) for v, r in res["views"].items()]
+    strips = [(f"beside_{v}", pic) for v, pic, _ in views]
+    if how == "panels" or not all(p for _, _, p in views):
+        return strips
+    if how == "sheet":
+        h = 440
+        cols = []
+        for v, _, p in views:
+            a, b = p["reference"], p["clay"]
+            s = h / a.height
+            cols.append((v, a.resize((round(a.width * s), h)), b.resize((round(b.width * s), h))))
+        W = sum(c[1].width for c in cols) + 10 * (len(cols) + 1)
+        sheet = Image.new("RGB", (W, 2 * h + 50), (255, 255, 255))
+        d = ImageDraw.Draw(sheet)
+        x = 10
+        for v, a, b in cols:
+            d.text((x, 6), v, font=_font(15), fill=(0, 0, 0))
+            sheet.paste(a, (x, 30))
+            sheet.paste(b, (x, 40 + h))
+            x += a.width + 10
+        d.text((x - 4 - 200, 6), "", font=_font(15))
+        return [("beside_all", _titled(sheet, "every view: the reference above, the model in clay below (same camera, "
+                                              "same scale)")), *strips]
+    return strips
+
+
+def _titled(im, title: str):
+    out = Image.new("RGB", (im.width, im.height + 30), (255, 255, 255))
+    out.paste(im, (0, 30))
+    ImageDraw.Draw(out).text((4, 6), title, font=_font(15), fill=(0, 0, 0))
+    return out
 
 
 def text(name: str, res: dict) -> str:

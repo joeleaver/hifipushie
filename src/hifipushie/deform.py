@@ -43,6 +43,8 @@ def displacement(ops: list, x: np.ndarray) -> np.ndarray:
     D = np.zeros_like(x)
     for op in ops:
         (kind, p), = op.items()
+        if kind == "bend":  # (bend.py: taken back exactly by undeform, not by these steps)
+            continue
         z = x[..., 2]
         if kind == "sag":
             ax = {"x": 0, "y": 1}[p.get("axis", "x")]
@@ -95,8 +97,18 @@ def displacement(ops: list, x: np.ndarray) -> np.ndarray:
 
 
 def undeform(ops: list, p: np.ndarray, steps: int = 4) -> np.ndarray:
-    """The undeformed point x with x + D(x) = p (fixed-point iteration: fine while D bends gently)."""
+    """The undeformed point x with x + D(x) = p (fixed-point iteration: fine while D bends gently). Bends
+    (bend.py) come last and are undone first, each exactly."""
     x = np.asarray(p, np.float64)
+    bends = [op["bend"] for op in ops if "bend" in op]
+    if bends:
+        from . import bend
+        for g in reversed(bends):
+            x = bend.inverse(g, x)
+        ops = [op for op in ops if "bend" not in op]
+        if not ops:
+            return x
+    p = x
     for _ in range(steps):
         x = p - displacement(ops, x)
     return x

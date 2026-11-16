@@ -20,6 +20,8 @@ The first pass on a figure. Later passes (big forms, medium forms, fine forms, a
    pieces show here.
 7. Stop when the big masses, their proportions and the silhouette are right. Features and surface are later passes.
 Your own verdict on the whole figure is worth trusting: say bluntly what is still wrong, biggest first.
+For a part's form (an ear, a snout): `study_part` first, and write its steps back (`flap` needs that); your own
+eyes then see what you meant, and `review_part` gets a fresh reviewer's.
 
 ## 2. Blockout pitfalls
 
@@ -31,8 +33,9 @@ Your own verdict on the whole figure is worth trusting: say bluntly what is stil
   nose: shorten the droop or lengthen the nose until the tip clears the jaw (probe with `measure`).
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
-- An ear, comb or tongue that folds over or hangs: the `flap` tool (three points read off the pictures: root, the top
-  of its arch, its tip), not a blade.
+- An ear, comb or tongue that stands up or folds over: the `flap` tool (where it stands, which way it rises and
+  looks, its size, where and how far its top bends and how round the bend is), judged close up with look_beside's
+  focus. Anything that curves (a tail, a horn, a trunk): block it straight, then `bend` it along a path.
 - Flat leaves that only lean (upright ears, leaves, fins, feathers, blades): a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
   point, `cup` for an ear's hollow, `bend` for a curling tip). Turn it by saying where it goes, not by angles:
   `"aim": {"point": "up out", "face": "forward"}` (its length rises and leans out, its hollow looks forward); the

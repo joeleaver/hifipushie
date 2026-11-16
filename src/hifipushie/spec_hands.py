@@ -180,6 +180,59 @@ def _cut(name: str, b: dict) -> float:
     raise SpecError(f"bone {name!r}: ends is \"round\", \"flat\" or {{\"flat\": edge radius}}")
 
 
+def _bends(s: dict, prims: list[Prim]) -> list[Prim]:
+    """spec["bends"] (bend.py): {label: {"of": [masses], "path": [[x, y, z], ...], "mirror": true}}: the masses
+    carried along the path, after their grabs. A mirrored model's twins bend along the mirrored path."""
+    bends = s.get("bends")
+    if not bends:
+        return prims
+    from . import bend
+    if not isinstance(bends, dict):
+        raise SpecError('bends is {label: {"of": [masses], "path": [[x, y, z], ...]}}')
+    names = {p.name for p in prims}
+    todo = []
+    for label, b in bends.items():
+        if not isinstance(b, dict) or not b.get("of") or not b.get("path"):
+            raise SpecError(f"bend {label!r}: needs \"of\" (the masses) and \"path\" (two or more points)")
+        of = set(b["of"])
+        gone = sorted(n for n in of if n not in names)
+        if gone:
+            raise SpecError(f"bend {label!r}: no mass called {', '.join(map(repr, gone))}")
+        try:
+            g = bend.geometry(b["path"], b.get("normal"))
+        except ValueError as e:
+            raise SpecError(f"bend {label!r}: {e}") from None
+        todo.append((g, of))
+        twins = {spec.mirror_name(n) for n in of if spec.mirror_name(n) in names} - of
+        if twins and b.get("mirror", True):  # (also with symmetry off: an expanded spec has each twin by name, and
+            # look_beside's own copy left the right ear unbent, standing up behind the bent one)
+            mp = [[-q[0], q[1], q[2]] for q in b["path"]]
+            nm = b.get("normal")
+            todo.append((bend.geometry(mp, None if nm is None else [-nm[0], nm[1], nm[2]]), twins))
+    for g, of in todo:
+        for p in prims:
+            if p.name not in of or p.instance is not None or p.kind not in spec.SHAPES or \
+                    p.op not in ("add", "subtract", "intersect"):
+                continue
+            prev = p.params.get("warp") if p.kind == "csg" else None
+            if p.kind != "csg":
+                p.params = {"kind": p.kind, "p": p.params, "hollow": 0.0, "cuts": []}
+                p.kind = "csg"
+            ops = (list(prev[0]) if prev else []) + [{"bend": g}]
+            p.params["warp"] = (ops, prev[1] if prev else 1.0)
+            lo, hi = np.asarray(p.lo, float), np.asarray(p.hi, float)
+            box = np.stack(np.meshgrid(*[np.linspace(a, b2, 7) for a, b2 in zip(lo, hi)], indexing="ij"), -1).reshape(-1, 3)
+            moved = bend.forward(g, box)
+            rel = box - g["C"][0]
+            r = float(np.linalg.norm(rel - np.outer(rel @ g["T"][0], g["T"][0]), axis=1).max())  # off the line
+            lip = bend.squeeze(g, r)
+            pad = 0.1 * (hi - lo) + 0.002
+            p.lo, p.hi = np.minimum(lo, moved.min(0)) - pad, np.maximum(hi, moved.max(0)) + pad
+            p.lip = max(float(p.lip), lip)
+            p.reach = np.asarray(p.reach, float) * lip
+    return prims
+
+
 def _trims(s: dict, prims: list[Prim]) -> list[Prim]:
     """spec["trims"] (reshape.py): each named mass is cut by the trim's plane, in world space, after its grabs."""
     trims = s.get("trims")
