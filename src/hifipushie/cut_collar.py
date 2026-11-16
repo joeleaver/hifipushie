@@ -38,7 +38,8 @@ SPREAD_ROUNDS = 4  # drafts at most: the outer edge lengthened by what the fit s
 SPREAD_TOL = 0.002  # the fitted outer edge within this of its flat length: it lies as drafted
 CONTACT = True   # the fall kept GAP off the toile while it is fitted
 ITERS = 400      # project() passes (each moves the worst point at most 2 cm)
-LEAN = 0.15      # the stand leans in toward the neck by this much per unit of rise at the start
+LEAN = -0.25     # the stand leans (in > 0, back out < 0) by this much per unit of rise at the start (R3e: in 0.4 lands
+                 # 0.7 mm, 0.15 4.7 mm, -0.25 9.4 mm of d 12 on the jacket, stand 20 / fall 32 read off the reference)
 WALK_STEP = 0.002  # m: the fall's line laid down over the toile in steps of this
 
 
