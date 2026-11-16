@@ -1,12 +1,12 @@
-"""The draft_pattern tool body (garment step 4): the agent's FreeSewing design + declarations -> the flat pattern, the
-flat gate, the record's step 4 and its look. draft_own.py holds the parts (Node run, declarations, converter, gate).
+"""The draft_pattern tool body (garment step 6, drape first; it was step 4): the agent's FreeSewing design + declarations -> the flat pattern, the
+flat gate, the record's step 6 (the flat pattern, garment_record.FLAT) and its look. draft_own.py holds the parts (Node run, declarations, converter, gate).
 
 `run(name, garment, design, declarations, options, sa)` -> (sheet path | None, answer text). It reads steps 1 (pieces,
 seams, closures) and 3 (measurements, by name) of the garment record (garment_record.READS), drafts in
 <model>/garments/<garment>/draft/, validates, builds the pieces through cloth.pieces (pattern {"from": "own"}), meshes
 them flat (cloth.mesh: the keys chain_garment reads), gates, draws the flat sheet (shape only: C288) and lists its
 numbers in the text, writes
-the spec's garment entry (so pattern_check and chain_garment find it) and step 4.
+the spec's garment entry (so pattern_check and chain_garment find it) and step 6.
 """
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def flat_check(name: str, garment: str) -> tuple[list, dict, dict]:
 
 
 def check_text(name: str, garment: str) -> str:
-    """pattern_check on a garment drafted with draft_pattern: the general flat gate re-read; step 4 rewritten."""
+    """pattern_check on a garment drafted with draft_pattern: the general flat gate re-read; step 6 rewritten."""
     from . import garment_record as gr
     rows, B, _ = flat_check(name, garment)
     v = draft_own_gate.verdict(rows)
@@ -117,7 +117,7 @@ def check_text(name: str, garment: str) -> str:
                   gate={"verdict": v, "rows": rows}, look=gr.load(name, garment)["steps"][gr.FLAT].get("look"), back_to="4")
     lines = [f"{name}:{garment} pattern_check (own draft, the flat gate): {v}"]
     lines += [ln for r in rows for ln in row_lines(r)]
-    lines.append(f"  {rec}" if rec else f"  record: step 4 written ({gr.path(name, garment)})")
+    lines.append(f"  {rec}" if rec else f"  record: step 6 written ({gr.path(name, garment)})")
     return "\n".join(lines) + ("\nnext: chain_garment" if v == "PASS" else "\nnext: fix the rows with draft_pattern")
 
 
@@ -241,7 +241,7 @@ def run(name: str, garment: str, design: str, declarations: dict, options: dict 
     if im.info.get("names_off"):
         lines.append(f"  on the sheet without a name (too small to hold one): {', '.join(im.info['names_off'])}")
     lines.append(f"  look: {sheet} (shape only: outlines, grain, one colour per seam pair; every number is above)")
-    lines.append(f"  {rec}" if rec else f"  record: step 4 written ({gr.path(name, garment)})")
+    lines.append(f"  {rec}" if rec else f"  record: step 6 written ({gr.path(name, garment)})")
     nxt = ("compare the sheet's SHAPES with the reference (is the band curved and which way, does the hem run straight "
            "or curve, are the pieces the reference's pieces); take every number from this text, never off the image; "
            "then chain_garment"

@@ -1,4 +1,4 @@
-"""Garment step 7 as a tool (garment_details; T10): the pattern's MARKS (step 4) + step 7's geometry ->
+"""Garment step 7 as a tool (garment_details; T10): the pattern's MARKS (step 6) + step 7's geometry ->
 details carried onto the latest build (and the hung garment when there is one) -> the record's step 7 (+ 7a: the built,
 DETAILED garment).
 
@@ -101,11 +101,11 @@ def place_all(fl: gd.Flat, details: dict, inv: dict, omitted: dict, cloths: dict
             bad.append(f"{n}: not in step 1's details ({', '.join(inv) or 'none'}): inventory it first (garment_plan step='parts')")
             continue
         if gd.cloth_made(inv[n].get("what")):
-            bad.append(f"{n} ({inv[n].get('what')}): made of cloth, so a pattern PIECE drafted at step 4 and built by "
+            bad.append(f"{n} ({inv[n].get('what')}): made of cloth, so a pattern PIECE drafted at step 6 and built by "
                        "chain_garment, never a step-7 solid")
             continue
         if n not in mk:
-            bad.append(f"{n}: no mark on the pattern: positions are marked at step 4 (draft_pattern declarations.marks."
+            bad.append(f"{n}: no mark on the pattern: positions are marked at step 6 (draft_pattern declarations.marks."
                        f"{n}), never chosen here")
             continue
         cl = cloths.get(inv[n].get("cloth")) or {}
@@ -131,12 +131,12 @@ def place_all(fl: gd.Flat, details: dict, inv: dict, omitted: dict, cloths: dict
             rows.append({"id": n, "status": "FAIL", "value": "not placed" if has else "no mark on the pattern",
                          "target": f"{want or 'all'} placed", "back_to": "7" if has else "4",
                          "why": ("give its geometry (kind, size) in this call" if has else
-                                 "mark it on the pattern at step 4 (draft_pattern declarations.marks)")})
+                                 "mark it on the pattern at step 6 (draft_pattern declarations.marks)")})
         else:
             got = placed[n]["count"]
             ok = want is None or got == want
             rows.append({"id": n, "status": "PASS" if ok else "FAIL", "value": f"{got} placed", "target": f"{want} (step 1)" if want else "any",
-                         **({} if ok else {"why": f"{got} marked, the inventory counts {want}: fix the marks (step 4) or step 1",
+                         **({} if ok else {"why": f"{got} marked, the inventory counts {want}: fix the marks (step 6) or step 1",
                                            "back_to": "4"})})
     return placed, bad, rows
 
