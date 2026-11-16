@@ -43,9 +43,11 @@ STEPS = [
     ("2", "style", "the ONE worn state, as bends and targets; the pose", "garment_plan", "none", "1"),
     ("3", "measure", "every measurement steps 1-2 call for, by name", "body_tape", "none", "2"),  # (C354: it was None,
     # so "next:" said no tool writes step 3 though body_tape(garment=...) does)
-    ("4", "draft", "flat pattern + seam pairs, stiff pieces, folds, closures; the flat gate", "draft_pattern", "none", "4"),
-    ("5", "chains", "the pattern's edges as exact-length chains in the planned state", "chain_garment", "none", "4"),
-    ("6", "surfaces", "the garment surface; the structure gate", "chain_garment", "none", "4"),
+    # (drape first, R3a: 4 TOILE the garment's 3D surface on the body, 5 MARK its seam lines on it, 6 CUT AND FLATTEN
+    # it into the flat pattern (today's draft form: seam pairs, stiff pieces, folds, closures) + the flat gate; R3b)
+    ("4", "toile", "the garment's 3D surface on the body: the body + step 0's ease per level, the declared parts", "garment_toile", "none", "4"),
+    ("5", "mark", "the seam lines drawn on the toile, each a closed or end-to-end curve on its surface", "garment_mark", "none", "4"),
+    ("6", "cut", "the toile cut on the marks, each piece flattened: the flat pattern (seam pairs, stiff pieces, folds, closures) + the flat gate", "garment_cut", "none", "5"),
     ("7", "details", "buttons, braid, frogging on the surface, at the pattern's marks", "garment_details", "none", "6"),
     ("7a", "presim", "the built, detailed garment beside the reference, approved before the sim", None, "setting", "6"),
     ("8", "sim", "folds only: soft cloth under gravity, stiff parts and the state held", "chain_garment", "none", "4"),
@@ -54,11 +56,13 @@ STEPS = [
     ("10", "export", "game mesh, retopology, skinned to the rig", None, "none", "10"),
 ]
 IDS = [s[0] for s in STEPS]
-# the earlier steps a step reads beyond the one before it (T4: the draft needs step 1's seams AND step 3's measurements)
-READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("1", "2", "3")}  # (2: step 0's landmarks and heights too: C352)
+# the earlier steps a step reads beyond the one before it (the toile and the flat pattern need step 1's seams AND step 3's
+# measurements; the toile step 0's fit and heights)
+READS = {"2": ("0", "1"), "3": ("1", "2"), "4": ("0", "1", "2", "3"), "5": ("0", "1", "2", "4"), "6": ("1", "2", "3")}
+FLAT = "6"  # the step whose output is the flat pattern (draft_pattern's form; the flat gate): every pattern reader reads it  # (2: step 0's landmarks and heights too: C352)
 STEP = {s[0]: dict(zip(("id", "key", "what", "tool", "approval", "back_to"), s)) for s in STEPS}
 for _s in STEPS:
-    STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "draft" == "4")
+    STEP[_s[1]] = STEP[_s[0]]  # (a step by its key too: "toile" == "4")
 STORED = ("todo", "done", "failed")
 APPROVE = "/mnt/data/hifipushie/bin/approve"
 
@@ -382,23 +386,23 @@ def _try(fn, *a, **k) -> str:
 
 
 def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
-    """chain_garment's worker at its end: step 5 (the chains), 6 (structure rows), 8 (the hang)."""
+    """chain_garment's worker at its end. Steps 5 / 6 are garment_mark / garment_cut (drape first, R3b): the chain build
+    never writes them; it builds FROM step 6's cut. A build that stops (a stage's gate, the structure, a refusal before
+    any hang) is step 7's failure (step 7 is the first step that reads the build; back to the gate's step); the hang is
+    step 8. Each write is refused by the record when the step before it isn't ready (the answer says so)."""
     stage, sc = st.get("stage"), st.get("structure") or {}
     out = {"job": str(d), "wear": wear, "build": st.get("build_id")}
     msgs = []
-    if stage == "stage_failed":  # (F5: start / chains fail step 5, surfaces step 6, with the gate and its look)
+    if stage == "stage_failed":  # (F5: start / chains / surfaces: the gate, its step to go back to, its look)
         g = st.get("stage_gate") or {}
-        return _try(write, model, garment, "6" if g.get("stage") == "surfaces" else "5", "failed", by="chain_garment",
+        return _try(write, model, garment, "7", "failed", by="chain_garment",
                     output=dict(out, stage_failed=g.get("stage")), gate={"verdict": g.get("verdict"), "stage": g.get("stage"),
                     "rows": g.get("rows")}, back_to=g.get("back_to"), look=[p for _, p in st.get("stage_look") or []] or None)
     if stage == "refused" and not (d / "final.pkl").exists():
-        return _try(write, model, garment, "5", "failed", output=dict(out, refused=st.get("refused")), by="chain_garment")
-    if stage not in ("structure_failed", "presim", "awaiting_approval", "done", "refused"):
-        return ""
-    msgs.append(_try(write, model, garment, "5", "done", output=dict(out, built=str(d / "built.pkl")), by="chain_garment"))
-    from .chain_structure import passed
-    msgs.append(_try(write, model, garment, "6", "done" if passed(sc) else "failed", by="chain_garment",
-                     output=dict(out, built=str(d / "built.pkl")), gate={"verdict": sc.get("verdict"), "rows": sc.get("rows")}))
+        return _try(write, model, garment, "7", "failed", output=dict(out, refused=st.get("refused")), by="chain_garment")
+    if stage == "structure_failed":
+        return _try(write, model, garment, "7", "failed", by="chain_garment", output=dict(out, built=str(d / "built.pkl")),
+                    gate={"verdict": sc.get("verdict"), "rows": sc.get("rows")})
     if stage in ("done", "refused") and (d / "final.pkl").exists():  # (step 8: its gate is the threads reading, T2)
         from .chain_presim import threads_gate
         g = threads_gate(st) or {}
@@ -410,9 +414,10 @@ def from_chain(model: str, garment: str, wear: str, d: Path, st: dict) -> str:
 
 
 def from_look_chain(model: str, garment: str, wear: str, hung: bool, paths: list) -> str:
-    """look_chain: the build's look goes on step 6; the hung garment's look is step 9's output (then approval)."""
+    """look_chain: the build's look goes on steps 7 / 7a (step 6's look is the cut's flat sheet); the hung garment's look
+    is step 9's output (then approval)."""
     if not hung:
-        attach_look(model, garment, "6", paths)
+        attach_look(model, garment, "7", paths)
         attach_look(model, garment, "7a", paths)  # (the build is what 7a approves)
         return ""
     return _try(write, model, garment, "9", "done", output={"wear": wear, "views": [str(p) for p in paths]},

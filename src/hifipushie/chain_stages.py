@@ -9,7 +9,8 @@ where it ends, before the next stage runs:
 1. START (seconds, before any soft solve) on the soft start (piece_start): every tube closed round each girth loop it was
    measured at (`round:<tube>@<loop>`), .L / .R starts mirror each other (`mirror:<piece>`), no start sunk into the body
    (`inside:<piece>`), every vertex of a built piece placed (`placed:<piece>`: none at the origin or 0.5 m off the
-   body) and no seam sewn end to end the wrong way round (`crossed:<piece>`), chain_placed.py. Back to step 5's start (piece_start) or step 3 / 4 (a tape or a piece's measurement list).
+   body) and no seam sewn end to end the wrong way round (`crossed:<piece>`), chain_placed.py. Back to step 6 (drape first: the cut
+   pattern every piece is built from; the start is piece_start's) or step 3 (a tape).
 2. CHAINS (after the chain solve, before surfaces): every free chain at its length (MAX_FREE_PCT, the existing 2 % rule:
    `length`, `held_length`), each tube still round its loops and each pair still mirrored where its start put it.
 3. SURFACES (after the fill between the chains, BEFORE the slow thread solve): coverage (`holes:<piece>`: no face torn
@@ -32,16 +33,18 @@ OPEN_DEG = 90.0  # a tube with a gap wider than a quarter turn round its loop is
 #                 one piece leaves ~180 deg)
 SLICE = 0.015  # m: half the slice read round a loop: 1.5x the 0.01 m flat row bins _tube_points lays rows at (or
 # 0.6x the mesh's own row spacing when coarser: a slice always holds a row)
-BACK = {"arrange": ("5", "the ARRANGE lay (chain_sew.lay): each piece flat on one cylinder is exact; a length off is a lay bug"),
-        "sew": ("4", "the PATTERN: a seam that can't close without stretch (chain_sew.gate_sew names it, the gap and the "
+BACK = {"arrange": ("6", "the ARRANGE lay (chain_sew.lay): each piece flat on one cylinder is exact; a length off is a lay bug"),
+        "sew": ("6", "the PATTERN: a seam that can't close without stretch (chain_sew.gate_sew names it, the gap and the "
                      "measurements its pieces were drafted from): draft_pattern with the piece larger there"),
-        "start": ("5", "the START (piece_start): the piece's measurement list (step 4 piece_measurements) or where its "
+        "start": ("6", "the START (piece_start): the piece's measurement list (step 4 piece_measurements) or where its "
                        "tapes were taken (step 3 body_tape), then chain_garment again"),
-        "chains": ("5", "the CHAIN stage: a length off its cut is the pattern's (change the named line in your draft: draft_pattern); a tube "
+        "chains": ("6", "the CHAIN stage: a length off its cut is the pattern's (change the named line in your draft: draft_pattern); a tube "
                         "or pair pulled off its start is the start or the seams joining it (pattern_check)"),
         "surfaces": ("6", "the SURFACES lay (chain_garment soft fill between the chains): torn or crumpled before any "
                           "solve is the lay, not the cloth"),
         "crease": ("2", "the CREASE turn (chain_crease): step 2's fold bend (turn_deg, lies_on) or step 4's fold line")}
+# (drape first, R3b-2: the build is made FROM step 6's cut, so every build stage but the crease goes back to step 6; a
+# stage failure is recorded on step 7, the first step that reads the build: garment_record.from_chain)
 
 
 class StageFailed(Exception):

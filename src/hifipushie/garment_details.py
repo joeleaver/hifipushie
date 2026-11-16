@@ -1,6 +1,6 @@
 """Garment step 7: DETAILS AND TRIMS placed on the FLAT PATTERN, carried by the cloth wherever it goes (tooling run T10).
 
-Positions are decided ONCE, on the pattern, at step 4 (a pattern maker marks button, trim and frog placement): the
+Positions are decided ONCE, on the pattern, at step 6 (a pattern maker marks button, trim and frog placement): the
 draft's declarations carry `marks` {detail: mark | [marks]} (draft_own validates them; a closure's buttons are its own
 marks). Step 7 only makes the geometry at those marks (kind, size, thickness, shape, colour); it never takes positions.
 A mark is anchored barycentrically on the flat mesh, so the geometry is re-made on ANY positions of that mesh (flat,
@@ -12,7 +12,7 @@ Geometry (step 7, kind):
   line    a strip of width_mm along the mark's edges (follows) or polyline (path). thickness_mm (default the cloth's).
   motif   the mark's lines / knots in a local frame (across = into the piece from the edge, along = the edge), repeated at
           its rows: a frog. width_mm (its cord), size_mm (its knots).
-Mark (step 4, positions only; mm; pattern x right, y up):
+Mark (step 6, positions only; mm; pattern x right, y up):
   at        [position]: {"point": name, "dx", "dy" (mm; dy UP the piece: FreeSewing's y is -dy)} | {"edge": "cf" | "A>B" | "piece:edge", "mm" | "t" (fraction), "in"}
   rows      {"edge", "count", "from_mm" | "from_t", "pitch_mm" | "pitch_t" (of the edge's length) | "to_mm" | "to_t", "in"}
   points    "button*": the piece's named points matching (marks too)
@@ -39,7 +39,7 @@ SHAPES = ("dome", "disc", "box")
 MARK_KEYS = {"piece", "mirror", "at", "rows", "points", "follows", "path", "in", "lines", "knots", "stiffens", "why"}
 GEOM_KEYS = {"kind", "size_mm", "width_mm", "thickness_mm", "shape", "colour"}
 KEYS = MARK_KEYS | GEOM_KEYS
-# a detail made of cloth is a pattern PIECE (drafted at step 4, built by the chain build), never a step-7 solid
+# a detail made of cloth is a pattern PIECE (drafted at step 6, built by the chain build), never a step-7 solid
 CLOTH_MADE = ("pocket", "flap", "epaulet", "welt", "patch", "belt loop")
 
 
@@ -364,13 +364,13 @@ def _piece(s: dict, inv: dict, name: str) -> str:
 
 
 def place(fl: Flat, name: str, mark, geom: dict, inv: dict, cloth: dict | None = None) -> dict:
-    """One detail: its MARK (positions, declared on the pattern at step 4: a dict or [dicts]) + its geometry (step 7:
+    """One detail: its MARK (positions, declared on the pattern at step 6: a dict or [dicts]) + its geometry (step 7:
     kind, size_mm / width_mm, thickness_mm, shape) -> {"instances", "count", "where" [texts], "pieces"}; refused by name."""
     if not isinstance(geom, dict):
         raise DetailRefused(f"{name}: {{kind, size_mm | width_mm, thickness_mm, shape, colour}}")
     pos = set(geom) & MARK_KEYS
     if pos:
-        raise DetailRefused(f"{name}: {sorted(pos)} are positions: they are marked on the pattern at step 4 "
+        raise DetailRefused(f"{name}: {sorted(pos)} are positions: they are marked on the pattern at step 6 "
                             "(draft_pattern declarations.marks), never chosen at step 7")
     if set(geom) - GEOM_KEYS:
         raise DetailRefused(f"{name}: unknown keys {sorted(set(geom) - GEOM_KEYS)}; step 7 takes {', '.join(sorted(GEOM_KEYS))}")

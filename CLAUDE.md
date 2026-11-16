@@ -80,7 +80,7 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Skin: docs/state/skin.md -> skin.md "## r<N>"
 - Dress Garrett (jacket + shirt fit): docs/state/dress_garrett_fit.md -> cloth.md "fit round <N>"
 - Dress Garrett shirt: docs/state/dress_garrett_shirt.md -> cloth.md "shirt round <N>"
-- Shirt spike: docs/state/collar_spike.md -> cloth.md "shirt spike 2026-10-21"
+- Shirt spike: docs/state/collar_spike.md -> cloth.md "shirt spike"
 - Dress Tess: docs/state/dress_tess.md -> cloth.md "dress-tess session <N>"
 - Tailoring: docs/state/tailoring.md -> cloth.md "tailoring <date>"
 - MCP rules: docs/state/mcp_rules.md -> mcp_audit.md "## History"
@@ -90,7 +90,8 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Supports, not holds: docs/state/supports.md -> cloth.md "supports, not holds"
 - Threads hard: docs/state/threads_hard.md -> codified.md C235
 - Chain garment (tools chain_garment + look_chain): docs/state/collar_outline.md -> codified.md C259-C264
-- Garment steps (the process + tooling runs): docs/state/garment_steps.md
+- Garment steps: docs/state/garment_steps.md
 - Test suite: docs/state/test_suite.md
+- Drape first: docs/state/drape_first.md
 - Organic: docs/state/organic_passes.md
 - No state page: grep docs/notes/<thread>.md.

@@ -465,13 +465,13 @@ def test_structure_fail_answer_lists_rows_and_look_shows_the_build(monkeypatch, 
 # ---- step 7a (pre-sim approval) and step 8 (threads past the cap): T2
 
 def _presim_model(monkeypatch, tmp_path, verdict="PASS", **kw):
-    """The real tool and the real worker, in-process on the stub build; the record ready up to step 4."""
+    """The real tool and the real worker, in-process on the stub build; the record ready up to step 6."""
     import os
     from hifipushie import garment_record as gr, store
     seen = _stub_worker(monkeypatch, tmp_path, verdict, **kw)
     monkeypatch.setattr(store, "load", lambda n: {"bones": {}, "cloth": {"shirt": {"design": {"kind": "shirt"}}}})
     monkeypatch.setattr(tools_cloth, "_chain_gate", lambda *a: None)
-    for sid in ("0", "1", "2", "3", "4"):
+    for sid in ("0", "1", "2", "3", "4", "5", "6"):  # (drape first: 5 / 6 are garment_mark / garment_cut, before the build)
         gr.write("m", "shirt", sid, "done", output={"n": sid})
     calls = []
 
@@ -531,14 +531,14 @@ def test_step8_fails_on_faces_past_the_cap(monkeypatch, tmp_path):
     seen, calls = _presim_model(monkeypatch, tmp_path, hang_over=20)
     monkeypatch.setenv("HIFIPUSHIE_PRESIM_APPROVAL", "optional")
     t = server.chain_garment("m", "shirt", wait=5)
-    assert "STEP 8 FAIL threads: 20 of 100 faces past the thread cap" in t and "back to step 5" in t
+    assert "STEP 8 FAIL threads: 20 of 100 faces past the thread cap" in t and "back to step 6" in t
     assert "\n  change: " in t and "never raise the cap" in t and "next:" in t
     st = gr.load("m", "shirt")["steps"]["8"]
-    assert st["status"] == "failed" and st["back_to"] == "5" and st["gate"]["rows"][0]["status"] == "FAIL"
-    assert gr.next_step(gr.load("m", "shirt"))["step"] == "5"
+    assert st["status"] == "failed" and st["back_to"] == "6" and st["gate"]["rows"][0]["status"] == "FAIL"
+    assert gr.next_step(gr.load("m", "shirt"))["step"] == "6"  # (drape first: the cut the piece is made from)
     from hifipushie import chain_presim as cp
     g = cp.threads_gate({"stage": "done", "reads": {"threads": {"over_cap": 3, "faces": 9}}, "build_threads": {"over_cap": 2}})
-    assert g["back_to"] == "5" and "already past the cap" in g["line"]
+    assert g["back_to"] == "6" and "already past the cap" in g["line"]
 
 
 def test_the_tied_pair_an_untied_band_was_held_to_stays_through_the_soft_cloth():

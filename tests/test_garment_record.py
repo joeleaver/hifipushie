@@ -41,23 +41,23 @@ def _upto(home, model, garment, last):
 
 
 def test_order_refused_by_name(home):
-    with pytest.raises(gr.OrderRefused, match=r"step 4 \(draft\) refused: step 3 \(measure\) is not ready"):
+    with pytest.raises(gr.OrderRefused, match=r"step 4 \(toile\) refused: step 3 \(measure\) is not ready"):
         gr.write("m", "hussar", "4", "done")
     _upto(home, "m", "hussar", "3")
-    gr.write("m", "hussar", "draft", "done", output={"pattern": "p1"})
+    gr.write("m", "hussar", "toile", "done", output={"toile": "t1"})  # (drape first: step 4 is the toile, R3a)
     assert gr.states(gr.load("m", "hussar"))["4"]["ready"]
 
 
 def test_stale_and_back_to(home):
     _upto(home, "m", "shirt", "6")
-    gr.write("m", "shirt", "4", "done", output={"pattern": "altered"})
+    gr.write("m", "shirt", "4", "done", output={"toile": "altered"})
     s = gr.states(gr.load("m", "shirt"))
     assert not s["4"]["stale"] and s["5"]["stale"] and s["6"]["stale"] and not s["6"]["ready"]
     assert gr.next_step(gr.load("m", "shirt"))["step"] == "5"
     gr.write("m", "shirt", "5", "done", output={"n": "5b"})
     gr.write("m", "shirt", "6", "failed", gate={"verdict": "FAIL", "rows": [{"id": "collar_tilt", "status": "FAIL"}]})
     n = gr.next_step(gr.load("m", "shirt"))
-    assert n["step"] == "4" and "FAILED" in n["why"] and n["call"].startswith('call_tool("draft_pattern"')  # (step 4's tool, T5)
+    assert n["step"] == "5" and "step 6 (cut) FAILED: back to step 5 (mark)" in n["why"]  # (a cut fails on its marks)
 
 
 def test_approval_read_only(home):
@@ -91,7 +91,7 @@ def test_tool_answer_and_sheet(home):
     from hifipushie import server
     _upto(home, "m", "shirt", "4")
     txt = server.garment_record("m", "shirt")
-    assert "  4 draft     done" in txt and "step 5 (chains)" in txt and 'next: call_tool("chain_garment"' in txt
+    assert "  4 toile     done" in txt and "step 5 (mark)" in txt and "garment_mark" in txt.split("next:")[-1]
     look = home / "look.png"
     Image.new("RGB", (50, 50), (40, 200, 40)).save(look)
     gr.attach_look("m", "shirt", "4", [look])
@@ -100,7 +100,8 @@ def test_tool_answer_and_sheet(home):
     assert p.exists() and "sheet:" in ims[-1] and Image.open(p).size[0] > 360
 
 
-def test_chain_worker_writes_steps_5_6_8(home, monkeypatch):
+def test_chain_worker_writes_only_step_8(home, monkeypatch):
+    """(R3b, C493: steps 5 / 6 are garment_mark / garment_cut; the chain build writes the hang only)"""
     from hifipushie import chain_garment as cg, resources
     _upto(home, "m", "shirt", "4")
     monkeypatch.setattr(resources, "heavy", lambda *a, **k: contextlib.nullcontext())
@@ -109,15 +110,13 @@ def test_chain_worker_writes_steps_5_6_8(home, monkeypatch):
         raise cg.ChainRefused("front.L 3 % off its cut")
     monkeypatch.setattr(cg, "load_garment", refuse)
     cg.worker("m", "shirt", {"state": "closed"})
-    st = gr.load("m", "shirt")["steps"]["5"]
-    assert st["status"] == "failed" and "3 %" in st["output"]["refused"]
+    assert gr.load("m", "shirt")["steps"]["5"]["status"] == "todo"
     d = cg.job_dir("m", "shirt", "closed")
     (d / "final.pkl").write_bytes(b"x")
-    gr.from_chain("m", "shirt", "closed", d, {"stage": "done", "structure": {"verdict": "PASS", "rows": [{"id": "a", "status": "PASS"}]}})
-    s = gr.states(gr.load("m", "shirt"))
-    assert s["5"]["ready"] and s["6"]["ready"] and s["8"]["status"] == "todo"  # (8 refused: steps 7, 7a not ready)
     msg = gr.from_chain("m", "shirt", "closed", d, {"stage": "done", "structure": {"verdict": "PASS", "rows": []}})
-    assert "step 8 (sim) refused: step 7a (presim)" in msg
+    s = gr.states(gr.load("m", "shirt"))
+    assert s["5"]["status"] == "todo" and s["6"]["status"] == "todo" and s["8"]["status"] == "todo"
+    assert "step 8 (sim) refused" in msg
 
 
 def test_look_chain_writes_step9(home, monkeypatch):
@@ -160,7 +159,7 @@ def test_a_carried_draft_must_pass_its_flat_gate_as_it_runs_now(tmp_path, monkey
     rec = {"model": "m", "garment": "w", "steps": {k: {"output": {}} for k in ("0", "1", "2", "3")}}
     rows = [{"id": "planned_folds", "status": "FAIL", "why": "step 2 turns fold 'collar_roll' on collar"}]
     monkeypatch.setattr(dot, "flat_check", lambda m, g: (rows, {}, {}))
-    why = gc._check("4", {"dir": str(tmp_path)}, rec)
+    why = gc._check(gr.FLAT, {"dir": str(tmp_path)}, rec)
     assert "flat gate FAILs now" in why and "collar_roll" in why
     rows[0]["status"] = "PASS"
-    assert gc._check("4", {"dir": str(tmp_path)}, rec) == ""
+    assert gc._check(gr.FLAT, {"dir": str(tmp_path)}, rec) == ""

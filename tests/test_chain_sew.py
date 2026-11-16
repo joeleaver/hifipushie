@@ -74,7 +74,7 @@ def test_a_seam_that_cant_close_is_refused_by_name():
     b.X = X.copy()
     Y = sw.sew(b, X)
     g = sw.gate_sew(b, Y)
-    assert g["verdict"] == "FAIL" and g["back_to"] == "4"
+    assert g["verdict"] == "FAIL" and g["back_to"] == "6"  # drape first: a seam that cannot close goes back to the cut (step 6)
     bad = [r for r in g["rows"] if r["status"] == "FAIL"]
     assert bad and all(r["id"].startswith("sew:front.") for r in bad)
     assert "PATTERN FAULT" in bad[0]["change"] and "thigh" in bad[0]["change"]

@@ -245,3 +245,41 @@ def carry_rows(X, nw):
     for k, (p, q, t) in enumerate(nw):
         out[n + k] = out[int(p)] + t * (out[int(q)] - out[int(p)])
     return out
+
+
+FUSE_TOL = 0.010  # m: two points of one piece this far apart in the flat can't be one sewn node
+
+
+def fused(M, tol: float = FUSE_TOL) -> list:
+    """Sewn nodes that close a piece on itself by mistake (D4, C488): two points of ONE piece more than tol apart in the
+    flat that end in one node only through other pieces' points (not sewn to each other: a dart's own pairs are). The
+    s4-31 jacket's armholes: the front's top 54 mm sewn to the under sleeve, the back's shoulder to the top sleeve's
+    front pitch, so shoulder point, underarm and pitches were ONE node; links stay exact (the armhole hangs in loops
+    from it), so no link count sees it. M: a pattern mesh dict (sew, piece, uv, names). [(piece, a, b, mm)]."""
+    sew = np.asarray(M["sew"], np.int64).reshape(-1, 2)
+    piece, uv, names = np.asarray(M["piece"]), np.asarray(M["uv"], float), M["names"]
+    par = {}
+
+    def find(x):
+        par.setdefault(x, x)
+        while par[x] != x:
+            par[x] = par[par[x]]
+            x = par[x]
+        return x
+    for a, b in sew:
+        ra, rb = find(int(a)), find(int(b))
+        if ra != rb:
+            par[max(ra, rb)] = min(ra, rb)
+    groups = {}
+    for x in list(par):
+        groups.setdefault(find(x), []).append(x)
+    direct = {(int(min(a, b)), int(max(a, b))) for a, b in sew}
+    out = []
+    for g in groups.values():
+        g = sorted(g)
+        for i, a in enumerate(g):
+            for b in g[i + 1:]:
+                d = float(np.linalg.norm(uv[a] - uv[b]))
+                if piece[a] == piece[b] and (a, b) not in direct and d > tol:
+                    out.append((names[piece[a]], a, b, round(d * 1e3, 1)))
+    return out

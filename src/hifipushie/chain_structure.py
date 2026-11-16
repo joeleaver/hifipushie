@@ -302,7 +302,8 @@ def load_plan(model: str, garment: str) -> dict | None:
         return None
     if st is None:
         return None
-    return {k: (st.get(n) or {}).get("output") for k, n in (("read", "0"), ("parts", "1"), ("style", "2"), ("draft", "4"))}
+    from .garment_record import FLAT
+    return {k: (st.get(n) or {}).get("output") for k, n in (("read", "0"), ("parts", "1"), ("style", "2"), ("draft", FLAT))}
 
 
 def row_line(r: dict) -> str:

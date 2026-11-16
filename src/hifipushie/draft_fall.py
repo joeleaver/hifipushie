@@ -239,12 +239,23 @@ def row(B: dict, decl: dict, step1: dict) -> dict:
                    offset_length(_ds()._pts(B, f), B["pieces"][_piece(f)]["P"], D["d"]) for f in G)
         k = line / GL if GL else 1.0
         T = k * N + 2 * np.pi * LIFT * min(1.0, N / GL if GL else 1.0)
-        s = O / T
-        vals.append(f"{name}: {p}'s outer edge {1000 * O:.0f} mm against the line it lands on {1000 * T:.0f} mm = {s:.3f} "
+        toile = next(((B.get("landing") or {})[q] for q in u["pieces"] if q in (B.get("landing") or {})), None)
+        if toile:  # (drape first, C495: the line the fall lands on is the toile's, measured where it lies, not a rule)
+            T = toile["line"] + 2 * np.pi * LIFT
+            s = O / T
+            vals.append(f"{name}: {p}'s outer edge {1000 * O:.0f} mm against the line it lands on on the toile "
+                        f"{1000 * T:.0f} mm = {s:.3f} (the contour {1000 * toile['d']:.0f} mm below the roll at CB, "
+                        f"{1000 * toile['line']:.0f} mm ({1000 * toile['behind']:.0f} behind the shoulders), + "
+                        f"{1000 * 2 * np.pi * LIFT:.0f} mm lift; the flat rule's line would be {1000 * (k * N):.0f} mm)")
+            detail.append({"collar": name, "outer": O, "target": T, "ratio": s, "d": toile["d"], "line": toile["line"],
+                           "neck": GL, "N": N, "from": "toile"})
+        else:
+            s = O / T
+            vals.append(f"{name}: {p}'s outer edge {1000 * O:.0f} mm against the line it lands on {1000 * T:.0f} mm = {s:.3f} "
                     f"(depth {1000 * D['d']:.0f} mm = fall {1000 * D['fall']:.0f} - stand {1000 * D['stand']:.0f} at CB, "
                     f"{D['from']}; the garment's neck line {1000 * GL:.0f} mm is {1000 * line:.0f} mm at that depth, "
                     f"x{k:.3f} (spread on {len(G) - len(fronts)} of {len(G)} neck edges, the fronts' along their roll), over {what} {1000 * N:.0f} mm, + {1000 * 2 * np.pi * LIFT * min(1.0, N / GL):.0f} mm lift)")
-        detail.append({"collar": name, "outer": O, "target": T, "ratio": s, "d": D["d"], "line": line, "neck": GL, "N": N})
+            detail.append({"collar": name, "outer": O, "target": T, "ratio": s, "d": D["d"], "line": line, "neck": GL, "N": N})
         mm = abs(O - T) * 1000
         if s > 1 + TOL:
             why.append(f"{name}: {p}'s outer edge is {mm:.0f} mm ({100 * (s - 1):.0f} %) longer than the line it lands on: "

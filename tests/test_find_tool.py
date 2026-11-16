@@ -44,7 +44,7 @@ def test_garment_query_ranks_a_garment_tool():
 
 
 def test_find_tool_gives_params_and_an_example():
-    text = server.find_tool("fit garment on the body", 5)  # (the workflow leads: plan, tape, draft, then the build)
+    text = server.find_tool("fit garment on the body", 7)  # (the workflow leads: plan, tape, toile, mark, cut, draft, then the build)
     assert "chain_garment" in text and "params: name: str, garment: str" in text, text
     assert 'call_tool(name="chain_garment", args={"name": "...", "garment": "..."})' in text, text
     assert server.find_tool("put a model", 3)  # core tools are found too (shown as native calls)

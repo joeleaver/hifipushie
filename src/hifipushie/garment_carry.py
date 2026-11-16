@@ -39,13 +39,13 @@ def _check(sid: str, out: dict, rec: dict) -> str:
             miss = [m for m in o["1"].get("measurements") or [] if m not in took]
             if miss:
                 return f"step 1 now needs measurements step 3 hasn't taken: {', '.join(miss)} (body_tape them by name)"
-        elif sid == "4":
+        elif sid == "6":  # (the flat pattern: garment_record.FLAT)
             from . import draft_own as do
             from . import draft_own_validate
             from pathlib import Path
             dd = Path(out.get("dir") or "")
             if not (dd / "declarations.json").exists():
-                return "step 4's declarations aren't on disk: draft_pattern again"
+                return "step 6's declarations aren't on disk: draft_pattern again"
             decl = json.loads((dd / "declarations.json").read_text())
             parts = json.loads((dd / "draft.json").read_text()).get("parts") if (dd / "draft.json").exists() else None
             bad = draft_own_validate.validate(decl, o["1"], parts)

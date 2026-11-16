@@ -63,6 +63,8 @@ def _record(home, model="tm", garment="g"):
     gr.write(model, garment, "1", "done", output=STEP1)
     gr.write(model, garment, "2", "done", output={"state": {}})
     gr.write(model, garment, "3", "done", output=STEP3)
+    for sid in ("4", "5"):  # (drape first: 4 toile, 5 mark; draft_pattern writes the flat pattern, step 6 = FLAT)
+        gr.write(model, garment, sid, "done", output={"n": sid})
 
 
 def test_rectangle_drafts_converts_and_passes(home):
@@ -133,18 +135,20 @@ def test_node_errors_name_the_line(home):
         do.node_draft(RECT.replace("const w =", "while (true) {}\n    const w ="), {"waist": 800}, d=d, timeout=3)
 
 
-def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
+def test_tool_writes_the_flat_step_and_reads_steps_1_and_3(home, monkeypatch):
     from hifipushie import draft_own_tool as dot, garment_record as gr
     saved = {}
     monkeypatch.setattr(store, "load", lambda name: json.loads(json.dumps(saved.get(name) or {})))
     monkeypatch.setattr(store, "save", lambda name, spec, note="": saved.__setitem__(name, spec) or 1)
     _record(home)
-    assert set(gr.reads("tm", "g", "4")) == {"1", "2", "3"}  # (C392: step 2 too, for the planned folds)
+    assert set(gr.reads("tm", "g", gr.FLAT)) == {"1", "2", "3"}  # (C392: step 2 too, for the planned folds)
     assert "reads" in gr.next_step(gr.load("tm", "g"))["uses"]
     # (G1: the girths row needs a length tape to place the waist on each panel, and panels round the body + its gap)
     gr.write("tm", "g", "3", "done", output={"measurements": STEP3["measurements"] + [
         {"name": "len", "mm": 600.0, "kind": "length", "path": [[0.05, -0.1, 1.15], [0.05, -0.1, 0.55]]},
         {"name": "len_back", "mm": 600.0, "kind": "length", "path": [[0.05, 0.1, 1.15], [0.05, 0.1, 0.55]]}]})
+    for sid in ("4", "5"):  # (a changed step 3 makes the toile and marks stale: written again)
+        gr.write("tm", "g", sid, "done", output={"n": sid})
     # (F2: the back panel on a tape down the back: row place reads each piece's side off its own tapes)
     decl = dict(DECL, tapes={"panel.L": ["waist", "len"], "panel.R": ["waist", "len_back"]})
     rect = RECT.replace("measurements.waist / 4", "measurements.waist * 0.53")
@@ -153,7 +157,7 @@ def test_tool_writes_step4_and_reads_steps_1_and_3(home, monkeypatch):
     sheet, txt = dot.run("tm", "g", rect, decl)
     assert "draft_pattern: PASS" in txt and Path(sheet).exists(), txt
     assert "pieces (" in txt and "seams (" in txt and " ease " in txt and "SHAPES" in txt  # (C288: numbers in text)
-    st = gr.load("tm", "g")["steps"]["4"]
+    st = gr.load("tm", "g")["steps"][gr.FLAT]
     assert st["status"] == "done" and st["gate"]["verdict"] == "PASS" and st["look"]
     assert saved["tm"]["cloth"]["g"]["pattern"]["from"] == "own"
     assert "pattern_check (own draft, the flat gate): PASS" in dot.check_text("tm", "g")
