@@ -46,6 +46,11 @@ def _error_text(e: BaseException) -> str:
     """What the caller needs to fix a failed call: the exception's type and message, and for anything that
     isn't a ValueError (our anticipated spec/argument errors) where it was raised."""
     text = f"{type(e).__name__}: {e}"
+    fn = getattr(e, "filename", None)
+    if isinstance(e, FileNotFoundError) and fn and not Path(str(fn)).expanduser().is_absolute():
+        # (a blind modeller gave "refs/painting.png" from its own folder: paths are read where the server runs)
+        return (f"{text}. A path is read from the modelling server's own folder ({Path.cwd()}), not yours: give the "
+                "file's full path (starting with /).")
     if not isinstance(e, ValueError):
         import traceback
         tb = traceback.extract_tb(e.__traceback__)

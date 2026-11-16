@@ -21,16 +21,22 @@ def _words(v) -> str:
 
 
 def _views_broad(F) -> str:
-    k = int(np.argmax(np.abs(F)))
-    return ("from the side (it is edge-on from the front)", "from the front and back (it is edge-on from the side)",
-            "from above")[k]
+    a = np.abs(np.asarray(F, float))
+    o = np.argsort(-a)
+    if a[o[1]] > 0.6 * a[o[0]]:  # (e15: a 1-degree turn flipped "broad from the front" to "from the side")
+        return f"broad from {_VIEW_OF[o[0]]} and {_VIEW_OF[o[1]]} alike: its face looks between them"
+    return ("broad from the side (it is edge-on from the front)", "broad from the front and back (it is edge-on from "
+            "the side)", "broad from above")[o[0]]
+
+
+_VIEW_OF = ("the side", "the front", "above")
 
 
 @mcp.tool(structured_output=False)
 def flap(name: str, mass: str, base: list[float], length: float, width: float, rise: str | list = "up",
-         face: str | list = "forward", fold: float = 0.0, fold_at: float = 0.6, thickness: float | None = None,
+         face: str | list | None = None, fold: float = 0.0, fold_at: float = 0.6, thickness: float | None = None,
          pointed: float = 0.6, lobe_thickness: float | None = None,
-         tip: list[float] | None = None, blend: float | None = None, part: str | None = None, note: str = ""):
+         tip: list[float] | None = None, flare: float | None = None, blend: float | None = None, part: str | None = None, note: str = ""):
     """A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, its top folded over. A
     folded ear, a comb, a tongue, a tab. base: [x, y, z], the middle of where it grows from, ON the surface of the
     mass it grows from (read off look's rulers; it is sunk in a little by itself). rise: the way it stands, words
@@ -40,8 +46,9 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     0..1 (0 round, 1 narrowing to a soft point). fold: degrees its top folds over toward its face (0 none; 90 the top sticks out
     forward; 150 to 180 it lies down along the standing part); fold_at: where along its length the fold is (0.6:
     the top 40 % folds over, round a knuckle). lobe_thickness: the folded part's own thickness (a fat rolled lobe);
-    tip: [x, y, z] where the tip should hang: the fold's direction, angle and length follow from it
-    (face and fold are then not used). A name ending ".L" is made on
+    tip: [x, y, z] where the tip should hang: the fold's direction, angle and the folded part's length follow from it
+    (fold is then not used; face, if given too, still turns the standing part's broad face). flare: metres the root
+    swells into the clay it grows from, a soft collar (default a quarter of the width; 0 none). A name ending ".L" is made on
     the left (+x) and mirrored. The same name again replaces it: change ONE thing at a time. Read the part first with study_part (where one part hides another, as
     a fold hides an ear's root from the side, plain looking misreads it). Then look_beside with
     focus=[mass] to see it close up beside the reference. Details: guide(topic="flap")."""
@@ -56,7 +63,8 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
                          "in the side view)")
     b0 = np.array(base, float)
     try:
-        R, F = _aim_vec(rise, "rise"), _aim_vec(face, "face")
+        R = _aim_vec(rise, "rise")
+        F = _aim_vec(face, "face") if face is not None else (None if tip is not None else _aim_vec("forward", "face"))
     except SpecError as e:
         raise ValueError(str(e)) from None
     width, length = float(width), float(length)
@@ -77,7 +85,8 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
                          "name of its own (e.g. \"ear.L\"); where it grows from is `base`")
     try:
         g = flapmod.lump(mass, b0, R, F, length, width, thick, float(fold_at), float(fold), float(pointed),
-                         lobe_thickness=lobe_thickness, tip=tip)
+                         lobe_thickness=lobe_thickness, tip=tip,
+                         flare=0.25 * width if flare is None else float(flare))
         fold = g["fold"]
     except ValueError as e:
         raise ValueError(str(e)) from None
@@ -89,6 +98,10 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     gtag = bones.get(mass, {}).get("group")
     for n in [n for n, b in bones.items() if gtag and b.get("group") == gtag]:
         bones.pop(n)
+    side = mass[-2:] if mass.endswith((".L", ".R")) else ""
+    bones.pop(f"{stem}_foot{side}", None)
+    for j in (f"{stem}_foot{side}", f"{stem}_collar{side}"):
+        joints.pop(j, None)
     joints.update(g["joints"])
     for n, bdef in g["bones"].items():
         keep = {k: (bones.get(n) or {})[k] for k in ("part", "tags") if k in (bones.get(n) or {})}
@@ -102,14 +115,14 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     bones[mass]["flap"] = {"base": [float(x) for x in b0], "rise": rise, "face": face, "length": length,
                            "width": width, "thickness": thick, "fold": float(fold), "fold_at": float(fold_at),
                            "pointed": float(pointed), "lobe_thickness": lobe_thickness,
-                           "tip": tip}
+                           "tip": tip, "flare": flare}
     try:
         compile_prims(spec)
     except SpecError as e:
         raise ValueError(f"{e}") from None
     bare = copy.deepcopy(spec)
     bare.pop("strokes", None)  # (strokes laid on the flap can't be seated without it; they don't change its base)
-    for n in (mass, mirror_name(mass), top, mirror_name(top), f"{stem0}_base{mass[-2:]}", mirror_name(f"{stem0}_base{mass[-2:]}") or ""):
+    for n in (mass, mirror_name(mass), top, mirror_name(top), f"{stem0}_foot{mass[-2:]}", mirror_name(f"{stem0}_foot{mass[-2:]}") or ""):
         (bare.get("bones") or {}).pop(n, None)
     from .sdf import field_at
     rest = [p for p in compile_prims(bare) if p.op == "add"] if (bare.get("bones") or bare.get("blobs")) else []
@@ -118,14 +131,15 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     twin = mirror_name(mass)
     r3 = lambda p: [round(float(x), 3) for x in p]  # noqa: E731
     lines = [f"{name} v{v}: {mass} is a lump {width * 100:.1f} cm across its base, {thick * 100:.1f} cm thick and {length * 100:.0f} "
-             f"cm long, standing from {r3(b0)} toward {r3(g['rise'])}, its broad face toward {r3(g['face'])}: broad "
-             f"{_views_broad(g['face'])}. " + (f"It folds {fold:.0f} degrees toward its face at {r3(g['hinge'])}; its tip is "
-                                              f"at {r3(g['tip'])}." if fold else "It is not folded.")
+             f"cm long, standing from {r3(b0)} toward {r3(g['rise'])}, its broad face toward {r3(g['face'])}: "
+             f"{_views_broad(g['face'])}. " + (f"It stands {g['lengths'][0] * 100:.1f} cm to the fold at {r3(g['hinge'])}, "
+                                              f"folds {fold:.0f} degrees, and the folded part is {g['lengths'][1] * 100:.1f} "
+                                              f"cm long to its tip at {r3(g['tip'])}." if fold else "It is not folded.")
              + (f" Mirrored as {twin}." if twin and bool(spec.get("symmetry", True)) else "")]
     if fold:
         lines.append(f"Its folded part points {_words(g['toward'])} (a fold turns the top over toward the face, so past 90 "
                      "degrees it comes back against the way the flap rises: a flap leaning out folds back in). For a top "
-                     "that hangs out as well as forward, give face the outward part and rise less of it.")
+                     "that hangs out as well as forward, give tip where it hangs, and face for the standing part's broad face.")
     if off > 0.004:
         lines.append(f"ITS BASE IS {off * 100:.1f} cm OUTSIDE the clay it should grow from: it floats. Put base on that "
                      "mass's surface (read it off look_beside's or look's rulers).")

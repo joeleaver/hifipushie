@@ -449,6 +449,21 @@ def test_fold_at_moves_the_knuckle_and_the_answer_says_where_the_folded_part_poi
     assert "folded part points down and forward" in out
 
 
+def test_a_tip_and_a_face_together_keep_the_face_and_the_answer_says_each_part_s_length(fig):
+    from hifipushie import server
+    kw = dict(base=[0.11, 0.0, 0.73], length=0.12, width=0.1, tip=[0.16, -0.06, 0.75])
+    out = server.flap(fig, "ear.L", face="forward", **kw)
+    s = store.load(fig)
+    assert np.allclose(s["bones"]["ear.L"]["up"], [0, -1, 0], atol=0.02)  # the standing part keeps its face (e15)
+    assert np.allclose(s["joints"]["ear_tip.L"]["pos"], kw["tip"], atol=0.002)
+    assert "folded part is" in out and "cm long to its tip" in out
+    assert "ear_foot.L" in s["bones"]  # the root's collar
+    server.flap(fig, "ear.L", **kw)  # no face: it turns toward the tip, as before
+    assert not np.allclose(store.load(fig)["bones"]["ear.L"]["up"], [0, -1, 0], atol=0.05)
+    out = server.flap(fig, "ear.L", face="forward out", flare=0, base=[0.11, 0.0, 0.73], length=0.12, width=0.1)
+    assert "alike" in out and "ear_foot.L" not in store.load(fig)["bones"]
+
+
 def test_a_flap_never_replaces_a_mass_that_is_there(fig):
     from hifipushie import server
     with pytest.raises(ValueError, match="name of the NEW flap"):
