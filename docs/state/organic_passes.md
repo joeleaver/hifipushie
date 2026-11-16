@@ -29,10 +29,10 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
   the painting's lines over the model, places as questions, on purpose with a reason, pieces that float.
 
 ## Open faults, by evidence (trials that hit them)
-1. Nothing shows the balance of the masses inside the outline, nor a mass that is missing (p7, p8: the head too
-   small read as "a 1.8 cm strip"; both asked for each mass's size as a part of the whole, view by view).
-2. Grabs chase the outline: p2, p5, p6, p8 dented the clay for overlap (p8: ten grabs on the body's underside); p7
-   grabbed once. Wording does not stop it; the place lines still name a grab, and a grab may be small for its mass.
+1. The balance of the masses (p7, p8: a head too small read as "a 1.8 cm strip"): look_beside now reads the
+   proportions (branch organic-eye, e5e1969f): unproven in blind hands. A mass that is missing shows nowhere yet.
+2. Grabs chased the outline and dented the clay (p2, p5, p6, p8). Now no place line names a grab and the tool
+   refuses a small pull (organic-eye): unproven in blind hands.
 3. The model can't be put in the painting's pose for the comparison: the arms are recorded on purpose instead.
 4. Relative paths resolve in the server's folder: read_reference (p5, p6, p7), look's and look_beside's save.
 5. Wasted calls: guides (10 of 39 in p7, 14 of 52 in p8), read_reference's patch table, fuse by width topping out.
@@ -55,6 +55,6 @@ On main since the merge "Merge hands" (2026-11-15; ledger C477). Trials so far r
 - Pictures sent to Joe: workspace/drawing_board/ (p7_vs_p6_vs_p5.png, p7_painting_view.png, earlier sheets).
 - Record index of the older organic routes: memory `organic-from-concept-record`.
 
-NEXT (ask Joe before any agent): a proportion read for fault 1 (widths and depths by height, reference beside
-model, with the reference's own widest and narrowest places); for fault 2 no grab named in a place line and a floor
-on a grab's radius against its mass. Then the same page on a second concept (nothing here may be shaped to the pig).
+NEXT (ask Joe before any agent): a blind run from branch organic-eye (worktree .claude/worktrees/organic-eye, not
+landed) on the same page, to prove the proportion read and the grab limits; then land it (merge main first: another
+session is splitting spec.py and sdf.py); then the same page on a second concept.
