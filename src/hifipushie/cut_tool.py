@@ -153,7 +153,7 @@ def look(pcs, path, S_=500):
 
 
 def look3d(pcs, ref, path):
-    """The cut pieces where they lie (the toile's, a flap turned, the collar fitted; layers hidden under their hosts),
+    """The cut pieces where they lie (the toile's, a flap turned, the collar as draped; layers hidden under their hosts),
     4 views and the neck close, beside the reference."""
     from .mark_tool import PAL
     from .toile_geom import render, sheet
@@ -214,7 +214,7 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
         pcs[nm] = f
         log(f"{nm}: {f['rep']}; edges {sorted(edges[nm])}")
     from .cut_made import made
-    folds, made_rows = made(pcs, edges, declarations, rd["1"], rec["steps"]["4"]["output"], (V, F), log)
+    folds, made_rows = made(pcs, edges, declarations, rd["1"], rec["steps"]["4"]["output"], log)
     from .cut_made import _mir
     from .cut_tapes import closure_marks, folds as planned, piece_tapes, places
     hems, b = planned(declarations, edges)
@@ -262,7 +262,7 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     from .draft_own_tool import row_lines
     lines += [ln for r in rows for ln in row_lines(r)]
     lines.append(f"  look: {lp} (flat pieces, strain red at 6 %; every number is in this text)")
-    lines.append(f"  look: {l3} (the pieces where they lie, the collar fitted, beside the reference)")
+    lines.append(f"  look: {l3} (the pieces where they lie, the collar as cut from the toile, beside the reference)")
     if msg:
         lines.append(f"  record: {msg}")
     lines.append("next: " + ("compare the flat pieces' shapes with the reference; then the details (step 7)" if v == "PASS"

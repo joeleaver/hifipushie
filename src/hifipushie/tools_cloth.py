@@ -362,11 +362,12 @@ def draft_pattern(name: str, garment: str, design: str, declarations: dict | str
 
 @mcp.tool(structured_output=False)
 def garment_toile(name: str, garment: str, declarations: dict | str):
-    """STEP 4: THE TOILE, the garment's 3D surface on the body (drape first): the body + step 0's ease per fit level
-    (calibrated to the planned girths), shaped by the parts you declare: parts [sleeves, opening, lapel, pad],
+    """STEP 4: THE TOILE, the garment's 3D surface on the body: the body + step 0's ease per fit level
+    (calibrated to the planned girths), shaped by the parts you declare: parts [sleeves, opening, lapel, pad, collar],
     hang_from (a step-0 level or "none"), armhole {length_mm}, sleeves {ease_mm [top, wrist], crown_mm, hem},
-    opening {lap_mm, edge (a step-2 trace), buttons}, lapel {roll, top (traces), width_mm}, pad {thickness_mm}.
-    Refused by name when one is missing. Gate rows (girths, clearance, closed, outline vs step 2's traces), the look
+    opening {lap_mm, edge (a step-2 trace), buttons}, lapel {roll, top (traces), width_mm}, pad {thickness_mm},
+    collar {stand_mm, fall_mm (at CB), notch (a trace)}: stand to roll, fall lying out.
+    A missing key is refused. Gate rows (girths, clearance, closed, outline vs step 2's traces), the look
     (4 views beside the reference), step 4 written. guide(topic="garment_toile")."""
     from . import toile_tool
     sheet, txt = toile_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
@@ -392,8 +393,8 @@ def garment_cut(name: str, garment: str, declarations: dict | str | None = None)
     where: a dart or ease wanted), each seam trued, the flat pattern written in draft_pattern's form and the flat gate
     run on it. declarations: free {piece: {edge: top | bottom | side}} (the toile's
     own edges), ease {"piece:edge": [lo, hi]} (kept as cut), folds {piece: {fold: edge}} (a planned hem), flaps (a lapel
-    unfolded onto its piece), layers (facings / canvases traced off a host), collar (drafted flat, its fall edge the
-    toile's landing line); ".L" serves ".R". Tapes and places are read off the toile. Returns the flat pieces + every
+    unfolded onto its piece), layers (facings / canvases traced off a host), collar (step 4's draped collar cut, its
+    fall unfolded about the roll); ".L" serves ".R". Tapes and places are read off the toile. Returns the flat pieces + every
     row; step 6. guide(topic="garment_cut")."""
     from . import cut_tool
     sheet, txt = cut_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)

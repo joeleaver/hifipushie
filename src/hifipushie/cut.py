@@ -11,7 +11,8 @@ runs between one pair: step 5's `runs` picks); a run step 1 doesn't name is "to_
 own edge: hem, neckline, opening, sleeve end) is named by THE DECLARATION:
   free   {piece: {step-1 edge: "top" | "bottom" | "side" | [classes]}}: a free edge segment is "side" when it runs
          more up than across, else "top" / "bottom" by its height against the piece's middle; neighbouring segments of
-         one edge's classes are one run; runs under FREE_MERGE_MM join their neighbours. ".L" pieces' maps serve their
+         one edge's classes are one run; runs under FREE_MERGE_MM join their neighbours (under
+         FREE_CORNER_MM between a seam and a free edge, or inside one free edge: that edge). ".L" pieces' maps serve their
          ".R" mirror. A free run no edge takes, or an edge in two runs, is refused by name (row cut_flatten).
   ease   {"piece:edge": [lo, hi]}: a seam with a declared ease (a sleeve cap) is left as cut (never trued) and held to
          its band; else trued, +-1 % (draft_own.PLAIN_TOL). ".L" entries serve ".R". The cap's ease itself comes from step 4
@@ -24,8 +25,8 @@ MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked
          (cut_flap.py); the roll becomes a fold of the flat.
   layers {piece: {"host", "line": [[edge, mm, toward], ...], "keeps", "edges", "inner"}}: a facing / canvas traced off
          its host's flat (cut_layers.py); its seams are the host's runs.
-  collar {"pieces", "neck", "stand_mm", "fall_mm", "end_mm", "outer", "end", "fold", "fold_on"}: drafted flat, fitted
-         round the toile's neck with its fall turned down and every flat length held (cut_collar.py).
+  collar {"pieces", "neck", "outer", "end", "fold", "fold_on"}: the collar draped on the toile at step 4 (its part)
+         cut and flattened, the fall unfolded about the roll line (cut_collar.py).
 Writes <look dir>/cut/flat.npz (per piece U, F, V, strain), pattern.json (the block), cut.json, cut_3d.png (the pieces
 where they lie, beside the reference); record step 6."""
 from __future__ import annotations
@@ -36,6 +37,8 @@ from .flatten import strain
 from .mark_split import areas, edge_faces, chains
 
 FREE_MERGE_MM = 15.0
+FREE_CORNER_MM = 40.0  # a free run shorter than this leaving a seam corner joins the free edge it leads into, one
+                       # between two runs of one free edge joins it (the opening's drop at the side of the neck: neck)
 FREE_CLASSES = ("top", "bottom", "side")
 
 
@@ -90,15 +93,21 @@ def runs_of(loop, V, across, names, p, fmap=None):
                  ("bottom" if 0.5 * (V[a, 2] + V[b, 2]) < zmid else "top"))
             keys.append("free:" + cls_name.get(c, c))
     seg = np.linalg.norm(V[np.roll(loop, -1)] - V[loop], axis=1) * 1000
-    for _ in range(3):  # short free runs join a free neighbour
+    for _ in range(len(keys)):  # short free runs join a free neighbour, the shortest first, one at a time
         rs = _group(keys)
+        if len(rs) < 2:
+            break
+        best = None
         for k, (key, idx) in enumerate(rs):
-            if key.startswith("free:") and seg[idx].sum() < FREE_MERGE_MM and len(rs) > 1:
-                nb = [rs[(k - 1) % len(rs)][0], rs[(k + 1) % len(rs)][0]]
-                nb = [x for x in nb if x.startswith("free:")]
-                if nb:
-                    for i in idx:
-                        keys[i] = nb[0]
+            fr = [x for x in (rs[(k - 1) % len(rs)][0], rs[(k + 1) % len(rs)][0]) if x.startswith("free:") and x != key]
+            lim = FREE_CORNER_MM if fr and fr[0] == fr[-1] else FREE_MERGE_MM
+            ln = seg[idx].sum()
+            if key.startswith("free:") and fr and ln < lim and (best is None or ln < best[0]):
+                best = (ln, idx, fr[0])
+        if best is None:
+            break
+        for i in best[1]:
+            keys[i] = best[2]
     return _group(keys)
 
 

@@ -14,6 +14,9 @@ why, back_to):
                   wrist along the arm, signed, within SLEEVE_MM);
                   p95 within SILHOUETTE_MM for KINDS_GATED, the rest (an edge the closed toile can't show open, a
                   collar not built here) INFO.
+  collar          (with the collar part, toile_collar.py) the fall LIES ON the toile: its outer edge within
+                  COLLAR_OFF_MM of GAP off the toile's surface (max), it covers the neck seam at CB (lands below it),
+                  it reaches the collar point within COLLAR_POINT_MM; the heights as declared (read off the reference).
 The look: the toile with its parts beside the reference, four views, shape only (every number in the text answer)."""
 from __future__ import annotations
 
@@ -31,6 +34,8 @@ KINDS_GATED = ("hem", "outline", "sleeve_end")
 ARM_ZONE_M = 0.03     # the side outline above the underarm less this is the picture's arm pose, not the toile
 DEPTH_STEP_M = 0.03   # an outline inside the silhouette: the depth jumps this much between neighbouring pixels
 LOOK_BOX = None
+COLLAR_OFF_MM = 2.0   # the fall's outer edge off the toile's surface (beyond its GAP): it lies on it
+COLLAR_POINT_MM = 10.0  # the collar's end reaches the collar point (the notch trace's corner) within this
 
 
 def girth_rows(t) -> list:
@@ -237,15 +242,37 @@ def outline_rows(t, view="front") -> list:
     return rows
 
 
+def collar_row(t) -> list:
+    c = t.info.get("collar")
+    if not c:
+        return []
+    off, below, miss = c["outer_off_toile_mm"], c["lands_below_seam_cb_mm"], c["collar_point_miss_mm"]
+    why = []
+    if off[1] > COLLAR_OFF_MM:
+        why.append(f"the fall's outer edge stands {off[1]:.1f} mm off the toile (> {COLLAR_OFF_MM:g}): it doesn't lie on it")
+    if below <= 0:
+        why.append(f"the fall lands {-below:.1f} mm ABOVE the neck seam at CB: it doesn't cover it (fall_mm deeper)")
+    if miss > COLLAR_POINT_MM:
+        why.append(f"the collar end misses the collar point by {miss:.0f} mm (> {COLLAR_POINT_MM:g})")
+    return [{"id": "collar", "status": "FAIL" if why else "PASS", "back_to": "4", "why": "; ".join(why),
+             "value": f"stand {c['stand_mm']:g} / fall {c['fall_mm']:g} mm at CB (roll {c['roll_above_seam_cb_mm']} mm above "
+                      f"the neck seam, the outer edge {below} mm below it); neck edge {c['neck_half_mm']} + gorge "
+                      f"{c['gorge_mm']} mm per half, roll {c['roll_half_mm']}, outer {c['outer_half_mm']} mm per half "
+                      f"({c['outer_behind_half_mm']} behind the side neck point); outer off the toile {off[0]} mean / "
+                      f"{off[1]} max mm beyond the gap; collar point missed by {miss} mm",
+             "target": f"the fall lies on the toile (outer edge within {COLLAR_OFF_MM:g} mm), covers the neck seam, "
+                       f"reaches the collar point within {COLLAR_POINT_MM:g} mm"}]
+
+
 def rows(t, view="front") -> list:
-    return girth_rows(t) + [clearance_row(t), closed_row(t), neck_row(t)] + outline_rows(t, view)
+    return girth_rows(t) + [clearance_row(t), closed_row(t), neck_row(t)] + collar_row(t) + outline_rows(t, view)
 
 
 def verdict(rs: list) -> str:
     return "FAIL" if any(r["status"] == "FAIL" for r in rs) else "PASS"
 
 
-COLOURS = {"toile": (150, 160, 185), "lapel": (120, 135, 170), "pad": (230, 200, 90)}
+COLOURS = {"toile": (150, 160, 185), "lapel": (120, 135, 170), "pad": (230, 200, 90), "collar": (90, 150, 110)}
 
 
 def look(t, body_V, body_T, ref, path, traces3d=()):
@@ -257,5 +284,11 @@ def look(t, body_V, body_T, ref, path, traces3d=()):
     sbox = ((t.ys[0] - 0.15, t.ys[-1] + 0.15), box[1])
     tiles = [render(M, lines=[(P, (220, 30, 30), 2) for P in traces3d] if v == "front" else (), view=v,
                     box=box if v in ("front", "back") else sbox) for v in ("front", "left", "back", "right")]
-    sheet(tiles, ref, labels=["reference", "front (traces red)", "left", "back", "right"]).save(path)
+    labels = ["reference", "front (traces red)", "left", "back", "right"]
+    if "collar" in t.meshes:  # (the neck close: the collar on the shoulders)
+        zt = float(t.meshes["collar"][0][:, 2].max())
+        nb, nsb = ((-0.22, 0.22), (zt - 0.30, zt + 0.04)), ((t.ys[0] - 0.02, t.ys[-1] + 0.02), (zt - 0.30, zt + 0.04))
+        tiles += [render(M, view=v, box=nb if v in ("front", "back") else nsb, mpp=0.0015) for v in ("front", "left", "back")]
+        labels += ["neck front", "neck left", "neck back"]
+    sheet(tiles, ref, labels=labels).save(path)
     return path

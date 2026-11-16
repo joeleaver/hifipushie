@@ -1,7 +1,7 @@
 """garment_cut's pieces made at step 6 beyond the marked toile's: turned flaps unfolded onto their pieces (cut_flap.py),
-layers traced off a host's flat (cut_layers.py), the collar drafted flat and fitted round the toile's neck
-(cut_collar.py), in that order (a layer traces its host with its flap on; a collar reads the neck edges with the flap's
-top). Each declaration's ".L" entry serves its ".R" mirror. Rows: flaps, layers, collar (what each made, its numbers,
+layers traced off a host's flat (cut_layers.py), the collar cut from the toile and its fall unfolded about the roll
+(cut_collar.py), in that order (a layer traces its host with its flap on; a collar names its neck runs by the edges it
+lies on, the flap's top among them). Each declaration's ".L" entry serves its ".R" mirror. Rows: flaps, layers, collar (what each made, its numbers,
 what was refused by name: back to step 6)."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import re
 
 import numpy as np
 
-LEN_PCT, LEN_MM = 1.0, 0.5  # the fitted collar's worst link (of those over 5 mm) off its flat length: both over = FAIL
+SEAM_MM = 3.0  # the collar's flat neck edge on a garment edge vs that edge's flat length (truing takes the rest)
 
 
 def _mir(x):
@@ -25,7 +25,7 @@ def _both(dd: dict) -> dict:
     return out
 
 
-def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, toile, log=lambda *_: None):
+def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, log=lambda *_: None):
     """(folds, rows); pcs / edges gain the made pieces (module doc)."""
     from .cut_collar import CollarRefused, build
     from .cut_flap import FlapRefused, unfold
@@ -59,6 +59,10 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, toile, log=la
                                         f"{r['roll_flat_mm']['flap']} mm, across {r['lands_across_roll']}" for r in reps),
                      "target": "each turned flap unfolded about its roll edge onto its piece, landing across the roll",
                      "why": "; ".join(why[:6])})
+    if decl.get("collar"):
+        from .cut_collar import split_gorge
+        for m in split_gorge(pcs, edges, decl["collar"], out4):
+            log(m)
     layers = _both(decl.get("layers") or {})
     if layers:
         reps, why = [], []
@@ -83,31 +87,33 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, toile, log=la
     if decl.get("collar"):
         d = decl["collar"]
         try:
-            c_pcs, c_edges, c_folds, rep, bad = build(pcs, edges, d, s1, layers, toile)
+            c_pcs, c_edges, c_folds, rep, bad = build(pcs, edges, d, s1, layers, out4)
         except CollarRefused as e:
-            rows.append({"id": "collar", "status": "FAIL", "value": "not drafted", "why": str(e), "back_to": "6",
-                         "target": "the collar drafted flat and fitted round the toile's neck"})
+            rows.append({"id": "collar", "status": "FAIL", "value": "not cut", "why": str(e), "back_to": "6",
+                         "target": "the toile's collar cut and its fall unfolded about the roll line"})
             return folds, rows
         pcs.update(c_pcs)
         edges.update(c_edges)
         folds += c_folds
         log(f"collar: {rep}")
-        L = rep["lengths"]
-        lw, lmm = L["worst_pct_5mm"], L["worst_mm"]
         fails = list(bad)
-        if lw > LEN_PCT and lmm > LEN_MM:
-            fails.append(f"the fitted collar holds its flat lengths to {lw:.2f} % / {lmm:.1f} mm (worst link), > "
-                         f"{LEN_PCT} % and {LEN_MM} mm: it can't lie round this neck as drafted")
+        sm = rep["seams"]
+        off = {g: v["collar_mm"] - v["garment_mm"] for g, v in sm.items()}
+        fails += [f"collar: its neck edge on {g} is {v['collar_mm']} mm flat, {g} {v['garment_mm']} mm: off {off[g]:+.1f} mm "
+                  f"(> {SEAM_MM:g}: back to step 4, the collar's neck edge is the toile's neck seam)"
+                  for g, v in sm.items() if abs(off[g]) > SEAM_MM]
+        if rep["outer_over_neck"] <= 1.0:
+            fails.append(f"collar: the flat outer edge is no longer than its neck edge (x{rep['outer_over_neck']}): a band, "
+                         "not a turned collar (back to step 4: the fall must lie out over the shoulders)")
+        t4 = rep["toile"]
         rows.append({"id": "collar", "status": "FAIL" if fails else "PASS", "back_to": "6",
-                     "value": (f"{', '.join(c_pcs)}: neck {rep['neck_mm']['half']} mm per half (front "
-                               f"{rep['neck_mm']['front']}, back {rep['neck_mm']['back']}), outer {rep['outer_half_mm']} (the landing rule's "
-                               f"{rep['outer_rule_half_mm']}, spread x {rep['spread_rounds']} on the toile) "
-                               f"= {rep['outer_over_neck']} x neck, flat {rep['flat_span_mm'][0]} x {rep['flat_span_mm'][1]} "
-                               f"mm, neck bow {rep['neck_bow_mm']} mm; fitted: lengths worst {lw} % ({lmm} mm), outer 3D "
-                               f"{rep['outer_3d_mm']} / flat {rep['outer_flat_mm']} mm, lands {rep['lands_below_neck_cb_mm']}"
-                               f" mm below the neck seam at CB (d {rep['d_mm']}; its landing line on the toile behind the shoulder x"
-                               f"{rep['laid_over_flat_back']} the flat outer), fall clear of the toile >= "
-                               f"{rep['fall_clear_min_mm']} mm"),
-                     "target": "drafted flat (outer longer than neck by the fall's landing), fitted with every flat "
-                               "length held", "why": "; ".join(fails[:6])})
+                     "value": (f"{', '.join(c_pcs)}: cut from the toile's collar (stand {t4['stand_mm']} / fall "
+                               f"{t4['fall_mm']} mm, lands {t4['lands_below_seam_cb_mm']} mm below the neck seam at CB), the "
+                               f"fall unfolded about the roll: flat {rep['flat_span_mm'][0]} x {rep['flat_span_mm'][1]} mm, "
+                               f"neck {rep['neck_flat_mm']} / roll {rep['roll_flat_mm']} / outer {rep['outer_flat_mm']} mm "
+                               f"(outer = {rep['outer_over_neck']} x neck; outer on the toile {rep['outer_3d_mm']}), neck bow "
+                               f"{rep['neck_bow_mm']} mm, strain {rep['strain_mean_pct']} % mean; seams: "
+                               + "; ".join(f"{g} {v['collar_mm']} / {v['garment_mm']} mm" for g, v in sm.items())),
+                     "target": f"cut from the toile, unfolded (outer longer than neck), each neck seam within {SEAM_MM:g} mm "
+                               "of its garment edge", "why": "; ".join(fails[:6])})
     return folds, rows

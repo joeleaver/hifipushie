@@ -1,11 +1,10 @@
-"""Step 6 takes its lengths from the toile (R3d, C495): the collar's landing line is a contour (a corner turned by d x its
-angle, not walks that fan), planned folds along cut edges, each piece names the step-3 tapes it lies on, a declared
+"""Step 6 takes its lengths from the toile (R3d, C495): planned folds along cut edges, each piece names the step-3 tapes it lies on, a declared
 seam ease is kept as cut (never trued) and a ".L" ease serves ".R"."""
 import json
 
 import numpy as np
 
-from hifipushie import cut_collar, cut_tapes, cut_tool
+from hifipushie import cut_tapes, cut_tool
 
 
 def plane(x0, x1, z0, z1, n=41, y=0.0):
@@ -15,25 +14,6 @@ def plane(x0, x1, z0, z1, n=41, y=0.0):
     idx = np.arange(n * n).reshape(n, n)
     a, b, c, d = idx[:-1, :-1].ravel(), idx[:-1, 1:].ravel(), idx[1:, 1:].ravel(), idx[1:, :-1].ravel()
     return V, np.r_[np.c_[a, b, c], np.c_[a, c, d]]
-
-
-def test_landing_line_turns_a_corner_by_d_times_its_angle():
-    """A neck line with a right-angle corner on a flat sheet: the contour at d below it is the two legs + d x pi/2 at the
-    convex corner, never the walks' fan; behind = the part whose nearest neck point is behind |s| <= Lb."""
-    V, F = plane(-0.2, 0.2, -0.2, 0.2, n=161)
-    # neck line in the sheet: from (-0.1, 0) right to (0, 0), then down to (0, -0.1): the sheet's region "below" it
-    Q = np.r_[np.c_[np.linspace(-0.1, 0, 21), np.zeros(21), np.zeros(21)][:-1],
-              np.c_[np.zeros(21), np.zeros(21), np.linspace(0, -0.1, 21)]]
-    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
-    s = s - s[-1] / 2  # (s from the middle, as a collar's from CB: both ends at |s| max)
-    d = 0.02
-    behind, whole = cut_collar.landing_line(Q, s, s[-1], (V, F), d)
-    # the contour at distance d from a polyline in the plane, both sides, minus the end caps: 2 x (0.2) + the convex
-    # corner's arc d x pi/2 on one side, the concave side's legs shortened by d each
-    want = 2 * 0.1 + d * np.pi / 2 + 2 * (0.1 - d)
-    assert abs(whole - want) < 0.004, (whole, want)
-    behind, _ = cut_collar.landing_line(Q, s, 0.05, (V, F), d)  # (within 5 cm of the corner, along the neck line)
-    assert abs(behind - (0.1 + d * np.pi / 2 + 2 * (0.05 - d))) < 0.006, behind
 
 
 def test_fold_rows_along_a_hem_and_mirror():
