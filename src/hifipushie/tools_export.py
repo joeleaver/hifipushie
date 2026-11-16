@@ -251,13 +251,13 @@ def judge_asset(glb: str, head: str | None = None, tag: str | None = None, again
 def heavy_status() -> str:
     """Who holds the machine's heavy-job memory and who waits (every session): running jobs with GB, pid, start,
     directory; the queue in serving order and why each waits. Details: guide(topic="heavy_status")."""
-    from . import resources
-    return resources.status_text()
+    from . import resources_queue
+    return resources_queue.status_text()
 
 
 @mcp.tool(structured_output=False)
 def heavy_queue() -> str:
     """The heavy-job queue without host details: running and waiting jobs (kind, GB, minutes, why it waits), your
     session's marked "<- yours". Fast; changes nothing. Details: guide(topic="heavy_queue")."""
-    from . import resources
-    return resources.queue_text()
+    from . import resources_queue
+    return resources_queue.queue_text()

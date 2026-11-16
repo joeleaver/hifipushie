@@ -72,7 +72,7 @@ EXCLUDE = {"list_models": "lists every model on this machine, not the session's 
            "find_tool": "the runner offers every tool directly",
            "call_tool": "the runner offers every tool directly"}
 # Tools that take no subject are only offered when known to be harmless (an unknown one might list the host).
-SUBJECTLESS_OK = {"guide", "kit_reference", "heavy_queue",  # heavy_queue: no paths, pids or dirs (resources.queue_view)
+SUBJECTLESS_OK = {"guide", "kit_reference", "heavy_queue",  # heavy_queue: no paths, pids or dirs (resources_queue.queue_view)
                   "make_clutter", "clutter_kit", "look_clutter"}  # generators: their folders are confined (POLICY)
 
 # Host-path parameters: dropped from the schema. Their values are set by the runner (outputs into the task's
