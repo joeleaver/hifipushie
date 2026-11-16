@@ -125,6 +125,7 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     lines.append(f"In the spec it is two bones, {mass} (base to fold, with the tool's numbers under \"flap\") and {top} (the "
                  f"folded part), on joints {', '.join(J.values())}: a put_model of a whole new spec drops them unless carried over.")
     lines.append(f"next: look_beside(\"{name}\", focus=[\"{mass}\"]): the flap close up beside each reference view and the "
-                 "painting. Then change ONE thing: where it stands (base), which way it rises or looks (rise, face), its "
+                 f"painting; once it looks right to you, review_part(\"{name}\", [\"{mass}\", \"{top}\"], \"the ear\") for a fresh "
+                 "reviewer's eyes on it. Then change ONE thing: where it stands (base), which way it rises or looks (rise, face), its "
                  "size (length, width, thickness, pointed), or the fold (fold, fold_at).")
     return tools_reshape._with_look(name, ["front", "side", "three_quarter"], "\n".join(lines))

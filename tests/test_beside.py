@@ -202,3 +202,17 @@ def test_focus_cuts_every_view_to_the_named_mass_and_draws_it_large(home):
     assert near.width > whole.width  # panels round one ear (squarer than the tall figure), drawn at the same height
     with pytest.raises(ValueError, match="focus: no mass called"):
         beside.compare("fig", focus=["nose"])
+
+
+def test_a_part_review_needs_the_painting_s_camera(home):
+    from hifipushie import server
+    with pytest.raises(ValueError, match="fit_concept_camera"):
+        server.review_part("fig", ["ear.L"], "the ear")
+
+
+def test_a_camera_pin_names_a_mass_or_a_point(home):
+    from hifipushie import matched
+    assert np.allclose(matched.landmark("fig", "head"), [0, 0, 0.53])
+    assert matched.landmark("fig", "ear.R")[0] < 0  # (the mirrored one: the figure's right)
+    with pytest.raises(ValueError, match="no joint, blob or bone"):
+        matched.landmark("fig", "nose")

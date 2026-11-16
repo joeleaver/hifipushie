@@ -386,6 +386,17 @@ spec: move, resize or reshape it and the hollow follows. soft: how far the hollo
 back=True makes the cutter clay again. A cutter can't be fused into other masses.
 (In the spec: the cutter carries "op": "subtract" and "targets": [masses].)
 
+### `review_part`
+
+`review_part(name, masses, region, context=...)`
+
+A fresh pair of eyes on ONE part (an ear, the snout): the part rendered in clay through the concept painting's own
+camera, cut with the same box from the painting, and judged by an independent reviewer who sees only the two
+pictures, no captions and none of your reasoning. It describes the form, then the differences, worst first, and
+ends with a verdict. The maker of a part sees what they meant; a fresh reviewer sees what is there. Use it once a
+part looks right to you, before you call it done. masses: the part's masses (a flap: `<mass>` and `<stem>_top<side>`);
+region: plain words ("the ear"). Needs the painting's camera, pinned (fit_concept_camera with points). A minute or two.
+
 ### `look_beside`
 
 `look_beside(name, views=None, ignore=None, on_purpose=None, resolution=176, save=None)`

@@ -240,3 +240,31 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
         out.append(_png(r["picture"]))
     return [*out, beside.text(name, res)]
 
+
+
+@mcp.tool(structured_output=False)
+def review_part(name: str, masses: list[str], region: str, context: str = "a game character: a concept painting "
+                "and a clay blockout of it, seen from the same camera"):
+    """A fresh pair of eyes on ONE part of the model: the part rendered in clay through the concept painting's own
+    camera, cut with the same box from the painting, and judged by an independent reviewer who sees only the two
+    pictures (no captions, no numbers, none of your reasoning). Its form first, then the differences, worst first.
+    masses: the part's masses (e.g. ["ear.L", "ear_top.L"]); region: what the reviewer is told it is, plain words
+    ("the ear"). The one who made a part sees what they meant; a fresh reviewer sees what is there: in blind trials
+    the maker passed an ear whose base was plainly wrong, and two fresh reviewers named it unprompted. A minute or
+    two (a render and a review). Needs the painting's camera (fit_concept_camera). Details: guide(topic="review_part")."""
+    from pathlib import Path
+
+    from . import beside_painting, matched
+    from .tools_model import review_view
+    label = beside_painting.camera_label(name)
+    if label is None:
+        raise ValueError("the painting has no camera yet: fit_concept_camera(name, image=<the painting>) first")
+    matched.render(name, label)
+    r = matched.tiles(name, {region: list(masses)}, label)
+    ref, ours, box = r["tiles"][region]
+    out = review_view(region=region, reference=ref, result=ours, context=context,
+                      out_dir=str(Path(r["dir"]) / "review"))
+    text = out[-1] if isinstance(out, (list, tuple)) else str(out)
+    return [*out[:-1], f"{region}: the painting | the model, through the painting's camera (box {box}).\n{text}\n"
+            "next: fix the worst difference the reviewer names that belongs to this pass, then look again. The "
+            "reviewer judges what it sees; where you differ on purpose, say so in your log, not to it."]
