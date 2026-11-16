@@ -7,7 +7,8 @@ import math
 import numpy as np
 
 from . import veg_style
-from . import sdf, veg_leaf
+from . import veg_leaf
+from . import sdf_shapes
 from . import veg_leaf_place
 from . import vegetation_kernels, vegetation_measures
 from .veg_style_wood import mesh_field
@@ -252,7 +253,7 @@ def field(ells: list[dict], p: np.ndarray, blend: float, each: bool = False, flo
         D[:, j] = np.where(k1 > 1e-9, k0 * (k0 - 1.0) / np.maximum(k1, 1e-9), -float(e["r"].min()))
     d = D[:, 0].copy()
     for j in range(1, len(ells)):
-        d = sdf.smin(d, D[:, j], blend * float(ells[j].get("join", 1.0)))  # (a scallop bump joins its clump crisper: `join`)
+        d = sdf_shapes.smin(d, D[:, j], blend * float(ells[j].get("join", 1.0)))  # (a scallop bump joins its clump crisper: `join`)
     if floor is not None:
         d = np.maximum(d, floor - p[:, 2])
     return (d, D) if each else d

@@ -8,6 +8,7 @@ import numpy as np
 from hifipushie import base as basemod
 from hifipushie import base_gnm_parts, base_measures
 from hifipushie import sdf, store
+from hifipushie import sdf_shapes
 from hifipushie import spec as specmod
 
 name = sys.argv[1]
@@ -27,13 +28,13 @@ print("gap mm", round(mp["gap"] * 1000, 2), "sock centroid behind M mm", round(f
 bag = next((p for p in prims if p.name == "gnm_mouth_bag"), None)
 if bag is not None:
     c = mp["sock"]["verts"].mean(0)
-    print("bag cavity sdf at the sock's centroid (negative = cavity):", float(sdf.SDF[bag.kind](c[None], bag.params)[0]) * 1000, "mm")
+    print("bag cavity sdf at the sock's centroid (negative = cavity):", float(sdf_shapes.SDF[bag.kind](c[None], bag.params)[0]) * 1000, "mm")
 for k in ("teeth_upper", "teeth_lower", "tongue"):
     p = next(q for q in prims if q.name == f"gnm_{k}")
     c = mp[k]["verts"].mean(0)
     V = mp[k]["verts"]
-    d = sdf.SDF[p.kind](V, p.params)
-    print(f"{k}: field at its own vertices mm min {d.min() * 1000:.2f} max {d.max() * 1000:.2f}; at its centroid {float(sdf.SDF[p.kind](c[None], p.params)[0]) * 1000:.2f}")
+    d = sdf_shapes.SDF[p.kind](V, p.params)
+    print(f"{k}: field at its own vertices mm min {d.min() * 1000:.2f} max {d.max() * 1000:.2f}; at its centroid {float(sdf_shapes.SDF[p.kind](c[None], p.params)[0]) * 1000:.2f}")
 # sagittal section x = 0 (and x = 12 mm): rows = up, columns = depth (front left)
 for x in (0.0, 0.012):
     ys = np.arange(-0.012, 0.062, 0.001)

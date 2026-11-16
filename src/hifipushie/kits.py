@@ -512,7 +512,7 @@ def _interior(f: dict, line, on_skin, us, F, width: float, ru: float, rl: float,
     """A mouth that can open (face shapes, faceshapes.py): a slit between the lips through to a mouth bag behind
     them, and optionally teeth and a tongue in parts of their own. The slit is a real gap in the mesh (its two
     walls are the lips' inner faces), so the export's neutral closes it by moving the lips together and opening the
-    jaw is a deformation, never a surface appearing. The slit and the teeth are "band" sweeps (sdf.sd_sweep) along
+    jaw is a deformation, never a surface appearing. The slit and the teeth are "band" sweeps (sdf_shapes.sd_sweep) along
     the lips' parting line / the dental arch, mirrored; the bag is a rounded box."""
     it = f["interior"] if isinstance(f["interior"], dict) else {}
     side, up, out = F[:, 0], F[:, 2], -F[:, 1]

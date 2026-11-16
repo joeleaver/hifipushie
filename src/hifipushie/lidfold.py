@@ -16,7 +16,7 @@ pretarsal skin height (platform show) men 2.0, women 3.3; African American creas
 celebrity sample (38 photographs) read platform show women 3.9, men 2.5 mm. Platform show falls with age (the
 preseptal skin descends: dermatochalasis), the crease rises (levator disinsertion).
 
-Geometry (`blobs`, mod `sdf.mod_fold`): a modifier on the body's field along each upper lid's crease line (the opening's
+Geometry (`blobs`, mod `sdf_shapes.mod_fold`): a modifier on the body's field along each upper lid's crease line (the opening's
 own rim, lifted by the crease height in the front plane and seated on the skin: no landmark lines), pushing the skin
 along its normal by a profile across the line: the platform a little in (`platform`), the crease a narrow deep
 invagination (`crease_depth`, `crease_width`), the fold's roll out over it (`fold_overhang`, `fold_width`, peaking

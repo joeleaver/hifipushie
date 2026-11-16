@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from hifipushie import resources
+from hifipushie import resources_guard, resources_queue
 
 JOB = Path(__file__).with_name("heavy_job.py")
 
@@ -54,13 +55,13 @@ def env(tmp_path, monkeypatch):
                 if cond():
                     return
                 time.sleep(0.05)
-            raise AssertionError(f"timed out waiting for {what}: {resources.status_text()}")
+            raise AssertionError(f"timed out waiting for {what}: {resources_queue.status_text()}")
 
         def waiting(self):
-            return [j["name"] for j in resources.status()["waiting"]]
+            return [j["name"] for j in resources_queue.status()["waiting"]]
 
         def running(self):
-            return [j["name"] for j in resources.status()["running"]]
+            return [j["name"] for j in resources_queue.status()["running"]]
 
     yield E()
     for p in procs:
@@ -94,7 +95,7 @@ def test_jobs_that_fit_run_together(env):
     env.start("A", 4)
     env.start("B", 4)
     env.wait(lambda: set(env.started()) == {"A", "B"}, "both to run at once")
-    s = resources.status()
+    s = resources_queue.status()
     assert s["declared_gb"] == 8 and not s["waiting"]
     env.release("A"), env.release("B")
 
@@ -114,7 +115,7 @@ def test_small_jobs_pass_a_blocked_job_a_bounded_number_of_times(env):
     env.wait(lambda: "Last" in env.waiting(), "Last to queue")
     time.sleep(1.0)
     assert "Last" not in env.started()  # Big has been passed PASS_LIMIT times: nothing passes it now
-    s = {j["name"]: j for j in resources.status()["waiting"]}
+    s = {j["name"]: j for j in resources_queue.status()["waiting"]}
     assert s["Big"]["passed"] == resources.PASS_LIMIT and s["Last"]["why"] == "behind"
     env.release("H")
     env.wait(lambda: {"Big", "Last"} <= set(env.started()), "Big, and Last beside it, once H is done")
@@ -128,7 +129,7 @@ def test_one_gpu_job_at_a_time(env):
     env.wait(lambda: "G2" in env.waiting(), "G2 to wait")
     env.start("N", 1)
     env.wait(lambda: "N" in env.started(), "a CPU job beside the GPU job")
-    assert resources.status()["waiting"][0]["why"] == "gpu"
+    assert resources_queue.status()["waiting"][0]["why"] == "gpu"
     assert "waiting for the GPU" in (env.dir / "log_G2").read_text()
     env.release("G1")
     env.wait(lambda: "G2" in env.started(), "G2 after G1")
@@ -175,7 +176,7 @@ def test_cancel_while_running_kills_the_pool_and_releases(env):
             try:
                 with resources.heavy("cancelme", gb=1, kind="test", log=lambda m: None):
                     ex = ProcessPoolExecutor(1, mp_context=get_context("fork"))
-                    with resources.guarded(ex, "test pool") as ex:
+                    with resources_guard.guarded(ex, "test pool") as ex:
                         f = ex.submit(time.sleep, 60)
                         out["pid"] = next(iter(ex._processes))
                         f.result()
@@ -246,10 +247,10 @@ def test_old_code_slot_is_respected_both_ways(env):
         "import fcntl,sys,time; f=open(sys.argv[1],'a+'); fcntl.flock(f,fcntl.LOCK_EX); f.seek(0); f.truncate();"
         "f.write('424242 old export\\n'); f.flush(); time.sleep(60)"), str(lock)])
     try:
-        env.wait(lambda: resources.status()["legacy"] is not None, "the old job to show")
+        env.wait(lambda: resources_queue.status()["legacy"] is not None, "the old job to show")
         env.start("New", 1)  # 12 GB counted for the old job > the 10 GB budget: waits
         env.wait(lambda: "New" in env.waiting(), "New to wait behind the old job")
-        assert "old hifipushie code" in resources.status_text()
+        assert "old hifipushie code" in resources_queue.status_text()
     finally:
         old.kill(), old.wait()
     env.wait(lambda: "New" in env.started(), "New after the old job")
@@ -269,13 +270,13 @@ def test_old_code_holder_holds_the_gpu(env, monkeypatch):
         "import fcntl,sys,time; f=open(sys.argv[1],'a+'); fcntl.flock(f,fcntl.LOCK_EX); f.seek(0); f.truncate();"
         "f.write('424242 zozo cloth su_41\\n'); f.flush(); time.sleep(60)"), str(lock)])
     try:
-        env.wait(lambda: resources.status()["legacy"] is not None, "the old job to show")
+        env.wait(lambda: resources_queue.status()["legacy"] is not None, "the old job to show")
         env.start("Gpu", 2, gpu=True)
         env.wait(lambda: "Gpu" in env.waiting(), "the GPU job to wait")
         env.start("Cpu", 2)
         env.wait(lambda: "Cpu" in env.started(), "a CPU job beside the old one")
-        assert resources.status()["waiting"][0]["why"] == "gpu"
-        assert "GPU: zozo cloth su_41" in resources.status_text()
+        assert resources_queue.status()["waiting"][0]["why"] == "gpu"
+        assert "GPU: zozo cloth su_41" in resources_queue.status_text()
         env.wait(lambda: (env.dir / "log_Gpu").exists() and "waiting for the GPU" in (env.dir / "log_Gpu").read_text()
                  and "zozo cloth su_41" in (env.dir / "log_Gpu").read_text(), "the wait to name the old job")
         assert "Gpu" not in env.started()
@@ -299,7 +300,7 @@ def test_unknown_kind_holds_the_gpu(env):
         env.start("Gpu", 1, gpu=True)
         env.wait(lambda: "Gpu" in env.waiting(), "the GPU job to wait")
         time.sleep(0.5)
-        assert "Gpu" not in env.started() and resources.status()["waiting"][0]["why"] == "gpu"
+        assert "Gpu" not in env.started() and resources_queue.status()["waiting"][0]["why"] == "gpu"
     finally:
         ev.set()
         th.join(10)
@@ -321,13 +322,13 @@ def test_queue_view_is_path_free_and_finds_your_job(env, monkeypatch):
     env.start("export_mailbox", 3, env={"HIFIPUSHIE_HOME": str(ws)})
     env.wait(lambda: "export_mailbox" in env.waiting(), "3rd: ours")
     monkeypatch.setenv("HIFIPUSHIE_HOME", str(ws))  # the artist worker of that session asks
-    q = resources.queue_view()
+    q = resources_queue.queue_view()
     assert [w["label"] for w in q["waiting"]] == ["zozo_cloth_su41", "terrain_tiles_slice_a", "export_mailbox"]
     mine = q["waiting"][2]
     assert mine["yours"] and mine["position"] == 3 and mine["gb_ahead"] == 14 and mine["why"] in ("memory", "behind")
     assert not q["waiting"][0]["yours"] and q["running"][0]["label"] == "export_golfer"
     assert q["running"][0]["gb"] == 6 and q["running"][0]["minutes"] >= 0
-    text = resources.queue_text()
+    text = resources_queue.queue_text()
     assert "yours: 3rd in queue, 14 GB ahead" in text and "<- yours" in text
     pids = [str(p) for p in env_pids(env)]
     blob = text + repr(q)
@@ -341,12 +342,12 @@ def test_queue_view_is_path_free_and_finds_your_job(env, monkeypatch):
 
 
 def env_pids(env):
-    return [j["pid"] for j in resources.status()["running"] + resources.status()["waiting"]]
+    return [j["pid"] for j in resources_queue.status()["running"] + resources_queue.status()["waiting"]]
 
 
 def test_labels_drop_paths():
-    assert resources._label("terrain tiles /mnt/data/x/out/ts_slice_a") == "terrain tiles ts_slice_a"
-    assert [resources._ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == \
+    assert resources_queue._label("terrain tiles /mnt/data/x/out/ts_slice_a") == "terrain tiles ts_slice_a"
+    assert [resources_queue._ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == \
         ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd"]
 
 
@@ -359,11 +360,11 @@ def test_workers_sized_from_the_grant(env, monkeypatch):
 
 def test_estimates_only_rise(env):
     base = resources.KIND_GB["export_asset"]
-    assert resources.estimate("export_asset", "x") == base
-    resources._record_peak("export_asset", "big", base + 3)
-    resources._record_peak("export_asset", "small", 0.5)
-    assert resources.estimate("export_asset", "big") == base + 3
-    assert resources.estimate("export_asset", "small") == base
+    assert resources_queue.estimate("export_asset", "x") == base
+    resources_queue._record_peak("export_asset", "big", base + 3)
+    resources_queue._record_peak("export_asset", "small", 0.5)
+    assert resources_queue.estimate("export_asset", "big") == base + 3
+    assert resources_queue.estimate("export_asset", "small") == base
 
 
 def test_server_cancel_sets_the_event(env):
@@ -400,4 +401,4 @@ def test_server_cancel_sets_the_event(env):
 def test_nested_heavy_passes_through(env):
     with resources.heavy("outer", gb=6, kind="test", log=lambda m: None):
         with resources.heavy("inner", gb=6, kind="test", log=lambda m: None):  # would deadlock if it queued
-            assert len(resources.status()["running"]) == 1
+            assert len(resources_queue.status()["running"]) == 1

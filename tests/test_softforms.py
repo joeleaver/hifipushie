@@ -7,6 +7,7 @@ import pytest
 
 from hifipushie import fit as fitmod
 from hifipushie import sdf
+from hifipushie import sdf_shapes
 from hifipushie.spec import SpecError, compile_prims
 
 # a cartoon pig's head and body as one pear (z, half width, y front, y back): the case that exposed the gap
@@ -28,7 +29,7 @@ def one(bl):
 
 
 def sd(p, pts):
-    return sdf.SDF[p.kind](np.asarray(pts, float), p.params)
+    return sdf_shapes.SDF[p.kind](np.asarray(pts, float), p.params)
 
 
 def test_super_at_two_is_the_ellipsoid():

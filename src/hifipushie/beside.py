@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
 from . import matched, refread, sdf, store
+from . import sdf_shapes
 from .featurerays import depth_image, rays, relief
 from .spec import compile_prims, mirror_name
 
@@ -59,7 +60,7 @@ def _owners(prims, P: np.ndarray) -> np.ndarray:
     for i, p in enumerate(adds):  # only where the mass can be (a sheet's field is dear: two ears over every pixel
         near = np.all((P >= p.lo - 0.03) & (P <= p.hi + 0.03), axis=1)  # of a figure took 15 s)
         if near.any():
-            vals[i, near] = sdf.SDF[p.kind](P[near], p.params)
+            vals[i, near] = sdf_shapes.SDF[p.kind](P[near], p.params)
     return np.array([p.name for p in adds])[vals.argmin(0)]
 
 
@@ -188,7 +189,7 @@ def set_on_purpose(name: str, entries: list[dict]) -> list[dict]:
 def _floating(prims) -> list[dict]:
     """Masses that touch nothing: [{"mass", "gap" (m of air to the nearest other clay)}]. An outline can't show one
     (p4's ear and p6's tail floated through every comparison)."""
-    from .sdf import SDF
+    from .sdf_shapes import SDF
     adds = [p for p in prims if p.op == "add" and p.instance is None and p.kind in SDF]
     out = {}
     for p in adds:

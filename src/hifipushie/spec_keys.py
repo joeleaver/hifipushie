@@ -10,7 +10,7 @@ check(spec): SpecError naming the element, the key, the nearest known key and th
 spec as written (before kits, strokes and anatomy expand it: what they generate is theirs). The elements inside
 prefabs are checked the same way (spec["prefabs"][name]: joints, bones, blobs), named with their prefab.
 
-GENERIC: the keys every bone and blob takes (spec._csg and the assemble modules read them off any element). C442's
+GENERIC: the keys every bone and blob takes (spec_hands._csg and the assemble modules read them off any element). C442's
 bone list missed two of them, "hollow" and "chips": no saved top-level spec had a hollow bone, 110 bones inside saved
 prefabs did, and a list read off the saved specs alone would have refused the next one. A test now holds every key
 spec.py reads off an element to both lists.
@@ -21,7 +21,7 @@ import difflib
 
 JOINT_KEYS = ("pos", "r", "on", "lift", "shift")
 GENERIC = ("blend", "op", "layer", "group", "join", "fuse", "fill", "fill_sides", "part", "tags", "array", "between", "inset", "targets",
-           "lumpy", "chips", "hollow",  # element-level solids (spec._csg): on bones and shaped blobs
+           "lumpy", "chips", "hollow",  # element-level solids (spec_hands._csg): on bones and shaped blobs
            "instance", "local")         # an element of a prefab's instance (written by the expansion)
 BONE_KEYS = ("a", "b", "r_a", "r_b", "flat", "bow", "up", "ends", *GENERIC)
 BLOB_KEYS = (

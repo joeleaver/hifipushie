@@ -4,7 +4,7 @@ Branch loft-super (worktree .claude/worktrees/loft-super), from main 5e840ded. A
 the pig, gaps 11 and 14 in braynard-racing/workspace/puddles/hifipushie_gaps.md). Not pushed; coordinator lands.
 
 ## What the tools hold now
-- `softforms.py` (docstring = spec), wired into spec._compile, sdf.SDF, spec.SHAPES (csg / deform / hollow apply).
+- `softforms.py` (docstring = spec), wired into spec._compile, sdf_shapes.SDF, spec.SHAPES (csg / deform / hollow apply).
   - `"shape": "super"`: |x/rx|^n + |y/ry|^n + |z/rz|^n = 1, "squareness" (one n, default 3) or "exponents" [nx,ny,nz],
     1.2..12. n = 2 equals the ellipsoid exactly outside it. Distance estimate (G-1)/|grad G|, G = F^(1/min n).
   - `"shape": "loft"`: "sections" [{z, half_width, half_depth, squareness 2, offset_y 0}], z rising, local z

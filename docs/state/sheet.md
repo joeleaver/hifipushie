@@ -4,7 +4,7 @@ Landed on main (sheet: C372; crush fold: C398). Asked for by Braynard Racing (Pu
 braynard-racing/workspace/puddles/hifipushie_gaps.md).
 
 ## What the tools hold now
-- `sheet.py` (docstring = spec), wired into spec._compile, sdf.SDF, spec.SHAPES, expand_mirror, server SOLIDS.
+- `sheet.py` (docstring = spec), wired into spec._compile, sdf_shapes.SDF, spec.SHAPES, expand_mirror, server SOLIDS.
   `{"shape": "sheet", "spine": [[x,y,z],...], "curve": "spline"|"bezier", "width_axis", "stations": [{"t",
   "half_width", "half_thickness", "cup", "twist", "puff"}], "root", "tip", "at"/"offset"}`. puff 0 = slab with round edges, 1 = lens (elliptic
   cross-section, thickest mid-width: clay, leaves), between = convex blend of the two estimates.

@@ -3,7 +3,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
-from hifipushie import lidfold, sdf
+from hifipushie import lidfold
+from hifipushie import sdf_shapes
 
 MM = 0.001
 
@@ -27,7 +28,7 @@ def _surface(pr, t):
     """The modified plane's height (m) over (0, t): the zero of z - disp along z."""
     zs = np.linspace(-0.003, 0.003, 6001)
     P = np.c_[np.zeros(len(zs)), np.full(len(zs), t), zs]
-    f = sdf.mod_fold(zs.copy(), P, pr)
+    f = sdf_shapes.mod_fold(zs.copy(), P, pr)
     return float(zs[np.argmin(np.abs(f))])
 
 
@@ -43,9 +44,9 @@ def test_fold_profile_on_a_plane():
     half = _surface(pr, 0.4 * MM)
     assert half > 0.6 * groove  # (shallower at 0.4 mm than at the line)
     # smooth along the line (no ripple between samples) and faded at the ends
-    along = [sdf.mod_fold(np.array([0.0]), np.array([[x, 0.0, 0.0]]), pr)[0] for x in np.linspace(-0.005, 0.005, 41)]
+    along = [sdf_shapes.mod_fold(np.array([0.0]), np.array([[x, 0.0, 0.0]]), pr)[0] for x in np.linspace(-0.005, 0.005, 41)]
     assert np.ptp(along) < 0.01 * MM
-    end = sdf.mod_fold(np.array([0.0]), np.array([[0.0149, 0.0, 0.0]]), pr)[0]
+    end = sdf_shapes.mod_fold(np.array([0.0]), np.array([[0.0149, 0.0, 0.0]]), pr)[0]
     assert abs(end) < 0.1 * MM
 
 

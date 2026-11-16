@@ -181,7 +181,7 @@ def _outline_mask(spec: dict, name: str, o: dict, v: np.ndarray, n: np.ndarray) 
 
 
 def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
-    from . import sdf
+    from . import sdf_shapes
     from .spec import compile_prims
     want = [ly["near"]] if isinstance(ly["near"], str) else list(ly["near"])
     prims = {p.name: p for p in compile_prims(spec)}
@@ -190,7 +190,7 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
         if w in (spec.get("kits") or {}) and w not in prims:
             stem, sfx = (w[:-2], w[-2:]) if w.endswith((".L", ".R")) else (w, "")
             want.remove(w)
-            want += [n for n, p in prims.items() if n.startswith(stem + "_") and n.endswith(sfx) and p.kind in sdf.SDF
+            want += [n for n, p in prims.items() if n.startswith(stem + "_") and n.endswith(sfx) and p.kind in sdf_shapes.SDF
                      and p.kind != "shell" and p.op == "add"]
     if any(w not in prims or w in tagged for w in want):  # tags: instances, arrays, "tags" lists
         from .assemble import select
@@ -208,9 +208,9 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
             from .lidfold import line_distance
             d = np.minimum(d, line_distance(v, p.params, ly.get("side")))
             continue
-        if p.kind not in sdf.SDF or p.kind == "shell":
+        if p.kind not in sdf_shapes.SDF or p.kind == "shell":
             raise SpecError(f"paint {name!r}: {w!r} is a {p.kind}, not a shape")
-        dd = sdf.SDF[p.kind](v, p.params)
+        dd = sdf_shapes.SDF[p.kind](v, p.params)
         # "side": "both" = the unsigned distance (a point inside the shape is not "near" unless it is near its surface:
         # an eyeball in a head's socket lies inside the head's field, so its lids' shadow band covered the whole ball)
         d = np.minimum(d, np.abs(dd) if ly.get("side") == "both" else dd)
@@ -259,7 +259,7 @@ def check_paths(spec: dict) -> None:
 def _path_mask(spec: dict, name: str, ly: dict, v: np.ndarray, n: np.ndarray) -> np.ndarray:
     from scipy.spatial import cKDTree
     from .sdf import PROFILES
-    from .spec import _profile_norm
+    from .spec_parts import _profile_norm
     prof_name = ly.get("profile", "flat")
     if prof_name not in PROFILES:
         raise SpecError(f"paint {name!r}: unknown profile {prof_name!r} (have {', '.join(PROFILES)})")

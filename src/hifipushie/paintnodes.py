@@ -438,7 +438,7 @@ def measure(spec: dict, prog: dict, pos: np.ndarray, nrm: np.ndarray, part: np.n
 
 def resolve_near(spec: dict, near, prims: dict | None = None, expanded: dict | None = None) -> tuple[list[str], list[str]]:
     """The primitives a paint "near" names (elements, tags, instances, arrays, kits): (resolved, unknown)."""
-    from . import sdf
+    from . import sdf_shapes
     from .spec import compile_prims
     want = [near] if isinstance(near, str) else list(near)
     if prims is None:
@@ -453,13 +453,13 @@ def resolve_near(spec: dict, near, prims: dict | None = None, expanded: dict | N
             stem, sfx = (w[:-2], w[-2:]) if w.endswith((".L", ".R")) else (w, "")
             want.remove(w)
             want += [n for n, p in prims.items() if n.startswith(stem + "_") and n.endswith(sfx)
-                     and p.kind in sdf.SDF and p.kind != "shell" and p.op == "add"]
+                     and p.kind in sdf_shapes.SDF and p.kind != "shell" and p.op == "add"]
     return [w for w in want if w in prims], [w for w in want if w not in prims]
 
 
 def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
     """Distance to the named elements' own surfaces (as paint's near measures it, before within/soft)."""
-    from . import sdf
+    from . import sdf_shapes
     from .spec import compile_prims
     prims = {p.name: p for p in compile_prims(spec)}
     side = None
@@ -475,6 +475,6 @@ def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
             from .lidfold import line_distance
             d = np.minimum(d, line_distance(pos, p.params, side))
             continue
-        dd = sdf.SDF[p.kind](pos, p.params)
+        dd = sdf_shapes.SDF[p.kind](pos, p.params)
         d = np.minimum(d, np.abs(dd) if side == "both" else dd)  # (side "both": unsigned, as paint_masks._near_mask)
     return d

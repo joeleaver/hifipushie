@@ -20,12 +20,13 @@ def _pool():
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
     from . import resources
+    from . import resources_guard
     n = resources.workers(terrain_mesh._CTX.get("worker_gb", terrain_mesh.WORKER_GB), cap=16)
     fieldjit.warm()  # (compiled kernels in the parent: the forked workers inherit them, none compiles its own)
     # (one BLAS thread a worker: each inherited the parent's 4, which spun on every small matmul)
     ex = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("fork"),
                              initializer=resources._worker_init)
-    return resources.guarded(ex, "terrain tiles")
+    return resources_guard.guarded(ex, "terrain tiles")
 
 
 def _job_maps(args):

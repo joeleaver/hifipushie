@@ -22,6 +22,7 @@ from skimage import measure
 
 from . import compare as cmp
 from . import sdf, softforms
+from . import sdf_shapes
 from .spec import SpecError, compile_prims
 
 VIEW_AXES = {"front": (0, 2, 1), "side": (1, 2, 0), "top": (0, 1, 2)}  # world axes of (u, v, depth)
@@ -413,7 +414,7 @@ def jacobian(st: State, params: list[tuple], eps: float = 1e-4, prims_of=None) -
         hit = np.zeros(len(st.P), bool)
         for q in changed:
             if q.op == "add":
-                hit |= sdf.SDF[q.kind](st.P, q.params) < f0 + 3 * kmax + 1e-3
+                hit |= sdf_shapes.SDF[q.kind](st.P, q.params) < f0 + 3 * kmax + 1e-3
             else:
                 m = (0.0 if q.op == "modify" else float(np.max(q.reach))) + kmax
                 hit |= np.all((st.P >= q.lo - m) & (st.P <= q.hi + m), axis=1)

@@ -18,6 +18,7 @@ _TMP = tempfile.mkdtemp(prefix="hp-gnmnative-")
 os.environ.setdefault("HIFIPUSHIE_HOME", _TMP)
 
 from hifipushie import assets, base, humans, lidrings, sdf  # noqa: E402
+from hifipushie import sdf_shapes
 from hifipushie import onemesh_head
 from hifipushie import faceshapes_apply, faceshapes_gnm
 from hifipushie import base_gnm_parts, base_identity, base_implied, base_measures
@@ -196,11 +197,11 @@ def test_gnm_mouth_pieces_in_the_field():
     for k in ("teeth_upper", "teeth_lower", "tongue"):
         p = prims[f"gnm_{k}"]
         V = mp[k]["verts"]
-        d = sdf.SDF[p.kind](V, p.params)
+        d = sdf_shapes.SDF[p.kind](V, p.params)
         assert np.abs(d).max() < 0.0015                              # the solid's surface is GNM's own
         # a closed solid: a few cm away in every direction it is outside (the plain IMLS of these open shells was not)
         far = V.mean(0) + 0.06 * np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1.0]])
-        assert (sdf.SDF[p.kind](far, p.params) > 0.005).all()
+        assert (sdf_shapes.SDF[p.kind](far, p.params) > 0.005).all()
     # the teeth sit behind the lips: none outside the head's skin
     body = [p for p in prims.values() if p.part == "body"]
     T_ = np.r_[mp["teeth_upper"]["verts"], mp["teeth_lower"]["verts"]]
