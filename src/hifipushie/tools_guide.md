@@ -338,30 +338,38 @@ again, closer with focus, re-cut with detail. The sculptor's page: guide(topic="
 
 ### `flap`
 
-`flap(name, mass, base, length, width, rise="up", face=None, fold=0, fold_at=0.6, thickness=None, pointed=0.6, lobe_thickness=None, tip=None, flare=None, lobe_end=None, blend=None, part=None, note='')`
+`flap(name, mass, base, length, width, rise="up", face="forward", fold=0, fold_at=0.5, round=None, thickness=None, pointed=0.4, flare=None, blend=None, part=None, note='')`
 
-A flap of clay made as a modeller makes a folded ear: a thick lump standing on the figure, then its top folded over.
-For a folded or upright ear, a comb, a tongue, a tab.
+A flap of clay made as a modeller makes a folded ear: a thick lump blocked straight on the figure, then its top BENT
+over (the `bend` tool, made for you). For a folded or upright ear, a comb, a tongue, a tab.
 - base: [x, y, z], the middle of where it grows from, ON the surface of the mass it grows from (read off the rulers
   of `look` or `look_beside`); it is sunk in a little by itself. Off the surface: the answer says it floats.
 - rise: the way it stands: words ("up", "up out", "up out back"; out is away from the centre line) or [x, y, z].
-- face: the way its broad face looks ("forward", "forward out"), made square to rise. The answer says from which
-  views it shows broad and from which edge-on.
-- length: base to tip as if laid flat; width: across its base; thickness: through its base (default 0.6 of the
-  width: a clay ear is a thick lump, not a strap); pointed: 0 round .. 1 narrowing to a soft point.
-- lobe_thickness: the folded part's own thickness (a pig's ear is a fat rolled lobe on a thinner stalk).
-- tip: [x, y, z] where the tip should hang; the fold's direction, angle and the folded part's length follow from it
-  (fold is then not used). Easier to aim than an angle. With face too, the standing part keeps that broad face and
-  the fold goes to the tip; without, the face turns toward the tip. The answer gives each part's length in cm.
+- face: the way its broad face looks ("forward", "forward out"), made square to rise; the bend goes toward it. The
+  answer says from which views it shows broad and from which edge-on.
+- length: base to tip laid straight; width: across its base; thickness: through its base (default 0.6 of the
+  width: a clay ear is a thick lump, not a strap); pointed: 0 the same width to its end .. 1 narrowing to a point.
+- fold: degrees the top bends over toward its face (0 upright; 90 the top sticks out forward; 150 to 180 it lies
+  down along the standing part); fold_at: where along its length the bend starts; round: the bend's radius in
+  metres, how broad the rim over the top is (default 0.6 of the thickness; under half the thickness the inside creases). The bend
+  keeps the clay's thickness and squeezes the inside of the fold into a cup.
 - flare: metres the root swells into the clay it grows from, a soft collar (default a quarter of the width; 0 none).
-- lobe_end: the folded part's width at its end, as a part of the base width (default: it narrows by `pointed`);
-  0.8 to 1.2 is a broad rolled pad, round at its end, not a tongue. The clay ends at `tip`.
-- fold: degrees the top folds over toward its face (0 upright; 90 the top sticks out forward; 150 to 180 it lies
-  down along the standing part); fold_at: where along its length it folds (0.6: the top 40 % folds, round a knuckle).
 A name ending ".L" is made on the left (+x) and mirrored. The same name again replaces it: change ONE thing at a
 time, then `look_beside(name, focus=[mass])` to see it close up beside each reference view and the painting.
-In the spec: two bones, `<mass>` (base to fold, its numbers under "flap") and `<stem>_top<side>` (the folded part),
-oval round cones in one group, on joints `<stem>_root`, `_fold`, `_top`, `_tip`.
+In the spec: the bone `<mass>` (its numbers under "flap") on joints `<stem>_root`, `<stem>_tip`, and the bend
+`flap:<mass>` under "bends".
+
+### `bend`
+
+`bend(name, masses, path, label=None, remove=False, note='')`
+
+Bend masses along a path, as a modeller bends clay (Blender's curve modifier, ZBrush's bend curve): a tail curled,
+a horn swept back, a trunk, a finger, a drooping brim, an ear's top laid over. Block the mass STRAIGHT first, then
+bend it. path: two or more points; the first is where the bending starts, on the mass's own line, and the path's
+first step goes along that line. Clay past the start is carried along the path keeping its length and thickness;
+past the path's end it goes on straight; before the start it stays put. A gentle curve gives a round rim; a curve
+tighter than the clay is thick squeezes the inside into a crease. ".L" masses bend mirrored on the right. The same
+label again replaces the bend; remove=True takes it off. In the spec: "bends": {label: {"of", "path"}}.
 
 ### `trim`
 

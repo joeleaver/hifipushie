@@ -77,7 +77,7 @@ def crops(name: str, at, size: float) -> list[tuple[str, Image.Image, list[int]]
         bg.alpha_composite(cut)
         s = SIDE_PX / max(cut.size)
         pic = bg.convert("RGB").resize((max(1, round(cut.size[0] * s)), max(1, round(cut.size[1] * s))), Image.LANCZOS)
-        cap = _words(view)
+        cap = f"{_words(view)}; {2 * size * 100:.0f} cm across"
         band = Image.new("RGB", (pic.width, 26), (255, 255, 255))
         ImageDraw.Draw(band).text((6, 6), cap, fill=(0, 0, 0), font=refread._font(14))
         sheet = Image.new("RGB", (pic.width, pic.height + 26), (255, 255, 255))

@@ -145,9 +145,9 @@ TOOL_GROUPS: dict[str, dict] = {
                 "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report", "fit_matched"]},
     "reshape": {"about": "reshape what is already there, as a modeller's hands do: work two masses into one flowing "
                          "mass, take hold of clay in a flat view and move it, cut clay away along a line (a flat "
-                         "face) or take one shape out of another (a boolean: a mouth, a socket), make a flap that "
+                         "face) or take one shape out of another (a boolean: a mouth, a socket), bend a mass along a path, make a flap that "
                          "folds over (an ear)",
-                "tools": ["fuse", "grab", "trim", "carve", "flap"]},
+                "tools": ["fuse", "grab", "trim", "carve", "flap", "bend"]},
     "features": {"about": "sculpt from reference pictures: read a picture's views, patches and form lines, name its "
                           "features as marks on it (the feature map), build the masses from their marks, measure a "
                           "model feature by feature",

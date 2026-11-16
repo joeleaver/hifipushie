@@ -407,25 +407,6 @@ def _inside(prims, pts):
     return field_at(prims, np.asarray(pts, float), clip=False) < 0
 
 
-def test_a_flap_is_a_thick_lump_standing_on_its_base_and_folded_over_on_both_sides(fig):
-    from hifipushie import server
-    base = [0.11, 0.0, 0.73]  # (on the head's surface there)
-    out = server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, rise="up", face="forward", fold=120, fold_at=0.6)
-    assert "Mirrored as ear.R" in out and "OUTSIDE" not in out and "broad from the front" in out
-    s = store.load(fig)
-    assert {"ear.L", "ear_top.L"} <= set(s["bones"]) and s["bones"]["ear.L"]["flap"]["fold"] == 120
-    prims = compile_prims(s)
-    up = [0.11, 0.0, 0.73 + 0.05]  # the standing part, 5 cm above its base
-    assert _inside(prims, [up, [-0.11, 0.0, 0.78]]).all()
-    assert _inside(prims, [[0.11, 0.0, 0.78], [0.11 + 0.035, 0.0, 0.78]]).all()  # broad across x (it narrows toward the fold)
-    assert not _inside(prims, [[0.11, 0.035, 0.78]])[0]  # thin front to back: 6 cm thick
-    tip = np.array(s["joints"]["ear_tip.L"]["pos"])
-    assert tip[1] < -0.015 and tip[2] < 0.73 + 0.12  # folded forward: the tip is in front, below the straight length
-    server.flap(fig, "ear.L", base=base, length=0.12, width=0.1, fold=0)
-    tip0 = np.array(store.load(fig)["joints"]["ear_tip.L"]["pos"])
-    assert abs(tip0[1]) < 0.01 and tip0[2] > tip[2] + 0.03  # unfolded: straight up
-
-
 def test_a_flap_says_when_its_base_floats_and_refuses_what_is_no_flap(fig):
     from hifipushie import server
     out = server.flap(fig, "ear.L", base=[0.3, 0.0, 0.95], length=0.1, width=0.08)
@@ -436,32 +417,6 @@ def test_a_flap_says_when_its_base_floats_and_refuses_what_is_no_flap(fig):
         server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.08, rise="up", face="up")
     with pytest.raises(ValueError, match="thickness"):
         server.flap(fig, "ear.L", base=[0.1, 0, 0.74], length=0.1, width=0.05, thickness=0.09)
-
-
-def test_fold_at_moves_the_knuckle_and_the_answer_says_where_the_folded_part_points(fig):
-    from hifipushie import server
-    kw = dict(base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.08, fold=120)
-    out = server.flap(fig, "ear.L", fold_at=0.4, **kw)
-    low = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
-    server.flap(fig, "ear.L", fold_at=0.7, **kw)
-    high = store.load(fig)["joints"]["ear_fold.L"]["pos"][2]
-    assert high - low > 0.03  # (a thick lump's knuckle hardly moved: 1 mm for 0.5 -> 0.4, e2)
-    assert "folded part points down and forward" in out
-
-
-def test_a_tip_and_a_face_together_keep_the_face_and_the_answer_says_each_part_s_length(fig):
-    from hifipushie import server
-    kw = dict(base=[0.11, 0.0, 0.73], length=0.12, width=0.1, tip=[0.16, -0.06, 0.75])
-    out = server.flap(fig, "ear.L", face="forward", **kw)
-    s = store.load(fig)
-    assert np.allclose(s["bones"]["ear.L"]["up"], [0, -1, 0], atol=0.02)  # the standing part keeps its face (e15)
-    assert "its end at [0.16, -0.06, 0.75]" in out
-    assert "folded part is" in out and "cm long, its end at" in out
-    assert "ear_foot.L" in s["bones"]  # the root's collar
-    server.flap(fig, "ear.L", **kw)  # no face: it turns toward the tip, as before
-    assert not np.allclose(store.load(fig)["bones"]["ear.L"]["up"], [0, -1, 0], atol=0.05)
-    out = server.flap(fig, "ear.L", face="forward out", flare=0, base=[0.11, 0.0, 0.73], length=0.12, width=0.1)
-    assert "alike" in out and "ear_foot.L" not in store.load(fig)["bones"]
 
 
 def test_a_flap_never_replaces_a_mass_that_is_there(fig):
@@ -488,25 +443,57 @@ def test_a_stroke_masked_to_a_mass_leaves_the_mass_beside_it_alone(fig):
     assert np.abs(masked - before).max() < 1e-4 and np.abs(loose - before).max() > 0.002
 
 
-def test_a_flap_s_tip_target_and_lobe(fig):
+def test_a_flap_is_a_straight_lump_bent_over_on_both_sides(fig):
     from hifipushie import server
-    tip = [0.17, -0.08, 0.76]
-    server.flap(fig, "ear.L", base=[0.11, 0.0, 0.73], length=0.14, width=0.12, thickness=0.05, fold_at=0.45,
-                lobe_thickness=0.08, tip=tip)
+    base = [0.11, 0.0, 0.73]  # (on the head's surface there)
+    out = server.flap(fig, "ear.L", base=base, length=0.14, width=0.1, rise="up", face="forward", fold=120, fold_at=0.4)
+    assert "Mirrored as ear.R" in out and "OUTSIDE" not in out and "broad from the front" in out
     s = store.load(fig)
-    back = np.array(s["joints"]["ear_tip.L"]["pos"]) - tip
-    end = np.array(tip) + 0.004 * back / np.linalg.norm(back)
-    assert _inside(compile_prims(s), [end])[0]  # the clay reaches where the tip was put
-    assert s["bones"]["ear_top.L"]["flat"][1] > s["bones"]["ear.L"]["flat"][1]
-
-
-def test_a_lobe_can_end_broad_and_its_clay_ends_at_the_tip(fig):
-    from hifipushie import server
-    kw = dict(base=[0.11, 0.0, 0.73], length=0.14, width=0.1, face="forward", tip=[0.13, -0.08, 0.74])
-    server.flap(fig, "ear.L", lobe_end=1.0, **kw)
-    s = store.load(fig)
-    assert s["bones"]["ear_top.L"]["r_b"] >= 0.95 * s["bones"]["ear.L"]["r_a"]  # a pad, not a tongue (e15, e16)
+    assert s["bones"]["ear.L"]["flap"]["fold"] == 120 and "flap:ear.L" in s["bends"]
     prims = compile_prims(s)
-    assert _inside(prims, [[0.13, -0.075, 0.74]])[0] and not _inside(prims, [[0.13, -0.09, 0.74]])[0]
-    with pytest.raises(ValueError, match="lobe_end"):
-        server.flap(fig, "ear.L", lobe_end=3, **kw)
+    assert _inside(prims, [[0.11, 0.0, 0.76], [-0.11, 0.0, 0.76]]).all()  # the standing part, both sides
+    assert not _inside(prims, [[0.11, 0.0, 0.73 + 0.13]])[0]  # bent over: nothing where the straight tip was
+    end = np.array(out.split("its end is at ")[1].split("]")[0].strip("[").split(","), float)
+    assert end[1] < -0.03 and end[2] < 0.73 + 0.11  # the end hangs in front, below the straight length
+    assert _inside(prims, [end + [0, 0.006, 0], end * [-1, 1, 1] + [0, 0.006, 0]]).all()  # clay there, both sides
+    server.flap(fig, "ear.L", base=base, length=0.14, width=0.1, fold=0)
+    s = store.load(fig)
+    assert "bends" not in s and _inside(compile_prims(s), [[0.11, 0.0, 0.73 + 0.12]])[0]  # unfolded: straight up
+
+
+def test_the_bend_s_round_is_its_rim_and_a_tight_one_is_said_to_crease(fig):
+    from hifipushie import server
+    kw = dict(base=[0.11, 0.0, 0.73], length=0.2, width=0.1, thickness=0.06, fold=130, fold_at=0.35)
+    out = server.flap(fig, "ear.L", round=0.01, **kw)
+    assert "crease" in out
+    out = server.flap(fig, "ear.L", **kw)
+    assert "crease" not in out and "rim 3.6 cm" in out  # (default 0.6 of the thickness)
+
+
+def test_bend_carries_a_mass_along_a_path_keeping_its_thickness_and_comes_off(fig):
+    from hifipushie import server
+    s = store.load(fig)
+    s["joints"].update({"t0": {"pos": [0.0, 0.2, 0.3]}, "t1": {"pos": [0.0, 0.5, 0.3]}})
+    s["bones"]["tail"] = {"a": "t0", "b": "t1", "r_a": 0.03, "r_b": 0.03}
+    store.save(fig, s, "a straight tail")
+    with pytest.raises(ValueError, match="no mass called"):
+        server.bend(fig, ["nose"], [[0, 0.3, 0.3], [0, 0.4, 0.3]])
+    path = [[0.0, 0.3, 0.3], [0.0, 0.38, 0.32], [0.0, 0.42, 0.4]]
+    out = server.bend(fig, ["tail"], path, label="curl")
+    assert "bend 'curl' carries tail" in out
+    prims = compile_prims(store.load(fig))
+    assert _inside(prims, [[0.0, 0.25, 0.3]])[0]  # before the start: where it was
+    assert not _inside(prims, [[0.0, 0.48, 0.3]])[0]  # the straight end has gone up
+    assert _inside(prims, [[0.0, 0.42, 0.4]])[0]  # along the path
+    for d in (0.025, -0.025):  # its thickness is kept across the path
+        assert _inside(prims, [[d, 0.42, 0.4]])[0]
+    server.bend(fig, [], [], label="curl", remove=True)
+    assert "bends" not in store.load(fig)
+
+
+def test_a_bent_mass_is_the_forward_bent_clay(fig):
+    from hifipushie import bend
+    g = bend.geometry([[0, 0, 0], [0, 0.0, 0.05], [0.05, 0, 0.1], [0.1, 0, 0.1]])
+    x = np.array([[0.0, 0.0, s] for s in np.linspace(-0.05, 0.25, 31)] + [[0.01, 0.01, 0.04], [0.0, -0.02, 0.12]])
+    assert np.allclose(bend.inverse(g, bend.forward(g, x)), x, atol=2e-3)  # there and back
+

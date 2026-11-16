@@ -91,7 +91,7 @@ FRESH = [
     ("does the hand join the wrist cleanly", {"join_report"}),
     ("does the character match the art style", {"style_check"}),
     ("can a person fit through the doorway", {"clearance"}),
-    ("crop the eyes from the concept and my render side by side", {"feature_tiles"}),
+    ("crop the eyes from the concept and my render side by side", {"feature_tiles", "review_part"}),
     ("put the hat on the character's head", {"edit_model", "put_model", "guide"}),
     # export, rig
     ("make lower-detail versions for distance", {"export_asset"}),

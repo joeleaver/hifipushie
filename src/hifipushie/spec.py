@@ -382,6 +382,7 @@ def _compile(spec: dict) -> list[Prim]:
         prims[1:1] = _gnm_mouth(s, prims[0].part)
     prims = _deform(s, prims)
     prims = spec_hands._grabs(s, prims)
+    prims = spec_hands._bends(s, prims)
     prims = spec_hands._trims(s, prims)
     _masks(s, prims)
     out = spec_parts._parts(prims, s.get("parts") or {}, k_default, s.get("joints"))

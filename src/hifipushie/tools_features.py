@@ -223,7 +223,7 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
     its reason and left out of the list and the overlap. ignore: masses to leave out. focus: masses to see CLOSE
     UP (an ear, a snout): every picture is cut to them and drawn large, beside the same part of each reference view
-    and the painting. save: a folder for the pictures. Details: guide(topic="look_beside")."""
+    and the painting. save: a folder for the pictures, or a .png file name (the first picture; the rest beside it). Details: guide(topic="look_beside")."""
     from pathlib import Path
 
     from . import beside
@@ -233,11 +233,15 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     res = beside.compare(name, views, ignore, resolution, focus=focus)
     import os
     out = []
-    for title, pic in beside.layout(res, "sheet"):
+    for i, (title, pic) in enumerate(beside.layout(res, "sheet")):
         if save:
             d = Path(save).expanduser()
-            d.mkdir(parents=True, exist_ok=True)
-            pic.save(d / f"{title}.png")
+            if d.suffix.lower() == ".png":  # a file name: the first picture there, the rest beside it (e16, e17 got a
+                d.parent.mkdir(parents=True, exist_ok=True)  # folder called "x.png")
+                pic.save(d if i == 0 else d.with_name(f"{d.stem}_{title}.png"))
+            else:
+                d.mkdir(parents=True, exist_ok=True)
+                pic.save(d / f"{title}.png")
         out.append(_png(pic))
     return [*out, beside.text(name, res)]
 

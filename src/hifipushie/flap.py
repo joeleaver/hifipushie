@@ -1,109 +1,80 @@
-"""A flap made as a modeller makes a clay ear: a thick, tapering lump standing on its base, its top folded over.
+"""A flap made as a modeller makes a clay ear: a thick, tapering lump standing on its base, its top bent over.
 
 The lump: it grows from `base` (a point on the mass it grows from) along `rise`, `length` metres long laid flat,
-`width` across at its base and `thickness` through it there (clay ears are thick: 0.6 of the width by default),
-narrowing toward the tip by `pointed`. Its broad face looks toward `face` (made square to `rise`). The fold: at
-`fold_at` (0..1) of its length the top bends over toward its face by `fold` degrees.
+`width` across at its base and `thickness` through it there, narrowing toward the tip by `pointed`. Its broad
+face looks toward `face` (made square to `rise`). It is one bone, "<mass>", on joints "<stem>_root" and
+"<stem>_tip" (the tip as if it stood straight).
 
-It is two round cones with an oval cross-section (bones, "flat" and "up"), base to fold and fold to tip, joined
-as one group: the fold is the round knuckle where they meet. Joints "<stem>_root", "<stem>_fold", "<stem>_top", "<stem>_tip";
-bones "<mass>" (the standing part, which carries the tool's own numbers under "flap") and "<stem>_top" (the
-folded part). Why: three points of an arch (root, over, tip) made every ear an upside-down U with a hole under
-it (blind trials p6 to p9), and a thin sheet folded hard read as a strap and tore at its crease; a modeller
-blocks the ear's lump, then folds it.
+The fold is a bend (bend.py), "flap:<mass>": from `fold_at` of its length the lump is carried round an arc of
+`fold` degrees toward its face, of radius `round` (the bend's softness: the rim over the top; default 0.6 of the thickness, so the inside
+of the fold is a cup, not a crease), and the rest goes
+on straight. Bending keeps the clay's thickness and squeezes the inside of the fold into a cup.
+
+Why: two cones meeting at a knuckle peaked at the fold every time (blind runs e13 to e17); before that, three points
+of an arch made an upside-down U with a hole under it (p6 to p9), and a thin sheet folded hard read as a strap.
+A modeller blocks the ear's lump straight, then bends its top over.
 """
 from __future__ import annotations
 
 import numpy as np
 
 SINK = 0.6  # the root goes this part of its own radius into the mass it grows from
+ARC_POINTS = 7
 
 
 def parts(mass: str) -> tuple[str, dict, str]:
-    """(stem, joint names, the folded part's bone name) for a flap called `mass` ("ear.L" -> "ear", ... ".L")."""
+    """(stem, joint names, the bend's label) for a flap called `mass` ("ear.L" -> "ear", ... ".L")."""
     side = mass[-2:] if mass.endswith((".L", ".R")) else ""
     stem = mass[:-2] if side else mass
-    return stem, {k: f"{stem}_{k}{side}" for k in ("root", "fold", "top", "tip")}, f"{stem}_top{side}"
+    return stem, {k: f"{stem}_{k}{side}" for k in ("root", "tip")}, f"flap:{mass}"
 
 
 def lump(mass: str, base, rise, face, length: float, width: float, thickness: float, fold_at: float, fold: float,
-         pointed: float, lobe_thickness: float | None = None, tip=None, flare: float = 0.0,
-         lobe_end: float | None = None) -> dict:
-    """{"joints", "bones", "face", "rise", "hinge", "tip"} (world positions) for the module's flap.
-    lobe_thickness: the folded part's own thickness (a pig's ear: a fat rolled lobe on a thinner stalk).
-    tip: [x, y, z] where the tip should hang: the fold's direction, angle and the folded part's length follow from
-    it (fold is then ignored). face None with a tip: the broad face turns toward the tip (the fold bends square to
-    it); face given with a tip: the standing part keeps that face and the fold leans off it toward the tip (e15
-    could not have both: an ear broad from the front whose tip hangs forward AND out).
-    lobe_end: the folded part's width at its end, as a part of the base width (None: it narrows by `pointed`); 0.8
-    to 1.2 makes a broad rolled pad, round at its end, not a paddle (e15 and e16 could make only a tapering tongue).
-    The clay ends at the tip: the end's round cap is inside the length, not past it.
-    flare: metres the root swells into what it grows from, a soft collar of clay round its foot (0 none): a clay
-    ear's root is smoothed into the head, not stuck on as a stalk (e15).
-    (Blind runs e9 to e12 asked for both. They also asked for a base broad from the side, a wedge: that was a
-    misreading of the side view, where the broad shape is the lobe hanging forward and the root is the ear's edge;
-    built, it made the root long front to back, the opposite of the concept, e13 / e14. Removed.)"""
+         pointed: float, round_: float | None = None, flare: float = 0.0) -> dict:
+    """{"joints", "bones", "bend" (None unfolded), "face", "rise", "hinge", "end", "round"} for the module's flap."""
+    from . import bend
     R = np.asarray(rise, float)
     R = R / np.linalg.norm(R)
-    hinge = np.asarray(base, float) + fold_at * length * R
-    L2 = (1 - fold_at) * length
-    if tip is not None:
-        v = np.asarray(tip, float) - hinge
-        if np.linalg.norm(v) < 1e-3:
-            raise ValueError("tip is where the tip hangs: put it away from the fold")
-        D0 = v / np.linalg.norm(v)
-        perp = D0 - (D0 @ R) * R
-        if np.linalg.norm(perp) < 0.05:
-            raise ValueError("tip lies straight up the way the flap rises: then it isn't folded (leave tip out, fold=0)")
-        L2 = float(np.linalg.norm(v))
-        fold = float(np.degrees(np.arccos(np.clip(D0 @ R, -1, 1))))
-        if face is None:
-            face = perp
-    if face is None:
-        face = [0.0, -1.0, 0.0]
     F = np.asarray(face, float) - (np.asarray(face, float) @ R) * R
     if np.linalg.norm(F) < 0.2:
         raise ValueError("face is where the flap's broad face looks: it has to be away from the way it rises (an ear "
                          "rising up looks forward, not up)")
     F = F / np.linalg.norm(F)
-    th = np.radians(float(fold))
+    b0 = np.asarray(base, float)
     ra = width / 2.0
     flat = [1.0, float(thickness) / float(width)]
-    flat2 = [1.0, (float(lobe_thickness) / float(width)) if lobe_thickness else 0.75 * flat[1]]
-    rf = ra * (1 - 0.45 * pointed)
-    rt = float(lobe_end) * ra if lobe_end is not None else max(ra * (1 - 0.9 * pointed), 0.15 * ra)
-    root = np.asarray(base, float) - SINK * ra * flat[1] * R
-    if tip is not None:
-        D = D0  # the folded part goes where the tip was put
-        A = np.cross(R, D)
-        up2 = np.cross(A / np.linalg.norm(A), D)  # its thickness: square to it, in the plane it bent in
-        up2 = up2 / np.linalg.norm(up2)
-    else:
-        D = np.cos(th) * R + np.sin(th) * F  # the folded part's direction
-        up2 = -np.sin(th) * R + np.cos(th) * F  # its thickness direction, turned with it
-    end = hinge + L2 * D  # where the clay ends
-    tip = hinge + max(L2 - rt, 0.35 * L2) * D  # the end joint: its round cap reaches the end
-    # a round cone's end cap is not flattened: it stands rf past its joint along the bone, and two of them met at the
-    # fold as a ball. Each part ends short of the fold by what its cap overshoots the clay's own thickness there.
-    end1, start2 = hinge - (1 - flat[1]) * rf * R, hinge + (1 - flat2[1]) * rf * D
-    stem, J, top = parts(mass)
+    rt = max(ra * (1 - 0.9 * pointed), 0.15 * ra)
+    root = b0 - SINK * ra * flat[1] * R
+    top = b0 + length * R - rt * R  # the tip's round cap reaches the full length
+    stem, J, label = parts(mass)
     side = mass[-2:] if mass.endswith((".L", ".R")) else ""
     r3 = lambda p: [round(float(x), 4) for x in p]  # noqa: E731
-    joints = {J["root"]: {"pos": r3(root), "r": round(ra, 4)}, J["fold"]: {"pos": r3(end1), "r": round(rf, 4)},
-              J["top"]: {"pos": r3(start2), "r": round(rf, 4)}, J["tip"]: {"pos": r3(tip), "r": round(rt, 4)}}
-    group = f"flap:{stem}{side}"
-    join = round(0.6 * rf * max(flat[1], flat2[1]), 4)
-    bones = {mass: {"a": J["root"], "b": J["fold"], "r_a": round(ra, 4), "r_b": round(rf, 4), "flat": flat,
-                    "up": r3(F), "group": group, "join": join},
-             top: {"a": J["top"], "b": J["tip"], "r_a": round(rf, 4), "r_b": round(rt, 4), "flat": flat2,
-                   "up": r3(up2), "group": group, "join": join}}
-    if flare > 0:  # a low collar round the foot, blended in on its own (a group blends in by one blend only)
-        top_c = np.asarray(base, float) + 0.25 * fold_at * length * R
+    joints = {J["root"]: {"pos": r3(root), "r": round(ra, 4)}, J["tip"]: {"pos": r3(top), "r": round(rt, 4)}}
+    bones = {mass: {"a": J["root"], "b": J["tip"], "r_a": round(ra, 4), "r_b": round(rt, 4), "flat": flat, "up": r3(F)}}
+    if flare > 0:  # a low collar round the foot, blended in on its own
+        top_c = b0 + 0.15 * length * R
         joints[f"{stem}_foot{side}"] = {"pos": r3(root), "r": round(ra, 4)}
         joints[f"{stem}_collar{side}"] = {"pos": r3(top_c), "r": round(ra * 0.9, 4)}
         bones[f"{stem}_foot{side}"] = {"a": f"{stem}_foot{side}", "b": f"{stem}_collar{side}", "r_a": round(ra, 4),
                                        "r_b": round(0.85 * ra, 4), "flat": [1.0, min(1.0, 1.15 * flat[1])],
                                        "up": r3(F), "blend": round(float(flare), 4)}
-    return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip, "toward": D,
-            "fold": float(fold), "end": end, "lengths": (float(np.linalg.norm(hinge - np.asarray(base, float))),
-                                                         float(np.linalg.norm(end - hinge)))}
+    hinge = b0 + fold_at * length * R
+    rest = (1 - fold_at) * length
+    th = np.radians(float(fold))
+    out = {"joints": joints, "bones": bones, "bend": None, "face": F, "rise": R, "hinge": hinge,
+           "end": b0 + length * R, "round": 0.0, "toward": R}
+    if th <= 1e-3:
+        return out
+    rr = float(round_) if round_ is not None else 0.6 * float(thickness)
+    rr = min(rr, 0.8 * rest / th)  # the arc can't be longer than what there is to bend
+    ts = np.linspace(0.0, th, ARC_POINTS)
+    path = [hinge - 0.2 * rr * R] + [hinge + rr * np.sin(t) * R + rr * (1 - np.cos(t)) * F for t in ts]  # (a first
+    # step along the lump's own line: the path's start direction is its first step, and the arc's first chord leans)
+    D = np.cos(th) * R + np.sin(th) * F
+    path.append(path[-1] + 0.25 * max(rest - rr * th, 0.01) * D)  # a little straight on: the path's end turned
+    g = bend.geometry(path, normal=F)
+    out["bend"] = {"of": [mass], "path": [r3(p) for p in path], "normal": r3(F)}
+    out["end"] = bend.forward(g, (b0 + length * R)[None])[0]
+    out["round"] = rr
+    out["toward"] = D
+    return out

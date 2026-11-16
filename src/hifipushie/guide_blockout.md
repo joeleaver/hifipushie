@@ -34,7 +34,8 @@ eyes then see what you meant, and `review_part` gets a fresh reviewer's.
 - Kit features are ellipsoids and read as stuck-on balls (cheeks especially, and brows). Prefer strokes
   for brows, cheeks and fat pads; keep kits for eyes, lids, nose, lips and hands.
 - An ear, comb or tongue that stands up or folds over: the `flap` tool (where it stands, which way it rises and
-  looks, its size, where and how far its top folds), judged close up with look_beside's focus.
+  looks, its size, where and how far its top bends and how round the bend is), judged close up with look_beside's
+  focus. Anything that curves (a tail, a horn, a trunk): block it straight, then `bend` it along a path.
 - Flat leaves that only lean (upright ears, leaves, fins, feathers, blades): a `"shape": "blade"` blob (a thin sheet with rounded edges; `taper` for a
   point, `cup` for an ear's hollow, `bend` for a curling tip). Turn it by saying where it goes, not by angles:
   `"aim": {"point": "up out", "face": "forward"}` (its length rises and leans out, its hollow looks forward); the

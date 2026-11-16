@@ -53,7 +53,7 @@ match the description is wrong, however good its numbers.
 | # | Stage | Tools | Gate |
 |---|---|---|---|
 | 1 | Plan | `set_plan` (front / side outlines, landmark heights, 3-4 sections), `set_reference` | Proportions match the description: fix them here, where it costs one edit |
-| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; `look_beside` after every change (the model beside each reference view and, once `fit_concept_camera` has the painting's camera, from the painting's own angle with its outline over the model; the biggest differences); then on the figure itself: `fuse` (two masses that are one form), `grab` (a broad move of a whole form), `flap` (an ear, comb or tongue that folds over), `trim` (a face that should be flat), `carve` (a hollow of a shape: a mouth, a socket) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
+| 2 | Blockout | `put_model`, kits, `fit` (against the plan), `check`, `feature_report`; `look_beside` after every change (the model beside each reference view and, once `fit_concept_camera` has the painting's camera, from the painting's own angle with its outline over the model; the biggest differences); then on the figure itself: `fuse` (two masses that are one form), `grab` (a broad move of a whole form), `flap` (an ear, comb or tongue that folds over), `bend` (a mass carried along a curve), `trim` (a face that should be flat), `carve` (a hollow of a shape: a mouth, a socket) | Every MASS of the feature map made and right; silhouette IoU > 0.95, sections within ~5 %, landmarks on their joints |
 | 3 | Secondary forms | strokes (`look(strokes=True)`, `shading="raking"`), `feature_report` | Every FORM of the feature map made; masses read; the silhouette barely moved |
 | 4 | Detail | strokes with repeat / scatter, in close-ups | Details at the right scale, judged in close-ups |
 | 5 | Parts | parts (eyes, teeth, clothing shells), seated joints | Each part its own mesh, nothing cutting into another |
@@ -112,7 +112,7 @@ Argue a MAJOR away only with evidence that the reference doesn't show it.
   change that. `grab` is only for a broad move of a whole form its numbers can't make (a head's corners out, a
   belly fuller low down): never for the last centimetre of an outline, where it dents the clay.
 - An ear, a comb, a tongue or a tab that folds over and hangs: `flap` (a thick lump standing on its base, its top
-  folded over), and judge it with `look_beside(name, focus=[the ear])`: close up, beside each reference.
+  bent over). Anything else that curves (a tail, a horn, a trunk): block it straight, then `bend` it. Judge it with `look_beside(name, focus=[the ear])`: close up, beside each reference.
 - A face that should be FLAT (the front of a snout, a sole, a seat): `trim` it with a line drawn in the view that
   shows the face edge-on. A hollow of a SHAPE (a mouth, a socket, a nostril): make that shape as a mass and `carve`
   it out. Don't squash a round mass's numbers toward flat, and don't model a hollow by leaving a gap between blobs.
