@@ -47,6 +47,8 @@ from .spec import SpecError, mirror_name
 STEEP = 1.54  # the falloff (1 - t^2)^2 changes by at most this much per radius
 MOVE = 0.5  # the furthest a grab moves clay, as a part of its radius
 BEND = 0.8  # the most a mass's grabs may bend space together (deform.stretch's own limit)
+BROAD = 0.2  # the grab TOOL: clay moves by at most this part of the radius (a broad, gentle move of a form) ...
+MASS = 0.3  # ... and the radius is at least this part of the mass it moves, across the view
 
 
 def check(label: str, g: dict) -> dict:
@@ -74,6 +76,26 @@ def check(label: str, g: dict) -> dict:
         raise SpecError(f"grab {label!r}: of names the masses whose clay moves")
     return {"of": of, "view": g["view"], "at": [float(v) for v in g["at"]], "to": [float(v) for v in g["to"]],
             "radius": r, "mirror": bool(g.get("mirror", True))}
+
+
+def broad(label: str, g: dict, across: dict) -> None:
+    """The grab tool's own check, on top of `check`: a grab is a BROAD move of a mass's form. across: {mass: its
+    smaller size in the grab's view, m}. Raises SpecError saying the radius it needs and what the job is otherwise.
+    Why: in four blind blockouts grabs of a few centimetres with a radius near their own size chased an outline's
+    last centimetre and left a shelf under a snout, a trench across a back, saddlebags, a crease across a belly
+    (p5, p6, p8: 0.24 to 0.45 of the radius); the one that did no harm moved 0.16 of its radius (p7)."""
+    d = float(np.hypot(g["to"][0] - g["at"][0], g["to"][1] - g["at"][1]))
+    r = float(g["radius"])
+    big = max(across, key=across.get) if across else None
+    need = max(d / BROAD, MASS * across[big] if big else 0.0)
+    if r >= need - 1e-9:
+        return
+    on = f" ({big} is {across[big] * 100:.0f} cm across in this view)" if big else ""
+    raise SpecError(f"grab {label!r}: it moves the clay {d * 100:.1f} cm with a radius of {r * 100:.1f} cm. A grab is a BROAD "
+                    f"move of a mass's form: the clay goes at most a fifth of the radius, and the radius is at least "
+                    f"{MASS:g} of the mass it moves{on}. Give a radius of {need * 100:.1f} cm or more. A smaller bump or "
+                    "dent than that is a later pass's work, and an outline that is off along a mass is the mass's own "
+                    "size, place or shape (or a fuse, a flap, a trim): change that instead of pulling at it")
 
 
 def effective(grabs: dict, symmetry: bool, names: list[str]) -> list[tuple[dict, set]]:
