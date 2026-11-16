@@ -115,19 +115,21 @@ said in the answer); only what no longer validates goes stale, with the reason.
 body, as a draper pins muslin on the stand before any pattern exists. Needs steps 0 (fit levels + planned girths,
 heights), 1, 2 (traces) and 3 (tapes: neck among them). The toile = the body offset by step 0's ease at each fit level
 (calibrated: each level's tape equals the plan), with the parts YOU declare (never inferred from a garment's name):
-- `parts`: any of sleeves, opening, lapel, pad. `hang_from`: a step-0 fit level the garment drops straight from (a
+- `parts`: any of sleeves, opening, lapel, pad, collar. `hang_from`: a step-0 fit level the garment drops straight from (a
   jacket from the hips: flare to the lowest level's girth at the hem), or "none".
 - `armhole {length_mm}`; `sleeves {ease_mm: [top, wrist], crown_mm, hem}` (hem: a step-2 sleeve-end trace, its length past the picture's wrist
   carried onto the model's wrist, or a step-0 height; smooth tubes
   through the arm's sections, the armhole a cone from the shoulder joint); `opening {lap_mm, edge, buttons}` (edge: a
-  step-2 trace); `lapel {roll, top, width_mm}` (traces; turned about the roll line); `pad {thickness_mm}` (its own part).
+  step-2 trace); `lapel {roll, top, width_mm}` (traces; turned about the roll line); `pad {thickness_mm}` (its own part);
+  `collar {stand_mm, fall_mm, notch}` (needs lapel; heights at CB read off the reference, notch a step-2 trace from the
+  gorge corner: the stand rises from the neck seam to the roll, the fall turns down and lies out; toile_collar.py).
 A missing key is refused by name. Writes `<look dir>/toile/` toile.npz (each part "<part>:V/F", the sleeve axis, the
 armhole, the roll line), toile.json, toile_sheet.png, and step 4 (output, gate rows, look). Gate rows: girth per level
 (+-6 mm), clearance (nothing inside the body), closed (one surface, its free loops), neck (no stand: the back no higher
 than the side neck points + 3 mm), outline vs step 2's traces LIKE WITH
 LIKE (the picture's body and pose are not the model's): a side as its profile (the width is the girths'), a hem as its
-height, a sleeve end as its length past the wrist, each from its own wrist (signed, +-10 mm); front edges, roll lines and the collar INFO
-(built closed; the collar is not part of the toile). Then step 5 marks the seams on it, step 6 cuts and flattens it
+height, a sleeve end as its length past the wrist, each from its own wrist (signed, +-10 mm); front edges and roll lines INFO, the collar's
+row `collar` (roll and landing at CB). Then step 5 marks the seams on it, step 6 cuts and flattens it
 (the flat pattern, draft_pattern's form, gated by pattern_check).
 
 ### `garment_mark`
@@ -150,8 +152,8 @@ the toile's own edges (hem, neckline, opening, sleeve end); plain seams trued; `
 the toile turns or hides are made here (cut_made.py, in this order): `flaps` {toile part: {onto, fold, edges}} unfolds a
 turned flap (a lapel) across its roll edge onto its piece (cut_flap.py); `layers` {piece: {host, line: [[edge, mm,
 toward], ...], keeps, edges, inner}} traces a facing / canvas off its host's flat (cut_layers.py); `collar` {pieces,
-neck, stand_mm, fall_mm, end_mm, outer, end, fold, fold_on} drafts the collar flat and fits it round the toile's neck,
-fall turned down, every flat length held (cut_collar.py). The flat pattern (draft_pattern's block form, each piece with
+neck, outer, end, fold, fold_on} cuts the collar step 4 draped on the toile and unfolds its fall about the roll line
+(cut_collar.py; its heights are garment_toile's collar part). The flat pattern (draft_pattern's block form, each piece with
 its 3D outline) gets today's flat gate. Writes `<look dir>/cut/` flat.npz, pattern.json, cut.json, flat_sheet.png,
 cut_3d.png; step 6.
 
