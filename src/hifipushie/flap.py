@@ -27,10 +27,28 @@ def parts(mass: str) -> tuple[str, dict, str]:
 
 
 def lump(mass: str, base, rise, face, length: float, width: float, thickness: float, fold_at: float, fold: float,
-         pointed: float) -> dict:
-    """{"joints", "bones", "face", "rise", "hinge", "tip"} (world positions) for the module's flap."""
+         pointed: float, lobe_thickness: float | None = None, base_thickness: float | None = None,
+         tip=None) -> dict:
+    """{"joints", "bones", "face", "rise", "hinge", "tip"} (world positions) for the module's flap.
+    lobe_thickness: the folded part's own thickness (a pig's ear: a fat rolled lobe on a thinner stalk).
+    base_thickness: the standing part's thickness where it meets the head, tapering to `thickness` by a third of
+    the way up (a wedge broad from the front AND the side, not a post). tip: [x, y, z] where the tip should hang;
+    the fold's direction, angle and the folded part's length follow from it (face and fold are then ignored).
+    (Four blind runs, e9 to e12, each asked for exactly these three.)"""
     R = np.asarray(rise, float)
     R = R / np.linalg.norm(R)
+    hinge = np.asarray(base, float) + fold_at * length * R
+    L2 = (1 - fold_at) * length
+    if tip is not None:
+        v = np.asarray(tip, float) - hinge
+        if np.linalg.norm(v) < 1e-3:
+            raise ValueError("tip is where the tip hangs: put it away from the fold")
+        D0 = v / np.linalg.norm(v)
+        perp = D0 - (D0 @ R) * R
+        if np.linalg.norm(perp) < 0.05:
+            raise ValueError("tip lies straight up the way the flap rises: then it isn't folded (leave tip out, fold=0)")
+        face, L2 = perp, float(np.linalg.norm(v))
+        fold = float(np.degrees(np.arccos(np.clip(D0 @ R, -1, 1))))
     F = np.asarray(face, float) - (np.asarray(face, float) @ R) * R
     if np.linalg.norm(F) < 0.2:
         raise ValueError("face is where the flap's broad face looks: it has to be away from the way it rises (an ear "
@@ -39,26 +57,33 @@ def lump(mass: str, base, rise, face, length: float, width: float, thickness: fl
     th = np.radians(float(fold))
     ra = width / 2.0
     flat = [1.0, float(thickness) / float(width)]
+    flat2 = [1.0, (float(lobe_thickness) / float(width)) if lobe_thickness else 0.75 * flat[1]]
     rf = ra * (1 - 0.45 * pointed)
     rt = max(ra * (1 - 0.9 * pointed), 0.15 * ra)
     root = np.asarray(base, float) - SINK * ra * flat[1] * R
-    # (it was max(fold_at * length - rf * flat, 0.3 * length): for a thick lump the clamp won and fold_at moved the
-    # knuckle by a millimetre, e2)
-    hinge = np.asarray(base, float) + fold_at * length * R
     D = np.cos(th) * R + np.sin(th) * F  # the folded part's direction
     up2 = -np.sin(th) * R + np.cos(th) * F  # its thickness direction, turned with it
-    tip = hinge + max((1 - fold_at) * length, 1.2 * rt) * D
+    tip = hinge + max(L2, 1.2 * rt) * D
     # a round cone's end cap is not flattened: it stands rf past its joint along the bone, and two of them met at the
     # fold as a ball. Each part ends short of the fold by what its cap overshoots the clay's own thickness there.
-    over = (1 - flat[1]) * rf
-    end1, start2 = hinge - over * R, hinge + over * D
+    end1, start2 = hinge - (1 - flat[1]) * rf * R, hinge + (1 - flat2[1]) * rf * D
     stem, J, top = parts(mass)
+    side = mass[-2:] if mass.endswith((".L", ".R")) else ""
     r3 = lambda p: [round(float(x), 4) for x in p]  # noqa: E731
     joints = {J["root"]: {"pos": r3(root), "r": round(ra, 4)}, J["fold"]: {"pos": r3(end1), "r": round(rf, 4)},
               J["top"]: {"pos": r3(start2), "r": round(rf, 4)}, J["tip"]: {"pos": r3(tip), "r": round(rt, 4)}}
-    group = f"flap:{stem}{mass[-2:] if mass.endswith(('.L', '.R')) else ''}"
+    group = f"flap:{stem}{side}"
+    join = round(0.6 * rf * max(flat[1], flat2[1]), 4)
     bones = {mass: {"a": J["root"], "b": J["fold"], "r_a": round(ra, 4), "r_b": round(rf, 4), "flat": flat,
-                    "up": r3(F), "group": group, "join": round(0.6 * rf * flat[1], 4)},
-             top: {"a": J["top"], "b": J["tip"], "r_a": round(rf, 4), "r_b": round(rt, 4), "flat": [1.0, 0.75 * flat[1]],
-                   "up": r3(up2), "group": group, "join": round(0.6 * rf * flat[1], 4)}}
-    return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip, "toward": D}
+                    "up": r3(F), "group": group, "join": join},
+             top: {"a": J["top"], "b": J["tip"], "r_a": round(rf, 4), "r_b": round(rt, 4), "flat": flat2,
+                   "up": r3(up2), "group": group, "join": join}}
+    if base_thickness and base_thickness > thickness:
+        fb = min(float(base_thickness) / float(width), 1.0)
+        mid = np.asarray(base, float) + 0.35 * fold_at * length * R
+        jm = f"{stem}_mid{side}"
+        joints[jm] = {"pos": r3(mid), "r": round(ra * 0.92, 4)}
+        bones[f"{stem}_base{side}"] = {"a": J["root"], "b": jm, "r_a": round(ra, 4), "r_b": round(ra * 0.92, 4),
+                                       "flat": [1.0, fb], "up": r3(F), "group": group, "join": join}
+    return {"joints": joints, "bones": bones, "face": F, "rise": R, "hinge": hinge, "tip": tip, "toward": D,
+            "fold": float(fold)}

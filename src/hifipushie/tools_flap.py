@@ -29,7 +29,8 @@ def _views_broad(F) -> str:
 @mcp.tool(structured_output=False)
 def flap(name: str, mass: str, base: list[float], length: float, width: float, rise: str | list = "up",
          face: str | list = "forward", fold: float = 0.0, fold_at: float = 0.6, thickness: float | None = None,
-         pointed: float = 0.6, blend: float | None = None, part: str | None = None, note: str = ""):
+         pointed: float = 0.6, lobe_thickness: float | None = None, base_thickness: float | None = None,
+         tip: list[float] | None = None, blend: float | None = None, part: str | None = None, note: str = ""):
     """A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, its top folded over. A
     folded ear, a comb, a tongue, a tab. base: [x, y, z], the middle of where it grows from, ON the surface of the
     mass it grows from (read off look's rulers; it is sunk in a little by itself). rise: the way it stands, words
@@ -38,7 +39,10 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     base, m; thickness: through its base (default 0.6 of the width: clay ears are thick lumps, not straps); pointed
     0..1 (0 round, 1 narrowing to a soft point). fold: degrees its top folds over toward its face (0 none; 90 the top sticks out
     forward; 150 to 180 it lies down along the standing part); fold_at: where along its length the fold is (0.6:
-    the top 40 % folds over, round a knuckle). A name ending ".L" is made on
+    the top 40 % folds over, round a knuckle). lobe_thickness: the folded part's own thickness (a fat rolled lobe);
+    base_thickness: its thickness where it meets the head, tapering up to `thickness` (a wedge broad from the front
+    and the side); tip: [x, y, z] where the tip should hang: the fold's direction, angle and length follow from it
+    (face and fold are then not used). A name ending ".L" is made on
     the left (+x) and mirrored. The same name again replaces it: change ONE thing at a time. Then look_beside with
     focus=[mass] to see it close up beside the reference. Details: guide(topic="flap")."""
     from . import flap as flapmod
@@ -72,7 +76,9 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
         raise ValueError(f"mass is the name of the NEW flap, and {taken[0]!r} is already part of this model: give the flap a "
                          "name of its own (e.g. \"ear.L\"); where it grows from is `base`")
     try:
-        g = flapmod.lump(mass, b0, R, F, length, width, thick, float(fold_at), float(fold), float(pointed))
+        g = flapmod.lump(mass, b0, R, F, length, width, thick, float(fold_at), float(fold), float(pointed),
+                         lobe_thickness=lobe_thickness, base_thickness=base_thickness, tip=tip)
+        fold = g["fold"]
     except ValueError as e:
         raise ValueError(str(e)) from None
     bones, joints = spec.setdefault("bones", {}), spec.setdefault("joints", {})
@@ -80,6 +86,9 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     stem, J, top = flapmod.parts(mass)
     for n in (mass, mirror_name(mass)):  # an older flap made as a sheet blob goes
         (spec.get("blobs") or {}).pop(n, None)
+    gtag = bones.get(mass, {}).get("group")
+    for n in [n for n, b in bones.items() if gtag and b.get("group") == gtag]:
+        bones.pop(n)
     joints.update(g["joints"])
     for n, bdef in g["bones"].items():
         keep = {k: (bones.get(n) or {})[k] for k in ("part", "tags") if k in (bones.get(n) or {})}
@@ -92,14 +101,15 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
     bones[top]["blend"] = bones[mass]["blend"]
     bones[mass]["flap"] = {"base": [float(x) for x in b0], "rise": rise, "face": face, "length": length,
                            "width": width, "thickness": thick, "fold": float(fold), "fold_at": float(fold_at),
-                           "pointed": float(pointed)}
+                           "pointed": float(pointed), "lobe_thickness": lobe_thickness,
+                           "base_thickness": base_thickness, "tip": tip}
     try:
         compile_prims(spec)
     except SpecError as e:
         raise ValueError(f"{e}") from None
     bare = copy.deepcopy(spec)
     bare.pop("strokes", None)  # (strokes laid on the flap can't be seated without it; they don't change its base)
-    for n in (mass, mirror_name(mass), top, mirror_name(top)):
+    for n in (mass, mirror_name(mass), top, mirror_name(top), f"{stem0}_base{mass[-2:]}", mirror_name(f"{stem0}_base{mass[-2:]}") or ""):
         (bare.get("bones") or {}).pop(n, None)
     from .sdf import field_at
     rest = [p for p in compile_prims(bare) if p.op == "add"] if (bare.get("bones") or bare.get("blobs")) else []

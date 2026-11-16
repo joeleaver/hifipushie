@@ -233,7 +233,7 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     res = beside.compare(name, views, ignore, resolution, focus=focus)
     import os
     out = []
-    for title, pic in beside.layout(res, os.environ.get("HIFIPUSHIE_BESIDE", "panels")):  # (blind trials compare layouts)
+    for title, pic in beside.layout(res, "sheet"):
         if save:
             d = Path(save).expanduser()
             d.mkdir(parents=True, exist_ok=True)

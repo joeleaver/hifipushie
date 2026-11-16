@@ -480,12 +480,12 @@ def _picture(view: str, rgba, ref, hit, depth, sk, missing, places, k: float, ig
 
 
 def layout(res: dict, how: str) -> list:
-    """look_beside's pictures as (title, image), in one of three layouts:
+    """look_beside's pictures as (title, image), in one of two layouts (blind trials e9 to e12 compared them with
+    three separate pictures a view, which cost more calls and were stitched back into one sheet by hand):
     "panels": per view one strip: reference | model with the reference's lines | difference.
     "sheet": first one picture of every view, the reference above the model in clay (same camera, same scale, no
-        lines or numbers), then the strips.
-    "separate": per view three pictures, each looked at on its own: reference | model in clay side by side; the
-        model with the reference's outline and lines; the difference."""
+        lines or numbers), then the strips. The default: with it every agent saw a turned painting camera and pinned
+        it; with the strips alone none did."""
     views = [(v, r["picture"], r["picture"].info.get("panels") or {}) for v, r in res["views"].items()]
     strips = [(f"beside_{v}", pic) for v, pic, _ in views]
     if how == "panels" or not all(p for _, _, p in views):
@@ -509,17 +509,7 @@ def layout(res: dict, how: str) -> list:
         d.text((x - 4 - 200, 6), "", font=_font(15))
         return [("beside_all", _titled(sheet, "every view: the reference above, the model in clay below (same camera, "
                                               "same scale)")), *strips]
-    out = []
-    for v, _, p in views:
-        a, b = p["reference"], p["clay"]
-        pair = Image.new("RGB", (a.width + b.width + 10, a.height + 30), (255, 255, 255))
-        pair.paste(a, (0, 30))
-        pair.paste(b, (a.width + 10, 30))
-        ImageDraw.Draw(pair).text((4, 6), f"{v}: reference | model in clay", font=_font(15), fill=(0, 0, 0))
-        out += [(f"beside_{v}_pair", pair), (f"beside_{v}_outline", _titled(p["outline"], f"{v}: model, red = the "
-                                                                              "reference's outline and lines")),
-                (f"beside_{v}_difference", _titled(p["difference"], f"{v}: red = add clay, blue = take away"))]
-    return out
+    return strips
 
 
 def _titled(im, title: str):

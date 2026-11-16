@@ -76,7 +76,8 @@ def test_an_ignored_mass_is_left_out_and_a_view_that_is_not_there_is_named(home)
 def test_the_tool_gives_a_picture_a_view_and_the_text(home):
     from hifipushie import server
     out = server.look_beside("fig", save=str(home / "pics"))
-    assert len(out) == 2 and "front: outline overlap" in out[-1] and "next:" in out[-1]
+    assert len(out) == 3 and "front: outline overlap" in out[-1] and "next:" in out[-1]  # (the sheet, then the strip)
+    assert (home / "pics" / "beside_all.png").exists()
     im = Image.open(home / "pics" / "beside_front.png")
     assert im.width > 1.4 * im.height  # three panels of an upright figure, side by side
 
