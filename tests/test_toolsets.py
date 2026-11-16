@@ -35,6 +35,7 @@ ADDED = {"fit_concept_camera", "look_matched", "feature_tiles", "join_report",  
          "draft_pattern",  # (step 4: the agent's own FreeSewing design + declarations, T5, C285)
          "garment_plan",  # (steps 0-2: the reading, the parts inventory, the style plan: T4, C284)
          "garment_toile",  # (step 4 drape first: the toile from steps 0-3 + a declaration, R3a, C492)
+         "garment_mark", "garment_cut",  # (steps 5 / 6 drape first: marks on the toile, cut and flattened, R3b, C493)
          "carve", "flap", "fuse", "grab", "look_beside", "trim",  # (the organic-eye sculpt moves and look, p9)
          "set_expression"}  # (the head route: pose a finished head in an expression, 5ffab5a2)
 

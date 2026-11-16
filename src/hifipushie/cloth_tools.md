@@ -130,6 +130,26 @@ height, a sleeve end as its length past the wrist, each from its own wrist (sign
 (built closed; the collar is not part of the toile). Then step 5 marks the seams on it, step 6 cuts and flattens it
 (the flat pattern, draft_pattern's form, gated by pattern_check).
 
+### `garment_mark`
+`garment_mark(name, garment, declarations)`: garment step 5 (drape first), MARK: the seams drawn on the approved toile as
+body lines, each cut exactly into it (src/hifipushie/mark.py's docstring is the spec). `marks`: in order, each
+{name, line {kind, ...}, region, into [piece where g < 0, piece where g > 0]}; region "toile" at the start, else a part
+an earlier mark made. Kinds: armhole (the toile's cone: [body, arm]), centre_back ([right, left]; the front stays open),
+panel {after: a step-2 panel, above: "shoulder"} (step 2's share at every girth, by arc round the toile's section; the
+shoulder line above the underarm: [ahead, behind]), shoulder ([front, back]), under_sleeve {fore_in_mm, hind_in_mm} (the
+tailor's rule: [top, under]), level {at, offset_mm} ([below, above]). A ".L" mark mirrors to ".R". `absent` {step-1
+piece: why} (cut later, e.g. a collar); `runs` {"piece:edge": front|back|top|bottom} when two pieces share two seams.
+A mark that doesn't cut its region into two parts is REFUSED by name. Rows: marks, separate, pieces, seams (+ the pairs
+step 1 doesn't name). Writes `<look dir>/mark/` mark.npz, mark.json, mark_sheet.png; step 5.
+
+### `garment_cut`
+`garment_cut(name, garment, declarations=None)`: garment step 6 (drape first), CUT AND FLATTEN (src/hifipushie/cut.py's
+docstring is the spec): every marked piece flattened with least distortion; strain per piece and where (compression: a
+dart wanted; stretch: ease); edges named by step 1's seams, `free` {piece: {edge: top | bottom | side | [classes]}} names
+the toile's own edges (hem, neckline, opening, sleeve end); plain seams trued; `ease` {"piece:edge": [lo, hi]}. The flat
+pattern (draft_pattern's block form, each piece with its 3D outline) gets today's flat gate. Writes `<look dir>/cut/`
+flat.npz, pattern.json, cut.json, flat_sheet.png; step 6.
+
 ### `draft_pattern`
 `draft_pattern(name, garment, design, declarations, options=None, sa=10)`: garment step 6 (the flat pattern; it was step 4 before drape first), YOUR OWN pattern (no published
 design, no recipe; src/hifipushie/draft_own.py's docstring is the spec). Needs steps 1 (parts, seams) and 3 (body_tape).

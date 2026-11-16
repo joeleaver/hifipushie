@@ -1,46 +1,59 @@
 # STATE: drape first (docs/proposals/drape_first.md; approved 2026-11-16)
 
 Steps 4-6 rebuilt the draper's way: TOILE (the garment's 3D surface on the body), MARK, CUT AND FLATTEN.
-Runs R1 (C489) -> R2 (C490) -> R2b (C491) -> R3a (toile tool, this) -> R3b (mark + cut/flatten tools) -> R3c (collar).
-History of R1-R2b: docs/notes (grep C489-C491); spikes/r1_*, r2_*, r2b_* (R3b still reads r2b_flat.py's method).
+Runs R1 (C489) -> R2 (C490) -> R2b (C491) -> R3a (toile, C492) -> R3b (mark + cut, C493, this) -> R3c (collar).
+History: docs/notes (grep C489-C493); spikes/r1_*, r2_*, r2b_* (R3c still reads r2b_flat.py's lapel unfold + collar).
 
-## R3a (2026-11-16): garment_toile = step 4 (src toile.py, toile_style.py, toile_gate.py, toile_geom.py, toile_tool.py)
-- Tool: garment_toile(name, garment, declarations) (tools_cloth). Reads steps 0-3 (garment_record.READS["4"]) and the
-  agent's declaration (parts [sleeves, opening, lapel, pad], hang_from, armhole.length_mm, sleeves {ease_mm, crown_mm,
-  hem}, opening {lap_mm, edge, buttons}, lapel {roll, top, width_mm}, pad {thickness_mm}); refused by name. Writes
-  <look dir>/toile/toile.npz (parts toile, lapel.L/R, pad.L/R as "<part>:V/F", cone, armhole, sleeve axis, roll line),
-  toile.json, toile_sheet.png; step 4 (output, gate rows, look).
-- Traces placed on the body by step 2's HEIGHT marks + step 1's centre column (the wrists' place across depends on the
-  arm pose: with them the jacket's traces sat 5 cm wide). The toile is kept >= 2 mm off the body (union with the body's
-  offset: R2b's arm push put it 14 mm in at the underarm).
-- Record: steps 4 toile (garment_toile), 5 mark (no tool yet), 6 cut (no tool yet; garment_record.FLAT = "6": every
-  pattern reader reads the flat pattern there: draft_own_tool, garment_details_tool, chain_garment piece_start,
-  chain_structure, chain_layers, garment_carry). draft_pattern / pattern_check now write step 6 (refused until 5 is
-  ready): the flat-pattern checker R3b feeds. chain_garment's from_chain still writes 5/6 (old route: R3b retires it).
-- Gate (C492): girth per level, clearance, closed, NECK (no back toile point over the side neck points + 3 mm: a cut at
-  the neck tape's back climbed the neck as a stand, +11 mm), outline LIKE WITH LIKE (the picture's body / pose are not
-  the model's): side = profile off the toile's torso edge less the median, arm zone left out; hem = height (median);
-  sleeve end = length PAST THE WRIST, each read from its own wrist along the arm (signed, +-10 mm; the R3a-2 row read the
-  photo on the model's axis and passed sleeves 24-32 mm short). sleeves.hem may name a step-2 trace (its distance past
-  the picture's wrist mark carried onto the model's wrist); the back neckline is drafted HPS - 15 mm at CB.
-- Proof (R3a-3): /mnt/data/hifipushie/r3a (ws = s4-31 copy, decl.json with sleeves.hem "sleeve_end.L", run.py, run3.log;
-  run with HIFIPUSHIE_ASSETS=<repo>/workspace/_templates). Sheet r3a/ws/garrett/garments/jacket/toile/toile_sheet.png.
-  ALL PASS: girths chest 1111.6 / 1108.2, waist 987.7 / 987.6, hips 1103.9 / 1103.1, hem 1135.7 / 1138.8; clearance
-  +1.6 mm; closed (3 loops); neck -0.7 mm (CB cut z 1.534, tape 1.560, HPS 1.549); side p95 4.0 / 3.6; hem height 8 mm;
-  sleeve end L 0.0 (by construction), R +3.0 mm short; sleeve hem z 0.987 (was 1.009). Looked: the sleeves end at the
-  traced lines; at CB the toile stops at z 1.534 where the back still slopes (the neck turns vertical ~1.56); the back
-  view still reads a round neck at the side neck points (no collar yet: R3c).
-- Tests: tests/test_toile.py (synthetic body: girths, clearance, closed, tube, lap, neck, a short sleeve FAILs, a hem
-  from the trace PASSes, a back-neck stand FAILs; refusals by name) PASS;
-  test_garment_record / test_draft_own / test_garment_details assert 4 toile, 5 mark, 6 flat; test_toolsets ADDED.
-- Step table (docs/state/garment_steps.md) rows 4 toile, 5 mark, 6 cut and flatten. draft_pattern / pattern_check
-  write step 6 (the flat-pattern checker R3b feeds); FreeSewing is no longer step 4's source.
+## R3a (C492): garment_toile = step 4 (toile*.py). Proof /mnt/data/hifipushie/r3a (all rows PASS; sheet in ws).
 
-## Left for R3b / R3c
-- R3b: MARK (step 5) and CUT AND FLATTEN (step 6) as tools from toile.npz (spikes/r2b_flat.py's method), the flat
-  pattern in draft_pattern's form so pattern_check gates it; retire chain_garment's from_chain writes of 5/6; the
-  ~120 "step 4" comments / messages in chain_* and draft_* still mean the flat pattern (only details / draft_own_tool
-  texts renamed).
-- R3c: the collar from its own flat fitted round the toile's neck.
+## R3b (2026-11-16): garment_mark = step 5, garment_cut = step 6
+- garment_mark(name, garment, declarations) (mark.py, mark_lines.py, mark_split.py, mark_tool.py): marks [{name, line
+  {kind armhole | centre_back | panel (after, above) | shoulder | under_sleeve (fore_in_mm, hind_in_mm) | level (at)},
+  region, into [g<0, g>0]}] in order, ".L" mirrored; absent {piece: why}; runs {"piece:edge": front|back|top|bottom}.
+  Each mark cuts its region EXACTLY (one mesh, a label per face); other than two parts = refused by name. Rows marks,
+  separate, pieces, seams (+ INFO extra_seams). Writes <look>/mark/mark.npz (V, F, lab, names), mark.json, mark_sheet.png.
+- garment_cut(name, garment, declarations) (cut.py, cut_tool.py, flatten.py): free {piece: {edge: top|bottom|side|[..]}},
+  ease {"piece:edge": [lo, hi]}. Each piece one disc, LSCM + ARAP, strain per piece + where; outline runs named (step 1's
+  seams, to_<piece> for unnamed pairs, declared free edges); plain seams trued to their mean (scaled about the run's
+  start); the block (pieces P flat + P3 3D outline, arcs, seams, closures, omit) -> draft_own_gate.gate = step 6's gate.
+  Writes <look>/cut/flat.npz (per piece U, F, V, strain, outline), pattern.json (the block), cut.json, flat_sheet.png.
+- Record: steps 5 / 6 name garment_mark / garment_cut; READS["5"] = 0, 1, 2, 4. chain_garment's from_chain writes only 8.
+- Proof /mnt/data/hifipushie/r3b (ws = r3a copy; mark_decl.json, cut_decl.json, run.py mark|cut, mark.log, cut.log):
+  STEP 5 PASS: 9 marks (armhole 616.7 mm each side, centre_back 684.6, front_side 677, side_back 470, sleeve seams 907),
+  10 pieces (front 1414, side 528 / 554 L / R, back 1539 / 1514, sleeve top 1174, under 585 cm2), 17 step-1 seams marked,
+  11 with absent pieces (collar, undercollar, facings, canvases), 4 underarm pairs step 1 doesn't name (under sleeve to
+  front / back: the tailor's rule vs step 2's side share). STEP 6 FAIL: PASS cut_flatten, seams (21, trued), seam_ends,
+  sewn 28/28, cut, closures, shape_seam_curve; FAIL darts_drafted (front_dart: no dart cut), style_lengths (shoulder 192
+  vs step 1's 144 mm; back armhole 191 vs 129), girths + piece_tapes (no tapes declared on toile pieces), planned_folds
+  (lapel roll, sleeve hems: no folds written). Strain mean: front 1.15 %, side 0.36, back 1.97 (36 % of area > 2 %: the
+  shoulder blade, a dart / ease), sleeve top 1.02, under 0.89 (max 42 % stretch at the underarm web). Seams off as
+  flattened: 17 of 21 > 1 %, worst 21.9 % (front / under sleeve at the underarm), all within 0.11 % after truing.
+  Looks: r3b/ws/garrett/garments/jacket/mark/mark_sheet.png, cut/flat_sheet.png (untrued outlines, strain red at 6 %).
+  Beside R2b's flats (r2b/out/flat_sheet.png): same pieces and method; no lapel unfolded onto the front yet.
+- Tests: tests/test_mark_cut.py (open cylinder torso: one region each, strain < 0.5 %, seams equal, gate seams / sewn
+  / cut PASS, a non-separating mark refused).
 
-NEXT: Joe / the coordinator judges the R3a-3 sheet and approves step 4 on the jacket; then R3b mark + cut/flatten.
+## Left
+- R3c: the collar (own flat round the toile's neck); the lapel unfolded about its roll line onto the front (R2b's
+  method: toile part lapel.L, roll_line); the facing / canvas from the front's flat (declared absent now).
+- Step 6's gate FAILs to answer: tapes on toile pieces (girths / piece_tapes rows want draft declarations: write
+  tapes from the toile's levels), folds from step 2 (lapel roll, hems), darts from strain (front / back), the cap ease
+  (cut cap = armhole: 0 %), the shoulder length vs step 1. The under sleeve's underarm web flattens badly (the tailor's
+  seams run through the cone's web).
+- Downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
+  FreeSewing draft dir; they don't read pattern.json yet. ~120 "step 4" texts in chain_* / draft_* still mean the flat
+  pattern (only the tool texts touched here say step 6).
+
+## R3b-2 (2026-11-16): the coordinator's fast-suite failures fixed in the code
+- The build is made FROM step 6's cut and never writes 5 / 6. garment_record.from_chain: a build that stops (stage gate,
+  structure, refusal before any hang) is step 7's failure (the first step reading the build; back to the gate's step);
+  the hang stays step 8. chain_stages.BACK: arrange / sew / start / chains / surfaces go back to step 6 (crease: 2).
+  chain_presim.threads_gate: back to step 6 (the cut) or the toile (4), not "the chains (step 5)". look_chain's build look
+  goes on 7 / 7a (was 6: now the cut's flat sheet); write_7a's fallback look is step 7's.
+- Tests changed to the new route: test_chain_garment (_presim_model writes 0-6 as mark / cut would; step 8 back to 6),
+  test_chain_stages (back_to 6; a stage failure on step 7), test_find_tool (7 results: the workflow now leads with
+  toile / mark / cut). test_recolour_masks passed alone (load). test_toolsets::test_short_descriptions_point_at_the_guide
+  fails on main too (export_asset's description 727 > 700 chars; not this branch).
+
+NEXT: the coordinator lands r3b-wip (bin/suite); Joe / the coordinator judges r3b's mark_sheet + flat_sheet; then R3c
+(collar, lapel unfold, facing) and the step-6 FAIL rows (tapes, folds, darts).
