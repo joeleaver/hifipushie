@@ -54,7 +54,6 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   would not meet: the buttons are right on the cloth, the cloth is wrong.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; R3e's girths (hips / seat back.R); side / sleeve_under tapes.
-
 NEXT: the open toile's fronts must keep the closed garment's cloth (the open front = the closed front swung back about
 the side, not cut at the traced edge): build the fronts closed for the pattern and open only for the look, or cut
 step 6 from the closed toile and carry the open state as wear; then panels / girths; collar ends and strain; darts
