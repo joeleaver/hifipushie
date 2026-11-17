@@ -1,0 +1,160 @@
+{
+ "mabel": [
+  {
+   "name": "cream_clay",
+   "colour": [
+    229,
+    214,
+    195
+   ],
+   "kind": "clay"
+  },
+  {
+   "name": "black_clay",
+   "colour": [
+    40,
+    34,
+    30
+   ],
+   "kind": "clay",
+   "rough": 0.55
+  },
+  {
+   "name": "pink_muzzle",
+   "colour": [
+    214,
+    140,
+    135
+   ],
+   "kind": "clay",
+   "rough": 0.5,
+   "zones": [
+    [
+     0.55,
+     1
+    ]
+   ]
+  }
+ ],
+ "scraps": [
+  {
+   "name": "cream_fur",
+   "colour": [
+    214,
+    190,
+    160
+   ],
+   "kind": "clay"
+  },
+  {
+   "name": "taupe_clay",
+   "colour": [
+    118,
+    98,
+    82
+   ],
+   "kind": "clay"
+  },
+  {
+   "name": "charcoal_clay",
+   "colour": [
+    72,
+    60,
+    54
+   ],
+   "kind": "clay",
+   "rough": 0.55,
+   "zones": [
+    [
+     0,
+     0.1
+    ],
+    [
+     0.68,
+     1
+    ]
+   ]
+  },
+  {
+   "name": "pink_skin",
+   "colour": [
+    205,
+    135,
+    125
+   ],
+   "kind": "clay",
+   "rough": 0.5
+  },
+  {
+   "name": "horn",
+   "colour": [
+    135,
+    78,
+    45
+   ],
+   "kind": "horn"
+  }
+ ],
+ "hettie": [
+  {
+   "name": "cream_feathers",
+   "colour": [
+    238,
+    218,
+    188
+   ],
+   "kind": "clay"
+  },
+  {
+   "name": "orange_feet",
+   "colour": [
+    212,
+    140,
+    35
+   ],
+   "kind": "clay",
+   "rough": 0.5,
+   "zones": [
+    [
+     0,
+     0.25
+    ],
+    [
+     0.6,
+     1
+    ]
+   ]
+  },
+  {
+   "name": "red_comb",
+   "colour": [
+    175,
+    42,
+    32
+   ],
+   "kind": "clay",
+   "rough": 0.5,
+   "zones": [
+    [
+     0.6,
+     1
+    ]
+   ]
+  },
+  {
+   "name": "pupil",
+   "colour": [
+    32,
+    28,
+    26
+   ],
+   "kind": "gloss",
+   "zones": [
+    [
+     0.7,
+     1
+    ]
+   ]
+  }
+ ]
+}
