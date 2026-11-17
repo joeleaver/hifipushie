@@ -20,7 +20,10 @@ deepest, carried along the seams from the armholes (at_underarm): never at one p
 seam's length (sewn end to end).
 THE RING: pieces linked where the level crosses both sides of a seam (a closure links its over and under pieces);
 pieces on another body part than the pieces naming the girth (their wrap) are left out (a sleeve isn't in the
-chest ring, a front isn't in the biceps', C496); pieces with fewer than two links are pruned (a facing or canvas lying on another is not round the body). A piece in
+chest ring, a front isn't in the biceps', C496); pieces with fewer than two links are pruned (a facing or canvas lying on another is not round the body).
+The CUT's pattern (B["girth_ring"] CROSSED, R3f-12): a girth named only by one piece cut twice (a collar and its
+undercollar: twins, one 3D outline) goes round that piece alone, open at its ends: the neck girth is the collar's,
+never the fronts below it (their neck tape runs down the lapel: R3f-11's neck read 1870 mm on a 406 body). A piece in
 the ring whose `tapes` don't name the girth FAILs as a missing declaration (its numbers still shown).
 THE PATTERN'S GIRTH: each piece's width along its level, inside its outline only (even-odd: an open dart's gap and a
 cut-through dart are out), summed; a closure's lap taken off: each side's front edge to the centre line through its
@@ -200,6 +203,23 @@ def _edge(pcs: dict, p: str, arcs) -> np.ndarray:
             Q = Q[::-1]
         out.append(Q)
     return np.concatenate(out)
+
+
+CROSSED = "crossed"  # B["girth_ring"]: the pieces' tapes are where each loop crosses their cloth (garment_cut's
+#                      piece_tapes), so a girth's ring is exactly the pieces naming it: the neck girth crosses the
+#                      collar, not the fronts below it, whose neck tape runs down the lapel (R3f-12: neck read 1870 mm)
+
+
+TWIN_M = 0.001  # m: two outlines (3D where the cut gives it) this alike are one piece cut twice (collar, undercollar)
+
+
+def twins(B: dict, ring: set, p: str) -> set:
+    """The ring's pieces sorted before p with p's own flat outline: layers cut alike (a top collar and its undercollar)
+    go round the body once."""
+    at = lambda q: np.asarray(B["pieces"][q].get("P3") or B["pieces"][q]["P"], float)  # (the cut's 3D outline: same toile)
+    P = at(p)
+    alike = lambda Q: Q.shape == P.shape and bool(np.allclose(Q, P, atol=TWIN_M))
+    return {q for q in sorted(ring) if q < p and alike(at(q))}
 
 
 def _part(pc: dict) -> str:
@@ -400,11 +420,16 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
         if loop is None:
             continue
         lines, under, own = place(B, loop, T, decl)
+        one = sorted(decl_by)[0]
+        if B.get("girth_ring") == CROSSED and all(q == one or one in twins(B, {one, q}, q) for q in decl_by):
+            lines = {p: v for p, v in lines.items() if p == one}  # (one flat round it, layered: a collar alone)
         base = lambda p: _part(B["pieces"][p]).split(".")[0]  # (C496: a girth goes round one body part, the one most of
         kinds = [base(p) for p in decl_by if base(p)]  # the pieces naming it lie on: a piece on another isn't in its ring)
         if kinds:
             lines = {p: v for p, v in lines.items() if base(p) in (max(set(kinds), key=kinds.count), "")}
         comps, is_open = rings(B, lines, decl_by)
+        if not comps and list(lines) == [one]:
+            comps, is_open = [{one}], True  # (one piece round it, open at its ends: a collar at the neck)
         if is_open and any(c & decl_by for c in comps):  # (open at a vent or the front: all the cloth across it)
             parts = {_part(B["pieces"][p]) for p in decl_by}  # (a sleeve crossing a torso girth's plane isn't in it)
             comps = [set().union(*[c for c in comps if {_part(B["pieces"][p]) for p in c} <= parts])]
@@ -422,7 +447,8 @@ def rows(B: dict, step3: dict | None, fit: dict | None, decl: dict | None = None
                 fails.append(f"{g}: no length tape declared on {', '.join(sorted(ring))} reaches its level: declare "
                              f"tapes.<piece> with a length from its top past the {g}")
                 continue
-            w = {p: width(np.asarray(B["pieces"][p]["P"], float), *lines[p])[0] for p in sorted(ring)}
+            w = {p: width(np.asarray(B["pieces"][p]["P"], float), *lines[p])[0] for p in sorted(ring)
+                 if B.get("girth_ring") != CROSSED or not twins(B, ring, p)}
             lap, gap, miss = laps(B, ring, lines)
             for m in miss:
                 fails.append(f"{g}: {m}")

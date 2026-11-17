@@ -117,6 +117,28 @@ def cone_points(V, F, grid, top=3) -> list:
     return out
 
 
+CONE_MAX_DEG = 15.0  # a collar grid's cone point (angle defect summed over 5 columns) a flat piece can still be shaped to
+#                     (8 % along a ~45 mm fall turns its edge ~ 0.08 x 170 / 45 rad ~ 17 deg per half: R3f-12)
+
+
+def crease(V, grid) -> dict:
+    """The roll as a FOLD (R3f-12, C511): at each roll-row vertex of a grid piece (rows neck -> roll (ks) -> outer)
+    the roll's turning seen in the stand (the cells below: pi less their angles there) and in the fall (above). A fold
+    lies in flat cloth only where the two cancel (the fall turns the other way: its outer edge longer): their sum IS
+    the angle defect, so a roll that turns in the stand's surface (round the neck, then down to the gorge) needs the
+    fall to flare as much, or stand off. Degrees; per half (CB at the middle column, CB counted once)."""
+    nr, nc, ks = grid
+    X = np.asarray(V, float).reshape(nr, nc, 3)
+    ang = lambda p, a, b: np.arccos(np.clip(((a - p) @ (b - p)) / (np.linalg.norm(a - p) * np.linalg.norm(b - p) + 1e-12), -1, 1))
+    side = lambda c, r: float(np.degrees(np.pi - ang(X[ks, c], X[ks, c - 1], X[r, c]) - ang(X[ks, c], X[r, c], X[ks, c + 1])))
+    h = nc // 2
+    st = np.array([side(c, ks - 1) for c in range(h, nc - 1)])
+    fa = np.array([side(c, ks + 1) for c in range(h, nc - 1)])
+    k = int(np.argmax(np.abs(st + fa)))
+    return {"stand_turn_deg": round(float(st[1:].sum() + st[0] / 2), 1), "fall_turn_deg": round(float(fa[1:].sum() + fa[0] / 2), 1),
+            "worst_col_from_cb": k, "worst_deg": round(float(st[k] + fa[k]), 1)}
+
+
 def flatten_shaped(V, F, grid, lines: dict, want: dict):
     """(U, S, F kept, report): the grid piece flattened against its shaped rest (module doc). grid (nr, nc, ks);
     lines {run: (row, [columns])} (row 0: the neck runs, ks: "roll", nr - 1: "outer"); want {run: d}."""
