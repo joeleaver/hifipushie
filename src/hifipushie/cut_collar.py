@@ -22,7 +22,13 @@ halves), the roll, the flat's span and the neck edge's bow (a crescent, not a ba
 
 THE DECLARATION (garment_cut's `collar`): {"pieces": [collar pieces], "neck": [garment neck edges of the left half, from
 the front end to CB], "outer": edge name, "end": edge name (".L"), "fold": step 2's roll fold name, "fold_on": the piece
-step 2 turns it on, "past": the name of a neck edge's run past the gorge corner (default "notch", split_gorge)}; the collar's heights are step 4's (garment_toile's collar part). Nothing here knows a garment."""
+step 2 turns it on, "past": the name of a neck edge's run past the gorge corner (default "notch", split_gorge), "grain":
+the warp's angle to the collar's CB (default GRAIN_DEG)}; the collar's heights are step 4's (garment_toile's collar part).
+Nothing here knows a garment.
+
+ON THE BIAS (R3g, C512): an undercollar is cut on the bias (the tailor's rule: it takes the neck's curve by shear, the
+threads unstretched), so the collar is flattened BY ITS THREADS (flatten_threads.py), the warp at its grain deg to its CB;
+strain_mean_pct is the thread strain, iso_strain_mean_pct the isotropic reading of the same flat."""
 from __future__ import annotations
 
 import json
@@ -32,6 +38,7 @@ from pathlib import Path
 import numpy as np
 
 NEEDS = ("pieces", "neck", "outer", "end")
+GRAIN_DEG = 45.0  # the undercollar's warp to its CB: on the bias (a tailored undercollar's cut; module doc)
 SPLIT_ON_M = 0.006  # m: the collar's neck end this near a garment neck edge is on it (else that edge is not cut)
 
 
@@ -124,7 +131,6 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict, s
     """({piece: f}, {piece: edges}, folds, report, bad): the toile's collar cut, unfolded and named (module doc);
     shaped: garment_cut's `shaped` (cut_shape.py: the tailor's declared shrink / stretch per run)."""
     from .cut import _group
-    from .flatten import strain
     from .mark_split import areas
     for k in NEEDS:
         if k not in d:
@@ -149,12 +155,15 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict, s
     alias = {cp: {"roll": "roll", d.get("fold") or "roll": "roll", "outer": "outer", d["outer"]: "outer",
                   **{n: f"neck:{g}" for g in garm if (n := neck_edge(cp, g, s1, layers))}} for cp in d["pieces"]}
     want = resolve(shaped, alias)  # (ShapeRefused: beyond what wool takes, or no such run)
-    U, S, Fk, shape = flatten_shaped(V, F, (nr, nc, ks), {k: v for k, v in lines.items() if v[1]}, want)
-    bad_f = strain(S)
+    grain = float(d.get("grain", GRAIN_DEG))
+    U, S, Fk, shape = flatten_shaped(V, F, (nr, nc, ks), {k: v for k, v in lines.items() if v[1]}, want, grain)
+    from .flatten_threads import numbers
+    bad_f, th = numbers(V, Fk, U, S, grain, areas(V, Fk))
     loop = np.asarray(grid_loop(nr, nc))
     P = U[loop]
     if np.dot(P[:, 0], np.roll(P[:, 1], -1)) - np.dot(P[:, 1], np.roll(P[:, 0], -1)) < 0:
         U = U * [-1.0, 1.0]  # (the flat seen from the cloth's right side: the outline anticlockwise)
+        grain = 180.0 - grain  # (the warp mirrored with it)
     Ug = U.reshape(nr, nc, 2)
     out_pcs, out_edges, bad = {}, {}, []
     for cp in d["pieces"]:
@@ -176,10 +185,8 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict, s
         out_edges[cp] = {key: idx for key, idx in _group(keys)}
         ar = areas(V, Fk)
         out_pcs[cp] = {"name": cp, "U": U, "F": Fk, "V": V, "bad": bad_f, "lp": loop, "loop": list(loop),
-                       "rep": {"faces": int(len(Fk)), "area_cm2": round(float(ar.sum()) * 1e4, 1),
-                               "strain_mean_pct": round(float((bad_f * ar).sum() / ar.sum() * 100), 2),
-                               "area_over_2pct": round(float(ar[bad_f > 0.02].sum() / ar.sum() * 100), 1),
-                               "from_toile": True},
+                       "grain": grain, "rep": {"faces": int(len(Fk)), "area_cm2": round(float(ar.sum()) * 1e4, 1),
+                                              **th, "grain_deg": grain, "from_toile": True},
                        "landing": {"line": _len(Vg[-1]) - 2 * np.pi * _lift(), "behind": _behind(Vg, seg_g, d),
                                    "d": (info.get("fall_mm", 0) - info.get("stand_mm", 0)) / 1000}}
     folds = [{"name": d["fold"], "piece": d.get("fold_on") or d["pieces"][-1], "line": Ug[ks].tolist(), "kind": "roll"}] \
@@ -207,7 +214,8 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict, s
            "roll_3d_mm": round(_len(Vg[ks]) * 1000, 1), "outer_over_neck": round(outer_f / neck_f, 3),
            "flat_span_mm": [round(float(np.ptp(Uf[:, 0])) * 1000, 1), round(float(np.ptp(Uf[:, 1])) * 1000, 1)],
            "neck_bow_mm": round(bow * 1000, 1), "seams": seams, "shaped": shape,
-           "strain_mean_pct": next(iter(out_pcs.values()))["rep"]["strain_mean_pct"] if out_pcs else None,
+           "strain_mean_pct": th["strain_mean_pct"], "iso_strain_mean_pct": th["iso_strain_mean_pct"],
+           "threads": th["threads"], "grain_deg": grain,
            "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")},
            "gorge": gorge_seam(out4, Ug, Vg, ks)}
     return out_pcs, out_edges, folds, rep, bad

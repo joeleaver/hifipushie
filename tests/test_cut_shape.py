@@ -40,9 +40,9 @@ def _mean(V, F, S):
 
 def test_declared_shaping_flattens_with_low_strain_and_runs_at_their_ease():
     V, F, lines = _collar()
-    U0, S0, F0, rep0 = flatten_shaped(V, F, (NR, NC, KS), lines, {})
+    U0, S0, F0, rep0 = flatten_shaped(V, F, (NR, NC, KS), lines, {}, grain=None)  # (the shaping calibration, read isotropically)
     want = {"neck:front": NECK, "neck:back": NECK, "roll": ROLL, "outer": OUTER}
-    U, S, Fk, rep = flatten_shaped(V, F, (NR, NC, KS), lines, want)
+    U, S, Fk, rep = flatten_shaped(V, F, (NR, NC, KS), lines, want, grain=None)
     assert _mean(V, Fk, S) < 0.5 < _mean(V, F0, S0)
     for k, d in want.items():  # each run's flat / toile is its declared ease (the seams equal within it)
         assert abs(rep["runs"][k]["flat_pct"] - d * 100) < 0.3, (k, rep["runs"][k])
