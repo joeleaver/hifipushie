@@ -26,34 +26,28 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - garment_toile part collar {stand_mm, fall_mm, notch}; neck edge = toile neck seam + gorge across the lapel top; stand
   walked up to the roll; fall turned down. Proof /mnt/data/hifipushie/r3f. Draft-and-fit route deleted.
 
-## R3f-2 (2026-11-16, C498): seams name the same runs; the fall lies on the toile along the surface
-- Seams (they were front 66 / 111, back 134 / 127 mm): the toile's opening leaves the neck ~7 mm BEHIND the body's
-  HPS and drops 30 mm down the neck's side, so the shoulder mark met the opening edge, not the neck: back.L:neck carried
-  that drop (127 flat; the toile's seam is 99). Now toile.npz neck_corner (where the neck seam ends); mark_lines leans
-  the shoulder line's inner end onto it (NECK_LEAN_M); cut.runs_of merges short free runs shortest first, and a run
-  under FREE_CORNER_MM between a seam and a free edge (or inside one) joins it (the drop is neck, not front);
-  cut_collar.split_gorge cuts the front's neck at the collar's gorge corner (past it: free "notch", 44 mm), before the
-  facing is traced. Now back 92.7 / 93.0, front 108.3 / 103.1 (L, +5.2 > 3: FAIL), 106.2 / 103.3 (R); seams row PASS.
-- Fall: toile_collar lands the fall at fall - h along the toile's surface (was a 3D chord of fall from the roll).
-  Reading (reference_front.png, 1.05 mm/px): the collar's visible width at the side, roll (shirt-collar edge) to
-  outer edge, ~38 mm projected at mid side -> fall 42 (toile_decl2.json). Lands 16.6 mm below the seam at CB (was 9.8);
-  fall 50 tried: 23.5 below, outer 1.032 x neck (not kept: no reading for it).
-- Why it is still a band: behind the HPS it is right (neck 93 / roll 88 / outer 110 mm per half: x1.18); IN FRONT the
-  roll row is 132 against a neck + gorge of 99 and an outer of 93 (the stand's walk "up square to the gorge" swings the
-  roll outward; the fall converges onto the collar point), so the whole flat comes out outer 403 / neck 400 = 1.009.
-  At the HPS the fall walks DOWN the neck's side (outer only 10 mm out), not out over the shoulder.
-- Proof /mnt/data/hifipushie/r3f2 (go.sh; toile4 / mark4 / cut7 logs = fall 42): toile PASS (collar row PASS); mark
-  PASS; cut: seams PASS 0 off, shape_fall 1.015 PASS, shape_fall_landing 0.986 PASS, collar FAIL (front.L seam +5.2;
-  flat 377 x 88, outer 1.009 x neck, strain 10.5 %). Looks: r3f2/look_neck_cut3d.png (reference | neck front / left /
-  back), ws/.../cut/flat_sheet.png. Judged: still a smooth band standing round the neck, no lie-out on the shoulders;
-  the flat collar is a wavy straight strip, not a crescent.
-
+## R3f-2 (C498): collar seams name the same runs (neck_corner, NECK_LEAN_M, runs_of, split_gorge); fall along the surface
+## R3f-3 (2026-11-16, C499): one roll line (toile_collar module doc)
+- The lapel's roll line carried straight up past its top to the side stand (2/3 stand, the draft rule), round the back;
+  the stand a span leaning out in front of SPAN_FROM; the fall lands from the roll's foot. Neck edge: seam (ends at the
+  HPS on this toile) + the front's neck down to the roll top (45) + the lapel's top (47).
+- Proof /mnt/data/hifipushie/r3f3 (go.sh; toile6 / mark2 / cut2 logs; look.py = neck look WITH the body, body.npz).
+  toile PASS; mark PASS; cut: roll joins the lapel's at 8.8 deg; outer 44 mm out at the side; flat 383 x 136, outer
+  1.31 x neck (shape_fall PASS 1.313), bow 62: a crescent but lumpy, strain 14.6 %; shape_fall_landing 0.929 FAIL;
+  collar seams FAIL: front.L -15.0, front.R -12.1, back.L +5.7, back.R +4.0 (R3f-2 had matched them).
+- Looks: r3f3/look6.png (reference | neck front / left / back), r3f3/flat_collar6.png (strain colour), look_r3f2.png.
+  Judged: NOT the reference yet. Front view: the roll now runs straight up from the lapel (right), but the collar still
+  rises beside the neck and the fall at the side lies on the shoulder TOP (edge-on from the front), so no broad band on
+  the upper chest / shoulder slope as in the reference. Tries: stand 2/3 walked (no change), 1/3 (small), span (ears).
+- In the way: (1) the toile's neck seam ends AT the HPS and the gorge point (roll top) is 20 mm outside it: the collar's
+  front neck is a 45 mm vertical edge, so the side zone has no neckline to sew a lying collar to; (2) the leaning stand +
+  wide fall don't develop together (strain 14.6 %, front seam short); (3) the earlier looks had no body: look.py now
+  renders it (the neck hides the back collar as in the reference).
 ## Left
 - style_lengths (compare only like lines); downstream readers (chain_garment piece_start, garment_details,
   draft_own_tool.flat_check) read FLAT from a FreeSewing draft dir, not pattern.json; ~120 "step 4" texts mean the flat.
 - R3e's: darts from the strain ridge; girths (hips / seat back.R, chest -44); side / sleeve_under tapes.
 
-NEXT: R3f-3: the collar's front: the roll must continue the lapel's roll line (toile roll_line) from the gorge to the
-HPS, not walk "up square to the gorge" (roll front 132 vs neck 99), and the fall at the HPS must go OUT over the
-shoulder slope (the walk square to the neck edge goes down the neck's side): then outer > 1.2 x neck and a crescent.
-Consider a lower stand at the side (h tapers from CB). Then front.L seam +5.2.
+NEXT: R3f-4: the front neck. Read the reference's neckline (front view: where the collar's neck edge runs from the HPS to
+the gorge) and cut the toile's front neck there (not the opening's vertical edge), so the stand sits on a real neckline
+and the fall lies on the upper chest; then the seams (front -15) and the strain (14.6 %). Then style_lengths.
