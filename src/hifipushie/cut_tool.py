@@ -224,6 +224,8 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     ease.update({_mir(k): v for k, v in ease.items() if _mir(k) not in ease})  # (a ".L" seam's ease serves ".R")
     B, decl = block(pcs, edges, rd["1"], absent, ease, folds)
     decl["tapes"] = piece_tapes(pcs, rd["3"], edges)  # (each piece lies where it was cut from: the tapes there are its own)
+    from .draft_girths import CROSSED
+    B["girth_ring"] = CROSSED  # (a girth's ring: the pieces its loop crosses, draft_girths)
     for p, w in places(pcs, rd["3"]).items():
         B["pieces"][p]["wrap"] = w
     from .cut_ease import step4_numbers

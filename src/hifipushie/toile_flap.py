@@ -283,6 +283,10 @@ def drape(t, toile):
     m = (s > s_neck) & (np.arange(NC) < kg)
     seen = stand_seen(V[: nr * ncf], _grid_faces(np.arange(nr * ncf).reshape(nr, ncf)), (nr, ncf, KS), toile,
                       np.r_[m[::-1][:-1], m])
+    from .cut_shape import CONE_MAX_DEG, cone_points, crease  # (R3f-12, C511: can a flat piece be shaped to it?)
+    cones = cone_points(V[: nr * ncf], _grid_faces(np.arange(nr * ncf).reshape(nr, ncf)), (nr, ncf, KS))
+    t.info["collar_surface"] = {"cone_points": cones, "cone_max_deg": CONE_MAX_DEG, **crease(V[: nr * ncf], (nr, ncf, KS)),
+                                "flat_cut": "ok" if all(abs(c[2]) <= CONE_MAX_DEG for c in cones) else "cone points"}
     t.info["collar"] = {
         "stand_mm": geo["stand"] * 1000, "fall_mm": geo["fall"] * 1000, "notch": d["notch"],
         "neck_half_mm": round(s_neck * 1000, 1), "front_neck_mm": round(geo["s_front"] * 1000, 1),
