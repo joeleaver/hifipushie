@@ -8,7 +8,9 @@ round the neck like a band. Nothing is drafted or fitted here.
 NOTHING STRETCHED (R3f-7, C504): the collar is flattened as draped (R3f-6's held_flatten stretched the stand 31-40 %
 along its neck edge to match the fronts: a tuned length, deleted). Each neck run's flat length is reported beside the
 garment edge's, flat and in 3D (seams: collar_mm / garment_mm, collar_3d_mm / garment_3d_mm): a mismatch is fixed where
-the toile's collar and the garment's neck edge disagree in 3D (step 4), never in the flat.
+the toile's collar and the garment's neck edge disagree in 3D (step 4), never in the flat. SHAPED (R3f-11, C510): the tailor's steam shaping is DECLARED (garment_cut's `shaped`, cut_shape.py): the
+flat cut to the shaped target, a neck seam then held to its garment edge within its declared ease; the row reports what
+each run asks and the collar's cone points (curvature no shaping along a run removes: step 4's fault).
 
 THE PIECES: each declared collar piece (an undercollar, a top collar) gets the flat; its edges are named from the toile:
 the neck row's runs by the garment neck edge each lies on in 3D (the nearest of the declared neck edges and their
@@ -118,10 +120,11 @@ def split_gorge(pcs: dict, edges: dict, d: dict, out4: dict) -> list:
     return done
 
 
-def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
-    """({piece: f}, {piece: edges}, folds, report, bad): the toile's collar cut, unfolded and named (module doc)."""
+def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict, shaped: dict | None = None):
+    """({piece: f}, {piece: edges}, folds, report, bad): the toile's collar cut, unfolded and named (module doc);
+    shaped: garment_cut's `shaped` (cut_shape.py: the tailor's declared shrink / stretch per run)."""
     from .cut import _group
-    from .flatten import flatten, strain
+    from .flatten import strain
     from .mark_split import areas
     for k in NEEDS:
         if k not in d:
@@ -140,7 +143,13 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
     for c in range(nc - 1):
         m = 0.5 * (Vg[0, c] + Vg[0, c + 1])
         seg_g.append(min(garm, key=lambda g: np.min(np.linalg.norm(garm[g] - m, axis=1))))
-    U, S, Fk = flatten(V, F)
+    from .cut_shape import flatten_shaped, resolve
+    lines = {"roll": (ks, list(range(nc - 1))), "outer": (nr - 1, list(range(nc - 1)))}
+    lines.update({f"neck:{g}": (0, [c for c in range(nc - 1) if seg_g[c] == g]) for g in garm})
+    alias = {cp: {"roll": "roll", d.get("fold") or "roll": "roll", "outer": "outer", d["outer"]: "outer",
+                  **{n: f"neck:{g}" for g in garm if (n := neck_edge(cp, g, s1, layers))}} for cp in d["pieces"]}
+    want = resolve(shaped, alias)  # (ShapeRefused: beyond what wool takes, or no such run)
+    U, S, Fk, shape = flatten_shaped(V, F, (nr, nc, ks), {k: v for k, v in lines.items() if v[1]}, want)
     bad_f = strain(S)
     loop = np.asarray(grid_loop(nr, nc))
     P = U[loop]
@@ -184,6 +193,7 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
         flat_c = sum(float(np.linalg.norm(Ug[0, c + 1] - Ug[0, c])) for c in cols)
         pp, ee = g.split(":", 1)
         seams[g] = {"collar_mm": round(flat_c * 1000, 1), "garment_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee], "U")) * 1000, 1),
+                    "shaped_pct": round(want.get(f"neck:{g}", 0.0) * 100, 2),
                     "collar_3d_mm": round(sum(float(np.linalg.norm(Vg[0, c + 1] - Vg[0, c])) for c in cols) * 1000, 1),
                     "garment_3d_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee])) * 1000, 1),
                     **_apart(garm[g], Vg[0, min(cols): max(cols) + 2])}
@@ -196,7 +206,7 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
            "outer_3d_mm": round(_len(Vg[-1]) * 1000, 1), "roll_flat_mm": round(_len(Ug[ks]) * 1000, 1),
            "roll_3d_mm": round(_len(Vg[ks]) * 1000, 1), "outer_over_neck": round(outer_f / neck_f, 3),
            "flat_span_mm": [round(float(np.ptp(Uf[:, 0])) * 1000, 1), round(float(np.ptp(Uf[:, 1])) * 1000, 1)],
-           "neck_bow_mm": round(bow * 1000, 1), "seams": seams,
+           "neck_bow_mm": round(bow * 1000, 1), "seams": seams, "shaped": shape,
            "strain_mean_pct": next(iter(out_pcs.values()))["rep"]["strain_mean_pct"] if out_pcs else None,
            "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")},
            "gorge": gorge_seam(out4, Ug, Vg, ks)}
