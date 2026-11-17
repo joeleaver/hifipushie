@@ -192,8 +192,7 @@ TOOL_GROUPS: dict[str, dict] = {
                "tools": ["grow_plant", "edit_plant", "get_plant", "look_plant", "look_plants", "plant_form",
                          "plant_reference", "export_plant", "wind_plant", "sync_plant", "plant_history",
                          "grow_stand", "look_stand", "export_stand"]},
-    "hardsurf": {"subject": "hard surface hardsurface prop vehicle kart car furniture building machine pointcloud fused "
-                            "lathe turned sweep tube primitives",
+    "hardsurf": {"subject": "hardsurface hardsurf vehicle kart machine lathe",
                  "workflow": "Hard surface from the point cloud (a fused concept sculpt -> clean fitted parts): "
                              "hardsurf_start -> hardsurf_frame -> read (hardsurf_look, hardsurf_vote) -> hardsurf_fit each "
                              "part (turned / sweep / outline_tube / ring / trace / part) -> hardsurf_build -> hardsurf_check "

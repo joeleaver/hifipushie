@@ -16,7 +16,7 @@ def _txt(d) -> str:
 
 @mcp.tool(structured_output=False)
 def hardsurf_start(name: str, mesh: str, views: str | None = None, concept: str | None = None):
-    """Start a hard-surface object: copy the fused sculpt (closed PLY), the point cloud's renders (views.npz: colour
+    """Start a hard-surface object: copy the fused mesh (closed PLY), the point cloud's renders (views.npz: colour
     is projected from them at bake) and the concept into its folder; refuses an open or inside-out mesh."""
     from . import hardsurf_run as R
     rep = R.start(name, mesh, views, concept)
@@ -27,10 +27,10 @@ def hardsurf_start(name: str, mesh: str, views: str | None = None, concept: str 
 def hardsurf_frame(name: str, up: str = "y", contact_h: float = 0.06, contacts: int | None = None,
                    exclude_centre: float | None = None, yaw: str | float = "pca", yaw0: float | None = None,
                    scale: dict | None = None, flip: bool = False):
-    """Square the sculpt up on its ground footprint: contacts = the regions contact_h above the lowest point (keep
+    """Square the fused mesh up on its ground footprint: contacts = the regions contact_h over its lowest point (keep
     the N biggest with `contacts`; `exclude_centre` drops ones within that |x| after the first turn); yaw "pca" |
     "pairs" (left/right contact pairs) | degrees; `yaw0` the first turn when the footprint is near square (warned);
-    scale {"extent": "y", "value": 1.3} or {"pair_gap": 0.82}; flip if the front came out at +y. Look after it."""
+    scale {"extent": "y", "value": 1.3} or {"pair_gap": 0.82}; flip if the front came out at +y."""
     from . import hardsurf_run as R, artretopo_study as St
     info = R.frame(name, up=up, contact_h=contact_h, contacts=contacts, exclude_centre=exclude_centre,
                    yaw=yaw if not (isinstance(yaw, str) and yaw.lstrip("-").replace(".", "").isdigit()) else float(yaw),
@@ -44,7 +44,7 @@ def hardsurf_frame(name: str, up: str = "y", contact_h: float = 0.06, contacts: 
 @mcp.tool(structured_output=False)
 def hardsurf_look(name: str, mesh: str = "high", views: list[str] | None = None, centre: list[float] | None = None,
                   scale: float | None = None, step: float = 0.05, style: str = "colour"):
-    """Gridded orthographic views of the framed sculpt (mesh high) or the built parts to read positions off (same
+    """Gridded orthographic views of the framed fused mesh (mesh high) or the built parts to read positions off (same
     viewer as retopo_look: views front|back|side|side_r|top|below|3q; centre + scale frame a part)."""
     from . import hardsurf_run as R, artretopo_study as St
     from .tools_retopo import _img
@@ -72,7 +72,7 @@ def hardsurf_vote(name: str, kind: str, axis: list[float] | str, origin: list[fl
 
 @mcp.tool(structured_output=False)
 def hardsurf_fit(name: str, kind: str, part: dict):
-    """Fit a part to the sculpt and add it to parts.json (a part with the same name is replaced). kind:
+    """Fit a part to the fused mesh and add it to parts.json (a part with the same name is replaced). kind:
     "turned" {name, origin, axis, t0, t1, rmax, [step, angles, keep, tol], + part keys}: a lathe part from the
       revolution vote (warns when the vote is weak: thin shell / not round -> draw the profile, kind "part");
     "sweep" {name, profile [[a,b],...], x0, x1, [axis "x", round_r, side (2nd profile), side_from, n]}: a slab;
@@ -108,7 +108,7 @@ def hardsurf_fit(name: str, kind: str, part: dict):
 
 @mcp.tool(structured_output=False)
 def hardsurf_build(name: str, drop: list[str] | None = None):
-    """Mesh every part (one object each, artist seams) and report each part's distance from the sculpt (median /
+    """Mesh every part (one object each, artist seams) and report each part's distance from the fused mesh (median /
     95th percentile, mm): far parts are invented on purpose (fine) or misplaced (look). `drop` removes parts first."""
     from . import hardsurf_run as R
     if drop: R.drop_parts(name, drop)
@@ -126,8 +126,8 @@ def hardsurf_check(name: str, glb: str = "parts.glb", touch: float = 0.004):
 
 @mcp.tool(structured_output=False)
 def hardsurf_bake(name: str, res: int = 2048, depth_tol: float = 0.012):
-    """Bake every part into one atlas: colour PROJECTED from the point cloud's renders at the sculpt point each texel
-    covers (vertex-colour fallback, push-pull fill, metals cleaned), normals from the sculpt per part `nmap`."""
+    """Bake every part into one atlas: colour PROJECTED from the point cloud's renders at the fused-mesh point each texel
+    covers (vertex-colour fallback, push-pull fill, metals cleaned), normals from the fused mesh per part `nmap`."""
     from . import hardsurf_run as R
     return _txt(R.bake(name, res, depth_tol))
 
@@ -143,7 +143,7 @@ def hardsurf_rig(name: str, joints: list[dict], lod_ratio: float = 0.35):
 
 @mcp.tool(structured_output=False)
 def hardsurf_disagree(name: str, where: str, sculpt_says: str, concept_says: str, call: str):
-    """Log a place where the sculpt and the concept (or the game) disagree, and the call you made. The sculpt is
-    evidence, not the spec: splats invent parts, bulge bars, fill under floors."""
+    """Log a place where the fused mesh and the concept (or the game) disagree, and the call you made. The fused mesh
+    is evidence, not the spec: splats invent parts, bulge bars, fill under floors."""
     from . import hardsurf_run as R
     return _txt(R.disagree(name, where, sculpt_says, concept_says, call))
