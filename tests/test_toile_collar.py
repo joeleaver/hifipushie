@@ -27,7 +27,10 @@ def fake_toile(toile):
     t.ys, t.yc, t.cn = np.arange(-0.3, 0.3, 0.004), 0.0, np.array([0.0, 0.0])
     t.phi_neck = lambda P: Z_NECK - P[:, 2]
     t.lapel_geom = {"shift": lambda z: 0.0 * np.asarray(z)}
-    t.inp = types.SimpleNamespace(traces={"notch": {"xz": [[0.004, 1.497], [0.03, 1.47]], "corners": [1]}})
+    t.inp = types.SimpleNamespace(traces={"notch": {"xz": [[0.075, 1.445], [0.11, 1.43]], "corners": [1]}})
+    zz = np.linspace(1.25, 1.46, 30)  # (the lapel's roll line, break -> its top on the chest below the neck)
+    xx = np.interp(zz, [1.25, 1.46], [0.0, 0.04])
+    t.roll_line = t.front_hit(xx, zz)
     t.d = {"collar": {"stand_mm": 20, "fall_mm": 35, "notch": "notch"}}
     t.info = {}
     return t
@@ -36,8 +39,14 @@ def fake_toile(toile):
 def test_collar_draped_lies_on_the_shoulders_cut_and_unfolded_curved(tmp_path):
     pcs, edges, s1, toile = neck_toile()
     t = fake_toile(toile)
-    V, F = toile_collar.drape(t, toile)
+    Vt, Ft = toile
+    c3 = Vt[Ft].mean(1)  # (the front opening: the neck seam ends near the side neck point, as a jacket's does)
+    toile_open = (Vt, Ft[~((c3[:, 1] < 0) & (np.abs(c3[:, 0]) < 0.05) & (c3[:, 2] > 1.40))])
+    V, F = toile_collar.drape(t, toile_open)
     c = t.info["collar"]
+    # ONE roll line: the collar's roll leaves the lapel's roll line at its top without a kink, round the back to CB
+    assert c["roll_join_deg"] < 20, c  # (measured on the grid: 5 mm columns)
+    assert c["outer_out_side_mm"] > 15, c  # (the fall lies out over the shoulders at the side, not down the neck)
     assert c["outer_off_toile_mm"][1] < 1.5, c  # (the fall's outer edge lies on the toile)
     assert c["lands_below_seam_cb_mm"] > 5 and 15 < c["roll_above_seam_cb_mm"] <= 20.5, c  # (turned down over the seam)
     nr, nc, ks = t.collar_grid
@@ -61,8 +70,10 @@ def test_collar_draped_lies_on_the_shoulders_cut_and_unfolded_curved(tmp_path):
     assert np.dot(U[-1, m] - U[ks, m], U[0, m] - U[ks, m]) < 0, (U[0, m], U[ks, m], U[-1, m])
     # the neck seams: the stand on the neck and the fall on the cone don't develop together (the roll is straight on the
     # stand's side, curved on the fall's): the flat's neck edge comes out ~11 % short of the garment's (R3f, NEXT)
+    # (R3f-3: the synthetic's garment pieces have no opening, the toile it drapes on has: only the back seams compare)
     for g, v in rep["seams"].items():
-        assert abs(v["collar_mm"] - v["garment_mm"]) < 20, (g, v)
+        if g.startswith("back"):
+            assert abs(v["collar_mm"] - v["garment_mm"]) < 20, (g, v)
     assert folds and folds[0]["name"] == "collar_roll" and rep["strain_mean_pct"] < 12, rep
 
 

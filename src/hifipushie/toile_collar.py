@@ -5,19 +5,20 @@ the neck like a ruffled band). Step 6 cuts it and unfolds the fall about the rol
 THE DECLARATION (garment_toile's `collar`, needs "lapel"): {"stand_mm", "fall_mm" (both at CB, read off the reference),
 "notch": a step-2 trace from the collar end's gorge corner to the collar point (its first corner)}.
 THE NECK EDGE (one half, CB -> the collar end, mirrored for the other): the toile's neck seam (the toile mesh's free edge
-along the neckline: the body pieces' own neck edge) from CB round to the over front's corner (the roll line carried up
-meets it: the gorge's top), then the GORGE across the lapel's top to the notch trace's first point (the gorge corner:
-where the collar end sits on the lapel).
-THE STAND rises from each neck-edge point ON the toile's surface above the seam (the neck: it leans back with the neck),
-square to the neck edge, by h(s): stand_mm behind the side neck point, tapering to H_MIN at the collar end; its top is
-the ROLL LINE. THE FALL turns down at the roll line: back down over the stand GAP outside it, then on down over the toile
-(the shoulders, the back below the neck seam; the lapel in front) square to the neck edge, GAP off it: its width
-(fall_mm at CB: roll to outer edge along the cloth) covers the stand (h) and LIES OUT on the toile for the rest, walked
-along the surface (R3f-2: a span of fall_mm from the roll landed 9.8 mm below the seam, close round the neck: a band,
-outer x0.996 the neck flat; a tailored collar's fall lies out over the shoulders, its outer edge ~1.2-1.3 x the neck
-edge). Between the roll and that outer edge the fall is a SPAN (stiff cloth bridges the hollow at the neck's foot;
-hugging it made a fold the flat can't keep: 12 % strain), pushed out only where it would come nearer the toile than GAP; at the collar end it reaches the collar point (the notch trace's corner), the last columns'
-walks turned toward it. The fall's OUTER EDGE is wherever the fall lands on the toile: its length follows, not a rule.
+along the neckline) from CB to where it ends (near the side neck point: the opening takes the front), the front's neck
+down the toile's edge to the lapel's roll line's top (the gorge point), then the lapel's top to the notch trace's first
+point (the gorge corner).
+THE ONE ROLL LINE (R3f-3, C499; a tailor's: the lapel's roll line and the collar's are one line): the lapel's roll line
+(t.roll_line) carried STRAIGHT on up past its top to the side stand's height above the seam's end (SIDE_STAND x stand_mm:
+the draft's roll line through 2/3 of the stand beyond the side neck point), then one curve round to SPAN_FROM of the back
+neck, from there walked up the neck at h(s) (stand_mm at CB, cos^2 to the side's) to CB. Inside it the STAND: on the
+neck behind SPAN_FROM, a straight span leaning out to the roll in front of it (pushed out of the toile only); past the
+gorge point no stand (H_MIN: the collar end lies on the lapel). THE FALL turns back about the roll: behind SPAN_FROM it
+comes back down over the stand and lies out on the toile (fall_mm at CB along the cloth, at least fall - h past the seam,
+as far as a span of fall from the roll reaches); in front of it, over the roll to its foot on the toile and on away from
+the neck for the rest of its width (R3f-2 walked it down the neck's side: 10 mm out at the side neck, a band). Between
+the roll and the outer edge the fall is a SPAN pushed out only where it would come nearer the toile than GAP; at the
+collar end it reaches the collar point (the notch trace's corner). Its OUTER EDGE is wherever it lands: its length follows.
 The mesh is one grid (rows: neck edge -> roll -> outer edge; columns: the right end -> CB -> the left end), folded at
 the roll row; t.collar_grid = (rows, columns, the roll row). Nothing here knows a garment."""
 from __future__ import annotations
@@ -248,7 +249,7 @@ def drape(t, toile):
             if np.linalg.norm(g0) < 1e-4:
                 g0 = np.cross(n, T[c])
             down = _walk(t, foot + (lift[c] + GAP) * n, np.cross(_unit(g0), n), -1, 2 * fl[c], lift[c] + GAP, aim=Pc, b=bt[c])
-            L = _at(down, _landing(down, X[KS, c], fl[c], 0.0))
+            L = _at(down, max(fl[c] - float(np.linalg.norm(X[KS, c] - foot)), GAP))  # (over the roll to its foot, the rest on)
             L = (1 - bt[c]) * L + bt[c] * Pc
             R = X[KS, c] + GAP * t.grad(X[KS, c][None])[0]
             for r in range(KS + 1, KS + KF + 1):
@@ -274,7 +275,7 @@ def drape(t, toile):
     t.collar_grid = (nr, nc, KS)
     outer = X[-1]
     k_rl = max(1, int(np.searchsorted(s, s_rl)) - 1)
-    k_side = int(np.argmin(np.abs(s - s_neck)))
+    k_side = int(np.argmin(np.abs(s - s_hps)))
     sd = t.FD(outer) - GAP - lift
     t.info["collar"] = {
         "stand_mm": stand * 1000, "fall_mm": fall * 1000, "notch": d["notch"],
