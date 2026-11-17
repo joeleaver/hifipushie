@@ -26,35 +26,35 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 ## R3f-2 / R3f-3 (C498, C500): collar seams name the same runs; one roll line (toile_collar doc); proofs r3f2, r3f3.
 ## R3f-4 (C501): front neckline gorge point -> HPS (toile_style.front_neck); fall lands on collar_top past its corner.
   Proof /mnt/data/hifipushie/r3f4: collar seams front -5.5 (flatten 9 % short), back +2 / +1; built CLOSED: V narrow.
-## R3f-5 (2026-11-17, C502): the toile built in step 2's WEAR STATE (Joe: "Build it open")
-- Wear state: step 2's ties (closure_ties: fastened [] = open, all = closed) for the declared opening.closure
-  (toile_tool.wear_of -> Inputs.wear); none recorded or partly: refused by name (validate and Toile.build); lap_mm only
-  needed closed. Jacket: ties.front_closure fastened [] of 2 ("both buttons free ... shirt placket and belt show").
-- OPEN (toile_style.closure): no lap, no roll shift; below the break each front's edge = front_edge.L past its corner
-  (x 62 mm at the break 1.195, 74 at 1.087, 97 at 0.979, 167 at the hem: cutaway); above the break the roll as traced
-  (0.062 -> 0.069, near vertical) then front_neck; halves mirror it (two edges apart). Closed unchanged.
-- Girths: the open toile is the closed field cut at the traced edges; girth rows read t.closed_mesh (the toile before
-  the fronts were opened: the plan's ease is the garment's worn closed, C388): chest +2.6, waist +0.2, hips +0.9.
-- Item 2 (hang straight from the chest at an open front): already so: at x 0.08 the toile's y holds -0.172..-0.175 from
-  z 1.28 to 1.04 (the waist ease 50 mm keeps it off the body). No code.
-- Collar (toile_collar): an open roll turns back over the shoulder at its top, so "carried straight on" put the side
-  roll 41 mm BEHIND the neck seam's end (stand leaning back); now RH no further back than E0. Side top z 1.565 at x
-  0.057 (collar_top trace 1.578: 13 mm LOW, no longer climbing the neck); outer / neck 1.34 per half (208 / 155).
-- Proof /mnt/data/hifipushie/r3f5 (go.sh, toile_decl5.json; toile2 / mark1 / cut1 logs): toile PASS (14 rows PASS),
-  mark PASS (10 pieces). Cut FAIL: collar seams front.L -10.9 / front.R -11.0 (was -5.5); cut_flatten: closure_marks
-  (cut_tapes) put buttons where x = 0 crosses the fronts: an open front doesn't reach CF; layers: facing anchor hem 90 mm
-  > front.L:hem 84 (the cutaway), canvas 'inner' / 'armhole' 2 runs. Collar flat strain 7.6 %, wavy crescent.
-- Looks: r3f5/look1.png (open, before the side fix), look2.png (neck look with the body, beside the reference's crop);
-  toile front with step 2's traces: ws/garrett/garments/jacket/toile/toile_sheet.png; flat: .../cut/flat_sheet.png.
-  Judged: OPEN like the reference: the body (shirt) shows in a wide V of constant width down to the hem, the lapels lie
-  back on the chest about a near-vertical roll; the collar's fall lies on the shoulder slope in front of the side neck
-  point; at the side and back it is a stand + fall band round the neck (as the reference: it stands behind the shirt
-  collar), 13 mm lower than traced at the side.
-## Left
-- style_lengths (compare only like lines); downstream readers (chain_garment piece_start, garment_details,
-  draft_own_tool.flat_check) read FLAT from a FreeSewing draft dir, not pattern.json; ~120 "step 4" texts mean the flat.
-- R3e's: darts from the strain ridge; girths (hips / seat back.R, chest -44); side / sleeve_under tapes.
-
-NEXT: step 6 for an open garment: closure_marks place the buttons from the closed state (CF a lap inside the front
-edge, or mark on the closed toile and carry them), facing anchor / canvas lines on the open front; collar front seams
--11 (the collar's flat neck edge short); side stand 13 mm under the trace. Then style_lengths.
+## R3f-5 (C502): the toile built in step 2's WEAR STATE (ties: none done up = open; missing = refused). OPEN: no lap, each
+  front's edge where traced (cutaway below the break), roll as traced; girth rows read t.closed_mesh. Proof r3f5.
+## R3f-6 (2026-11-17, C503): step 6 cuts the open jacket
+- BUTTONS: step 4 records closed_buttons (toile_style.closed_buttons: on the closed state the button is on CF, lap_mm in
+  from the edge along the surface; lap_mm now required for an open opening with buttons); cut_tapes.closure_marks
+  carries them to each open front: on its own flat, at the button's z on the closure edge, from_edge_mm square in.
+- LAYERS (cut_layers): anchor mm may be "60%" of the edge; the host's outline is split at the line's end anchors (two
+  polygons closed by the line; the side holding `keeps` is the layer) instead of running the line on 5 m past its
+  ends (that run-on re-entered the concave armhole / cutaway: two `inner` / `armhole` runs). A line leaving the host
+  between anchors, or any layer edge in 2+ runs, is REFUSED by name. Jacket: facing hem anchor "60%" (hem 84 mm);
+  canvas = chest piece: armhole 30 mm up from the underarm -> front edge 320 mm up from the hem (just below the break):
+  edges armhole, front, inner, neck, notch, shoulder (armhole 50 -> front 200 still made 2 inner runs: refused).
+- COLLAR (cut_collar.held_flatten): cause: the plain flatten shortened the collar's neck row ~7.5 % (front 101 3D -> 94
+  flat; the stand leans out, the fall unfolds and the ARAP spreads it into the neck), and the front run is 4 mm short in
+  3D already. Now ARAP against a rest stretched along the rows by e at the neck row tapering to 0 at the roll, e per
+  garment neck edge by secant passes so each run = the garment edge's flat length. Rest e: front +31-40 %, back -5 %
+  (the back piece's own flat neck is 6.5 % under its 3D: 93.8 vs 100.2): large; the collar's strain 8.5 % (vs rest).
+- Proof /mnt/data/hifipushie/r3f6 (go.sh; toile_decl6 = lap_mm 20; cut_decl6; toile1 / mark1 / cut3 logs): toile PASS,
+  mark PASS; cut: cut_flatten, layers, collar (seams 104.5/104.5, 104.7/104.6, 93.4/93.3, 93.2/93.4), seams, caught,
+  closures PASS. FAIL: darts_drafted, style_lengths, girths, piece_tapes, place, panels (front 0.34 vs plan 0.40).
+- Looks: r3f6/cut_3d_3.png, r3f6/flat_sheet_3.png. Judged: pieces as an open jacket's: fronts with the lapel on,
+  a long narrow facing, a chest canvas, collar a crescent (ends bumpy, red with strain everywhere). The buttons are
+  20 mm in from the open front's edge, where they would be on that edge closed, BUT the open front has no cloth to
+  reach CF: the open toile is the closed field cut at the traced edges, so each front is ~62 mm (break) to 97 mm
+  (waist) + lap too narrow (chest 952 vs body 968 + ease 140; panels front 163 mm a piece). Closed, these fronts
+  would not meet: the buttons are right on the cloth, the cloth is wrong.
+## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
+  FreeSewing draft dir, not pattern.json; R3e's girths (hips / seat back.R); side / sleeve_under tapes.
+NEXT: the open toile's fronts must keep the closed garment's cloth (the open front = the closed front swung back about
+the side, not cut at the traced edge): build the fronts closed for the pattern and open only for the look, or cut
+step 6 from the closed toile and carry the open state as wear; then panels / girths; collar ends and strain; darts
+from the strain ridge; style_lengths (compare only like lines).

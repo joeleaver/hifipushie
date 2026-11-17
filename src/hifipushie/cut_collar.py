@@ -5,6 +5,9 @@ intrinsic: each triangle keeps its own shape, so the fall comes off the stand ac
 side of it). Five runs (R2-R3e) drafted the collar flat here and fitted it round the neck afterwards: it always stood
 round the neck like a band. Nothing is drafted or fitted here.
 
+NECK HELD (R3f-6, C503): the flatten holds the neck edge at the length of the garment edges it sews to (held_flatten:
+the stand worked to the neckline, as a tailor does); the neck_held_pct row says how much the stand was worked.
+
 THE PIECES: each declared collar piece (an undercollar, a top collar) gets the flat; its edges are named from the toile:
 the neck row's runs by the garment neck edge each lies on in 3D (the nearest of the declared neck edges and their
 mirrors), named by step 1 (the collar's edge sewn to that garment edge, or to a layer cut from its piece: a facing's
@@ -127,19 +130,20 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
             if pp not in pcs or ee not in edges.get(pp, {}):
                 raise CollarRefused(f"collar: neck edge {gg!r} is not a cut edge")
             garm[gg] = _edge_pts(pcs[pp], edges[pp][ee])
-    U, S, Fk = flatten(V, F)
-    bad_f = strain(S)
-    loop = np.asarray(grid_loop(nr, nc))
-    P = U[loop]
-    if np.dot(P[:, 0], np.roll(P[:, 1], -1)) - np.dot(P[:, 1], np.roll(P[:, 0], -1)) < 0:
-        U = U * [-1.0, 1.0]  # (the flat seen from the cloth's right side: the outline anticlockwise)
-    Ug = U.reshape(nr, nc, 2)
     Vg = V.reshape(nr, nc, 3)
     # the neck row's runs: by the garment neck edge each lies on in 3D
     seg_g = []
     for c in range(nc - 1):
         m = 0.5 * (Vg[0, c] + Vg[0, c + 1])
         seg_g.append(min(garm, key=lambda g: np.min(np.linalg.norm(garm[g] - m, axis=1))))
+    want = {g: _len(_edge_pts(pcs[g.split(":", 1)[0]], edges[g.split(":", 1)[0]][g.split(":", 1)[1]], "U")) for g in garm}
+    U, S, Fk, held = held_flatten(V, F, (nr, nc, ks), seg_g, want)
+    bad_f = strain(S)
+    loop = np.asarray(grid_loop(nr, nc))
+    P = U[loop]
+    if np.dot(P[:, 0], np.roll(P[:, 1], -1)) - np.dot(P[:, 1], np.roll(P[:, 0], -1)) < 0:
+        U = U * [-1.0, 1.0]  # (the flat seen from the cloth's right side: the outline anticlockwise)
+    Ug = U.reshape(nr, nc, 2)
     out_pcs, out_edges, bad = {}, {}, []
     for cp in d["pieces"]:
         names = {g: neck_edge(cp, g, s1, layers) for g in garm}
@@ -176,7 +180,9 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
             continue
         flat_c = sum(float(np.linalg.norm(Ug[0, c + 1] - Ug[0, c])) for c in cols)
         pp, ee = g.split(":", 1)
-        seams[g] = {"collar_mm": round(flat_c * 1000, 1), "garment_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee], "U")) * 1000, 1)}
+        seams[g] = {"collar_mm": round(flat_c * 1000, 1), "garment_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee], "U")) * 1000, 1),
+                    "collar_3d_mm": round(sum(float(np.linalg.norm(Vg[0, c + 1] - Vg[0, c])) for c in cols) * 1000, 1),
+                    "garment_3d_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee])) * 1000, 1)}
     chord = Ug[0, -1] - Ug[0, 0]
     cu, dv = chord / np.linalg.norm(chord), Ug[0] - Ug[0, 0]
     bow = float(np.abs(cu[0] * dv[:, 1] - cu[1] * dv[:, 0]).max())
@@ -186,10 +192,60 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
            "outer_3d_mm": round(_len(Vg[-1]) * 1000, 1), "roll_flat_mm": round(_len(Ug[ks]) * 1000, 1),
            "roll_3d_mm": round(_len(Vg[ks]) * 1000, 1), "outer_over_neck": round(outer_f / neck_f, 3),
            "flat_span_mm": [round(float(np.ptp(Uf[:, 0])) * 1000, 1), round(float(np.ptp(Uf[:, 1])) * 1000, 1)],
-           "neck_bow_mm": round(bow * 1000, 1), "seams": seams,
+           "neck_bow_mm": round(bow * 1000, 1), "seams": seams, "neck_held_pct": held,
            "strain_mean_pct": next(iter(out_pcs.values()))["rep"]["strain_mean_pct"] if out_pcs else None,
            "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")}}
     return out_pcs, out_edges, folds, rep, bad
+
+
+HELD_TOL_M = 0.0005  # m: the held neck runs' flat lengths within this of the garment's
+
+
+def held_flatten(V, F, grid, seg_g, want, passes=8):
+    """(U, S, F kept, {garment edge: the stand's ease along the neck, %}): the collar flattened with its NECK EDGE'S
+    LENGTH HELD (R3f-6, C503): a stand that leans out and a fall that unfolds about the roll can't lie flat at the
+    toile's lengths, and a plain flatten spreads that by shortening the neck row (R3f-5: 7.6 % strain, the neck edge
+    ~11 mm short of the fronts'). The tailor keeps the neck edge (it sews to the garment's neckline) and works the
+    stand to it: ARAP against a rest shape stretched along the rows (rest_shape) by e at the neck row, tapering to
+    nothing at the roll row (the fall keeps its own shape), e per garment neck edge (`want`: its flat length, the
+    other side of the seam) found in a few secant passes. Reports per edge the rest stretch, the flat / toile / wanted
+    lengths."""
+    from scipy.spatial import cKDTree
+    from .flatten import flatten
+    nr, nc, ks = grid
+    Vg = V.reshape(nr, nc, 3)
+    T = np.zeros_like(Vg)
+    T[:, 1:-1] = Vg[:, 2:] - Vg[:, :-2]
+    T[:, 0], T[:, -1] = Vg[:, 1] - Vg[:, 0], Vg[:, -1] - Vg[:, -2]
+    T = (T / (np.linalg.norm(T, axis=2, keepdims=True) + 1e-12)).reshape(-1, 3)
+    rr, cc = np.divmod(np.arange(nr * nc), nc)
+    w = np.clip((ks - rr) / max(ks, 1), 0, 1)
+    runs = sorted(set(seg_g))
+    col_run = np.array([runs.index(seg_g[min(c, nc - 2)]) for c in cc])
+    e, prev = np.zeros(len(runs)), None
+    kd = cKDTree(V)
+    run_len = lambda X, g: sum(float(np.linalg.norm(X[0, c + 1] - X[0, c])) for c in range(nc - 1) if seg_g[c] == g)
+    for k in range(passes):
+        def rest(Vc, Fc, e=e.copy()):
+            ix = kd.query(Vc)[1][Fc]
+            t = T[ix].mean(1)
+            return t / (np.linalg.norm(t, axis=1, keepdims=True) + 1e-12), (w[ix] * e[col_run[ix]]).mean(1)
+        U, S, Fk = flatten(V, F, rest=rest if e.any() else None)
+        Ug = U.reshape(nr, nc, 2)
+        got = np.array([run_len(Ug, g) for g in runs])
+        miss = np.array([want[g] for g in runs]) - got
+        if np.abs(miss).max() < HELD_TOL_M or k == passes - 1:
+            break
+        if prev is None:  # (first: as if the stretch reached the neck row whole; then secant steps)
+            step = miss / got
+        else:
+            de, dg = e - prev[0], got - prev[1]
+            step = np.where(np.abs(dg) > 1e-6, miss * de / np.where(np.abs(dg) > 1e-6, dg, 1), miss / got)
+        prev = (e.copy(), got)
+        e = np.clip(e + step, -0.5, 1.0)
+    held = {g: {"rest_pct": round(float(e[i]) * 100, 1), "flat_mm": round(float(got[i]) * 1000, 1),
+                "toile_mm": round(run_len(Vg, g) * 1000, 1), "want_mm": round(want[g] * 1000, 1)} for i, g in enumerate(runs)}
+    return U, S, Fk, held
 
 
 def _lift():

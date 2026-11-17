@@ -12,7 +12,7 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
              wrist mark carried onto the model's wrist along the arm) or a step-0 height, "cap_ease_pct" (optional:
              the cap's ease built into the crown, toile.CAP_EASE_PCT when unsaid)}
   opening    {"closure": a step-1 closure (its step-2 ties give the WEAR STATE: none done up = open, all = closed;
-             none recorded or partly: refused), "edge": a step-2 trace (the over front's edge), "lap_mm" (closed only),
+             none recorded or partly: refused), "edge": a step-2 trace (the over front's edge), "lap_mm" (closed, or open with buttons),
              "buttons": a step-2 row id (optional)}. Open: the fronts don't lap, each edge where traced (C502).
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}
@@ -90,6 +90,9 @@ def validate(decl: dict, s0: dict, s2: dict) -> list:
             bad.append(f"opening.closure: {c!r} is worn {wear[c]} (step 2's ties): the toile is built open or closed")
         elif wear[c] == "closed" and not decl["opening"].get("lap_mm"):
             bad.append(f"opening.lap_mm: missing: {c!r} is worn closed (step 2's ties): the fronts lap by it")
+        elif decl["opening"].get("buttons") and not decl["opening"].get("lap_mm"):
+            bad.append(f"opening.lap_mm: missing: {c!r} is worn open but has buttons: they are placed on the CLOSED "
+                       "state (the fronts lapped by lap_mm, the buttons on centre front) and carried to each front")
     b = (decl.get("opening") or {}).get("buttons") if "opening" in parts else None
     if b and b not in rows:
         bad.append(f"opening.buttons: {b!r} is not a step-2 row")
