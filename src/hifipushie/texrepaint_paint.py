@@ -67,7 +67,10 @@ def base_colours(materials, R, tex_rgb, con_rgb, con_w, tx: Texels):
     for k, m in enumerate(materials):
         if m.get("paint"):
             out.append(np.array(m["paint"], np.float32)); src.append("given"); continue
+        from .texrepaint_regions import classify
         sel = (lab_ == k) & conf & (con_w > 0.5)
+        if sel.any():   # only art pixels that read as this material themselves (not a held prop in front of it)
+            sel[sel] = classify(con_rgb[sel], materials)[0] == k
         if sel.sum() > 200:
             c = con_rgb[sel]; s = "concept"
         else:

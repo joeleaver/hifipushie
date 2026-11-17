@@ -13,7 +13,11 @@ Branch claude/texture-repaint-f66329 (not landed; the director's OK first). Guid
 ## Results (judged by eye beside the turnaround)
 - Mabel: good. The invented black back is cream with the turnaround's two spots; eyes, nostrils, mouth kept.
 - Hettie: good-ish. Mostly one cream (low risk); side panel registration is offset (her side figure is wider).
-- Scraps: body and back follow the art. The face is NOT right: blotchy taupe on the cream face; horn colour on the ear roots.
+- Scraps (round 2, director-approved run, maps in oxidegen retopo/scraps/repaint/): eyeball yellow + canister red are
+  `ignore` materials (other parts the art shows in front of the face), horn zone z>0.88, nose paint set from the
+  concept, lip crevice brushed cream, the art overrides only design-sized (>= 20 cm2) disagreements, blur 1 % of height.
+  Front face now reads (white blaze, dark eye rings, pink nose and ear insides); side of the head still somewhat camo-
+  patchy, back warmer than the concept's grey with a few cream flecks.
 - Kart sign: the pictogram is redrawn cleanly from the concept (4 flat colours). Its UV island is ~300 px at 4K, so the
   sign is clean but soft at close range.
 - The kart's other parts are the generated atlas upscaled (no region pass yet). The kart GLB has a stray 1 m Icosphere (hidden in renders).
@@ -25,4 +29,4 @@ Branch claude/texture-repaint-f66329 (not landed; the director's OK first). Guid
 - The image-model path for graphics (oxidegen edit) is wired as decal(graphic=...) but has not been run.
 - bin/suite was NOT run; only tests/test_texrepaint.py.
 
-NEXT: fix Scraps' face with zones, then run bin/suite, then ask the director whether to land.
+NEXT: Scraps' side-head patches (a face material with zones, or a cooler taupe), check Hettie's front-head red, run bin/suite, then ask the director whether to land.

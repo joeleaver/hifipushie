@@ -46,7 +46,8 @@ def texrepaint_regions(name: str, materials: list[dict], sigma: float | None = N
     """Read the texture as REGIONS: each texel's material from the generated texture and from the art (projected),
     smoothed on the surface (sigma m, default 0.5 % of the height), the art outvoting the texture where it sees the
     texel squarely. materials: [{name, colour [r,g,b], kind (clay|gloss|horn|metal|wood|paint|flat), rough, paint
-    [r,g,b], keep_texture, zones [[z0,z1]] (height fractions)}]. Returns the sheet (concept | texture | texture read |
+    [r,g,b], keep_texture, zones [[z0,z1]] (height fractions), ignore (another part's colour: an eyeball, a held
+    prop)}]. Returns the sheet (concept | texture | texture read |
     concept read | regions per view, contradictions outlined red) and the contradictions: where the texture has one
     material and the art shows another (fixed by the art), plus what no view of the art shows (texture kept)."""
     from . import texrepaint_run as R
@@ -60,13 +61,15 @@ def texrepaint_regions(name: str, materials: list[dict], sigma: float | None = N
 
 @mcp.tool(structured_output=False)
 def texrepaint_paint(name: str, res: int = 4096, detail: float = 1.0, sharp: float = 10.0, drift: float = 0.035,
-                     bump: float = 1.6, keep: list[dict] | None = None):
+                     bump: float = 1.6, keep: list[dict] | None = None, brush: list[dict] | None = None):
     """Paint the maps at res (4K): flat-but-alive base colours measured from the art, clean region edges, each
     material's fine detail (clay fingerprints, horn bands, wood grain, metal wear) in colour, roughness and the normal
     map (the sculpted normal kept). keep: painted details to keep from the generated map, e.g. eyes, nostrils, a mouth
-    line: [{"view": "front", "px": [x, y], "r": 0.03, "why": "eye"}] (px read off texrepaint_look) or {"at": [x,y,z]}."""
+    line: [{"view": "front", "px": [x, y], "r": 0.03, "why": "eye"}] (px read off texrepaint_look) or {"at": [x,y,z]}.
+    brush: the same points with "material": paint that material there (a lip crevice that kept the sculpt's dark
+    colour, a smear the regions kept)."""
     from . import texrepaint_run as R
-    out = R.paint(name, res, detail, sharp, drift, bump, keep)
+    out = R.paint(name, res, detail, sharp, drift, bump, keep, brush)
     return [_img(R.folder(name) / "sheet_paint.jpg"),
             f"{_txt(out)}\nnext: concept | before | after per view: the after must read as the concept; lost painted "
             "details -> keep; graphics -> texrepaint_face; then texrepaint_render"]

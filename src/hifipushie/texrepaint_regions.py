@@ -11,7 +11,8 @@ materials: [{"name": "clay_cream", "colour": [r, g, b]}, ...]: the painter's lis
 paint | flat: the detail it gets), "paint" ([r,g,b]: the base colour to paint, else measured from the concept),
 "keep_texture": true (its texels keep the generated colour, e.g. the eyes' painted detail), "zones": [[z0, z1], ...]
 (height fractions, 0 = lowest point: the material exists only there, e.g. pupils [[0.7, 1]], hooves [[0, 0.1]]: a
-painter knows dark shading under the body is not a pupil)."""
+painter knows dark shading under the body is not a pupil), "ignore": true (the art or the texture shows ANOTHER part
+here: a separate eyeball, a held prop; its colour casts no vote and is never painted)."""
 from __future__ import annotations
 
 import numpy as np
@@ -61,7 +62,7 @@ def where(p, centre, size) -> str:
 
 
 def fuse(tx: Texels, tex_rgb, con_rgb, con_w, materials, sigma: float, voxel: float, trust=None,
-         authority: float = 3.0, min_area: float = 4e-5, area=None):
+         authority: float = 3.0, min_area: float = 4e-5, area=None, fix_area: float = 2e-3):
     """the region reading: per texel probabilities (n, K) after the surface blur, plus the contradictions list.
     trust: per-texel weight of the generated texture (bake coverage, 0 where invented / no ray hit)."""
     K = len(materials); n = len(tx.idx)
@@ -70,6 +71,9 @@ def fuse(tx: Texels, tex_rgb, con_rgb, con_w, materials, sigma: float, voxel: fl
     seen = con_w > 0.05
     cl = np.full(n, -1); cl[seen], _ = classify(con_rgb[seen], materials, ok=ok[seen])
     trust = np.ones(n, np.float32) if trust is None else trust.astype(np.float32)
+    ign = np.array([bool(m.get("ignore")) for m in materials])
+    trust = trust * ~ign[tl]                                    # another part's colour: no vote
+    con_w = con_w * ~(seen & ign[np.maximum(cl, 0)])
     g = Grid(tx.pos, voxel)
     Pt = np.zeros((n, K), np.float32); Pc = np.zeros((n, K), np.float32); Pf = np.zeros((n, K), np.float32)
     wt_tot = None; wc_tot = None
@@ -79,6 +83,7 @@ def fuse(tx: Texels, tex_rgb, con_rgb, con_w, materials, sigma: float, voxel: fl
         Pc[:, k], wc_tot = g.smooth(b, sigma, con_w * seen + 1e-6)
         Pf[:, k], _ = g.smooth(a * trust + authority * b * con_w, sigma, trust + authority * con_w + 1e-4)
     for P in (Pt, Pc, Pf):
+        P[:, ign] = 0
         P /= np.maximum(P.sum(1, keepdims=True), 1e-6)
     keep_tex = np.array([bool(m.get("keep_texture")) for m in materials])
     # contradictions: where the concept sees squarely AND both readings are confident AND they differ
@@ -96,15 +101,27 @@ def fuse(tx: Texels, tex_rgb, con_rgb, con_w, materials, sigma: float, voxel: fl
                 continue
             lab_, nlab = g.components(sel)
             clusters += [lab_ == j for j in range(1, nlab + 1)]
+    fix = np.zeros(n, bool)
+    for m in clusters:
+        if float(area[m].sum()) >= fix_area:
+            fix |= m
+    # the art overrides only design-sized disagreements (a wrong back, a missing spot) and what the bake invented;
+    # smaller ones are registration error on small features (a face): there the texture's own reading stands, cleaned
+    f = np.clip(g.smooth(fix.astype(np.float32), sigma * 2)[0] * 3, 0, 1)
+    f = np.maximum(f, np.clip(1 - g.smooth(trust, sigma)[0] * 1.5, 0, 1))
+    Pf = Pt * (1 - f[:, None]) + Pf * f[:, None]
     for m in clusters:
         A = float(area[m].sum())
         if A < min_area:
             continue
         tm = np.bincount(t_arg[m], minlength=K).argmax(); cm = np.bincount(c_arg[m], minlength=K).argmax()
         p = tx.pos[m].mean(0)
+        big = A >= fix_area
         found.append({"where": where(p, ctr, size), "at": [round(float(x), 3) for x in p],
                       "area_cm2": round(A * 1e4, 1), "texture_has": materials[tm]["name"],
-                      "concept_shows": materials[cm]["name"], "fixed": f"painted {materials[cm]['name']} (concept)",
+                      "concept_shows": materials[cm]["name"],
+                      "fixed": f"painted {materials[cm]['name']} (concept)" if big else
+                      "texture kept: smaller than a design change (registration-sized)",
                       "texels": int(m.sum())})
     found.sort(key=lambda f: -f["area_cm2"])
     unseen = ~(g.smooth(con_w, sigma)[0] > 0.05)

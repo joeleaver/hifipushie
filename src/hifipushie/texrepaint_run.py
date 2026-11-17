@@ -114,7 +114,7 @@ def _trust(st, tx):
     return np.clip(t, 0, 1)
 
 
-def regions(name, materials, sigma=None, authority=3.0, min_area_cm2=2.0):
+def regions(name, materials, sigma=None, authority=3.0, min_area_cm2=2.0, fix_area_cm2=20.0):
     d = folder(name); _need(d, "state.json"); st = _state(d); surf = Surface.load(d)
     for m in materials:
         if "name" not in m or "colour" not in m:
@@ -126,7 +126,7 @@ def regions(name, materials, sigma=None, authority=3.0, min_area_cm2=2.0):
     sigma = sigma or 0.005 * st["height"]
     area = Rg.texel_area(surf, tx)
     R = Rg.fuse(tx, tex, con, w, materials, sigma, sigma * 0.7, trust=_trust(st, tx), authority=authority,
-                min_area=min_area_cm2 * 1e-4, area=area)
+                min_area=min_area_cm2 * 1e-4, area=area, fix_area=fix_area_cm2 * 1e-4)
     g: Grid = R["grid"]
     fields = []
     for k in range(len(materials)):   # the final reading as smooth 3D fields: paint evaluates them at any res
@@ -219,7 +219,8 @@ def look(name, view="front", crop=None, image=None):
         dr.line([(x * z, 0), (x * z, v.H * z)], fill=(255, 0, 0) if x % 50 == 0 else (0, 200, 255))
     for y in range(0, v.H, 10):
         dr.line([(0, y * z), (v.W * z, y * z)], fill=(255, 0, 0) if y % 50 == 0 else (0, 200, 255))
-    im = im.crop((x0 * z, y0 * z, x1 * z, y1 * z)); p = d / f"look_{view}.jpg"; im.save(p, quality=86)
+    im = im.crop((x0 * z, y0 * z, x1 * z, y1 * z)); p = d / f"look_{view}_{'after' if image == 'after' else 'before'}.jpg"
+    im.save(p, quality=86)
     return p, {"view": view, "size_px": [v.W, v.H], "px_per_m": round(v.ppm, 1), "crop": [x0, y0, x1, y1]}
 
 
@@ -239,7 +240,7 @@ def _keep_weight(tx, surf, st, keep):
     return w, made
 
 
-def paint(name, res=4096, detail=1.0, sharp=10.0, drift=0.035, bump=1.6, keep=None):
+def paint(name, res=4096, detail=1.0, sharp=10.0, drift=0.035, bump=1.6, keep=None, brush=None):
     from . import texrepaint_paint as Pn
     from scipy import ndimage
     d = folder(name); _need(d, "fields.npz", "materials.json"); st = _state(d); surf = Surface.load(d)
@@ -254,6 +255,13 @@ def paint(name, res=4096, detail=1.0, sharp=10.0, drift=0.035, bump=1.6, keep=No
         f = ndimage.gaussian_filter(z["F"][k].astype(np.float32), s, truncate=2.5)
         P[:, k] = ndimage.map_coordinates(f, ijk, order=1) / nv
     P /= np.maximum(P.sum(1, keepdims=True), 1e-6)
+    names = [m["name"] for m in materials]; brushed = []
+    for b in brush or []:   # the painter's brush: this material here (a crevice that kept the sculpt's dark colour)
+        if b.get("material") not in names:
+            raise ValueError(f"brush: material {b.get('material')!r} is not one of {names}")
+        w, made = _keep_weight(tx, surf, st, [b]); k = names.index(b["material"])
+        P *= (1 - w)[:, None]; P[:, k] += w; brushed += [dict(made[0], material=b["material"])]
+    st["brushed"] = brushed
     tex_full = _rgb(d / "maps" / f"{st['image']}.png"); tex = tx.sample(tex_full)
     # base colours: measured at analysis res (concept on squarely seen texels)
     ta = surf.texels(st["image"], 1024); con, w = _project_fixed(_panels(d, st, surf), surf, ta, _ppm(st), _keep(surf))

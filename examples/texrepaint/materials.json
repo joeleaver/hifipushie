@@ -83,7 +83,12 @@
     125
    ],
    "kind": "clay",
-   "rough": 0.5
+   "rough": 0.5,
+   "paint": [
+    228,
+    152,
+    146
+   ]
   },
   {
    "name": "horn",
@@ -92,7 +97,31 @@
     78,
     45
    ],
-   "kind": "horn"
+   "kind": "horn",
+   "zones": [
+    [
+     0.88,
+     1
+    ]
+   ]
+  },
+  {
+   "name": "eye_yellow (eyeball part)",
+   "colour": [
+    225,
+    170,
+    30
+   ],
+   "ignore": true
+  },
+  {
+   "name": "canister_red (held prop)",
+   "colour": [
+    185,
+    65,
+    45
+   ],
+   "ignore": true
   }
  ],
  "hettie": [
