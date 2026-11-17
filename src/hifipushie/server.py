@@ -44,6 +44,9 @@ from .tools_plan import (  # noqa: F401
 )
 from .tools_flap import bend, flap  # noqa: F401
 from .tools_reshape import carve, fuse, grab, trim  # noqa: F401
+from .tools_retopo import (  # noqa: F401
+    retopo_bake, retopo_cage, retopo_fit, retopo_look, retopo_press, retopo_props, retopo_report, retopo_rig,
+    retopo_slices, retopo_start)
 from .tools_plants import (  # noqa: F401
     edit_plant, export_plant, export_stand, get_plant, grow_plant, grow_stand, look_plant, look_plants, look_stand,
     plant_form, plant_history, plant_reference, sync_plant, wind_plant,
@@ -58,7 +61,7 @@ from .tools_terrain import (  # noqa: F401
 # A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
 __getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
                                       "tools_features", "tools_reshape", "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
-                                      "tools_terrain", "tools_plants", "tools_clutter"))
+                                      "tools_terrain", "tools_plants", "tools_clutter", "tools_retopo"))
 
 _register_core()
 

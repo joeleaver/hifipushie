@@ -56,5 +56,5 @@ Ring evening by Laplacian along the ring (shrinks a junction ring back onto the 
 limb only (into a belly's underside: they don't move); cutting the decimated body (holes merge at the crotch).
 
 Commands: `/mnt/data/hifipushie/limbloops/{dev,posecheck,wire,glbcheck}.py`, `/mnt/data/hifipushie/limbsgate/{export,measure,bend}.py`
-NEXT: nothing queued here. Clean loops for creatures now go through planned loops (branch loop-plan, Joe
-2026-11-10); the right-arm asymmetry (mirror handedness in tube / junction / zip) is open if "limbs" is kept.
+NEXT: nothing queued here. SUPERSEDED 2026-11-17 (Joe): clean loops for creatures go through the artist retopo
+(docs/state/artist_retopo.md); planned loops (branch loop-plan, unmerged) ended too; the right-arm asymmetry (mirror handedness in tube / junction / zip) is open if "limbs" is kept.

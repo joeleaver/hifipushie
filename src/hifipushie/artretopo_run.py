@@ -42,9 +42,11 @@ def need(d: Path, *files):
 
 
 # ---- start
-def start(name: str, mesh: str, concept: str | None = None) -> dict:
+def start(name: str, mesh: str, concept: str | None = None, align: bool = True) -> dict:
     """copy the fused mesh (PLY; a GLB/OBJ is refused: give oxidegen's mesh_ply) and the concept into the folder;
-    check the input"""
+    check the input. align: when the sculpt isn't mirror-symmetric about x = 0 (oxidegen turns it by the concept
+    camera's yaw: a 3/4 concept leaves the character turned ~30 deg), turn it about z so its own mirror plane is
+    x = 0 and its face toward -y (the turn is reported; judge the facing by eye)"""
     d = folder(name); d.mkdir(parents=True, exist_ok=True)
     src = Path(mesh)
     if src.suffix.lower() != ".ply":
@@ -53,7 +55,14 @@ def start(name: str, mesh: str, concept: str | None = None) -> dict:
         shutil.copy(src, d / "high.ply")
     if concept:
         c = Path(concept); shutil.copy(c, d / ("concept" + c.suffix.lower()))
-    rep = check.check_input(Mesh.load(d / "high.ply"))
+    m = Mesh.load(d / "high.ply"); rep = check.check_input(m)
+    if align and any("mirror" in f for f in rep["faults"]):
+        yaw, _, err = check.symmetry_yaw(m.V)
+        if err < 0.5 * rep["mirror_error_p95"]:
+            m = check.align_yaw(m, yaw); write_ply(d / "high.ply", m.V, m.F, m.C)
+            before = rep["mirror_error_p95"]; rep = check.check_input(m)
+            rep["aligned"] = (f"turned {yaw:+.2f} deg about z and centred on x = 0 (mirror error {before} -> "
+                              f"{rep['mirror_error_p95']}): the concept's view is now {-yaw:+.1f} deg off the front")
     (d / "input_check.json").write_text(json.dumps(rep, indent=1))
     return rep
 

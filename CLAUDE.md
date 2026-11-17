@@ -59,7 +59,8 @@ Test subjects: examples/troll.json (reference), workspace/goblin, fox.
   (docs/notes/cloth.md); `garment_pull.py` styles a fitted garment by pull / smooth until it would stretch (C142-3).
 - Start of every garment: `chain_net.py` + `chain_garment.py` (docstrings are the spec); older cloth routes deleted (C409).
 - Export: `asset.py` + `blender_asset.py` (docs/notes/asset.md, game_ready.md), `rig.py` (docs/notes/rig.md),
-  `retopo.py` (docs/notes/retopo.md), `budgets.py` + budgets.json (docs/notes/budgets.md).
+  `retopo.py` (docs/notes/retopo.md), `budgets.py` + budgets.json (docs/notes/budgets.md). Fused concept sculpts:
+  `artretopo_*.py` + `tools_retopo.py` (guide topic retopo).
 - `resources.py` (docs/notes/resources.md); `server.py` gathers the MCP tools: `mcp_app.py` (app,
   `_tool_with_errors`), `tools_<domain>.py`. Audits: bin/audit, bin/audit-summary (docs/notes/audit.md).
 - Performance invariants (field_at chunking, PartGrid reuse, caches keyed by content): docs/notes/performance.md.
@@ -94,4 +95,5 @@ OpenBLAS is capped at 4 threads in `__init__.py`.
 - Test suite: docs/state/test_suite.md
 - Drape first: docs/state/drape_first.md
 - Organic: docs/state/organic_passes.md
+- Artist retopo (replaces loop-plan): docs/state/artist_retopo.md
 - No state page: grep docs/notes/<thread>.md.

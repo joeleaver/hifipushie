@@ -90,3 +90,33 @@ def check_cage(V, F) -> dict:
                      f"look at them): first at {np.round(twisted_at, 3).tolist()}")
     return {"vertices": nV, "quads": nF, "edges": nE, "euler": chi, "genus": (2 - chi) / 2 if not open_ else None,
             "volume_as_wound": round(vol, 5), "faults": faults, "notes": notes}
+
+
+def mirror_error(P, kd=None) -> float:
+    """95th percentile distance from each point mirrored across x = 0 to the nearest point"""
+    from scipy.spatial import cKDTree
+    kd = kd or cKDTree(P)
+    d, _ = kd.query(P * np.array([-1, 1, 1]))
+    return float(np.percentile(d, 95))
+
+
+def symmetry_yaw(V, n: int = 6000) -> tuple[float, float, float]:
+    """the turn about z (degrees, within +-90 of the input's facing) and the x shift that put the sculpt's mirror
+    plane on x = 0: (yaw_deg, x_shift, mirror error after). Mirror symmetry can't tell the face from the back: the
+    nearest turn is taken (oxidegen turns the concept's view to -y, so the face is within 90 deg of it)."""
+    P = np.asarray(V, float)[:: max(1, len(V) // n)]
+    def err(a):
+        r = np.radians(a); R = np.array([[np.cos(r), -np.sin(r), 0], [np.sin(r), np.cos(r), 0], [0, 0, 1]])
+        Q = P @ R.T; Q[:, 0] -= Q[:, 0].mean()
+        return mirror_error(Q), -float((P @ R.T)[:, 0].mean())
+    coarse = min(np.arange(-90, 90, 2.0), key=lambda a: err(a)[0])
+    best = min(np.arange(coarse - 2, coarse + 2.01, 0.25), key=lambda a: err(a)[0])
+    e, dx = err(best)
+    return float(best), dx, e
+
+
+def align_yaw(m: Mesh, yaw_deg: float) -> Mesh:
+    """turn about z by yaw_deg and put the mirror plane on x = 0 (the vertex mean's x); z untouched"""
+    r = np.radians(yaw_deg); R = np.array([[np.cos(r), -np.sin(r), 0], [np.sin(r), np.cos(r), 0], [0, 0, 1]])
+    V = m.V @ R.T; V[:, 0] -= V[:, 0].mean()
+    return Mesh(V, m.F, m.C, weld=False)
