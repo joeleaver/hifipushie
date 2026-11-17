@@ -52,5 +52,5 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   draft_own_tool.flat_check) read FLAT from a FreeSewing draft dir, not pattern.json; ~120 "step 4" texts mean the flat.
 - R3e's: darts from the strain ridge; girths (hips / seat back.R, chest -44); side / sleeve_under tapes.
 
-NEXT: the collar's flat neck edge short in front (-5.5): a stand and fall that develop together (strain 11.6 %), or the
-front neckline faired off the neck wall at the HPS; the side stand height (z 1.60 vs trace 1.578). Then style_lengths.
+NEXT: R3f-5 (C502, in progress): the toile built in step 2's wear state (ties: none done up = OPEN): fronts unlapped,
+edges on front_edge, roll as traced; then the collar on the shoulders.
