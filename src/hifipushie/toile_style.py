@@ -8,7 +8,8 @@ state is refused by name, never defaulted). OPEN: the fronts do not lap: each fr
 front-edge trace puts it (the two edges apart, what is under shows between them): below the break the traced edge past
 its corner, from the break up the roll trace as traced (nothing moved: the picture shows the open place), the lapel
 turned about it. The field (its ease calibrated round the body, toile.py) is the same in both states: the open toile is
-the closed one opened about the fronts, so its girth rows (the hull of the section) read the closed garment's girths.
+the closed one opened about the fronts, so its girth rows (the hull of the section) read the closed garment's girths. Its buttons are placed on the closed
+state (closed_buttons: lap_mm in from the edge, on centre front) and carried to each front by step 6 (C503).
 CLOSED: the over front (the body's left, +X) runs past centre front by the lap; the under front is its mirror,
 LAP_UNDER_M inside it. Below the
 lowest button (step 2 row `buttons`) the edge follows the traced front edge below its corner (a cutaway); above the
@@ -168,6 +169,8 @@ def closure(t):
     LOW = LOW[np.argsort(LOW[:, 1])]
     if worn == "open":  # (each front's edge where the trace puts it, from the hem up to the break)
         top = min(z_brk, float(LOW[-1, 1]))
+        if bt is not None and len(bt):
+            t.info["opening"]["closed_buttons"] = closed_buttons(t, float(op.get("lap_mm") or 0) / 1000, bt[:, 1])
         t.info["opening"].update(break_z=None if not np.isfinite(z_brk) else round(float(z_brk), 3),
                                  buttons_z=sorted(round(float(z), 4) for z in bt[:, 1]) if bt is not None else [],
                                  edge_x_mm={f"{z:.3f}": round(float(np.interp(z, LOW[:, 1], LOW[:, 0])) * 1000, 1)
@@ -186,6 +189,18 @@ def closure(t):
         return lambda z: -lap + dx_cut(z)
     x_hi = front_neck(t, x_roll)
     return lambda z: np.where(z >= z_brk, x_hi(z), -lap + dx_cut(z))
+
+
+def closed_buttons(t, lap, bz) -> list:
+    """The buttons on the CLOSED state of an open garment (R3f-6, C503): closed, the over front's edge runs lap past
+    centre front at every button (the edge is cut away only below the lowest one) and the button sits on centre front,
+    so each button lies `from_edge_mm` in from the front's edge along the closed toile's surface at its height (the
+    under front's buttonhole the same, mirrored). Step 6 carries them to each open front from its own edge."""
+    out = []
+    for z in sorted(np.asarray(bz, float), reverse=True):
+        P = t.front_hit(np.linspace(-lap, 0.0, 9), np.full(9, z))
+        out.append({"z": round(float(z), 4), "from_edge_mm": round(float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum()) * 1000, 1)})
+    return out
 
 
 def front_neck(t, x_roll):

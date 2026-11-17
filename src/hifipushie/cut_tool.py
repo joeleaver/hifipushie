@@ -227,7 +227,7 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     for p, w in places(pcs, rd["3"]).items():
         B["pieces"][p]["wrap"] = w
     from .cut_ease import step4_numbers
-    why += closure_marks(B, pcs, (step4_numbers(rec["steps"]["4"].get("output") or {}).get("opening") or {}).get("buttons_z") or ())
+    why += closure_marks(B, pcs, step4_numbers(rec["steps"]["4"].get("output") or {}).get("opening") or {}, edges)
     rows = [{"id": "cut_flatten", "status": "FAIL" if why else "PASS", "value": f"{len(pcs)} pieces cut and flattened, edges named",
              "target": "every marked piece one disc, every edge named", "why": "; ".join(why[:8]), "back_to": "6"},
             *made_rows,
