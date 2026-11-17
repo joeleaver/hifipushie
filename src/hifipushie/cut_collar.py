@@ -73,8 +73,9 @@ def _edge_pts(f, idx, key="V"):
 
 def toile_collar(out4: dict):
     """(V, F, (rows, cols, roll row), step 4's collar numbers) from step 4's toile; refused without a collar part."""
-    Z = np.load(out4["toile"])
-    if "collar:V" not in Z.files or "collar_grid" not in Z.files:
+    from .mark_flap import load
+    Z = load(out4["toile"])  # (R3f-9: the collar is the flap's region behind its gorge marks)
+    if "collar:V" not in Z or "collar_grid" not in Z:
         raise CollarRefused("collar: step 4's toile has no collar part: garment_toile parts \"collar\" {stand_mm, "
                             "fall_mm, notch} (the collar is draped on the toile, then cut here)")
     info = {}
@@ -88,8 +89,9 @@ def split_gorge(pcs: dict, edges: dict, d: dict, out4: dict) -> list:
     lapel): a front's neck edge runs on along the lapel's top to its point, but only the run from the shoulder to the
     gorge corner is sewn to the collar; the rest is named d["past"] (default "notch"), a free edge. Before the layers
     are traced, so a facing's gorge is the same run. Returns what was cut (for the log)."""
-    Z = np.load(out4["toile"])
-    if "collar:V" not in Z.files or "collar_grid" not in Z.files:
+    from .mark_flap import load
+    Z = load(out4["toile"])
+    if "collar:V" not in Z or "collar_grid" not in Z:
         return []
     nr, nc, _ = (int(x) for x in Z["collar_grid"])
     row = Z["collar:V"].astype(float).reshape(nr, nc, 3)[0]
@@ -196,8 +198,25 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
            "flat_span_mm": [round(float(np.ptp(Uf[:, 0])) * 1000, 1), round(float(np.ptp(Uf[:, 1])) * 1000, 1)],
            "neck_bow_mm": round(bow * 1000, 1), "seams": seams,
            "strain_mean_pct": next(iter(out_pcs.values()))["rep"]["strain_mean_pct"] if out_pcs else None,
-           "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")}}
+           "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")},
+           "gorge": gorge_seam(out4, Ug, Vg, ks)}
     return out_pcs, out_edges, folds, rep, bad
+
+
+def gorge_seam(out4, Ug, Vg, ks) -> dict | None:
+    """The gorge seam (R3f-9): the collar's end column (the roll -> the outer edge, the left end) and the lapel's first
+    column are ONE line of step 4's flap (mark_flap): their 3D lengths equal by construction; each side's flat length
+    (the collar flattened above, the lapel flattened alone) reported, never stretched."""
+    from .flatten import flatten
+    from .mark_flap import load
+    Z = load(out4["toile"])
+    if "lapel.L:V" not in Z or "flap_layout" not in Z:
+        return None
+    nr, ncf, _, nl = (int(x) for x in Z["flap_layout"])
+    Ul = flatten(Z["lapel.L:V"].astype(float), Z["lapel.L:F"].astype(int))[0].reshape(nr - ks, nl, 2)
+    Yl = Z["lapel.L:V"].reshape(nr - ks, nl, 3)
+    return {"collar_flat_mm": round(_len(Ug[ks:, -1]) * 1000, 1), "lapel_flat_mm": round(_len(Ul[:, 0]) * 1000, 1),
+            "collar_3d_mm": round(_len(Vg[ks:, -1]) * 1000, 1), "lapel_3d_mm": round(_len(Yl[:, 0]) * 1000, 1)}
 
 
 APART_M = 0.003  # m: a garment neck edge's point farther than this from the collar's neck row is off it

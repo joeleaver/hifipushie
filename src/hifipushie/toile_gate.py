@@ -276,7 +276,8 @@ def verdict(rs: list) -> str:
     return "FAIL" if any(r["status"] == "FAIL" for r in rs) else "PASS"
 
 
-COLOURS = {"toile": (150, 160, 185), "lapel": (120, 135, 170), "pad": (230, 200, 90), "collar": (90, 150, 110)}
+COLOURS = {"toile": (150, 160, 185), "lapel": (120, 135, 170), "pad": (230, 200, 90), "collar": (90, 150, 110),
+           "flap": (120, 135, 170)}
 
 
 def look(t, body_V, body_T, ref, path, traces3d=()):
@@ -289,8 +290,8 @@ def look(t, body_V, body_T, ref, path, traces3d=()):
     tiles = [render(M, lines=[(P, (220, 30, 30), 2) for P in traces3d] if v == "front" else (), view=v,
                     box=box if v in ("front", "back") else sbox) for v in ("front", "left", "back", "right")]
     labels = ["reference", "front (traces red)", "left", "back", "right"]
-    if "collar" in t.worn:  # (the neck close: the collar on the shoulders)
-        zt = float(t.worn["collar"][0][:, 2].max())
+    if "flap" in t.worn:  # (the neck close: the collar on the shoulders)
+        zt = float(t.worn["flap"][0][:, 2].max())
         nb, nsb = ((-0.22, 0.22), (zt - 0.30, zt + 0.04)), ((t.ys[0] - 0.02, t.ys[-1] + 0.02), (zt - 0.30, zt + 0.04))
         tiles += [render(M, view=v, box=nb if v in ("front", "back") else nsb, mpp=0.0015) for v in ("front", "left", "back")]
         labels += ["neck front", "neck left", "neck back"]
