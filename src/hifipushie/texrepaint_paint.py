@@ -60,24 +60,29 @@ def detail(kind: str, pos, nrm, model_h: float, seed=0):
     return np.zeros(len(pos)), np.zeros(len(pos)), np.zeros(len(pos))
 
 
-def base_colours(materials, R, tex_rgb, con_rgb, con_w, tx: Texels):
-    """the colour each material is painted: an explicit "paint" wins; else the concept's colour on squarely seen,
-    confidently labelled texels (median, upper-lightness half = the lit side, not the shadows); else the texture's"""
+def base_colours(materials, R, tex_rgb, con_rgb, con_w, tx: Texels, per_view=None):
+    """the colour each material is painted: an explicit "paint" wins; else the art's: per panel, the median of
+    squarely seen, confidently labelled texels that the art itself reads as this material, then the median across
+    panels (no one panel's lighting decides); else the generated texture's median"""
+    from .texrepaint_regions import classify
     lab_ = R["P"].argmax(1); conf = R["P"].max(1) > 0.85; out, src = [], []
+    views = per_view or [(con_rgb, con_w)]
     for k, m in enumerate(materials):
         if m.get("paint"):
             out.append(np.array(m["paint"], np.float32)); src.append("given"); continue
-        from .texrepaint_regions import classify
-        sel = (lab_ == k) & conf & (con_w > 0.5)
-        if sel.any():   # only art pixels that read as this material themselves (not a held prop in front of it)
-            sel[sel] = classify(con_rgb[sel], materials)[0] == k
-        if sel.sum() > 200:
-            c = con_rgb[sel]; s = "concept"
-        else:
-            sel = (lab_ == k) & conf
-            c = tex_rgb[sel] if sel.sum() > 50 else np.array([m["colour"]], np.float32); s = "texture"
-        L = lab(c)[:, 0]; lit = c[L >= np.median(L)] if len(c) > 10 else c
-        out.append(np.median(lit, 0).astype(np.float32)); src.append(s)
+        meds = []
+        for c_, w_ in views:
+            sel = (lab_ == k) & conf & (w_ > 0.5)
+            if sel.sum() > 100:
+                sel[sel] = classify(c_[sel], materials)[0] == k
+            if sel.sum() > 100:
+                meds.append(np.median(c_[sel], 0))
+        if meds:
+            out.append(np.median(np.array(meds), 0).astype(np.float32)); src.append(f"concept ({len(meds)} views)")
+            continue
+        sel = (lab_ == k) & conf
+        c = tex_rgb[sel] if sel.sum() > 50 else np.array([m["colour"]], np.float32)
+        out.append(np.median(c, 0).astype(np.float32)); src.append("texture")
     return np.array(out), src
 
 

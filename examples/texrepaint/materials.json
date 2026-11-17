@@ -67,13 +67,16 @@
    "zones": [
     [
      0,
-     0.1
-    ],
-    [
-     0.68,
-     1
+     0.09
     ]
-   ]
+   ],
+   "near": {
+    "parts": [
+     "eye_0",
+     "eye_1"
+    ],
+    "within": 0.035
+   }
   },
   {
    "name": "pink_skin",
@@ -155,7 +158,7 @@
    ]
   },
   {
-   "name": "red_comb",
+   "name": "red_comb_wattle (parts not in final.glb)",
    "colour": [
     175,
     42,
@@ -163,27 +166,7 @@
    ],
    "kind": "clay",
    "rough": 0.5,
-   "zones": [
-    [
-     0.6,
-     1
-    ]
-   ]
-  },
-  {
-   "name": "pupil",
-   "colour": [
-    32,
-    28,
-    26
-   ],
-   "kind": "gloss",
-   "zones": [
-    [
-     0.7,
-     1
-    ]
-   ]
+   "ignore": true
   }
  ]
 }

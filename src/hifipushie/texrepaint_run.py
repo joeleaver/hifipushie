@@ -126,7 +126,7 @@ def regions(name, materials, sigma=None, authority=3.0, min_area_cm2=2.0, fix_ar
     sigma = sigma or 0.005 * st["height"]
     area = Rg.texel_area(surf, tx)
     R = Rg.fuse(tx, tex, con, w, materials, sigma, sigma * 0.7, trust=_trust(st, tx), authority=authority,
-                min_area=min_area_cm2 * 1e-4, area=area, fix_area=fix_area_cm2 * 1e-4)
+                min_area=min_area_cm2 * 1e-4, area=area, fix_area=fix_area_cm2 * 1e-4, surf=surf)
     g: Grid = R["grid"]
     fields = []
     for k in range(len(materials)):   # the final reading as smooth 3D fields: paint evaluates them at any res
@@ -264,11 +264,13 @@ def paint(name, res=4096, detail=1.0, sharp=10.0, drift=0.035, bump=1.6, keep=No
     st["brushed"] = brushed
     tex_full = _rgb(d / "maps" / f"{st['image']}.png"); tex = tx.sample(tex_full)
     # base colours: measured at analysis res (concept on squarely seen texels)
-    ta = surf.texels(st["image"], 1024); con, w = _project_fixed(_panels(d, st, surf), surf, ta, _ppm(st), _keep(surf))
+    ta = surf.texels(st["image"], 1024); panels = _panels(d, st, surf)
+    con, w = _project_fixed(panels, surf, ta, _ppm(st), _keep(surf))
+    per_view = [_project_fixed([p], surf, ta, _ppm(st), _keep(surf)) for p in panels]
     Pa = np.stack([ndimage.map_coordinates(ndimage.gaussian_filter(z["F"][k].astype(np.float32), s, truncate=2.5),
                                            ((ta.pos - lo) / h).T, order=1) for k in range(len(materials))], 1)
     cols, src = Pn.base_colours(materials, {"P": Pa / np.maximum(Pa.sum(1, keepdims=True), 1e-6)},
-                                ta.sample(tex_full), con, w, ta)
+                                ta.sample(tex_full), con, w, ta, per_view=per_view)
     nmap = _rgb(d / "maps" / f"{st['normal']}.png") if st.get("normal") else np.full((8, 8, 3), (128, 128, 255), np.uint8)
     kw, kept = _keep_weight(tx, surf, st, keep)
     colour, normal, rough, label = Pn.paint(tx, {"P": P}, materials, cols, nmap, tex, st["height"], sharp=sharp,
