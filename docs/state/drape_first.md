@@ -38,9 +38,10 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - LOOK dev_5.png: one turned piece in front (one cloth, no step at the gorge), BUT the Hermite cuts the corner at the
   side neck: the collar lies low, not up beside the neck to the trace's top (back roll 135 mm/half, was 210). ROLL_FROM
   0.8 / 1.0 kept the height but kinked (38-66 deg) and showed the stand (77-83 %). Three tries: stopped.
-- Not done: the merge of local main into this branch, the toile_tool / README / cloth_tools.md tool text for "flap".
+## R3f-10 (2026-11-17, C509): the roll line drawn ON the toile (toile_flap.roll_on_surface), in progress
+- One row pinned at CB (stand height), beside the neck at the notch trace's top (PIN_BACK 2 columns behind the side neck
+  point, raised once so the side neck point reaches the trace) and R0; faired by bending along the surface. Proof r3f10.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes.
-NEXT: the roll's height beside the neck without a kink: ONE curve on the surface through break, R0, the side neck point
-at stand_side height and CB, faired as one row (not a Hermite through air, projected); the front neck run flattens 12 %
+NEXT: (R3f-10 running) the front neck run flattens 12 %
 short; cut rows flaps / layers / closures FAIL (why in r3f9/cut1.log); girths, darts, style_lengths, piece tapes.
