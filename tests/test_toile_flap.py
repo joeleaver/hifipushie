@@ -36,6 +36,11 @@ def test_one_flap_one_roll_line_gorge_mark_splits_it_equal_at_the_cut(tmp_path):
     f, c = t.info["flap"], t.info["collar"]
     # ONE roll line: no kink where the collar's region meets the lapel's (R3f-8: 40 deg on the jacket)
     assert f["roll_join_deg"] < 12, f
+    # R3f-10 (C509): the roll drawn ON the toile passes the side neck point at the traced collar top (no shortcut past
+    # it: R3f-9's Hermite through the air lay low), smooth at the gorge and everywhere; the stand a thin edge in front
+    assert abs(f["roll_side_z_mm"] - f["trace_top_z_mm"]) < 3, f
+    assert f["roll_turn_max_deg"] < 45, f
+    assert c["stand_front_area_pct"] < 25, c
     assert c["stand_seen_front_pct"] < 50, c  # (the fall covers the stand)
     assert c["lands_below_seam_cb_mm"] > 5, c  # (turned down over the neck seam)
     # ONE piece: every vertex used, the mesh one connected surface (the lapels and the collar)
