@@ -46,7 +46,8 @@ def test_collar_draped_lies_on_the_shoulders_cut_and_unfolded_curved(tmp_path):
     V, F = toile_collar.drape(t, toile_open)
     c = t.info["collar"]
     # ONE roll line: the collar's roll leaves the lapel's roll line at its top without a kink, round the back to CB
-    assert c["roll_join_deg"] < 20, c  # (measured on the grid: 5 mm columns)
+    assert c["roll_join_deg"] < 40, c  # (R3f-8: the stand leans back against the neck to the gorge point, so the
+    #                                     collar's roll meets the lapel's at an angle there, not carried straight up)
     assert c["outer_out_side_mm"] > 15, c  # (the fall lies out over the shoulders at the side, not down the neck)
     assert c["outer_off_toile_mm"][1] < 1.5, c  # (the fall's outer edge lies on the toile)
     assert c["lands_below_seam_cb_mm"] > 5 and 15 < c["roll_above_seam_cb_mm"] <= 20.5, c  # (turned down over the seam)
@@ -131,3 +132,42 @@ def test_front_neckline_cut_low_and_the_fall_lands_where_traced():
     tr = np.r_[[a + (b - a) * w for a, b in zip(tr[:-1], tr[1:]) for w in np.linspace(0, 1, 30)]]
     miss = [float(np.min(np.hypot(*(tr - p[[0, 2]]).T))) for p in land]
     assert max(miss) < 0.012, miss
+
+
+def test_fall_covers_the_stand_and_the_front_seam_is_the_front_edge_through_the_gorge():
+    """R3f-8 (C507): a suit collar's stand leans back against the neck all round and the fall covers it: of the stand in
+    front of the side neck point at most half shows from the front (R3f-7's stand, leant out to the lapel's roll line
+    carried up, showed 86 % on the jacket); the collar's neck row has a column ON the gorge point (the front's neck edge
+    through its corner): along the front its length is the front's own edge's, unstretched."""
+    from hifipushie import toile_style
+    pcs, edges, s1, toile = neck_toile()
+    t = fake_toile(toile)
+    an = np.linspace(-np.pi, np.pi, 72, endpoint=False)
+    t.inp.tapes = {"neck": np.c_[R_NECK * np.sin(an), R_NECK * np.cos(an), np.full(len(an), Z_NECK)]}
+    t.inp.traces["notch"] = {"xz": [[0.075, 1.445], [0.11, 1.43], [0.10, 1.455], [0.085, 1.475]], "corners": [1]}
+    z_top = 1.46
+    t.lapel_geom.update(z_top=z_top)
+    t.x_edge = xe = toile_style.front_neck(t, lambda z: np.interp(z, [1.25, z_top], [0.0, 0.04]))
+    Vt, Ft = toile
+    c3 = Vt[Ft].mean(1)
+    toile_open = (Vt, Ft[~((c3[:, 1] < 0) & (np.abs(c3[:, 0]) < xe(c3[:, 2])) & (c3[:, 2] > 1.25))])
+    V, F = toile_collar.drape(t, toile_open)
+    c = t.info["collar"]
+    assert c["stand_seen_front_pct"] < 50, c
+    nr, nc, ks = t.collar_grid
+    row = V.reshape(nr, nc, 3)[0, nc // 2:]
+    R0 = t.roll_line[-1]
+    assert np.min(np.linalg.norm(row - R0, axis=1)) < 1e-6  # (a column ON the gorge point)
+    # the corner kept: the row's length from the side neck point to the gorge point is the front edge's, not a chord's
+    k0 = int(np.argmin(np.linalg.norm(row - R0, axis=1)))
+    a = np.r_[0, np.cumsum(np.linalg.norm(np.diff(row, axis=0), axis=1))]
+    i_side = int(np.argmin(np.abs(a - c["neck_half_mm"] / 1000)))  # (the side neck point: the neck seam's end)
+    E = toile_collar.front_neck_edge(t, toile_open, row[i_side], R0, 200)
+    seg = row[i_side:k0 + 1]
+    L_row = float(np.linalg.norm(np.diff(seg, axis=0), axis=1).sum())
+    L_edge = float(np.linalg.norm(np.diff(E, axis=0), axis=1).sum())
+    assert abs(L_row - L_edge) < 0.05 * L_edge, (L_row, L_edge)  # (the edge zigzags by the synthetic toile's grid: ~4 %)
+    # the corner row itself: every join is a point of the row
+    runs = (np.array([[0, 0, 0], [1.0, 0, 0]]), np.array([[1.0, 0, 0], [1.0, 1.0, 0]]))
+    P, S = toile_collar.corner_row(runs, 9)
+    assert np.min(np.linalg.norm(P - [1.0, 0, 0], axis=1)) < 1e-9 and S[-1] == pytest.approx(2.0)
