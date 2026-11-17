@@ -146,10 +146,10 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     per tile (dab_atlas with `true` outlines: `count` leaves `length` x the card's half width long), sized so a leaf is
     `leaf` x the species' leaf length. Cards stand on the shell at points drawn by area (fewer on its underside:
     `under`), `out` [least, most] m outside it, facing out of the shell tilted / rolled, as many as `budget` triangles
-    buy and at most `cover` x the shell's area in card area (one fixed draw: a lower LOD takes its first share).
+    buy and at most `cover` x the shell's area in LEAF area (the pictures' alpha) (one fixed draw: a lower LOD takes its first share).
     `along` = a per-shell-vertex value (0 base .. 1 tip) carried to each card for its gradient. NORMAL = the shell's
     under the card. {"V", "F", "N", "uv", "col", "gain", "grad" (gradient, thickness m), "rim", "atlas", "cards",
-    "card_m"}."""
+    "card_m", "pos" (each card's middle)}."""
     cs = {**CARDS, **((st.get("crown") or {}).get("cards") or {})}
     spec = tree["spec"]
     lf = spec["leaves"]
@@ -169,7 +169,10 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
         ra = np.linalg.norm(fc[:, :2] - np.median(V[:, :2], 0), axis=1)
         w = w * (ra / max(float(ra.max()), 1e-6)) ** float(cs["rim"])
     card_area = float(np.mean([c_["area"] for c_ in at["cards"]])) * half * half
-    m_all = int(float(cs["cover"]) * float(w.sum()) / max(card_area, 1e-9))
+    # `cover` counts LEAF area (the picture's alpha), not card area: a card is mostly gaps (fill ~0.3), and a cover of 4
+    # in card area was ~1.1 layers of leaf, dropped at random: a third of the shell showed bare and smooth through them
+    # (the bald lumps) while two thirds of the budget went unspent
+    m_all = int(float(cs["cover"]) * float(w.sum()) / max(card_area * float(at["fill"]), 1e-9))
     want = min(int(budget // max(tri, 1)), m_all)
     lk = cs.get("lod_keep")  # (pixar at a distance: the shell carries the mass, the cards only break its edge: [share kept under lod 0.6, under 0.3])
     if lk:
@@ -189,7 +192,9 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     Ns = (N[F[fi]] * bc[:, :, None]).sum(1)
     Ns /= np.maximum(np.linalg.norm(Ns, axis=1, keepdims=True), 1e-9)
     lo, hi = cs["out"]
-    P = P + Ns * (lo + (hi - lo) * u(84))[:, None]
+    off = lo + (hi - lo) * u(84)
+    zs = P[:, 2].copy()  # (the shell point under each card)
+    P = P + Ns * off[:, None]
     tilt = math.radians(float(cs["tilt"]))
     nrm = Ns + math.tan(tilt) * (np.c_[u(85), u(86), u(87)] - 0.5) * 2
     nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
@@ -201,8 +206,16 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     roll = math.radians(float(cs["roll"])) * (u(88) - 0.5) * 2
     T, B = T * np.cos(roll)[:, None] + B * np.sin(roll)[:, None], B * np.cos(roll)[:, None] - T * np.sin(roll)[:, None]
     hh = half * (0.85 + 0.3 * u(89))
-    ztop = float(tree["height"]) * 1.01
-    P[:, 2] -= np.maximum(P[:, 2] + hh * np.abs(B[:, 2]) - ztop, 0.0)
+    # the top: the SHELL's own (a styled crown may stand over the grown height), its leafy edge `out` over it. A card
+    # whose top would pass it sits down by the difference, but never under the shell point it stands on (a card sunk
+    # into the shell left the shell bare and smooth there: the bald lumps); what still overhangs shrinks the card,
+    # to half its size at most, and the rest is the leafy edge over the top.
+    ztop = max(float(tree["height"]) * 1.01, float(V[:, 2].max()) + float(hi))
+    over = np.maximum(P[:, 2] + hh * np.abs(B[:, 2]) - ztop, 0.0)
+    sink = np.minimum(over, np.maximum(P[:, 2] - zs, 0.0))
+    P[:, 2] -= sink
+    over = over - sink
+    hh = np.maximum(hh - over / np.maximum(np.abs(B[:, 2]), 1e-6), 0.5 * hh)
     var = (u(90) * len(at["cards"])).astype(int) % len(at["cards"])
     cup = float(cs["cup"])
     Vs, Fs, UVs, own, rim, n0 = [], [], [], [], [], 0
@@ -234,7 +247,7 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     gain = float(max(t0, t1) * (1 + wt))
     return {"V": Vc, "F": Fc, "N": Ns[own], "uv": UV, "col": (ccol / gain)[own], "gain": gain,
             "grad": np.c_[t_[own], np.full(len(own), 0.02)], "rim": rim, "atlas": at, "cards": int(want),
-            "card_m": float(2 * half), "own": own,
+            "card_m": float(2 * half), "own": own, "pos": P,
             "cover": float(want * card_area * at["fill"] / max(float(area.sum()), 1e-9))}
 
 

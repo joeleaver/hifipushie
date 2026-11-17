@@ -32,6 +32,43 @@ def leaf_points(tree: dict) -> tuple[np.ndarray, float]:
     return tw["pos"] + tw["frame"][:, :, 1] * (0.5 * tl * tw["scale"])[:, None], tl
 
 
+def skirt(X: np.ndarray, height: float, cr: dict, seed: int = 0) -> np.ndarray:
+    """The crown carried down its sides to `down_to` x the height (sheet `crown.down_to`; None = where the twigs are).
+    A grown tree's live twigs are its shoot ENDS (the shade sheds what is inside and under them): an open-grown oak's
+    leaves sit in its top third, so masses fitted to them make a cap on bare limbs. A storybook dome hangs down its
+    sides and hides them: foliage points dropped under the crown's OUTER twigs (those past `skirt_rim` x the crown's
+    radius on their bearing), each to a height between its twig and `down_to`, drawn in toward the middle by up to
+    `skirt_curl` x its radius at the bottom (the dome turns under). As many as the outer twigs x the drop over the twig
+    band's depth (at most `skirt_max` x the twigs). Returns the twigs + the dropped points."""
+    dt = cr.get("down_to")
+    if dt is None or len(X) < 8:
+        return X
+    z_lo = float(dt) * float(height)
+    band = max(float(np.percentile(X[:, 2], 90) - np.percentile(X[:, 2], 10)), 0.3)
+    zm = float(np.median(X[:, 2]))
+    if zm - z_lo < 0.25 * band:
+        return X
+    c = np.median(X[:, :2], 0)
+    q = X[:, :2] - c
+    rho = np.linalg.norm(q, axis=1)
+    phi = np.arctan2(q[:, 1], q[:, 0])
+    nb = 16
+    bi = ((phi + math.pi) / (2 * math.pi) * nb).astype(int) % nb
+    Rb = np.array([np.percentile(rho[bi == b], 90) if (bi == b).sum() >= 3 else np.percentile(rho, 90) for b in range(nb)])
+    outer = np.flatnonzero(rho >= float(cr.get("skirt_rim", 0.6)) * Rb[bi])
+    if not len(outer):
+        return X
+    n = int(min(len(outer) * (zm - z_lo) / band, float(cr.get("skirt_max", 2.0)) * len(X)))
+    key = np.arange(n, dtype=np.uint64) + np.uint64(104729 * (seed + 1))
+    j = outer[np.minimum((vegetation_kernels._u(key, 61) * len(outer)).astype(int), len(outer) - 1)]
+    u = vegetation_kernels._u(key, 62) ** 0.8
+    z = X[j, 2] - u * np.maximum(X[j, 2] - z_lo, 0.0)
+    pull = 1.0 - float(cr.get("skirt_curl", 0.25)) * u ** 2
+    jit = (vegetation_kernels._u(key, 63) - 0.5) * 0.3 * band
+    Y = np.c_[c[0] + q[j, 0] * pull, c[1] + q[j, 1] * pull, np.maximum(z + jit, z_lo)]
+    return np.vstack([X, Y])
+
+
 def _kmeans(X: np.ndarray, k: int, iters: int = 30) -> np.ndarray:
     """Labels of a k-means from a farthest-point start (no randomness: the same tree gives the same masses)."""
     C = [X[np.argmin(np.linalg.norm(X - X.mean(0), axis=1))]]

@@ -30,7 +30,8 @@ Read guide(topic="vegetation") first: describe the reference (style, structure, 
   The report says how much died and broke off. (A whole dead tree: `season: "dead"` + `decay`.)
 - `roots`: `{"count": 5, "spread": 1.6, "height": 0.5}`: root flares at the foot: the trunk's section swells toward
   each root by `spread` x at the ground, fading over `height` m (spread 2+ and height 1+ = buttresses). The trunk
-  always runs 0.3-0.5 m into the ground, so it meets a slope without a gap.
+  always runs 0.3-0.5 m into the ground, so it meets a slope without a gap. Styled trunks (pixar, cartoon, blobby...) draw them as root
+  buttresses joined into the trunk and running into the ground (vegetation_styles.md, `wood`).
 - `trunk_diameter` (m at the foot, optional): thick wood is scaled to it (twigs stay as they are), limbs too;
   with `limb_diameter` (m: the stoutest limb where it leaves the trunk) the two are sized apart: a very fat old
   trunk under ordinary limbs. (Over a long life `habit.ring` x age is what makes everything fat.) With

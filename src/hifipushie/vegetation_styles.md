@@ -38,6 +38,11 @@ sheet under `style`) over a few general operations. Override any of them in the 
   again, and a fork that never gets in is not drawn. `smooth` = bend smoothing passes. The wood is ONE field (each
   axis a chain of round cones, axes joined by a smooth union of `blend` x the branch's girth) meshed like the crown:
   forks are fillets, ends are round, normals are the field's. `flat` (bark = one colour), `share` (of the budget).
+  The spec's `roots` ({count, spread, height}) are drawn on every styled trunk too (they were the realistic tree's
+  only): one root buttress per root (bearings and strengths as the realistic tree's), its own axis joined into the
+  trunk over 3 x `blend` (less left a hard crease at its top): it leaves the trunk at `height` m, runs out and down,
+  meets the ground at the flared foot's radius + (`spread` - 1) x the bole's, and runs on into the ground. Fat lobes,
+  not tubes (tubes read as spider legs). `wood.flare` is the smooth round foot; `roots` is the splay on top of it.
 - `crown` kind "masses": the twigs' positions are clustered (k-means, no randomness), each cluster becomes an
   ellipsoid (principal axes x `spread` + `pad` twig lengths; no semi-axis under 0.75 x `min_feature` or under
   `roundness` x its longest: flat clusters read as lily pads; a mass never stands taller than the tree), plus a
@@ -48,6 +53,16 @@ sheet under `style`) over a few general operations. Override any of them in the 
   fewest whose outline is within 0.01 IoU of the best (the report lists the IoU per count), or one number.
   `normals`: 0 = the field's own gradient (smooth over each mass and its blends) .. 1 = straight out of the crown's
   middle. `tones` steps of `tone` [dark, light] by each mass's height (top lighter; `warm_top`), one tone per mass.
+- `crown.down_to` (every crown kind; null = off): the crown hangs down its sides to this share of the height. Why: a
+  grown tree's live twigs are its shoot ENDS (the shade sheds what is inside and under them), so an open-grown oak's
+  foliage sits in its top third (the Braynard oak: 1st percentile of its twigs at 0.71 of the height) and masses
+  fitted to it make a cap on bare limbs. Drooping branches, longer `leaf_steps`, `twig.steps`, a central leader or
+  less `shed` only move twigs about inside that band (flatter or thinner, never deeper). A storybook dome hides its
+  limbs: foliage points are hung under the OUTER twigs (past `skirt_rim` 0.6 x the crown's radius on their bearing),
+  each to a height between its twig and `down_to`, drawn in by up to `skirt_curl` 0.25 x its radius at the bottom
+  (the dome turns under), as many as the outer twigs x the drop over the twig band's depth (at most `skirt_max` 2 x
+  the twigs); the masses are fitted to twigs + skirt. The limbs inside are then hidden by the crown. Costs outline
+  IoU against the realistic tree (the report says so). Storybook oak: 0.35.
   The fit is always made on the plant in leaf, whatever `season` it is shown in.
 - `colour`: saturation / value on the species' leaf and bark colours. `wind`: `mass` = the least branch sway a mass
   has (it moves as a whole with the limb it sits on, in that limb's phase), `squash` (top vs bottom of a mass).
@@ -156,8 +171,13 @@ https://www.blendernation.com/2020/08/20/creating-ghibli-trees-in-3d/ for the sh
 - `crown.cards` (a general op: any closed crown can take it): `count` of the species' TRUE leaf outlines per card
   (`length` x the card's half width each), sized so a leaf is `leaf` x the species' leaf length (1.5); cards stand on
   the shell at points drawn by area (`under` = less on its underside), `out` [least, most] m outside it (the outer
-  20-30 cm), facing out (tilted `tilt`, rolled `roll`, cupped `cup`), at most `cover` x the shell's area, `share` of the
-  crown's triangles; lower LODs fewer, larger cards (up to `lod_grow` 2x); `size_m` = a needle tree's spray size
+  20-30 cm), facing out (tilted `tilt`, rolled `roll`, cupped `cup`), at most `cover` x the shell's area in LEAF area
+  (the pictures' alpha: counted in card area, a cover of 4 was ~1.1 layers of leaf, a third of the shell bare and smooth
+  between them, and the budget two thirds unspent), `share` of the crown's triangles; never over the SHELL's top + the
+  most `out` (a card whose top would pass it sits down, but never under its own shell point, and shrinks for the rest,
+  to half at most: clamped to the grown height, cards on a shell standing over it sank metres in: bald lumps). A card
+  is 2 x `leaf` x the leaf's length / `length` across: `count` is the leaves in ONE card's picture, not a number of
+  cards (the budget sets that); the report gives the card's size in metres and warns past 1.5 x a crown clump; lower LODs fewer, larger cards (up to `lod_grow` 2x); `size_m` = a needle tree's spray size
   (needles are too small to size by), `rim` = weight toward the boughs' outer edges; NORMAL = the shell's under the card;
 - TEXCOORD_3 = (gradient, THICKNESS m: how far a ray straight in stays inside the canopy, capped `thick_reach` 4 m;
   cards 0.02) on both; material extras.translucency {color, amount} = the warm light-through tint for the engine;

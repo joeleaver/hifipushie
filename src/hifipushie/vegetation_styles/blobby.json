@@ -40,6 +40,10 @@
   "flare": 0.0
  },
  "crown": {
+  "down_to": null,
+  "skirt_rim": 0.6,
+  "skirt_curl": 0.25,
+  "skirt_max": 2.0,
   "kind": "masses",
   "masses": [
    3,
