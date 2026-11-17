@@ -12,6 +12,7 @@ Parts no joint names ride root. Each joint gets an action (rest -> hi -> lo -> r
 TESTS (numbers, not pictures):
 - `turns`: at hi, each moved part turned by the expected angle about the expected axis (deg, |axis . expected|), or
   slid by the expected distance; a follower by ratio x its leader. A sign error shows up here, not in a render.
+- `attached`: static parts the movers already cross at rest (an axle in its hub): left out of the clearance test.
 - `clear`: the largest value in [0, hi] and [lo, 0] at which the moved parts don't cross `static` (binary search), so
   the range the model really allows is known; a range blocked at rest says the parts already cross.
 Spinners: test at +-90 (a full turn reads as 0 deg); the game spins them, the test only checks the axis and sign."""
@@ -96,8 +97,13 @@ def tree(objs):
 
 rep = {"joints": {}}
 for n, j in JO.items():
-    mov = moved_by(n); static = [parts[s] for s in j.get("static", [k for k in parts if k not in mov])]
-    movers = [parts[k] for k in mov]
+    mov = moved_by(n); movers = [parts[k] for k in mov]
+    cand = j.get("static", [k for k in parts if k not in mov])
+    # a static part the movers already cross at rest is what they're ATTACHED to (an axle in its hub, a hinge pin):
+    # it's left out of the clearance test and reported
+    pose({}); mt = tree(movers) if movers else None
+    attached = [k for k in cand if mt is not None and "static" not in j and mt.overlap(tree([parts[k]]))]
+    static = [parts[k] for k in cand if k not in attached]
     def hits(v):
         pose({n: v}); return len(tree(static).overlap(tree(movers))) if static and movers else 0
     lo, hi = j["range"]; res = {}
@@ -122,7 +128,7 @@ for n, j in JO.items():
             turns[k] = {"deg": round(math.degrees(ang), 2), "expected_deg": round(abs(exp), 2),
                         "axis_dot": round(abs(ax.dot(Vector(JO[jj]["axis"]).normalized())), 3)}
     res["turns"] = turns
-    rest = hits(0.0); res["crossing_at_rest"] = rest
+    rest = hits(0.0); res["crossing_at_rest"] = rest; res["attached"] = attached
     def clear(end):
         if not rest and not hits(end): return end
         a, b = 0.0, end

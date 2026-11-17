@@ -132,7 +132,7 @@ def bake(name: str, res: int = 2048, depth_tol: float = 0.012) -> dict:
 
 
 def rig(name: str, joints: list[dict], lod_ratio: float = 0.35, renders: bool = True) -> dict:
-    d = folder(name)
+    d = folder(name); (d / "joints.json").write_text(json.dumps(joints, indent=1))
     src = d / "bake" / "baked.glb" if (d / "bake" / "baked.glb").exists() else d / "parts.glb"
     blender("rig", {"parts": str(src), "out": str(d / "rig.glb"), "report": str(d / "rig.json"), "joints": joints,
                     "lod_ratio": lod_ratio, "renders": str(d / "rig_renders") if renders else None}, GB["rig"])
