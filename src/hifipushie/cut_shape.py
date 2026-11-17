@@ -17,7 +17,12 @@ The strain left is measured against the shaped target.
 THE LIMIT: SHAPE_MAX_PCT (8 %) either way: wool takes about what a tailored sleeve cap is shrunk by (3-4 cm over a
 ~45 cm crown, 7-9 %, the most a tailor shrinks wool along one run; a bias undercollar stretches about as far). A
 declared amount beyond it is REFUSED by name (ShapeRefused); what the toile ASKS (each run's toile / unshaped flat
-length) beyond it is reported: then the piece's shape on the toile is wrong (back to step 4), not the ease. Metres."""
+length) beyond it is reported: then the piece's shape on the toile is wrong (back to step 4), not the ease.
+THE 8 % IS AN ASSUMPTION (R3g re-check: no published figure found; the sleeve-cap estimate above is ours) and since R3g
+(C512) it applies to THREAD stretch only: the piece is flattened by its threads (flatten_threads.py; the collar on the
+bias, cut_collar.GRAIN_DEG), so a run's length change by shear is free to the weave's jam; each run and cone point
+reports warp / weft / shear (thread_read) and the piece's curvature beside what one thread quad carries (curvature).
+Metres."""
 from __future__ import annotations
 
 import re
@@ -91,10 +96,8 @@ def run_ratio(Vg, Ug, lines: dict) -> dict:
     return out
 
 
-def cone_points(V, F, grid, top=3) -> list:
-    """Where the grid piece is curved in itself (each interior vertex's angle defect, 360 deg less the angles round
-    it): no shaping ALONG a run removes a point defect (a cone point: a corner in the roll the fall can't follow).
-    The `top` largest as [row, column, deg] (+ dome: cloth missing; - saddle: cloth over)."""
+def defects(V, F, grid):
+    """Each interior grid vertex's angle defect (deg; rows x columns; 0 on the outline): the surface's curvature."""
     nr, nc, _ = grid
     ang = np.zeros(len(V))
     for k in range(3):
@@ -104,6 +107,27 @@ def cone_points(V, F, grid, top=3) -> list:
         np.add.at(ang, a, np.arccos(np.clip(cs, -1, 1)))
     K = np.degrees(2 * np.pi - ang).reshape(nr, nc)
     K[[0, -1]], K[:, [0, -1]] = 0, 0
+    return K
+
+
+def curvature(V, F, grid, lim_deg: float) -> dict:
+    """What shear can carry (C512, Hazzidakis): inside any quad of threads the curvature (summed angle defect) is
+    2 pi less its four corner angles, so a weave that jams at lim carries at most 4 x lim in one thread quad. The
+    piece's total, per half (CB column halved) and its stand / roll / fall rows, beside that bound."""
+    nr, nc, ks = grid
+    K = defects(V, F, grid)
+    h = nc // 2
+    return {"total_deg": round(float(K.sum()), 1), "half_deg": round(float(K[:, h + 1:].sum() + K[:, h].sum() / 2), 1),
+            "stand_deg": round(float(K[:ks].sum()), 1), "roll_deg": round(float(K[ks].sum()), 1),
+            "fall_deg": round(float(K[ks + 1:].sum()), 1), "one_thread_quad_carries_deg": round(4 * lim_deg, 1)}
+
+
+def cone_points(V, F, grid, top=3) -> list:
+    """Where the grid piece is curved in itself (each interior vertex's angle defect, 360 deg less the angles round
+    it): no shaping ALONG a run removes a point defect (a cone point: a corner in the roll the fall can't follow).
+    The `top` largest as [row, column, deg] (+ dome: cloth missing; - saddle: cloth over)."""
+    nr, nc, _ = grid
+    K = defects(V, F, grid)
     Ks = K.copy()  # (summed over 5 columns: a cone point spreads over a few)
     for j in range(nc):
         Ks[:, j] = K[:, max(j - 2, 0): j + 3].sum(1)
@@ -139,17 +163,57 @@ def crease(V, grid) -> dict:
             "worst_col_from_cb": k, "worst_deg": round(float(st[k] + fa[k]), 1)}
 
 
-def flatten_shaped(V, F, grid, lines: dict, want: dict):
-    """(U, S, F kept, report): the grid piece flattened against its shaped rest (module doc). grid (nr, nc, ks);
-    lines {run: (row, [columns])} (row 0: the neck runs, ks: "roll", nr - 1: "outer"); want {run: d}."""
+def cb_up(Vg):
+    """A grid piece's UP for its grain (flatten_threads): the CB columns' direction neck -> outer edge (0 elsewhere)."""
+    nr, nc, _ = Vg.shape
+    up = np.zeros_like(Vg)
+    up[1:-1] = Vg[2:] - Vg[:-2]
+    up[0], up[-1] = Vg[1] - Vg[0], Vg[-1] - Vg[-2]
+    keep = np.zeros(nc, bool)
+    keep[max(nc // 2 - 1, 0): nc // 2 + 2] = True
+    up[:, ~keep] = 0
+    return up.reshape(-1, 3)
+
+
+def thread_read(V, Fk, U, grain, nc, rows=None, cols=None) -> dict:
+    """Thread stretch (warp, weft: the larger |.|, mean) and shear (deg, mean / max) over the grid faces touching
+    rows x cols (a run, a cone point); shaping is THREAD stretch, the shear free to the weave's jam (C512)."""
+    from .flatten_threads import threads
+    r, c = Fk // nc, Fk % nc
+    m = np.ones(len(Fk), bool)
+    if rows is not None:
+        m &= np.isin(r, rows).sum(1) >= 2
+    if cols is not None:
+        m &= np.isin(c, cols).any(1)
+    if not m.any():
+        return {}
+    w, f, sh = threads(V, Fk[m], U, grain)
+    return {"warp_pct": round(float(w.mean()) * 100, 2), "weft_pct": round(float(f.mean()) * 100, 2),
+            "thread_max_pct": round(float(np.maximum(np.abs(w), np.abs(f)).max()) * 100, 1),
+            "shear_mean_deg": round(float(np.abs(sh).mean()), 1), "shear_max_deg": round(float(np.abs(sh).max()), 1)}
+
+
+def flatten_shaped(V, F, grid, lines: dict, want: dict, grain=45.0):
+    """(U, S, F kept, report): the grid piece flattened by its threads (warp at grain deg to its CB: cb_up) against
+    its shaped rest (module doc). grid (nr, nc, ks); lines {run: (row, [columns])} (row 0: the neck runs, ks: "roll",
+    nr - 1: "outer"); want {run: d}. Each run and cone point reports its threads: the limit is on THREAD stretch
+    (asks_within), a run's length change by shear alone is the bias doing its work."""
     from .flatten import flatten
     nr, nc, ks = grid
     Vg = V.reshape(nr, nc, 3)
-    U, S, Fk = flatten(V, F)
+    up = cb_up(Vg)
+    U, S, Fk = flatten(V, F, grain=grain, up=up)
     asks = run_ratio(Vg, U.reshape(nr, nc, 2), lines)
-    rep = {"limit_pct": SHAPE_MAX_PCT, "cone_points": cone_points(V, F, grid), "roll_row": grid[2],
-           "runs": {k: {"asks_pct": round(asks[k] * 100, 2), "asks_within": abs(asks[k]) * 100 <= SHAPE_MAX_PCT}
-                    for k in lines}}
+    rd = lambda k, U: thread_read(V, Fk, U, grain, nc, [lines[k][0]], lines[k][1])
+    from .flatten_threads import lock_deg
+    rep = {"limit_pct": SHAPE_MAX_PCT, "grain_deg": grain, "roll_row": grid[2],
+           "curvature": curvature(V, F, grid, lock_deg()),
+           "cone_points": [[r, c, d, thread_read(V, Fk, U, grain, nc, list(range(r - 1, r + 2)), list(range(c - 2, c + 3)))]
+                           for r, c, d in cone_points(V, F, grid)], "runs": {}}
+    for k in lines:
+        t = rd(k, U)
+        rep["runs"][k] = {"asks_pct": round(asks[k] * 100, 2), "threads": t,
+                          "asks_within": t.get("thread_max_pct", 0) <= SHAPE_MAX_PCT}
     if not want:
         return U, S, Fk, rep
     T = _tangents(Vg)
@@ -166,13 +230,14 @@ def flatten_shaped(V, F, grid, lines: dict, want: dict):
         def rest(Vc, Fc, dv=dv):
             t = T[Fc].mean(1)
             return t / (np.linalg.norm(t, axis=1, keepdims=True) + 1e-12), 1 / (1 + dv) - 1  # (per vertex: on the edges)
-        U, S, Fk = flatten(V, F, rest=rest)
+        U, S, Fk = flatten(V, F, rest=rest, grain=grain, up=up)
         got = run_ratio(Vg, U.reshape(nr, nc, 2), lines)
         hist.append({k: round(got[k] * 100, 2) for k in want})
         if all(abs(got[k] - want[k]) < CAL_TOL for k in want):
             break
         a = {k: a[k] + (want[k] - got[k]) for k in a}
     for k in lines:
-        rep["runs"][k].update({"declared_pct": round(want.get(k, 0.0) * 100, 2), "flat_pct": round(got[k] * 100, 2)})
+        rep["runs"][k].update({"declared_pct": round(want.get(k, 0.0) * 100, 2), "flat_pct": round(got[k] * 100, 2),
+                                "threads_shaped": rd(k, U)})
     rep["passes"] = hist
     return U, S, Fk, rep

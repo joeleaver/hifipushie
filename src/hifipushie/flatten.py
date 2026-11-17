@@ -124,11 +124,13 @@ def rest_edges(p, t2, ev, F):
     return q
 
 
-def flatten(V, F, rest=None):
+def flatten(V, F, rest=None, grain=90.0, up=None):
     """LSCM then ARAP; (U grain up (NaN at vertices no face uses), singular values s1 >= s2, the faces kept: the
     degenerate ones of a strip mesh dropped). rest(V, F) -> (t, e) per face: ARAP against a rest shape stretched by
     (1 + e) along t (rest_shape), the singular values then against it; e per VERTEX (len V): along each edge
-    (rest_edges)."""
+    (rest_edges). grain (deg; None: isotropic ARAP, cloth with no threads): WOVEN, flattened by its threads
+    (flatten_threads.py: warp at grain deg in the flat, the flat's y the piece's up: `up` per vertex, else z; the
+    flat is turned to the grain first, never after)."""
     F = F[areas(V, F) > 1e-10]
     used = np.unique(F)
     remap = -np.ones(len(V), int)
@@ -146,9 +148,15 @@ def flatten(V, F, rest=None):
             p = rest_edges(p, t2 / (np.linalg.norm(t2, axis=1, keepdims=True) + 1e-12), e, Fc)
         else:
             p = rest_shape(Vc, Fc, p, t, e)
-    U, S = arap(Vc, Fc, U, p)
     Uf = np.full((len(V), 2), np.nan)
-    Uf[used] = grain_up(U, Vc)
+    if grain is None:
+        U, S = arap(Vc, Fc, U, p)
+        Uf[used] = grain_up(U, Vc)
+        return Uf, S, F
+    from .flatten_threads import jac, orient, thread_arap
+    U = thread_arap(Vc, Fc, orient(U, Vc, Fc, p, None if up is None else np.asarray(up, float)[used]), p, grain)
+    S = np.linalg.svd(jac(U, Fc, p), compute_uv=False)
+    Uf[used] = U - U.min(0)
     return Uf, S, F
 
 

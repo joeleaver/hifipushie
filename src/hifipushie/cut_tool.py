@@ -27,7 +27,7 @@ def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict, folds=()) 
             names[f"{e}.a"], names[f"{e}.m"], names[f"{e}.b"] = a, m, b
             arcs[p][e] = f"{e}.a>{e}.m>{e}.b" if m not in (a, b) else f"{e}.a>{e}.b"
             fwd3[p][e] = (f["V"][f["lp"][a]], f["V"][f["lp"][b]])
-        out[p] = {"name": p, "P": P, "names": names, "marks": {}, "lines": {}, "grain": 90.0, "wrap": {"to": "torso"},
+        out[p] = {"name": p, "P": P, "names": names, "marks": {}, "lines": {}, "grain": float(f.get("grain", 90.0)), "wrap": {"to": "torso"},
                   "cut": 1, "P3": f["V"][f["lp"]]}
 
     seams, dseams, notes, done = [], [], {}, set()
@@ -201,7 +201,9 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     ce = CapEase(rec["steps"]["4"].get("output") or {})
     for p, nm in enumerate(names):
         try:
-            f = flatten_piece(V, F, lab, p, nm, ce)
+            gd = declarations.get("grain") or {}
+            f = flatten_piece(V, F, lab, p, nm, ce, float(gd.get(nm, gd.get(nm[:-2] + ".L" if nm.endswith(".R") else nm, 90.0))))
+            f["grain"] = f["rep"]["grain_deg"]
         except CutRefused as e:
             why.append(str(e))
             continue
