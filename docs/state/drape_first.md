@@ -16,20 +16,10 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   Writes cut/flat.npz, pattern.json, cut.json, flat_sheet.png, cut_3d.png.
 - Record: steps 5 / 6 name garment_mark / garment_cut. chain_garment's from_chain writes only 8; a build that stops is
   step 7's failure, back to step 6 (R3b-2).
-
-## R3d-R3e (C495-C496), details in docs/notes/codified.md
-- Step 6 takes tapes / places / collar lines from the toile (R3d); cap ease as a crown flattened at its rest length,
-  girth rings by body part, button marks on both fronts (R3e). Proof /mnt/data/hifipushie/r3e. Still FAIL there:
-  darts_drafted, style_lengths, girths (hips / seat rings miss back.R; chest -44 at the underarm).
-
-## R3f (C497): the collar draped on the toile (toile_collar.py), cut and unfolded at step 6 (cut_collar.py); proof r3f.
-## R3f-2 / R3f-3 (C498, C500): collar seams name the same runs; one roll line (toile_collar doc); proofs r3f2, r3f3.
-## R3f-4 (C501): front neckline gorge point -> HPS (toile_style.front_neck); fall lands on collar_top past its corner.
-  Proof /mnt/data/hifipushie/r3f4: collar seams front -5.5 (flatten 9 % short), back +2 / +1; built CLOSED: V narrow.
-## R3f-5 (C502): the toile built in step 2's WEAR STATE (ties: none done up = open; missing = refused). OPEN: no lap, each
-  front's edge where traced (cutaway below the break), roll as traced; girth rows read t.closed_mesh. Proof r3f5.
-## R3f-6 (C503): layers (cut_layers: "60%" anchors, host split at the line's ends, multi-run lines refused); the open
-  toile cut at its traced edges left each front ~62-97 mm + lap short (chest 952 vs 968 + 140): fixed by R3f-7.
+## R3d-R3e (C495-C496): step 6 tapes / places / collar lines from the toile; cap ease as a crowned rest length;
+  girth rings by body part; button marks. Details in codified.md.
+## R3f..R3f-6 (C497-C503): collar draped on the toile and unfolded at the cut; one roll line; front neckline gorge ->
+  HPS; toile built in step 2's wear state (open from the ties); layer lines; details in codified.md C497-C503.
 ## R3f-7 (2026-11-17, C504): the pattern is cut from the CLOSED toile
 - toile_style.cut builds the CLOSED state always (t.meshes, toile.npz's plain parts: steps 5 / 6 read it); worn open, the
   OPEN state too (t.worn, its numbers t.info["worn"], toile.npz open/<part>, open/roll_line, open/collar_grid): the look,
