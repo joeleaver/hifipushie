@@ -156,7 +156,9 @@ the toile turns or hides are made here (cut_made.py, in this order): `flaps` {to
 turned flap (a lapel) across its roll edge onto its piece (cut_flap.py); `layers` {piece: {host, line: [[edge, mm,
 toward], ...], keeps, edges, inner}} traces a facing / canvas off its host's flat (cut_layers.py); `collar` {pieces,
 neck, outer, end, fold, fold_on} cuts the collar step 4 draped on the toile and unfolds its fall about the roll line
-(cut_collar.py; its heights are garment_toile's collar part). The flat pattern (draft_pattern's block form, each piece with
+(cut_collar.py; its heights are garment_toile's collar part); `shaped` {"piece:run": pct} (+ stretch, - shrink; runs
+neck / a neck edge, roll, outer) flattens it as the tailor's steam-shaped cloth (cut_shape.py): beyond +-8 % (what wool
+takes) refused; the row gives what each run asks and the collar's cone points (step 4's fault, not the ease). The flat pattern (draft_pattern's block form, each piece with
 its 3D outline) gets today's flat gate. Writes `<look dir>/cut/` flat.npz, pattern.json, cut.json, flat_sheet.png,
 cut_3d.png; step 6.
 

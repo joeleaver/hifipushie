@@ -27,6 +27,8 @@ MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked
          its host's flat (cut_layers.py); its seams are the host's runs.
   collar {"pieces", "neck", "outer", "end", "fold", "fold_on"}: the collar draped on the toile at step 4 (its part)
          cut and flattened, the fall unfolded about the roll line (cut_collar.py).
+  shaped {"piece:run": pct}: the tailor's steam shaping of a collar's runs (+ stretch, - shrink), the flat cut to the
+         shaped target, beyond cut_shape.SHAPE_MAX_PCT refused (cut_shape.py).
 Writes <look dir>/cut/flat.npz (per piece U, F, V, strain), pattern.json (the block), cut.json, cut_3d.png (the pieces
 where they lie, beside the reference); record step 6."""
 from __future__ import annotations

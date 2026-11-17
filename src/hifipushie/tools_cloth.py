@@ -387,13 +387,12 @@ def garment_mark(name: str, garment: str, declarations: dict | str):
 
 @mcp.tool(structured_output=False)
 def garment_cut(name: str, garment: str, declarations: dict | str | None = None):
-    """STEP 6: CUT AND FLATTEN the marked toile: each piece cut on step 5's marks, flattened (strain per piece and
-    where: a dart or ease wanted), each seam trued, the flat pattern written in draft_pattern's form and the flat gate
-    run on it. declarations: free {piece: {edge: top | bottom | side}} (the toile's
-    own edges), ease {"piece:edge": [lo, hi]} (kept as cut), folds {piece: {fold: edge}} (a planned hem), flaps (a lapel
-    unfolded onto its piece), layers (facings / canvases traced off a host), collar (step 4's draped collar cut, its
-    fall unfolded about the roll); ".L" serves ".R". Tapes and places are read off the toile. Returns the flat pieces + every
-    row; step 6. guide(topic="garment_cut")."""
+    """STEP 6: CUT AND FLATTEN the marked toile: pieces cut on step 5's marks, flattened (strain: a dart or ease
+    wanted), seams trued, the flat pattern written in draft_pattern's form and gated. declarations: free {piece: {edge:
+    top | bottom | side}}, ease {"piece:edge": [lo, hi]}, folds {piece: {fold: edge}}, flaps (a lapel unfolded onto its
+    piece), layers (facings / canvases off a host), collar (step 4's collar cut, its fall unfolded about the roll),
+    shaped {"piece:run": +-pct} (steam shaping, max 8 %); ".L" serves ".R". Returns the flat pieces + every row; step 6.
+    guide(topic="garment_cut")."""
     from . import cut_tool
     sheet, txt = cut_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt

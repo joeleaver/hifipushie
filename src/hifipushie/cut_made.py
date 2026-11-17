@@ -114,7 +114,9 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, log=lambda *_
                   for k, r in sh.items() if not r["asks_within"]]
         if (rep["strain_mean_pct"] or 0) > RESIDUAL_PCT:
             fails.append(f"collar: strain {rep['strain_mean_pct']} % mean left against the shaped target (> {RESIDUAL_PCT:g}): "
-                         "the declared shaping doesn't explain the toile's collar (cut_shape: what each run asks)")
+                         "the declared shaping doesn't explain the toile's collar; curved in itself at [row, column, deg] "
+                         f"{rep['shaped']['cone_points']} (roll row {rep['shaped'].get('roll_row')}): a cone point no shrink "
+                         "or stretch along a run removes, back to step 4")
         t4 = rep["toile"]
         rows.append({"id": "collar", "status": "FAIL" if fails else "PASS", "back_to": "6",
                      "value": (f"{', '.join(c_pcs)}: cut from the toile's collar (stand {t4['stand_mm']} / fall "

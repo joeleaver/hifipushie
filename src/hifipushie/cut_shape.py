@@ -91,6 +91,32 @@ def run_ratio(Vg, Ug, lines: dict) -> dict:
     return out
 
 
+def cone_points(V, F, grid, top=3) -> list:
+    """Where the grid piece is curved in itself (each interior vertex's angle defect, 360 deg less the angles round
+    it): no shaping ALONG a run removes a point defect (a cone point: a corner in the roll the fall can't follow).
+    The `top` largest as [row, column, deg] (+ dome: cloth missing; - saddle: cloth over)."""
+    nr, nc, _ = grid
+    ang = np.zeros(len(V))
+    for k in range(3):
+        a, b, c = F[:, k], F[:, (k + 1) % 3], F[:, (k + 2) % 3]
+        u, v = V[b] - V[a], V[c] - V[a]
+        cs = (u * v).sum(1) / (np.linalg.norm(u, axis=1) * np.linalg.norm(v, axis=1) + 1e-12)
+        np.add.at(ang, a, np.arccos(np.clip(cs, -1, 1)))
+    K = np.degrees(2 * np.pi - ang).reshape(nr, nc)
+    K[[0, -1]], K[:, [0, -1]] = 0, 0
+    Ks = K.copy()  # (summed over 5 columns: a cone point spreads over a few)
+    for j in range(nc):
+        Ks[:, j] = K[:, max(j - 2, 0): j + 3].sum(1)
+    out = []
+    for i in np.argsort(-np.abs(Ks).ravel()):
+        r, c = divmod(int(i), nc)
+        if all(abs(r - a) > 1 or abs(c - b) > 4 for a, b, _ in out):
+            out.append([r, c, round(float(Ks[r, c]), 1)])
+        if len(out) == top:
+            break
+    return out
+
+
 def flatten_shaped(V, F, grid, lines: dict, want: dict):
     """(U, S, F kept, report): the grid piece flattened against its shaped rest (module doc). grid (nr, nc, ks);
     lines {run: (row, [columns])} (row 0: the neck runs, ks: "roll", nr - 1: "outer"); want {run: d}."""
@@ -99,7 +125,7 @@ def flatten_shaped(V, F, grid, lines: dict, want: dict):
     Vg = V.reshape(nr, nc, 3)
     U, S, Fk = flatten(V, F)
     asks = run_ratio(Vg, U.reshape(nr, nc, 2), lines)
-    rep = {"limit_pct": SHAPE_MAX_PCT,
+    rep = {"limit_pct": SHAPE_MAX_PCT, "cone_points": cone_points(V, F, grid), "roll_row": grid[2],
            "runs": {k: {"asks_pct": round(asks[k] * 100, 2), "asks_within": abs(asks[k]) * 100 <= SHAPE_MAX_PCT}
                     for k in lines}}
     if not want:

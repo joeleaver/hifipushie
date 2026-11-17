@@ -8,7 +8,9 @@ round the neck like a band. Nothing is drafted or fitted here.
 NOTHING STRETCHED (R3f-7, C504): the collar is flattened as draped (R3f-6's held_flatten stretched the stand 31-40 %
 along its neck edge to match the fronts: a tuned length, deleted). Each neck run's flat length is reported beside the
 garment edge's, flat and in 3D (seams: collar_mm / garment_mm, collar_3d_mm / garment_3d_mm): a mismatch is fixed where
-the toile's collar and the garment's neck edge disagree in 3D (step 4), never in the flat.
+the toile's collar and the garment's neck edge disagree in 3D (step 4), never in the flat. SHAPED (R3f-11, C510): the tailor's steam shaping is DECLARED (garment_cut's `shaped`, cut_shape.py): the
+flat cut to the shaped target, a neck seam then held to its garment edge within its declared ease; the row reports what
+each run asks and the collar's cone points (curvature no shaping along a run removes: step 4's fault).
 
 THE PIECES: each declared collar piece (an undercollar, a top collar) gets the flat; its edges are named from the toile:
 the neck row's runs by the garment neck edge each lies on in 3D (the nearest of the declared neck edges and their
