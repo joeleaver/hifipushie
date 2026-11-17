@@ -28,26 +28,28 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   to the trace, one piece with the lapel, stand ~6 % seen); COST strain 13.6 % (R3f-9 6.0). Details: codified.md C509.
 ## R3f-11 (C510): the collar flattened as SHAPED cloth (cut_shape.py, garment_cut `shaped`, +-8 % per run, refused
   beyond). Proof /mnt/data/hifipushie/r3f11: best shaping within 8 %: strain 13.3 %; cone points +125 / -57 deg.
-## R3f-12 (2026-11-17, C511): WHERE THE CONE POINTS COME FROM (proof /mnt/data/hifipushie/r3f12, diag/*.py)
-- Not the construction: respacing the roll / outer rows evenly (diag/proto1.py) leaves the cone at 130-136 deg; landing
-  the fall's columns along ONE outer curve chosen to even the defect (proto2.py): 110 deg, strain 11.4 %.
-- THE CREASE RULE (cut_shape.crease, diag/turn.py): at a roll vertex the angle defect = the roll's turning seen in
-  the stand + seen in the fall. A fold lies in flat cloth only where they cancel (the fall flares). R3f-10's roll turns
-  +78 deg per half IN the stand's surface (28 + 27 + 15 + 9 at the pinned top: up beside the neck to the trace, then
-  down 66 mm to R0 in 84 mm), and the fall, folded down over the stand, turns +7 WITH it: defect = 2 x the turn. The
-  pin only concentrates it; any roll from horizontal at CB to the lapel's roll at R0 turns that much in the stand.
-- What the cloth would need (proto3.py, outer edge free in 3D): the fall's outer edge moved 38-80 mm at the side
-  neck and UP (z 1528 -> 1577-1581): the fall standing up beside the neck like a band (R3f-3..7's rejected look);
-  strain then 4.5-5.1 %. Shaping within 8 % turns a fall's edge only ~17 deg per half (CONE_MAX_DEG 15).
-- Tools now: step 4 reports t.info["collar_surface"] (cone_points, stand_turn_deg, fall_turn_deg, flat_cut ok / cone
-  points; CONE_MAX_DEG 15). The cut's neck girth: draft_girths CROSSED + twins: the collar alone, open (was 1870 mm
-  summed over fronts / backs / sides whose neck tape runs down the lapel). Proof: proof.sh (toile1 / mark1 / cut1.log): toile, mark PASS;
-  collar_surface cones +125 / -57, stand_turn 77.9, fall_turn 7.3; neck 380 mm [collar] OPEN; collar strain 13.63 %, flat
-  386 x 97, seams front 47.9 / 51.3, back 106.8 / 93.3 (the toile unchanged: the R3f-11 numbers).
-- Three tries didn't move it (proto1-3): no step-4 rebuild landed; R3f-10's toile kept (its look is right).
+## R3f-12 (C511): the cone points come from the roll's turn (crease rule, cut_shape.crease): R3f-10's roll turns +78 deg
+  per half in the stand, the fall +7 with it: defect = 2 x the turn. Step 4 reports t.info["collar_surface"].
+## R3g (2026-11-17, C512): FLATTEN BY THE THREADS (proof /mnt/data/hifipushie/r3g: cut_g.log, diag_collar.py)
+- flatten_threads.py: ARAP's local step keeps warp and weft unit and the threads' angle within the jam (35 deg,
+  pattern_form.SHEAR_LOCK_DEG), a weak pull to square (SHEAR_WEAK 0.02: free shear is a gauge and wandered). Every cut
+  piece: garment_cut `grain` {piece: deg} (default 90); the collar's own `grain` (default 45 to its CB: the bias).
+  strain_mean_pct = THREAD strain; iso_strain_mean_pct the old reading; rep.threads: warp / weft / shear split.
+- cut_shape: runs / cone points read warp, weft, shear; the 8 % (an assumption, no source found) is on THREAD stretch;
+  `curvature`: the piece's total angle defect beside what one thread quad carries (Hazzidakis: 4 x jam = 140 deg).
+- Body pieces (straight grain): thread strain front 0.24 (iso was 1.15), side 0.06 (0.35), back 0.31-0.38 (2.0),
+  sleeve_top 2.0 (3.3), sleeve_under 0.8 (1.0): shear takes most of what read as strain (caveat: darts read from it).
+- THE COLLAR ON THE BIAS DOES NOT FLATTEN: thread strain 5.81 % mean (iso 13.6 before), shear 22.9 deg mean, 24 % of
+  area past the jam; straight grain 3.6 % (bias no better). Curvature total -300 deg (stand -202, roll +133, fall
+  -231; per half -137 vs 140 one thread quad carries); side-neck cones +125 read threads 20-42 % max, shear 40-43.
+  Neck seams on the bias: 3D agree (50.3 / 51.5, 99.6 / 99.7) but the runs' threads 15-27 % max: front flat 43.4 /
+  garment 51.3, back 111.1 / 95.4. Flat collar lumpy, red all over: NOT a tailored undercollar shape.
+- New FAILs vs R3f-12: seams (sleeve_under cap vs side armhole -2.9 %: a bias edge's flat length is a shear state)
+  and shape_fall_landing (outer 541 / 510: same). Flaps / layers FAILs as before.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
-  FreeSewing draft dir, not pattern.json; side / sleeve_under tapes; biceps / chest rings still take torso pieces.
-NEXT: JOE DECIDES the collar's trade (the crease rule): (a) the roll lower at the side neck (R3f-9: 6 %, collar low), (b)
-the fall flares out over the shoulder by the roll's turn (outer edge longer: wider collar at the side neck), (c) a soft
-roll: the fall stands off the stand where the roll turns, or (d) more shaping than 8 % (a bias undercollar, two pieces
-with a CB seam: doesn't change the total turn). Then step 4 builds the fall by the crease rule, gated on collar_surface.
+  FreeSewing draft dir, not pattern.json; side / sleeve_under tapes; biceps / chest rings still take torso pieces;
+  seam truing / shape rows compare flat lengths of bias edges (shear can take them up): not thread-aware yet.
+NEXT: JOE DECIDES: the bias alone doesn't make R3f-10's collar one piece (its curvature, not its grain). Options: (a) a
+seam along the roll (stand cut separately: the roll's +133 deg goes in the seam; stand and fall each within what
+shear carries: untested), (b) the crease rule's trades (R3f-12: roll lower / fall flares / soft roll), (c) more
+shaping. Then step 4 builds it, gated on collar_surface + curvature.

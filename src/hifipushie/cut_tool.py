@@ -140,7 +140,12 @@ def look(pcs, path, S_=500):
             dr.polygon([xy(U[i]) for i in tri], fill=col)
         P = U[f["lp"]]
         dr.line([xy(q) for q in np.r_[P, P[:1]]], fill=(0, 0, 0), width=2)
-        dr.text((6, 4), f"{p}: strain mean {f['rep']['strain_mean_pct']} % (red = 6 %)", fill=(0, 0, 0))
+        g = np.radians(float(f.get("grain", 90.0)))  # the grain: warp (long, blue) and weft (short) through the middle
+        c0, ew = np.nanmean(P, 0), np.array([np.cos(g), np.sin(g)])
+        for d, ln in ((ew, 0.06), (np.array([-ew[1], ew[0]]), 0.025)):
+            dr.line([xy(c0 - d * ln), xy(c0 + d * ln)], fill=(30, 60, 200), width=3)
+        dr.text((6, 4), f"{p}: thread strain mean {f['rep']['strain_mean_pct']} % (red = 6 %), grain "
+                        f"{f.get('grain', 90.0):g} deg", fill=(0, 0, 0))
         tiles.append(im)
     hh = max(t.height for t in tiles)
     out = Image.new("RGB", (sum(t.width + 10 for t in tiles), hh), (255, 255, 255))
