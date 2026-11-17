@@ -2,8 +2,15 @@
 the TURNED FLAPS (lapels) about their roll lines, all from step 2's traces mapped onto the body (structure_outline
 placement) and the declaration; no garment's name.
 
-OPENING (declared opening: {lap_mm, edge, buttons}): the garment is built in its CLOSED state: the over front (the
-body's left, +X) runs past centre front by the lap; the under front is its mirror, LAP_UNDER_M inside it. Below the
+OPENING (declared opening: {closure, edge, lap_mm, buttons}): built in the WEAR STATE the reference shows (R3f-5, C502):
+step 2's ties for the declared closure (t.inp.wear: none done up = "open", every one = "closed"; a closure with no wear
+state is refused by name, never defaulted). OPEN: the fronts do not lap: each front's edge runs where step 2's
+front-edge trace puts it (the two edges apart, what is under shows between them): below the break the traced edge past
+its corner, from the break up the roll trace as traced (nothing moved: the picture shows the open place), the lapel
+turned about it. The field (its ease calibrated round the body, toile.py) is the same in both states: the open toile is
+the closed one opened about the fronts, so its girth rows (the hull of the section) read the closed garment's girths.
+CLOSED: the over front (the body's left, +X) runs past centre front by the lap; the under front is its mirror,
+LAP_UNDER_M inside it. Below the
 lowest button (step 2 row `buttons`) the edge follows the traced front edge below its corner (a cutaway); above the
 break it is the roll line (with a lapel) or the lap line up to the neck; with a lapel, above the roll's top (the gorge
 point) the FRONT NECKLINE (front_neck, R3f-4): straight in the front view up and in to the side neck point.
@@ -22,6 +29,21 @@ LAP_UNDER_M = 0.002   # the under front's lap lies this far inside the over fron
 LAPEL_LIFT_M = 0.004  # the turned lapel lies this far off the chest
 BACK_NECK_DEPTH_M = 0.015  # a draft's back neck: centre back this far below the side neck point (block drafting)
 MIR = np.array([-1.0, 1, 1])
+WEARS = ("open", "closed")
+
+
+class WearRefused(ValueError):
+    """An opening whose wear state the record doesn't give (named)."""
+
+
+def wear(t) -> str:
+    """The opening's wear state ("open" | "closed") from t.inp.wear (step 2's ties, toile_tool.wear_of): refused by name."""
+    c = t.d["opening"].get("closure")
+    w = (getattr(t.inp, "wear", None) or {}).get(c)
+    if w not in WEARS:
+        raise WearRefused(f"opening.closure {c!r}: no wear state ({w!r}): step 2's ties must give it (fastened [] = open, "
+                          "every fastening = closed); garment_plan step style")
+    return w
 
 
 def to_corner(tr: dict) -> np.ndarray:
@@ -119,16 +141,20 @@ def closure(t):
     if "opening" not in t.parts:
         return None
     op, tr = t.d["opening"], t.inp.traces
-    lap = float(op["lap_mm"]) / 1000
+    worn = wear(t)
+    lap = float(op.get("lap_mm") or 0) / 1000 if worn == "closed" else 0.0
     edge = tr[op["edge"]]
     bt = t.inp.marks.get(op.get("buttons")) if op.get("buttons") else None
-    t.info["opening"] = {"lap_mm": lap * 1000, "edge": op["edge"]}
+    t.info["opening"] = {"wear": worn, "closure": op.get("closure"), "lap_mm": lap * 1000, "edge": op["edge"]}
     if "lapel" in t.parts:
         lp = t.d["lapel"]
         ROLL = to_corner(tr[lp["roll"]])
         ROLL = ROLL[np.argsort(-ROLL[:, 1])]  # gorge (top) -> break
         z_top, z_brk, x_brk = ROLL[0, 1], ROLL[-1, 1], ROLL[-1, 0]
-        shift = lambda z: (-lap - x_brk) * np.clip((z_top - z) / (z_top - z_brk), 0, 1)
+        if worn == "open":  # (the picture's place: nothing moved)
+            shift = lambda z: 0.0 * np.asarray(z, float)
+        else:
+            shift = lambda z: (-lap - x_brk) * np.clip((z_top - z) / (z_top - z_brk), 0, 1)
         RS = ROLL[np.argsort(ROLL[:, 1])]
         x_roll = lambda z: np.interp(z, RS[:, 1], RS[:, 0]) + shift(z)
         LE = to_corner(edge)
@@ -140,6 +166,17 @@ def closure(t):
         x_roll = None
         LOW = np.asarray(edge["xz"], float)
     LOW = LOW[np.argsort(LOW[:, 1])]
+    if worn == "open":  # (each front's edge where the trace puts it, from the hem up to the break)
+        top = min(z_brk, float(LOW[-1, 1]))
+        t.info["opening"].update(break_z=None if not np.isfinite(z_brk) else round(float(z_brk), 3),
+                                 buttons_z=sorted(round(float(z), 4) for z in bt[:, 1]) if bt is not None else [],
+                                 edge_x_mm={f"{z:.3f}": round(float(np.interp(z, LOW[:, 1], LOW[:, 0])) * 1000, 1)
+                                            for z in np.linspace(float(LOW[0, 1]), top, 4)})
+        x_lo = lambda z: np.interp(z, LOW[:, 1], LOW[:, 0])
+        if x_roll is None:
+            return x_lo
+        x_hi = front_neck(t, x_roll)
+        return lambda z: np.where(z >= z_brk, x_hi(z), x_lo(z))
     z_btm = float(np.min(bt[:, 1])) if bt is not None and len(bt) else min(z_brk, float(LOW[:, 1].max()))
     x0 = np.interp(z_btm, LOW[:, 1], LOW[:, 0])
     dx_cut = lambda z: np.where(z < z_btm, np.interp(z, LOW[:, 1], LOW[:, 0]) - x0, 0.0)
@@ -171,7 +208,7 @@ def front_neck(t, x_roll):
 
 def halves(t, V, F, x_edge):
     """The over (left) half to its edge in front and to centre back behind; the under (right) half its mirror, its lap
-    LAP_UNDER_M inside; welded at centre back: one surface whose front overlaps."""
+    LAP_UNDER_M inside; welded at centre back: one surface whose front overlaps (closed) or parts (open: no lap)."""
     phi = lambda P: np.where(P[:, 1] < t.yc, P[:, 0] - x_edge(P[:, 2]), P[:, 0])
     Vh, Fh = largest(*clip(V, F, phi(V)))
     Vr, Fr = Vh * MIR, Fh[:, ::-1].copy()
@@ -221,6 +258,7 @@ def cut(t, V, F) -> dict:
     x_edge = closure(t)
     out = {"toile": halves(t, V, F, x_edge) if x_edge is not None else full}
     t.x_edge = x_edge
+    t.closed_mesh = full if (t.info.get("opening") or {}).get("wear") == "open" else None  # (the girth rows read it)
     if "lapel" in t.parts:
         Vl, Fl = lapel(t, *full)
         out["lapel.L"] = (Vl, Fl)
