@@ -26,7 +26,10 @@ import numpy as np
 
 from .toile_style import LAPEL_LIFT_M, MIR, to_corner
 
-H_MIN = 0.010    # m: the stand at the collar end (the roll meets the end ~1 cm above the gorge corner)
+H_MIN = 0.002    # m: the "stand" past the gorge point (none: the collar end lies on the lapel; kept off zero for the flat)
+SIDE_STAND = 2 / 3  # the stand at the neck seam's end (the side neck point) / at CB: the tailor's draft runs the roll line
+#                    through 2/3 of the stand beyond the side neck point (classic lounge-jacket collar draft)
+SPAN_FROM = 0.5  # of the back neck from CB: the roll leaves the neck here for the lapel's roll line carried up
 GAP = 0.003      # m: the fall lies this far outside the stand / the toile (the cloth's thickness)
 NC = 36          # columns per half
 KS, KF = 4, 8    # stand rows, fall rows
@@ -113,23 +116,53 @@ def _walk(t, p, T, sign, length, off, aim=None, b=0.0):
     return np.asarray(out)
 
 
-def fair_rows(t, X, ks, lift):
+def fair_rows(t, X, ks, lift, span=None):
     """Each row but the neck edge faired along the columns (its ends kept), then back on its surface: the stand rows on
-    the toile (+ lift), the outer edge GAP outside it (where the fall lands), the fall's span between pushed out only
+    the toile (+ lift) except in the span columns (there the stand stands off the body, leaning out to the roll line:
+    pushed out only), the outer edge GAP outside it (where the fall lands), the fall's span between pushed out only
     where it would come nearer than GAP."""
+    span = np.zeros(X.shape[1], bool) if span is None else span
     nr = X.shape[0]
     for r in range(1, nr):
         R = X[r].copy()
         for _ in range(ROW_SMOOTH):
             R[1:-1] = 0.25 * R[:-2] + 0.5 * R[1:-1] + 0.25 * R[2:]
-        if r <= ks or r == nr - 1:
+        if r == nr - 1 or (r <= ks and not span.any()):
             X[r] = _surface(t, R, lift + (GAP if r > ks else 0.0))  # (the stand lies on the toile; the outer edge lands)
+        elif r <= ks:
+            X[r] = R
+            X[r, ~span] = _surface(t, R[~span], lift[~span] if np.ndim(lift) else lift)
+            inside = span & (t.FD(R) < 0.0)
+            if inside.any():
+                X[r, inside] = _surface(t, R[inside], lift[inside] if np.ndim(lift) else lift)
         else:  # (the fall spans: only pushed out where it would come nearer the toile than GAP)
             inside = t.FD(R) < lift + GAP
             X[r] = R
             if inside.any():
                 X[r, inside] = _surface(t, R[inside], (lift + GAP)[inside] if np.ndim(lift) else lift + GAP)
     return X
+
+
+def _hermite(P0, T0, P1, T1, w):
+    """Points of the cubic from P0 (tangent T0) to P1 (tangent T1) at w (0..1); tangents scaled by the chord."""
+    L = float(np.linalg.norm(P1 - P0))
+    w = np.asarray(w, float)[:, None]
+    h00, h10, h01, h11 = 2 * w**3 - 3 * w**2 + 1, w**3 - 2 * w**2 + w, -2 * w**3 + 3 * w**2, w**3 - w**2
+    return h00 * P0 + h10 * L * T0 + h01 * P1 + h11 * L * T1
+
+
+def _landing(down, R, fl, h):
+    """Where along the walk down from the neck edge the fall lands: at least fl - h along the toile (the fall covers
+    the stand, then lies on), and as far as a stiff span of fl from the roll R reaches (where the toile falls away from
+    the roll, as over the shoulder at the side neck, the span lies out further than a walk that hugs the neck's side)."""
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(down, axis=0), axis=1))]
+    far = np.nonzero(np.linalg.norm(down - R, axis=1) >= fl)[0]
+    a = float(s[far[0]]) if len(far) else float(s[-1])
+    return max(fl - h, a, GAP)
+
+
+def _unit(v):
+    return v / (np.linalg.norm(v) + 1e-12)
 
 
 def drape(t, toile):
@@ -142,46 +175,92 @@ def drape(t, toile):
     tr = t.inp.traces.get(d["notch"])
     if tr is None or not (tr.get("corners") or []):
         raise CollarRefused(f"collar.notch: {d['notch']!r} must be a step-2 trace with a corner (the collar point)")
+    rl = getattr(t, "roll_line", None)
+    if rl is None or len(rl) < 4:
+        raise CollarRefused("collar: needs the lapel's roll line (garment_toile part \"lapel\"): the collar's roll line "
+                            "continues it")
+    rl = np.asarray(rl, float)
     sh = t.lapel_geom["shift"]
     NT = to_corner(tr)
     NT = NT + np.c_[sh(NT[:, 1]), np.zeros(len(NT))]
     Q, i_hps = neck_half(t, toile)
     G2, P2 = NT[0], NT[-1]
-    E0 = Q[-1]
+    E0, R0 = Q[-1], rl[-1]  # (the neck seam's end; the lapel's roll line's top: the gorge point)
     m = 40
     ramp = np.linspace(0, 1, m)
-    G3 = t.front_hit([G2[0]], [G2[1]])[0]  # (the gorge corner seen from the front; the gorge itself in 3D: a ray from
-    gorge = t.onto(E0 + np.multiply.outer(ramp, G3 - E0))  # the front over the shoulder's slope would hit its top)
-    gorge = gorge + (LAPEL_LIFT_M * ramp)[:, None] * t.grad(gorge)
-    gorge[0] = E0
+    front = t.onto(E0 + np.multiply.outer(ramp, R0 - E0))  # (the front's neck: the toile's edge down to the gorge point)
+    G3 = t.front_hit([G2[0]], [G2[1]])[0]
+    gorge = t.onto(R0 + np.multiply.outer(ramp, G3 - R0))  # (the lapel's top, the gorge point -> the gorge corner)
+    gorge = gorge + (LAPEL_LIFT_M * np.minimum(1, 4 * ramp))[:, None] * t.grad(gorge)
     Pc = t.front_hit([P2[0]], [P2[1]])[0]
     Pc = Pc + (LAPEL_LIFT_M + GAP) * t.grad(Pc[None])[0]
-    s_neck = float(np.linalg.norm(np.diff(Q, axis=0), axis=1).sum())
-    s_hps = float(np.linalg.norm(np.diff(Q[: i_hps + 1], axis=0), axis=1).sum())
-    B, s = _resample(np.r_[Q, gorge[1:]], NC)
+    o_len = lambda Z: float(np.linalg.norm(np.diff(Z, axis=0), axis=1).sum())
+    s_neck, s_front = o_len(Q), o_len(front)
+    s_hps = o_len(Q[: i_hps + 1])
+    s_rl = s_neck + s_front
+    B, s = _resample(np.r_[Q, front[1:], gorge[1:]], NC)
     s_end = float(s[-1])
-    lift = np.clip((s - s_neck) / max(s_end - s_neck, 1e-9), 0, 1) * LAPEL_LIFT_M  # (on the lapel past the seam)
+    lift = np.clip((s - s_rl) / max(0.25 * (s_end - s_rl), 1e-9), 0, 1) * LAPEL_LIFT_M  # (on the lapel past the gorge point)
     T = np.gradient(B, axis=0)
     for _ in range(SMOOTH):
         T[1:-1] = 0.25 * T[:-2] + 0.5 * T[1:-1] + 0.25 * T[2:]
     T /= np.linalg.norm(T, axis=1, keepdims=True)
-    tf = np.clip((s - s_hps) / max(s_end - s_hps, 1e-9), 0, 1)
-    h = stand + (H_MIN - stand) * tf
+    h_side = SIDE_STAND * stand
+    u = np.clip(s / max(s_neck, 1e-9), 0, 1)
+    h = np.where(s <= s_neck, h_side + (stand - h_side) * np.cos(0.5 * np.pi * u) ** 2, H_MIN)
+    # THE ONE ROLL LINE: the lapel's roll line carried straight on up past its top (the gorge point) to the side stand's
+    # height; from there round the back, leaving the neck at SPAN_FROM, walked up the neck at h to CB; no stand past the
+    # gorge point (the collar end lies on the lapel)
+    T_r0 = _unit(rl[-1] - rl[-4])  # (up the lapel's roll line at its top)
+    RH = R0 + (E0[2] + h_side - R0[2]) / max(T_r0[2], 1e-3) * T_r0  # (that line carried straight on to the side stand's
+    s_b = SPAN_FROM * s_neck                                         # height above the seam's end)
+    k_b = int(np.searchsorted(s, s_b))
+    up_b = _walk(t, B[k_b], T[k_b], +1, h[k_b], lift[k_b])
+    Pb = _at(up_b, h[k_b])  # (the roll walked up the neck where it starts to leave it)
+    span = s > s[k_b]
+    X = np.zeros((KS + KF + 1, NC, 3))
+    tf = np.clip((s - s_neck) / max(s_end - s_neck, 1e-9), 0, 1)
+    for c in range(NC):
+        if s[c] <= s[k_b] or s[c] > s_rl:
+            up = _walk(t, B[c], T[c], +1, h[c], lift[c])
+            for r in range(KS + 1):
+                X[r, c] = _at(up, h[c] * r / KS)
+            continue
+        if s[c] <= s_neck:  # (round the neck to the side: one curve, leaving the neck for the lapel's roll line)
+            w = (s[c] - s[k_b]) / max(s_neck - s[k_b], 1e-9)
+            Rr = _hermite(Pb, T[k_b], RH, -T_r0, [w])[0]
+        else:               # (in front: the lapel's roll line itself, carried straight up from its top)
+            Rr = RH + (R0 - RH) * (s[c] - s_neck) / max(s_front, 1e-9)
+        if t.FD(Rr[None])[0] < lift[c]:
+            Rr = _surface(t, Rr[None], lift[c])[0]
+        h[c] = float(np.linalg.norm(Rr - B[c]))
+        for r in range(KS + 1):
+            X[r, c] = B[c] + (Rr - B[c]) * r / KS
     end_reach = float(np.linalg.norm(Pc - B[-1]))
     fl = fall + (h[-1] + end_reach - fall) * tf  # (the fall from the roll: at the end it reaches the collar point)
-    bt = np.clip((s - s_neck) / max(s_end - s_neck, 1e-9), 0, 1) ** 2
-    X = np.zeros((KS + KF + 1, NC, 3))
+    bt = np.clip((s - s_rl) / max(s_end - s_rl, 1e-9), 0, 1) ** 2
     for c in range(NC):
-        up = _walk(t, B[c], T[c], +1, h[c], lift[c])
-        for r in range(KS + 1):
-            X[r, c] = _at(up, h[c] * r / KS)
-        down = _walk(t, B[c] + GAP * t.grad(B[c][None])[0], T[c], -1, fl[c], lift[c] + GAP, aim=Pc, b=bt[c])
+        if span[c] and s[c] <= s_rl:  # (the stand leans out to the roll: the fall lands on from the roll's foot, away
+            foot = t.onto(X[KS, c][None])[0]  # from the neck, not back toward it)
+            n = t.grad(foot[None])[0]
+            g0 = foot - B[c]
+            g0 -= (g0 @ n) * n
+            if np.linalg.norm(g0) < 1e-4:
+                g0 = np.cross(n, T[c])
+            down = _walk(t, foot + (lift[c] + GAP) * n, np.cross(_unit(g0), n), -1, 2 * fl[c], lift[c] + GAP, aim=Pc, b=bt[c])
+            L = _at(down, _landing(down, X[KS, c], fl[c], 0.0))
+            L = (1 - bt[c]) * L + bt[c] * Pc
+            R = X[KS, c] + GAP * t.grad(X[KS, c][None])[0]
+            for r in range(KS + 1, KS + KF + 1):
+                X[r, c] = R + (L - R) * (r - KS) / KF
+            continue
+        down = _walk(t, B[c] + GAP * t.grad(B[c][None])[0], T[c], -1, 2 * fl[c], lift[c] + GAP, aim=Pc, b=bt[c])
         R = X[KS, c] + GAP * t.grad(X[KS, c][None])[0]
-        L = _at(down, max(fl[c] - h[c], GAP))  # (the fall comes back down over the stand, then lies OUT on the toile
+        L = _at(down, _landing(down, R, fl[c], h[c]))  # (the fall comes back over the stand, then lies OUT on the toile
         L = (1 - bt[c]) * L + bt[c] * Pc       # for the rest of its width: over the shoulders, its outer edge long)
         for r in range(KS + 1, KS + KF + 1):
             X[r, c] = R + (L - R) * (r - KS) / KF  # (a span from the roll: the fall bridges the hollow at the neck's foot)
-    X = fair_rows(t, X, KS, lift)
+    X = fair_rows(t, X, KS, lift, span)
     nr = KS + KF + 1
     XR = X[:, ::-1] * MIR
     Xf = np.concatenate([XR[:, :-1], X], axis=1)  # (columns: the right end -> CB -> the left end)
@@ -194,11 +273,16 @@ def drape(t, toile):
     V = Xf.reshape(-1, 3)
     t.collar_grid = (nr, nc, KS)
     outer = X[-1]
+    k_rl = max(1, int(np.searchsorted(s, s_rl)) - 1)
+    k_side = int(np.argmin(np.abs(s - s_neck)))
     sd = t.FD(outer) - GAP - lift
-    o_len = lambda Z: float(np.linalg.norm(np.diff(Z, axis=0), axis=1).sum())
     t.info["collar"] = {
         "stand_mm": stand * 1000, "fall_mm": fall * 1000, "notch": d["notch"],
-        "neck_half_mm": round(s_neck * 1000, 1), "gorge_mm": round((s_end - s_neck) * 1000, 1),
+        "neck_half_mm": round(s_neck * 1000, 1), "front_neck_mm": round(s_front * 1000, 1),
+        "gorge_mm": round((s_end - s_rl) * 1000, 1), "stand_side_mm": round(h_side * 1000, 1),
+        "roll_front_mm": round(o_len(X[KS][s > s_neck]) * 1000, 1),
+        "roll_join_deg": round(float(np.degrees(np.arccos(np.clip(_unit(X[KS, k_rl] - X[KS, k_rl - 1]) @ -T_r0, -1, 1)))), 1),
+        "outer_out_side_mm": round(float(np.hypot(*(outer[k_side, :2] - t.cn)) - np.hypot(*(B[k_side, :2] - t.cn))) * 1000, 1),
         "hps_from_cb_mm": round(s_hps * 1000, 1), "end_fall_mm": round(fl[-1] * 1000, 1),
         "roll_half_mm": round(o_len(X[KS]) * 1000, 1), "outer_half_mm": round(o_len(outer) * 1000, 1),
         "outer_behind_half_mm": round(o_len(outer[s <= s_hps]) * 1000, 1),
