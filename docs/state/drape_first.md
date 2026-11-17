@@ -21,23 +21,8 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 ## R3f..R3f-8 (C497-C507): collar draped on the toile and unfolded at the cut; front neckline gorge -> HPS; toile in
   step 2's wear state, the pattern cut from the CLOSED toile (worn open: t.worn too, for the look); the suit collar's
   stand leans back against the neck, the fall covers it. Details in codified.md C497-C507.
-## R3f-9 (2026-11-17, C508): the lapels and the collar are ONE turned flap (Joe: "all supposed to be one piece")
-- toile_flap.py (step 4): one part "flap": ONE roll line from the break up the lapel's roll to the gorge point R0, then
-  a Hermite curve (tangent-continuous at R0) round the neck from ROLL_FROM (0.5) of the back neck, walked at stand
-  height behind that to CB; the stand inside the roll at the neck only, dying out at R0; outside: the collar's fall
-  round the back and down the traced edge to the collar point, the notch, the lapel's edge to the break. The gorge =
-  one grid column R0 -> gorge corner shared by the collar and lapel blocks. Deleted: toile_collar.drape, gorge_edge,
-  t.lapel_mesh, collar_grid (toile_collar keeps the helpers); a lapel without a collar as before.
-- mark_flap.py (step 5): the gorge mark splits the flap (collar grid + lapel.L/R), row "gorge"; cut_made / cut_collar
-  read the split (mark_flap.load); cut_collar.gorge_seam reports both sides flat.
-- Proof /mnt/data/hifipushie/r3f9 (go.sh; toile1 / mark1 / cut1.log; dev.py, dev_1..6.png, sf_*.png): toile PASS,
-  mark PASS (gorge 46.5 / 46.5 mm). Roll turn over 10 mm chords at the old join 10.3 open / 14.2 closed deg (R3f-8 ~40),
-  max 22 deg 45 mm from CB. Stand seen from the front 47.5 % (was 60). Collar 3D outer 223 > roll 136 mm per half (was
-  402 < 418); flat outer 472 / neck 274 / roll 271, strain 5.96 % (was 9.9). Seams: back 93.2 / 93.3; front 3D 50.3 /
-  51.5, gap 2.2 mm (the 7.1 mm jog gone) but flat 44.2 / 51.3 (12 % short). Gorge flat collar 45.8 / lapel 44.3.
-- LOOK dev_5.png: one turned piece in front (one cloth, no step at the gorge), BUT the Hermite cuts the corner at the
-  side neck: the collar lies low, not up beside the neck to the trace's top (back roll 135 mm/half, was 210). ROLL_FROM
-  0.8 / 1.0 kept the height but kinked (38-66 deg) and showed the stand (77-83 %). Three tries: stopped.
+## R3f-9 (C508): lapels + collar ONE turned flap (toile_flap.py, step 4; mark_flap.py splits it at the gorge, step 5).
+  Proof /mnt/data/hifipushie/r3f9: strain 5.96 %, but the collar lay low at the side neck. Details: codified.md C508.
 ## R3f-10 (2026-11-17, C509): the roll line drawn ON the toile (toile_flap.roll_on_surface)
 - One row on the surface pinned at CB (stand height), at the notch trace's top PIN_BACK (2) columns behind the side neck
   point (raised once so the side neck point reaches it) and R0; faired by bending along the surface, the lapel's roll
@@ -53,9 +38,21 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - Cut rows untouched by the roll: flaps (front.R's lapel hinge found on 40 of 68 mm: neck / front split in 2 runs),
   layers (canvas line declared across front.L/R crosses the outline more than twice: a declaration), closures (over
   722 / under 1069 mm). girths:neck and place rows came with main's draft gate (merge), not from the roll.
-## R3f-11 (in progress, C510): the collar flattened as SHAPED cloth: declared shrink / stretch per run, limits.
+## R3f-11 (2026-11-17, C510): the collar flattened as SHAPED cloth (cut_shape.py; Joe: "Declared ease")
+- garment_cut `shaped` {"piece:run": pct} (+ stretch, - shrink; runs neck / a neck edge, roll, outer): laid on the grid's
+  rows, the flat cut against that rest (flatten.rest_edges: per-vertex stretch on the edges), calibrated per run; beyond
+  SHAPE_MAX_PCT 8 % (wool's steam shrink ~ a tailored cap's ease) refused by name; neck seams held within their ease;
+  RESIDUAL_PCT 3 % strain gate; the row reports what each run ASKS (3D / unshaped flat) and the cone points.
+- Proof /mnt/data/hifipushie/r3f11 (cut0.log unshaped, cut1.log shaped cut_decl11.json, collar_flat.png, proto/p5.py):
+  asks roll +11.5, outer +3.3, neck front +8.6 / +11.9, back -5.7 / -5.4 %: roll and front neck BEYOND wool. Shaped at
+  the limits: strain 13.6 % (unchanged); best any shaping within 8 % (Powell over 4 runs): 13.3 %; even +-30 %: ~10 %.
+- WHY: the toile's collar is curved in itself: cone points of +125 deg on the roll row 22 columns from CB (each side,
+  likely where the roll's pinned top / the fall's back-vs-front builds meet: unchecked) and a -57 deg saddle at CB. No shrink /
+  stretch along a run removes a point defect. LOOK collar_flat.png: not an undercollar (wavy outer, neck edge humped
+  at the side necks, red everywhere). Seams still off (front -3.4, back +13.5 mm); the back's own flat neck is 6 % short
+  of its 3D (93.3 / 99.7).
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes.
-NEXT: the collar rising beside the neck flattens with 13.6 % strain (the stand 30 at CB, ~45 beside the neck, 0 at R0
-in 70 mm: not developable about the roll): flatten the stand and the fall about the roll separately, or the tailor's
-shrink / stretch as declared ease; then flaps (front.R hinge), layers (canvas line), closures; girths, darts.
+NEXT: step 4: remove the collar's cone points (cut_shape.cone_points in the collar row): a roll smooth in the surface at
+the side neck (no pinned corner) and the fall built as one surface round the back and down the front; then re-cut with
+`shaped` at what each run asks (within 8 %); then flaps (front.R hinge), layers (canvas line), closures, girths.
