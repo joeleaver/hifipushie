@@ -12,8 +12,9 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
              wrist mark carried onto the model's wrist along the arm) or a step-0 height, "cap_ease_pct" (optional:
              the cap's ease built into the crown, toile.CAP_EASE_PCT when unsaid)}
   opening    {"closure": a step-1 closure (its step-2 ties give the WEAR STATE: none done up = open, all = closed;
-             none recorded or partly: refused), "edge": a step-2 trace (the over front's edge), "lap_mm" (closed, or open with buttons),
-             "buttons": a step-2 row id (optional)}. Open: the fronts don't lap, each edge where traced (C502).
+             none recorded or partly: refused), "edge": a step-2 trace (the over front's edge), "lap_mm" (always: the toile is cut closed, C504),
+             "buttons": a step-2 row id (optional)}. Cut CLOSED (C504); worn open, the open state (each edge where
+             traced, C502) is the look, saved as toile.npz's open/<part>.
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}
   collar     {"stand_mm", "fall_mm" (at CB, read off the reference), "notch": a step-2 trace from the collar end's gorge
@@ -88,11 +89,9 @@ def validate(decl: dict, s0: dict, s2: dict) -> list:
                        "garment_plan step style writes ties for every closure (fastened [] = open, all = closed)")
         elif wear[c] not in ("open", "closed"):
             bad.append(f"opening.closure: {c!r} is worn {wear[c]} (step 2's ties): the toile is built open or closed")
-        elif wear[c] == "closed" and not decl["opening"].get("lap_mm"):
-            bad.append(f"opening.lap_mm: missing: {c!r} is worn closed (step 2's ties): the fronts lap by it")
-        elif decl["opening"].get("buttons") and not decl["opening"].get("lap_mm"):
-            bad.append(f"opening.lap_mm: missing: {c!r} is worn open but has buttons: they are placed on the CLOSED "
-                       "state (the fronts lapped by lap_mm, the buttons on centre front) and carried to each front")
+        elif decl["opening"].get("lap_mm") is None:
+            bad.append(f"opening.lap_mm: missing: the toile is cut closed whatever the wear (C504): the fronts lap by it "
+                       "(0 for edge to edge)")
     b = (decl.get("opening") or {}).get("buttons") if "opening" in parts else None
     if b and b not in rows:
         bad.append(f"opening.buttons: {b!r} is not a step-2 row")
@@ -189,8 +188,13 @@ def build(inp, log=print):
 def save(t, d) -> tuple:
     d.mkdir(parents=True, exist_ok=True)
     arrs = {}
-    for k, (V, F) in t.meshes.items():
+    for k, (V, F) in t.meshes.items():  # (the CUT toile: closed, whatever the wear; steps 5 / 6 read it)
         arrs[f"{k}:V"], arrs[f"{k}:F"] = V, F
+    if t.worn is not t.meshes:  # (worn open: the open state as worn, for the look and the hang's start (C504))
+        for k, (V, F) in t.worn.items():
+            arrs[f"open/{k}:V"], arrs[f"open/{k}:F"] = V, F
+        for k, a in t.worn_arrays.items():
+            arrs[f"open/{k}"] = np.asarray(a)
     arrs.update(cone_O=t.cone.O, cone_A=t.cone.A, cone_PS=t.cone.PS, cone_AL=t.cone.AL, armhole=t.armhole,
                 shoulder_line=t.shoulder_line, sleeve_axis=t.CAX, sleeve_r=t.RAX, yc=t.yc)
     if getattr(t, "collar_grid", None) is not None:
@@ -242,7 +246,7 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     npz, js = save(t, d)
     traces3d = [np.c_[tr["xz"][:, 0], np.full(len(tr["xz"]), t.ys[0]), tr["xz"][:, 1]] for tr in inp.traces.values()]
     look = toile_gate.look(t, inp.V, inp.T, ref, d / "toile_sheet.png", traces3d)
-    out = {"toile": str(npz), "numbers": str(js), "parts": sorted(t.meshes), "declarations": declarations,
+    out = {"toile": str(npz), "numbers": str(js), "parts": sorted(t.meshes), "worn": sorted(t.worn) if t.worn is not t.meshes else None, "declarations": declarations,
            "girths_mm": {r["id"].split(":")[1]: r["value"] for r in rows if r["id"].startswith("girth:")},
            "placement": {str(k): {"mm_per_px": round(p["s"], 4), "how": p["how"], "residual_mm": p["residual_mm"]}
                          for k, p in pl.items()}, "seconds": round(time.time() - t0, 1)}

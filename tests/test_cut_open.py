@@ -1,12 +1,11 @@
-"""R3f-6 (C503): step 6 on a garment worn OPEN: buttons placed on the closed state and carried to each front
-(cut_tapes.closure_marks), layers traced from the front's own outline (a share of a short hem; a line that leaves the
-host refused by name, cut_layers), the collar flattened with its neck edge's length held (cut_collar.held_flatten)."""
+"""R3f-6 / R3f-7 (C503, C504): step 6 on a garment worn OPEN, cut from its CLOSED state: the buttons on centre front
+where the lapped fronts cross it (cut_tapes.closure_marks), layers traced from the front's own outline (a share of a
+short hem; a line that leaves the host refused by name, cut_layers), the collar flattened as draped, its neck edge
+never stretched to the body's (cut_collar.build: the mismatch reported; held_flatten deleted)."""
 import numpy as np
 import pytest
 
-from hifipushie import cut_layers, cut_tapes
-from hifipushie.cut_collar import held_flatten
-from hifipushie.flatten import flatten
+from hifipushie import cut_collar, cut_layers, cut_tapes
 from hifipushie.mark_split import chains, edge_faces
 
 
@@ -51,25 +50,24 @@ def _box_edges(x0, x1, h, front_x):
     return e
 
 
-def test_open_front_carries_its_buttons_from_the_closed_state():
+def test_buttons_on_centre_front_of_the_closed_cut():
+    """Cut closed (C504): each front laps 20 mm past centre front; the button and its hole sit where x = 0 crosses."""
     pcs, edges = {}, {}
-    for p, x0, fx in (("front.L", 0.06, 0.06), ("front.R", -0.26, -0.06)):  # (the fronts 6 cm apart: open)
-        V, F = _grid(x0=x0)
+    for p, x0, fx in (("front.L", -0.02, -0.02), ("front.R", -0.18, 0.02)):
+        V, F = _grid(w=0.2 if p == "front.L" else 0.2, x0=x0)
         pcs[p], edges[p] = _piece(p, V, F, _box_edges(x0, x0 + 0.2, 0.1, fx))
     B = {"pieces": {p: {"marks": {}} for p in pcs},
-         "closures": [{"name": "front_closure", "over": "front.L", "under": "front.R",
-                       "edge": {"over": "front.a>front.m>front.b", "under": "front.a>front.m>front.b"}}]}
-    # closed: no front reaches centre front, so the old reading refuses
-    assert cut_tapes.closure_marks({**B, "closures": [dict(B["closures"][0])]}, pcs, {"wear": "closed", "buttons_z": [0.04]}, edges)
-    # open with no closed state: refused by name
-    assert "closed_buttons" in cut_tapes.closure_marks(B, pcs, {"wear": "open", "buttons_z": [0.04]}, edges)[0]
-    op = {"wear": "open", "buttons_z": [0.04, 0.07],
-          "closed_buttons": [{"z": 0.07, "from_edge_mm": 20.0}, {"z": 0.04, "from_edge_mm": 20.0}]}
-    why = cut_tapes.closure_marks(B, pcs, op, edges)
+         "closures": [{"name": "front_closure", "over": "front.L", "under": "front.R"}]}
+    why = cut_tapes.closure_marks(B, pcs, {"wear": "open", "cut": "closed", "buttons_z": [0.04, 0.07]})
     assert not why, why
     assert B["closures"][0]["pairs"] == [["button1", "buttonhole1"], ["button2", "buttonhole2"]]
-    assert np.allclose(B["pieces"]["front.L"]["marks"]["button1"], [0.08, 0.07], atol=1e-6)  # (20 mm in from its edge)
-    assert np.allclose(B["pieces"]["front.R"]["marks"]["buttonhole2"], [-0.08, 0.04], atol=1e-6)
+    assert np.allclose(B["pieces"]["front.L"]["marks"]["button1"], [0.0, 0.07], atol=1e-6)  # (on CF, 20 mm in)
+    assert np.allclose(B["pieces"]["front.R"]["marks"]["buttonhole2"], [0.0, 0.04], atol=1e-6)
+    # a front that doesn't reach centre front (an open toile's cut) is refused by name
+    V, F = _grid(x0=0.06)
+    pcs["front.L"], edges["front.L"] = _piece("front.L", V, F, _box_edges(0.06, 0.26, 0.1, 0.06))
+    B["closures"] = [{"name": "front_closure", "over": "front.L", "under": "front.R"}]
+    assert "doesn't cross the centre line" in cut_tapes.closure_marks(B, pcs, {"buttons_z": [0.04]})[0]
 
 
 def test_facing_traced_off_a_front_with_a_short_hem():
@@ -99,29 +97,50 @@ def test_a_line_that_leaves_its_host_is_refused():
     assert sorted(out) == ["front", "hem", "inner", "side"]
 
 
-def _collar(nr=9, nc=41, ks=3):
-    """A stand rising and leaning out, a fall turned down over it: a surface of revolution (not developable)."""
+def _band(tmp_path, r=0.06, nr=9, nc=41, ks=3, h=0.04):
+    """A collar standing straight up round a cylinder (developable: it flattens at its own lengths), saved as step 4's
+    toile.npz collar part; columns at theta -1.3 .. 1.3."""
     th = np.linspace(-1.3, 1.3, nc)
-    r = np.arange(nr)
-    R = np.where(r <= ks, 0.06 + 0.004 * r, 0.072 + 0.006 * (r - ks))
-    Z = np.where(r <= ks, 0.008 * r, 0.024 - 0.007 * (r - ks))
-    V = np.stack([R[:, None] * np.sin(th)[None], -R[:, None] * np.cos(th)[None], np.repeat(Z[:, None], nc, 1)], 2).reshape(-1, 3)
+    z = np.linspace(0, h, nr)
+    V = np.stack([r * np.sin(th)[None].repeat(nr, 0), -r * np.cos(th)[None].repeat(nr, 0), z[:, None].repeat(nc, 1)], 2)
     idx = np.arange(nr * nc).reshape(nr, nc)
     F = np.r_[np.c_[idx[:-1, :-1].ravel(), idx[:-1, 1:].ravel(), idx[1:, 1:].ravel()],
               np.c_[idx[:-1, :-1].ravel(), idx[1:, 1:].ravel(), idx[1:, :-1].ravel()]]
-    return V, F, (nr, nc, ks)
+    np.savez(tmp_path / "toile.npz", **{"collar:V": V.reshape(-1, 3), "collar:F": F, "collar_grid": np.array([nr, nc, ks])})
+    return {"toile": str(tmp_path / "toile.npz")}
 
 
-def test_collar_neck_edge_flattens_to_the_bodys_length():
-    V, F, (nr, nc, ks) = _collar()
-    Vg = V.reshape(nr, nc, 3)
-    seg_g = ["front.R:neck" if c < 10 else "back:neck" if c < 30 else "front.L:neck" for c in range(nc - 1)]
-    run = lambda Ug, g: sum(float(np.linalg.norm(Ug[0, c + 1] - Ug[0, c])) for c in range(nc - 1) if seg_g[c] == g)
-    want = {g: run(Vg, g) * 1.04 for g in set(seg_g)}  # (the body's neck edges, 4 % longer than the toile's row)
-    U0 = flatten(V, F)[0].reshape(nr, nc, 2)
-    assert max(abs(run(U0, g) - want[g]) for g in want) > 0.002  # (a plain flatten misses them)
-    U, S, Fk, held = held_flatten(V, F, (nr, nc, ks), seg_g, want)
-    Ug = U.reshape(nr, nc, 2)
-    for g in want:
-        assert abs(run(Ug, g) - want[g]) < 0.001, (g, run(Ug, g), want[g])
-    assert set(held) == set(want)
+def _neck_piece(name, t0, t1, r=0.06, k=1.0):
+    """A garment piece below the neck between angles t0..t1, its top edge "neck": in 3D on the collar's neck row; its
+    flat k times as long along the neck (k != 1: the body's neck edge disagrees with the collar's)."""
+    th = np.linspace(t0, t1, int(round((t1 - t0) / 0.0325)) + 1)
+    n = len(th)
+    zz = np.array([-0.05, 0.0])
+    V3 = np.stack([r * np.sin(th)[:, None].repeat(2, 1), -r * np.cos(th)[:, None].repeat(2, 1), zz[None].repeat(n, 0)], 2)
+    Vf = np.stack([k * r * th[:, None].repeat(2, 1), np.zeros((n, 2)), zz[None].repeat(n, 0)], 2)
+    idx = np.arange(2 * n).reshape(n, 2)
+    F = np.r_[np.c_[idx[:-1, 0], idx[1:, 0], idx[1:, 1]], np.c_[idx[:-1, 0], idx[1:, 1], idx[:-1, 1]]]
+    f, e = _piece(name, Vf.reshape(-1, 3), F, lambda a, b: "neck" if abs(a[1]) < 1e-9 and abs(b[1]) < 1e-9 else "rest")
+    f["V"] = V3.reshape(-1, 3)
+    return f, e
+
+
+@pytest.mark.parametrize("k", [1.0, 1.04])
+def test_collar_flattened_as_draped_its_neck_never_stretched(tmp_path, k):
+    assert not hasattr(cut_collar, "held_flatten")  # (R3f-7: the stretch to fit is gone)
+    out4 = _band(tmp_path)
+    pcs, edges = {}, {}
+    for p, t0, t1 in (("front.R", -1.3, -0.78), ("back.R", -0.78, 0.0), ("back.L", 0.0, 0.78), ("front.L", 0.78, 1.3)):
+        pcs[p], edges[p] = _neck_piece(p, t0, t1, k=k)
+    s1 = {"seams": [{"a": f"collar:neck_{p}", "b": f"{p}:neck"} for p in pcs]}
+    d = {"pieces": ["collar"], "neck": ["front.L:neck", "back.L:neck"], "outer": "fall", "end": "end.L"}
+    c_pcs, c_edges, folds, rep, bad = cut_collar.build(pcs, edges, d, s1, {}, out4)
+    assert not bad, bad
+    assert "neck_held_pct" not in rep
+    for g, v in rep["seams"].items():
+        assert abs(v["collar_mm"] - v["collar_3d_mm"]) < 0.5, (g, v)  # (flattened at its own length: nothing stretched)
+        assert abs(v["garment_mm"] - k * v["garment_3d_mm"]) < 0.5, (g, v)
+        if k == 1.0:
+            assert abs(v["collar_mm"] - v["garment_mm"]) < 1.0, (g, v)  # (the seams match where they agree in 3D)
+        else:  # (the body's edge 4 % longer: reported, the collar not worked to it)
+            assert v["garment_mm"] - v["collar_mm"] > 0.03 * v["collar_mm"], (g, v)
