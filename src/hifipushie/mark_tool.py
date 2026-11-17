@@ -76,6 +76,9 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
         return None, answer_text(name, garment, "FAIL", rows, None, msg)
     got, miss, skipped, extra, pairs, free = seam_map(V, F, lab, names, s1, declarations)
     rows = gate(rep, names, lab, V, F, s1, declarations, got, miss, skipped, extra)
+    from .mark_flap import gorge_row
+    g = gorge_row(dict(Z))  # (the turned flap's gorge mark: the collar from the lapels, R3f-9)
+    rows += [g] if g else []
     v = "FAIL" if any(r["status"] == "FAIL" for r in rows) else "PASS"
     np.savez(d / "mark.npz", V=V, F=F, lab=lab, names=np.array(names))
     info = {"marks": rep, "pieces": names, "seams": got, "absent": declarations.get("absent") or {},
