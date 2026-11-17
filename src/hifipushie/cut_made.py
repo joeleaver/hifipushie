@@ -100,7 +100,8 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, log=lambda *_
         sm = rep["seams"]
         off = {g: v["collar_mm"] - v["garment_mm"] for g, v in sm.items()}
         fails += [f"collar: its neck edge on {g} is {v['collar_mm']} mm flat, {g} {v['garment_mm']} mm: off {off[g]:+.1f} mm "
-                  f"(> {SEAM_MM:g}: back to step 4, the collar's neck edge is the toile's neck seam)"
+                  f"(> {SEAM_MM:g}; on the toile {v['collar_3d_mm']} / {v['garment_3d_mm']} mm: never stretched in the flat "
+                  "(C504): back to step 4 where they disagree in 3D, else it is the flatten's strain)"
                   for g, v in sm.items() if abs(off[g]) > SEAM_MM]
         if rep["outer_over_neck"] <= 1.0:
             fails.append(f"collar: the flat outer edge is no longer than its neck edge (x{rep['outer_over_neck']}): a band, "
@@ -113,7 +114,8 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, log=lambda *_
                                f"neck {rep['neck_flat_mm']} / roll {rep['roll_flat_mm']} / outer {rep['outer_flat_mm']} mm "
                                f"(outer = {rep['outer_over_neck']} x neck; outer on the toile {rep['outer_3d_mm']}), neck bow "
                                f"{rep['neck_bow_mm']} mm, strain {rep['strain_mean_pct']} % mean; seams: "
-                               + "; ".join(f"{g} {v['collar_mm']} / {v['garment_mm']} mm" for g, v in sm.items())),
+                               + "; ".join(f"{g} {v['collar_mm']} / {v['garment_mm']} mm (3D {v['collar_3d_mm']} / "
+                                           f"{v['garment_3d_mm']})" for g, v in sm.items())),
                      "target": f"cut from the toile, unfolded (outer longer than neck), each neck seam within {SEAM_MM:g} mm "
                                "of its garment edge", "why": "; ".join(fails[:6])})
     return folds, rows

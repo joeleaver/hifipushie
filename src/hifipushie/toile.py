@@ -379,7 +379,8 @@ class Toile:
             Vp, Fp = self.mesh(self.PADF)
             keep = Vp[Fp].mean(1)[:, 0] > 0
             Vp, Fp = largest(Vp, Fp[keep])
-            self.meshes["pad.L"] = (Vp, Fp)
-            self.meshes["pad.R"] = (Vp * MIR, Fp[:, ::-1])
+            for M in {id(self.meshes): self.meshes, id(self.worn): self.worn}.values():  # (cut and worn alike)
+                M["pad.L"] = (Vp, Fp)
+                M["pad.R"] = (Vp * MIR, Fp[:, ::-1])
             self.info["pad"]["piece_bbox_mm"] = np.round((Vp.max(0) - Vp.min(0)) * 1000, 1).tolist()
         return self

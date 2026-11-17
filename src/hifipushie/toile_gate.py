@@ -2,7 +2,7 @@
 why, back_to):
   girth:<level>   the toile's tape at each step-0 fit level (the convex hull of the MESH's section, the arms and the
                   turned flaps left out) vs the planned garment girth: within GIRTH_TOL_MM (by construction; measured).
-                  Worn open: read on the closed toile (the same field before the fronts were opened: C502).
+                  Read on the closed toile (t.closed_mesh: the field before the fronts are split; C502).
   clearance       nothing inside the body: the least distance of the toile's vertices to the body >= 0; the share
                   closer than CLOSE_MM is reported (cloth touching the body there).
   closed          the toile is ONE surface, every edge used by at most two faces, its free edges in the loops its
@@ -14,7 +14,8 @@ why, back_to):
                   a hem as its HEIGHT (median), a sleeve end as its LENGTH past the wrist (each read from its own
                   wrist along the arm, signed, within SLEEVE_MM);
                   p95 within SILHOUETTE_MM for KINDS_GATED, the rest (an edge the closed toile can't show open, a
-                  collar not built here) INFO.
+                  collar not built here) INFO. Read on the WORN toile (t.worn: open when worn open), as is the look;
+                  the other rows on the cut (closed) toile (R3f-7, C504).
   collar          (with the collar part, toile_collar.py) the fall LIES ON the toile: its outer edge within
                   COLLAR_OFF_MM of GAP off the toile's surface (max), it covers the neck seam at CB (lands below it),
                   it reaches the collar point within COLLAR_POINT_MM; the heights as declared (read off the reference).
@@ -40,10 +41,9 @@ COLLAR_POINT_MM = 10.0  # the collar's end reaches the collar point (the notch t
 
 
 def girth_rows(t) -> list:
-    """OPEN (C502): read on the CLOSED toile (the same field before the fronts were opened, t.closed_mesh): the plan's
-    ease is the garment's worn closed (C388); the open section's hull would bridge the parting with a chord."""
-    shut = getattr(t, "closed_mesh", None)
-    V, F = shut if shut is not None else t.meshes["toile"]
+    """Read on the CLOSED toile before its fronts are split (t.closed_mesh): the plan's ease is the garment's worn
+    closed (C388); an open section's hull would bridge the parting with a chord (C502)."""
+    V, F = t.closed_mesh
     rows = []
     for n, (z, plan) in sorted(t.inp.levels.items(), key=lambda kv: -kv[1][0]):
         zz = max(z, t.hem + 0.004)
@@ -53,8 +53,7 @@ def girth_rows(t) -> list:
         d = (g - plan) * 1000
         rows.append({"id": f"girth:{n}", "status": "PASS" if abs(d) <= GIRTH_TOL_MM else "FAIL",
                      "value": round(g * 1000, 1), "target": f"{plan * 1000:.1f} mm (step 0's plan) +-{GIRTH_TOL_MM:g}",
-                     "why": f"{d:+.1f} mm at z {zz:.3f}" + (" (worn open: read on the closed toile, "
-                     "the plan's ease is the garment's worn closed)" if shut is not None else ""), "back_to": "4" if abs(d) > GIRTH_TOL_MM else None})
+                     "why": f"{d:+.1f} mm at z {zz:.3f} (read on the closed toile)", "back_to": "4" if abs(d) > GIRTH_TOL_MM else None})
     return rows
 
 
@@ -101,7 +100,7 @@ def neck_row(t) -> dict:
 
 def _outline_px(t, view, box, mpp):
     """The toile's outline in the view, as (u, v) pixels: the silhouette's border + the parts' front-facing free edges."""
-    meshes = [(V, F, np.full((len(F), 3), 200)) for k, (V, F) in t.meshes.items() if not k.startswith("pad")]
+    meshes = [(V, F, np.full((len(F), 3), 200)) for k, (V, F) in t.worn.items() if not k.startswith("pad")]
     _, zb = zbuffer(meshes, view, box, mpp)
     m = np.isfinite(zb)
     edge = m & ~(np.roll(m, 1, 0) & np.roll(m, -1, 0) & np.roll(m, 1, 1) & np.roll(m, -1, 1))
@@ -111,7 +110,7 @@ def _outline_px(t, view, box, mpp):
     pts = [np.c_[uu, vv].astype(float)]
     (u0, _), (_, z1) = box
     sg = 1.0 if view == "front" else -1.0
-    for k, (V, F) in t.meshes.items():
+    for k, (V, F) in t.worn.items():
         if k.startswith("pad"):
             continue
         for lp in boundary_loops(F):
@@ -212,7 +211,7 @@ def outline_rows(t, view="front") -> list:
         return [{"id": "outline", "status": "INFO", "why": f"the reference's view {view!r}: only front / back compared"}]
     O = _outline_px(t, view, box, mpp) * mpp * 1000
     kd = cKDTree(O)
-    torso = [(V, F, np.full((len(F), 3), 200)) for k, (V, F) in t.meshes.items() if k == "toile"]
+    torso = [(V, F, np.full((len(F), 3), 200)) for k, (V, F) in t.worn.items() if k == "toile"]
     mask = np.isfinite(zbuffer(torso, view, box, mpp)[1])
     (u0, _), (_, z1) = box
     sg = 1.0 if view == "front" else -1.0
@@ -281,17 +280,17 @@ COLOURS = {"toile": (150, 160, 185), "lapel": (120, 135, 170), "pad": (230, 200,
 
 
 def look(t, body_V, body_T, ref, path, traces3d=()):
-    """The toile beside the reference: four views, the traced edges drawn on the front (red)."""
+    """The toile AS WORN (t.worn) beside the reference: four views, the traced edges drawn on the front (red)."""
     skin = (body_V, body_T, np.tile([[200, 170, 150]], (len(body_T), 1)))
-    M = [skin] + [(V, F, np.tile([COLOURS[k.split(".")[0]]], (len(F), 1))) for k, (V, F) in t.meshes.items()
+    M = [skin] + [(V, F, np.tile([COLOURS[k.split(".")[0]]], (len(F), 1))) for k, (V, F) in t.worn.items()
                   if not k.startswith("pad")]
     box = ((t.xs[0] - 0.02, t.xs[-1] + 0.02), (t.zs[0] - 0.08, t.zs[-1] + 0.04))
     sbox = ((t.ys[0] - 0.15, t.ys[-1] + 0.15), box[1])
     tiles = [render(M, lines=[(P, (220, 30, 30), 2) for P in traces3d] if v == "front" else (), view=v,
                     box=box if v in ("front", "back") else sbox) for v in ("front", "left", "back", "right")]
     labels = ["reference", "front (traces red)", "left", "back", "right"]
-    if "collar" in t.meshes:  # (the neck close: the collar on the shoulders)
-        zt = float(t.meshes["collar"][0][:, 2].max())
+    if "collar" in t.worn:  # (the neck close: the collar on the shoulders)
+        zt = float(t.worn["collar"][0][:, 2].max())
         nb, nsb = ((-0.22, 0.22), (zt - 0.30, zt + 0.04)), ((t.ys[0] - 0.02, t.ys[-1] + 0.02), (zt - 0.30, zt + 0.04))
         tiles += [render(M, view=v, box=nb if v in ("front", "back") else nsb, mpp=0.0015) for v in ("front", "left", "back")]
         labels += ["neck front", "neck left", "neck back"]

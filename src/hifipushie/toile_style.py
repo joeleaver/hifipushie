@@ -2,14 +2,14 @@
 the TURNED FLAPS (lapels) about their roll lines, all from step 2's traces mapped onto the body (structure_outline
 placement) and the declaration; no garment's name.
 
-OPENING (declared opening: {closure, edge, lap_mm, buttons}): built in the WEAR STATE the reference shows (R3f-5, C502):
+OPENING (declared opening: {closure, edge, lap_mm, buttons}): the WEAR STATE the reference shows (R3f-5, C502) is
 step 2's ties for the declared closure (t.inp.wear: none done up = "open", every one = "closed"; a closure with no wear
-state is refused by name, never defaulted). OPEN: the fronts do not lap: each front's edge runs where step 2's
-front-edge trace puts it (the two edges apart, what is under shows between them): below the break the traced edge past
-its corner, from the break up the roll trace as traced (nothing moved: the picture shows the open place), the lapel
-turned about it. The field (its ease calibrated round the body, toile.py) is the same in both states: the open toile is
-the closed one opened about the fronts, so its girth rows (the hull of the section) read the closed garment's girths. Its buttons are placed on the closed
-state (closed_buttons: lap_mm in from the edge, on centre front) and carried to each front by step 6 (C503).
+state is refused by name, never defaulted). The toile is CUT CLOSED whatever the wear (R3f-7, C504: a jacket worn open
+is the same pattern as worn closed; the open toile cut at its traced edges lost each front's cloth to centre front and
+the lap). Worn open, the OPEN state is built too for the look (cut(): t.worn): the fronts do not lap, each front's edge
+runs where step 2's front-edge trace puts it (below the break the traced edge past its corner, from the break up the
+roll trace as traced: nothing moved, the picture shows the open place), the lapel turned about it. The field (its ease
+calibrated round the body, toile.py) is the same in both states.
 CLOSED: the over front (the body's left, +X) runs past centre front by the lap; the under front is its mirror,
 LAP_UNDER_M inside it. Below the
 lowest button (step 2 row `buttons`) the edge follows the traced front edge below its corner (a cutaway); above the
@@ -137,22 +137,23 @@ def neck_and_wrists(t, V, F):
     return V, F
 
 
-def closure(t):
-    """x_edge(z) (the over front's edge, metres) and what it was made from; None without an opening."""
+def closure(t, state: str):
+    """x_edge(z) (the over front's edge, metres) of the toile in `state` ("closed": the CUT state; "open": the worn
+    look) and what it was made from (t.info["opening"]); None without an opening."""
     if "opening" not in t.parts:
         return None
     op, tr = t.d["opening"], t.inp.traces
-    worn = wear(t)
-    lap = float(op.get("lap_mm") or 0) / 1000 if worn == "closed" else 0.0
+    lap = float(op.get("lap_mm") or 0) / 1000 if state == "closed" else 0.0
     edge = tr[op["edge"]]
     bt = t.inp.marks.get(op.get("buttons")) if op.get("buttons") else None
-    t.info["opening"] = {"wear": worn, "closure": op.get("closure"), "lap_mm": lap * 1000, "edge": op["edge"]}
+    t.info["opening"] = {"wear": wear(t), "cut": "closed", "state": state, "closure": op.get("closure"),
+                         "lap_mm": lap * 1000, "edge": op["edge"]}
     if "lapel" in t.parts:
         lp = t.d["lapel"]
         ROLL = to_corner(tr[lp["roll"]])
         ROLL = ROLL[np.argsort(-ROLL[:, 1])]  # gorge (top) -> break
         z_top, z_brk, x_brk = ROLL[0, 1], ROLL[-1, 1], ROLL[-1, 0]
-        if worn == "open":  # (the picture's place: nothing moved)
+        if state == "open":  # (the picture's place: nothing moved)
             shift = lambda z: 0.0 * np.asarray(z, float)
         else:
             shift = lambda z: (-lap - x_brk) * np.clip((z_top - z) / (z_top - z_brk), 0, 1)
@@ -167,12 +168,9 @@ def closure(t):
         x_roll = None
         LOW = np.asarray(edge["xz"], float)
     LOW = LOW[np.argsort(LOW[:, 1])]
-    if worn == "open":  # (each front's edge where the trace puts it, from the hem up to the break)
+    if state == "open":  # (each front's edge where the trace puts it, from the hem up to the break)
         top = min(z_brk, float(LOW[-1, 1]))
-        if bt is not None and len(bt):
-            t.info["opening"]["closed_buttons"] = closed_buttons(t, float(op.get("lap_mm") or 0) / 1000, bt[:, 1])
         t.info["opening"].update(break_z=None if not np.isfinite(z_brk) else round(float(z_brk), 3),
-                                 buttons_z=sorted(round(float(z), 4) for z in bt[:, 1]) if bt is not None else [],
                                  edge_x_mm={f"{z:.3f}": round(float(np.interp(z, LOW[:, 1], LOW[:, 0])) * 1000, 1)
                                             for z in np.linspace(float(LOW[0, 1]), top, 4)})
         x_lo = lambda z: np.interp(z, LOW[:, 1], LOW[:, 0])
@@ -189,18 +187,6 @@ def closure(t):
         return lambda z: -lap + dx_cut(z)
     x_hi = front_neck(t, x_roll)
     return lambda z: np.where(z >= z_brk, x_hi(z), -lap + dx_cut(z))
-
-
-def closed_buttons(t, lap, bz) -> list:
-    """The buttons on the CLOSED state of an open garment (R3f-6, C503): closed, the over front's edge runs lap past
-    centre front at every button (the edge is cut away only below the lowest one) and the button sits on centre front,
-    so each button lies `from_edge_mm` in from the front's edge along the closed toile's surface at its height (the
-    under front's buttonhole the same, mirrored). Step 6 carries them to each open front from its own edge."""
-    out = []
-    for z in sorted(np.asarray(bz, float), reverse=True):
-        P = t.front_hit(np.linspace(-lap, 0.0, 9), np.full(9, z))
-        out.append({"z": round(float(z), 4), "from_edge_mm": round(float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum()) * 1000, 1)})
-    return out
 
 
 def front_neck(t, x_roll):
@@ -266,14 +252,14 @@ def lapel(t, V, F):
     return Vl, Fl
 
 
-def cut(t, V, F) -> dict:
-    """{part: (V, F)}: the toile (neck, sleeve hems, the opening), its turned flaps and the collar (toile_collar.py)."""
-    V, F = neck_and_wrists(t, V, F)
-    full = (V, F)
-    x_edge = closure(t)
-    out = {"toile": halves(t, V, F, x_edge) if x_edge is not None else full}
-    t.x_edge = x_edge
-    t.closed_mesh = full if (t.info.get("opening") or {}).get("wear") == "open" else None  # (the girth rows read it)
+STATE_ATTRS = ("x_edge", "lapel_geom", "lapel_mesh", "roll_line", "collar_grid")
+STATE_INFO = ("opening", "front_neck", "lapel", "collar")
+
+
+def _state(t, full, state) -> dict:
+    """{part: (V, F)} of the toile in `state` (closure): the halves, the turned flaps, the collar."""
+    t.x_edge = closure(t, state)
+    out = {"toile": halves(t, *full, t.x_edge) if t.x_edge is not None else full}
     if "lapel" in t.parts:
         Vl, Fl = lapel(t, *full)
         out["lapel.L"] = (Vl, Fl)
@@ -281,4 +267,28 @@ def cut(t, V, F) -> dict:
     if "collar" in t.parts:
         from .toile_collar import drape
         out["collar"] = drape(t, out["toile"])
+    return out
+
+
+def cut(t, V, F) -> dict:
+    """{part: (V, F)}: the toile CUT (neck, sleeve hems, the opening), its turned flaps and the collar (toile_collar.py),
+    always in the CLOSED state (R3f-7, C504): a garment worn open is the same pattern as worn closed (the fronts lap at
+    centre front, the buttons on it); the wear state is how it is worn, looked at and hung. Worn open, the OPEN state
+    (each front's edge where traced, the roll as traced) is built too: t.worn (the look, the outline rows, the hang's
+    start), its numbers in t.info["worn"], its roll line / collar grid in t.worn_arrays; t's other attributes and
+    numbers are the closed (cut) state's."""
+    V, F = neck_and_wrists(t, V, F)
+    full = (V, F)
+    t.closed_mesh = full  # (the girth rows read the closed surface before it is split at the fronts)
+    worn = wear(t) if "opening" in t.parts else "closed"
+    t.worn, t.worn_arrays = None, {}
+    if worn == "open":
+        t.worn = _state(t, full, "open")
+        t.info["worn"] = {k: t.info.pop(k) for k in STATE_INFO if k in t.info}
+        t.worn_arrays = {k: getattr(t, k) for k in ("roll_line", "collar_grid") if getattr(t, k, None) is not None}
+        for a in STATE_ATTRS:
+            setattr(t, a, None)
+    out = _state(t, full, "closed")
+    if t.worn is None:
+        t.worn = out
     return out

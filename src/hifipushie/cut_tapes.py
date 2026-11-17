@@ -114,29 +114,20 @@ def places(pcs: dict, step3: dict) -> dict:
     return out
 
 
-def closure_marks(B: dict, pcs: dict, opening: dict, edges: dict) -> list:
-    """The closures' fastening marks (C496, C503), from step 4's numbers `opening`. CLOSED toile: both fronts cross the
-    centre line (x = 0), so a button on the over front and its buttonhole on the under front sit where x = 0 crosses
-    each piece at the button's height (opening.buttons_z), mapped into the flat by the piece's own 3D -> flat map (least
-    squares over its points within MARK_NEAR_M). OPEN toile (worn open: the fronts don't reach centre front): the marks
-    are placed on the CLOSED state (step 4's closed_buttons: from_edge_mm in from the front's edge, on centre front) and
-    carried to each front: on its own flat, the point at the button's height on the closure's edge, stepped
-    from_edge_mm square into the piece (where it is when closed). Written as the piece's marks and the closure's
-    `pairs`. [why not]."""
+def closure_marks(B: dict, pcs: dict, opening: dict) -> list:
+    """The closures' fastening marks (C496, C504), from step 4's numbers `opening`. The toile is cut CLOSED whatever its
+    wear (C504): both fronts cross the centre line (x = 0), so a button on the over front and its buttonhole on the
+    under front sit where x = 0 crosses each piece at the button's height (opening.buttons_z), mapped into the flat by
+    the piece's own 3D -> flat map (least squares over its points within MARK_NEAR_M). Written as the piece's marks and
+    the closure's `pairs`. [why not]."""
     why = []
-    carried = opening.get("closed_buttons") if opening.get("wear") == "open" else None
-    if opening.get("wear") == "open" and opening.get("buttons_z") and not carried:
-        return [f"closure: the toile is worn open with buttons but step 4 gives no closed_buttons: garment_toile "
-                "opening.lap_mm (the buttons are placed on the closed state)"]
     for c in B.get("closures") or []:
         pairs = []
-        rows = carried or [{"z": z} for z in sorted(opening.get("buttons_z") or (), reverse=True)]
-        for k, bt in enumerate(rows):
+        for k, z in enumerate(sorted(opening.get("buttons_z") or (), reverse=True)):
             got = []
             for side, nm in (("over", f"button{k + 1}"), ("under", f"buttonhole{k + 1}")):
                 p = c[side]
-                uv = (_carried(pcs[p], edges[p].get(c["edge"][side].split(".")[0]), bt) if carried
-                      else _on_centre(pcs[p], bt["z"]))
+                uv = _on_centre(pcs[p], z)
                 if isinstance(uv, str):
                     why.append(f"closure {c['name']!r}: {p} {uv}")
                     break
@@ -146,9 +137,6 @@ def closure_marks(B: dict, pcs: dict, opening: dict, edges: dict) -> list:
                 pairs.append(got)
         if pairs:
             c["pairs"] = pairs
-            if carried:
-                c["carried"] = "from the closed state: " + ", ".join(f"z {b['z']} {b['from_edge_mm']} mm in from the edge"
-                                                                     for b in carried)
     return why
 
 
@@ -159,29 +147,3 @@ def _on_centre(f, bz):
         return f"doesn't cross the centre line at the button's z {bz:.3f}"
     A = np.c_[V[ok][:, [0, 2]], np.ones(int(ok.sum()))]
     return np.array([0.0, bz, 1.0]) @ np.linalg.lstsq(A, U[ok], rcond=None)[0]
-
-
-def _carried(f, idx, bt):
-    """The flat point from_edge_mm square in from the closure edge (positions idx of the piece's loop) at height z."""
-    if not idx:
-        return "has no closure edge to carry the button from"
-    n = len(f["lp"])
-    pos = list(idx) + [(idx[-1] + 1) % n]
-    lp = np.asarray(f["lp"])
-    Z, P = f["V"][lp[pos], 2], f["U"][lp[pos]]
-    hit = [i for i in range(len(Z) - 1) if (Z[i] - bt["z"]) * (Z[i + 1] - bt["z"]) <= 0 and Z[i] != Z[i + 1]]
-    if not hit:
-        return f"its closure edge doesn't reach the button's z {bt['z']:.3f} ({Z.min():.3f}..{Z.max():.3f})"
-    i = hit[0]
-    w = (bt["z"] - Z[i]) / (Z[i + 1] - Z[i])
-    q = P[i] + w * (P[i + 1] - P[i])
-    tg = P[min(i + 2, len(P) - 1)] - P[max(i - 1, 0)]
-    nv = np.array([-tg[1], tg[0]]) / np.linalg.norm(tg)
-    from .draft_caught import _inside
-    poly = f["U"][lp]
-    d = float(bt["from_edge_mm"]) / 1000
-    if not _inside((q + nv * min(d, 0.005))[None], poly)[0]:
-        nv = -nv
-    if not _inside((q + nv * d)[None], poly)[0]:
-        return f"the button {bt['from_edge_mm']} mm in from its edge at z {bt['z']:.3f} falls outside the piece"
-    return q + nv * d
