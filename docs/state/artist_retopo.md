@@ -6,9 +6,12 @@ untouched) and limb loops. Codified from the oxidegen spike artifacts/budget3d_s
 Scraps); its lessons are in retopo_guide.md (the playbook) and the tools. Ledger C505 (provisional until blind runs).
 
 ## Where things are
-- Code: artretopo_{poly,mesh,sculpt,cage,mouth,check,run,steps,fill,sheets,study,report}.py (numpy / scipy / PIL;
-  no trimesh / shapely / cv2), blender_artretopo_{common,press,bake,assemble,rig,rom,look}.py, tools_retopo.py
-  (retopo_start, _look, _slices, _fit, _props, _cage, _press, _bake, _rig, _report), tests/test_artretopo.py.
+- Code: artretopo_{poly,mesh,sculpt,cage,mouth,check,measure,run,steps,fill,sheets,study,report}.py (numpy / scipy /
+  PIL; no trimesh / shapely / cv2), blender_artretopo_{common,press,bake,assemble,compare,rig,rom,posecheck,look}.py,
+  tools_retopo.py (18 tools: start, look, slices, measure, check, fit, fit_cylinder, primitives, cage, press, bake,
+  fill, assemble, compare, armature, rom, lod, report), tests/test_artretopo.py.
+- Folded in from Hettie (oxidegen, 11-17): backface hits = coverage misses, diffusion seeded from true hits, cut parts
+  (2.5 cm invented band; part cages not yet), ring_clip for fused limbs, finger chains (wings = arms), pose-time aim.
 - Playbook: guide(topic="retopo") = src/hifipushie/retopo_guide.md; worked cages: examples/retopo/{mabel,scraps}_cage.py
   (guide topics retopo_mabel / retopo_scraps). Blind kit: docs/blind/artist_retopo.md.
 - Regression: /mnt/data/hifipushie/artretopo/regression/ (run.py, scraps_props.json, mabel/, scraps/).
@@ -18,8 +21,9 @@ Scraps); its lessons are in retopo_guide.md (the playbook) and the tools. Ledger
 - Press (levels 1, relax 6, after 1): Mabel 7616 quads, 4 folds (spike 4-5); Scraps 9056, 96 (spike 101-108).
 - Bake repair: Scraps misses 43.8k / invented 1162 verts (spike 45.8k / 1146). final_cmp: same look, a little cleaner
   at the lip crevice and ear edge (hole fill is now nearest + smoothing, not OpenCV TELEA).
-- ROM: every pose within +-3 edges of the spike, both characters; arms_up (aimed 30 deg off vertical): Mabel 4/128
-  (spike's aimed run 4/123), Scraps 41/39 (41/39). The spike's rom_final.txt files predate the aimed pose.
+- ROM: every pose within +-3 edges of the spike, both characters. arms_up (aimed 30 deg off vertical): with the
+  spike's 11-17 morning aim Mabel 4/128 (spike 4/123), Scraps 41/39 (41/39); with Hettie's pose-time aim (no clavicle
+  share, helper half the aim) Mabel 24/51, Scraps 20/54. The spike's rom_final.txt files predate the aimed pose.
 
 ## Prod input (oxidegen mesh_ply, v186): read this before a blind run
 mesh_ply is turned by the concept camera's yaw, so a 3/4 concept leaves the character ~33 deg off: NOT mirror-
@@ -34,6 +38,8 @@ close-ups) from the bounds and joints, not constants; LOD1 hidden in ROM renders
 mouth builder shared (Cage.mouth); cage refused if open / non-manifold.
 
 ## Open (ranked)
+0. Scraps: since coverage counts back-face hits as misses, the invented lid skin round his left eye diffuses to a pale
+   disk where the sculpt has a dark socket ring (seen in final_cmp; the spike lost the ring too).
 1. No blind run yet: Puddles and Max first (the director starts them with docs/blind/artist_retopo.md).
 2. Mabel knee_up 133 / crouch 182 squashed (stubby-leg knee crease); huge-head arms_up stretch.
 3. Wings (Hettie, The Major), hands with fingers, hard-surface props / karts (oxidegen kart-retopo): not covered.

@@ -207,7 +207,7 @@ What the two references reached (squashed / stretched edges of ~18k):
 | pose | Scraps (thin legs) | Mabel (stubby legs, huge head) |
 |---|---|---|
 | arms_side_80 | 0 / 0 | 0 / 13 |
-| arms_up_150 | 41 / 39 | 4 / 128 |
+| arms_up_150 | 20 / 54 | 24 / 51 |
 | elbows_120 | 17 / 0 | 39 / 11 |
 | knee_up_100 | 34 / 2 | 133 / 29 |
 | crouch | 49 / 0 | 183 / 24 |
