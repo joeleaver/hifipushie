@@ -6,8 +6,9 @@ THE DECLARATION (garment_toile's `collar`, needs "lapel"): {"stand_mm", "fall_mm
 "notch": a step-2 trace from the collar end's gorge corner to the collar point (its first corner)}.
 THE NECK EDGE (one half, CB -> the collar end, mirrored for the other): the toile's neck seam (the toile mesh's free edge
 along the neckline) from CB to where it ends (near the side neck point: the opening takes the front), the front's neck
-down the toile's edge to the lapel's roll line's top (the gorge point), then the lapel's top to the notch trace's first
-point (the gorge corner).
+(the FRONT NECKLINE toile_style.front_neck cuts: the over front's own free edge, R3f-4) down to the lapel's roll line's top
+(the gorge point), then the lapel's own top edge to the notch trace's first point (the gorge corner): the same runs the
+garment pieces are cut with, so the collar's seams are theirs.
 THE ONE ROLL LINE (R3f-3, C500; a tailor's: the lapel's roll line and the collar's are one line): the lapel's roll line
 (t.roll_line) carried STRAIGHT on up past its top to the side stand's height above the seam's end (SIDE_STAND x stand_mm:
 the draft's roll line through 2/3 of the stand beyond the side neck point), then one curve round to SPAN_FROM of the back
@@ -18,14 +19,19 @@ comes back down over the stand and lies out on the toile (fall_mm at CB along th
 as far as a span of fall from the roll reaches); in front of it, over the roll to its foot on the toile and on away from
 the neck for the rest of its width (R3f-2 walked it down the neck's side: 10 mm out at the side neck, a band). Between
 the roll and the outer edge the fall is a SPAN pushed out only where it would come nearer the toile than GAP; at the
-collar end it reaches the collar point (the notch trace's corner). Its OUTER EDGE is wherever it lands: its length follows.
+collar end it reaches the collar point (the notch trace's corner). IN FRONT OF THE SIDE NECK POINT (R3f-4, C501) the fall
+lands where the reference shows its outer edge: the notch trace past the collar point, up toward the neck (traced_outer,
+read to OUTER_IN_M outside the roll's top), each column on it by its place between the side neck point and the end,
+on the toile under that front-view point (land_traced): a band on the upper chest and the shoulder slope, never walked
+back toward the neck (R3f-3's walk landed 0-10 mm outside the seam at the side). Behind it the OUTER EDGE is wherever it
+lands: its length follows.
 The mesh is one grid (rows: neck edge -> roll -> outer edge; columns: the right end -> CB -> the left end), folded at
 the roll row; t.collar_grid = (rows, columns, the roll row). Nothing here knows a garment."""
 from __future__ import annotations
 
 import numpy as np
 
-from .toile_style import LAPEL_LIFT_M, MIR, to_corner
+from .toile_style import LAPEL_LIFT_M, MIR, past_corner, to_corner
 
 H_MIN = 0.002    # m: the "stand" past the gorge point (none: the collar end lies on the lapel; kept off zero for the flat)
 SIDE_STAND = 2 / 3  # the stand at the neck seam's end (the side neck point) / at CB: the tailor's draft runs the roll line
@@ -37,6 +43,8 @@ KS, KF = 4, 8    # stand rows, fall rows
 STEP = 0.002     # m: walks over the toile's surface in steps of this
 SMOOTH = 4       # passes of a 5-column average on the neck edge's tangent (the gorge's corner: walks would cross)
 ROW_SMOOTH = 6   # passes of a 3-point average along each row (the walks cross where the neck edge turns into the gorge)
+OUTER_IN_M = 0.010  # m: the traced outer edge is read only this far outside the roll's top / the seam's end (nearer,
+#                    the roll and the neck hide it in the front view)
 NECK_ON_M = 0.002  # m: a toile free-edge point this near the neckline is on the neck seam
 
 
@@ -162,6 +170,79 @@ def _landing(down, R, fl, h):
     return max(fl - h, a, GAP)
 
 
+def traced_outer(t, tr, sh, x_min):
+    """The collar's OUTER EDGE as the reference shows it in front of the side neck point (front view, x z): the notch
+    trace past its first corner (the collar point) on up toward the neck, moved with the closure, up to where it comes
+    within x_min of the centre (nearer, the roll and the neck hide it); from the collar point. None if it has no part."""
+    P = past_corner(tr)
+    P = P + np.c_[sh(P[:, 1]), np.zeros(len(P))]
+    if len(P) < 2:
+        return None
+    keep = [P[0]]
+    for a, b in zip(P[:-1], P[1:]):
+        if b[0] >= x_min:
+            keep.append(b)
+            continue
+        if a[0] > x_min:
+            keep.append(a + (b - a) * (a[0] - x_min) / (a[0] - b[0]))
+        break
+    return np.asarray(keep) if len(keep) >= 2 else None
+
+
+def land_traced(t, xz, y_hint, off, step=0.002):
+    """The toile point under a traced front-view point (x, z): the front's surface there, lowered at that x until it is
+    on the toile (below its neckline: above it the collar can't lie on cloth), off its surface by off."""
+    x, z = float(xz[0]), float(xz[1])
+    for _ in range(60):
+        P = t.front_hit([x], [z])[0]
+        if abs(P[0] - x) < 0.01 and t.phi_neck(P[None])[0] >= 0 and P[1] < y_hint + 0.04:
+            break
+        z -= step
+    return P + off * t.grad(P[None])[0]
+
+
+def edge_run(V, F, keep, a, b, m):
+    """(m, 3) or None: a mesh's free edge where keep(points) holds, in its loop's order, from a to b (a and b added)."""
+    from .toile_geom import boundary_loops
+    V = np.asarray(V, float)
+    best = None
+    for lp in boundary_loops(np.asarray(F, int)):
+        lp = np.asarray(lp, int)
+        on = keep(V[lp])
+        if on.sum() >= 4 and (best is None or on.sum() > best[1].sum()):
+            best = (lp, on)
+    if best is None:
+        return None
+    lp, on = best
+    if not on.all():
+        r = int(np.argmin(on))  # (start the loop at a point off the run: the run is contiguous after it)
+        lp, on = np.roll(lp, -r), np.roll(on, -r)
+    P = V[lp[on]]
+    if np.linalg.norm(P[0] - a) > np.linalg.norm(P[-1] - a):
+        P = P[::-1]
+    return _resample(np.r_[np.asarray(a)[None], P, np.asarray(b)[None]], m)[0]
+
+
+def front_neck_edge(t, toile, E0, R0, m):
+    """(m, 3): the front's neck, the over front's own free edge from the neck seam's end E0 down to the gorge point R0
+    (the front neckline toile_style.front_neck cut: the collar's neck edge IS the front's, so the seam is equal); the
+    surface chord E0 -> R0 when the toile has no such edge (no opening)."""
+    xe = getattr(t, "x_edge", None)
+    keep = lambda P: ((P[:, 0] > 0) & (P[:, 1] < t.yc) & (P[:, 2] > R0[2] - NECK_ON_M) & (P[:, 2] < E0[2] + NECK_ON_M)
+                      & (np.abs(P[:, 0] - xe(P[:, 2])) < 1.5 * NECK_ON_M))
+    E = edge_run(*toile, keep, E0, R0, m) if xe is not None else None
+    return t.onto(E0 + np.multiply.outer(np.linspace(0, 1, m), R0 - E0)) if E is None else E
+
+
+def gorge_edge(t, R0, G3, m):
+    """(m, 3) or None: the lapel's own top edge (its gorge) from the gorge point R0 to the gorge corner G3."""
+    lm, zl = getattr(t, "lapel_mesh", None), (getattr(t, "lapel_geom", None) or {}).get("z_line")
+    if lm is None or zl is None:
+        return None
+    keep = lambda P: ((P[:, 2] > zl(P[:, 0]) - 1.5 * NECK_ON_M) & (P[:, 0] > R0[0] - NECK_ON_M)
+                      & (P[:, 0] < G3[0] + NECK_ON_M))
+    return edge_run(*lm, keep, R0, G3, m)
+
 def _unit(v):
     return v / (np.linalg.norm(v) + 1e-12)
 
@@ -189,10 +270,12 @@ def drape(t, toile):
     E0, R0 = Q[-1], rl[-1]  # (the neck seam's end; the lapel's roll line's top: the gorge point)
     m = 40
     ramp = np.linspace(0, 1, m)
-    front = t.onto(E0 + np.multiply.outer(ramp, R0 - E0))  # (the front's neck: the toile's edge down to the gorge point)
+    front = front_neck_edge(t, toile, E0, R0, m)  # (the front's neck: the toile's own edge down to the gorge point)
     G3 = t.front_hit([G2[0]], [G2[1]])[0]
-    gorge = t.onto(R0 + np.multiply.outer(ramp, G3 - R0))  # (the lapel's top, the gorge point -> the gorge corner)
-    gorge = gorge + (LAPEL_LIFT_M * np.minimum(1, 4 * ramp))[:, None] * t.grad(gorge)
+    gorge = gorge_edge(t, R0, G3, m)  # (the lapel's own top, the gorge point -> the gorge corner)
+    if gorge is None:
+        gorge = t.onto(R0 + np.multiply.outer(ramp, G3 - R0))
+        gorge = gorge + (LAPEL_LIFT_M * np.minimum(1, 4 * ramp))[:, None] * t.grad(gorge)
     Pc = t.front_hit([P2[0]], [P2[1]])[0]
     Pc = Pc + (LAPEL_LIFT_M + GAP) * t.grad(Pc[None])[0]
     o_len = lambda Z: float(np.linalg.norm(np.diff(Z, axis=0), axis=1).sum())
@@ -240,7 +323,18 @@ def drape(t, toile):
     end_reach = float(np.linalg.norm(Pc - B[-1]))
     fl = fall + (h[-1] + end_reach - fall) * tf  # (the fall from the roll: at the end it reaches the collar point)
     bt = np.clip((s - s_rl) / max(s_end - s_rl, 1e-9), 0, 1) ** 2
+    OT = traced_outer(t, tr, sh, max(R0[0], E0[0]) + OUTER_IN_M)
+    if OT is not None:  # (in front of the side neck point the fall lands where the reference shows its outer edge)
+        a_ot = np.r_[0, np.cumsum(np.linalg.norm(np.diff(OT, axis=0), axis=1))]
     for c in range(NC):
+        if OT is not None and s[c] > s_neck:
+            q = (s_end - s[c]) / max(s_end - s_neck, 1e-9) * a_ot[-1]
+            xz = [np.interp(q, a_ot, OT[:, 0]), np.interp(q, a_ot, OT[:, 1])]
+            L = land_traced(t, xz, B[c][1], lift[c] + GAP) if c < NC - 1 else Pc
+            R = X[KS, c] + GAP * t.grad(X[KS, c][None])[0]
+            for r in range(KS + 1, KS + KF + 1):
+                X[r, c] = R + (L - R) * (r - KS) / KF
+            continue
         if span[c] and s[c] <= s_rl:  # (the stand leans out to the roll: the fall lands on from the roll's foot, away
             foot = t.onto(X[KS, c][None])[0]  # from the neck, not back toward it)
             n = t.grad(foot[None])[0]

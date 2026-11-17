@@ -5,7 +5,8 @@ placement) and the declaration; no garment's name.
 OPENING (declared opening: {lap_mm, edge, buttons}): the garment is built in its CLOSED state: the over front (the
 body's left, +X) runs past centre front by the lap; the under front is its mirror, LAP_UNDER_M inside it. Below the
 lowest button (step 2 row `buttons`) the edge follows the traced front edge below its corner (a cutaway); above the
-break it is the roll line (with a lapel) or the lap line up to the neck.
+break it is the roll line (with a lapel) or the lap line up to the neck; with a lapel, above the roll's top (the gorge
+point) the FRONT NECKLINE (front_neck, R3f-4): straight in the front view up and in to the side neck point.
 LAPEL (declared lapel: {roll, top, width_mm}): the roll trace up to its first corner (gorge -> break) moved with the
 closure (the break goes from the open picture's place to CF + lap; nothing moves at the gorge); the lapel's outer edge
 the edge trace up to its first corner (notch -> break), widened square from the roll line to width_mm when declared;
@@ -146,7 +147,26 @@ def closure(t):
                              lowest_button_z=round(z_btm, 3), break_z=None if not np.isfinite(z_brk) else round(float(z_brk), 3))
     if x_roll is None:
         return lambda z: -lap + dx_cut(z)
-    return lambda z: np.where(z >= z_brk, x_roll(z), -lap + dx_cut(z))
+    x_hi = front_neck(t, x_roll)
+    return lambda z: np.where(z >= z_brk, x_hi(z), -lap + dx_cut(z))
+
+
+def front_neck(t, x_roll):
+    """The over front's edge above the break: the roll line up to its top (the gorge point, step 2's roll trace's
+    first point), then the FRONT NECKLINE from the gorge point up and in to the side neck point (HPS: the neck tape's
+    outermost points), straight in the front view (a draft's front neck from the HPS down to the gorge): one edge
+    running round the neck seam at the HPS, so the collar sews to a real neckline (R3f-4; R3f-3 left the roll top's x
+    standing up over the shoulder to centre's plane: a 45 mm vertical edge with a jog at the HPS)."""
+    g = t.lapel_geom
+    z_top = float(g["z_top"])
+    x_top = float(x_roll(z_top))
+    neck, z_h, _ = neckline(t)
+    x_h = float(np.abs(neck[:, 0]).max())
+    t.info["front_neck"] = {"gorge_point": [round(x_top, 4), round(z_top, 4)], "hps": [round(x_h, 4), round(z_h, 4)],
+                            "drop_mm": round((z_h - z_top) * 1000, 1), "out_mm": round((x_top - x_h) * 1000, 1),
+                            "from": "gorge point: step 2's roll trace's top; HPS: step 3's neck tape's side points"}
+    w = lambda z: np.clip((z - z_top) / max(z_h - z_top, 1e-6), 0, 1)
+    return lambda z: np.where(z > z_top, x_top + (x_h - x_top) * w(z), x_roll(z))
 
 
 def halves(t, V, F, x_edge):
@@ -186,6 +206,7 @@ def lapel(t, V, F):
         Vl, Fl = clip(Vl, Fl, ph(Vl))
     Vl, Fl = largest(Vl, Fl)
     Vl = Vl + LAPEL_LIFT_M * t.grad(Vl)
+    t.lapel_mesh, g["z_line"] = (Vl, Fl), z_line
     t.info["lapel"] = {"width_traced_mm": round(w0 * 1000, 1), "width_mm": round(w * 1000, 1),
                        "roll_mm": round(float(np.linalg.norm(np.diff(rl, axis=0), axis=1).sum() * 1000), 1),
                        "break_z": round(float(z_brk), 4), "gorge_z": round(float(z_top), 4)}

@@ -6,6 +6,7 @@ import json
 import types
 
 import numpy as np
+import pytest
 
 from hifipushie import cut_collar, toile_collar
 from hifipushie.toile import Toile
@@ -85,3 +86,48 @@ def test_toile_collar_refused_by_name_without_its_part(tmp_path):
         assert "garment_toile parts \"collar\"" in str(e)
     else:
         raise AssertionError("a toile without a collar part must be refused")
+
+
+def test_front_neckline_cut_low_and_the_fall_lands_where_traced():
+    """R3f-4 (C501): the over front's edge above the roll's top is the FRONT NECKLINE, straight in the front view from the
+    gorge point (below the neck base) up to the side neck point; the collar's front neck is the toile's own edge there
+    (the seam equal by construction); in front of the side neck point the fall lands on the notch trace past its collar
+    point (the reference's outer edge), on the shoulder slope, not back toward the neck."""
+    from hifipushie import toile_style
+    from hifipushie.toile_geom import boundary_loops
+    pcs, edges, s1, toile = neck_toile()
+    t = fake_toile(toile)
+    an = np.linspace(-np.pi, np.pi, 72, endpoint=False)
+    t.inp.tapes = {"neck": np.c_[R_NECK * np.sin(an), R_NECK * np.cos(an), np.full(len(an), Z_NECK)]}
+    t.inp.traces["notch"] = {"xz": [[0.075, 1.445], [0.11, 1.43], [0.10, 1.455], [0.085, 1.475]], "corners": [1]}
+    z_top = 1.46
+    t.lapel_geom.update(z_top=z_top)
+    x_roll = lambda z: np.interp(z, [1.25, z_top], [0.0, 0.04])
+    t.x_edge = xe = toile_style.front_neck(t, x_roll)
+    fn = t.info["front_neck"]
+    assert fn["drop_mm"] == pytest.approx((Z_NECK - z_top) * 1000, abs=0.5) and fn["hps"][0] == pytest.approx(R_NECK, abs=1e-3)
+    assert float(xe(z_top)) == pytest.approx(0.04) and float(xe(Z_NECK)) == pytest.approx(R_NECK, abs=1e-3)
+    assert np.all(np.diff(xe(np.linspace(z_top, Z_NECK, 20))) > 0)  # (in to the side neck point as it rises)
+    Vt, Ft = toile
+    c3 = Vt[Ft].mean(1)  # (the opening: the front inside the front neckline / roll line taken away, both sides)
+    gone = (c3[:, 1] < 0) & (np.abs(c3[:, 0]) < xe(c3[:, 2])) & (c3[:, 2] > 1.25)
+    toile_open = (Vt, Ft[~gone])
+    V, F = toile_collar.drape(t, toile_open)
+    c = t.info["collar"]
+    nr, nc, ks = t.collar_grid
+    G = V.reshape(nr, nc, 3)[:, nc // 2:]  # (the left half, CB -> the end)
+    neck, outer = G[0], G[-1]
+    front = neck[:, 1] < -0.01
+    assert neck[front, 2].min() < Z_NECK - 0.03, neck[front, 2].min()  # (the front's neck runs low, below the neck base)
+    # the collar's front neck is the front's own edge: as long as the toile's free edge from the side neck point down
+    ids = np.unique(np.concatenate([np.asarray(lp, int) for lp in boundary_loops(toile_open[1])]))
+    P = Vt[ids]
+    on = (P[:, 0] > 0) & (P[:, 1] < 0) & (P[:, 2] > z_top + 0.002) & (P[:, 2] < Z_NECK - 0.002)
+    assert on.sum() >= 4 and c["front_neck_mm"] > (Z_NECK - z_top) * 1000, c
+    # the fall in front lands on the traced outer edge (front view) and on the slope, away from the neck
+    land = outer[outer[:, 0] > 0.085]
+    assert len(land) and (land[:, 2] < Z_NECK).all() and (np.hypot(land[:, 0], land[:, 1]) > R_NECK + 0.01).all(), land
+    tr = np.array([[0.11, 1.43], [0.10, 1.455], [0.085, 1.475]])
+    tr = np.r_[[a + (b - a) * w for a, b in zip(tr[:-1], tr[1:]) for w in np.linspace(0, 1, 30)]]
+    miss = [float(np.min(np.hypot(*(tr - p[[0, 2]]).T))) for p in land]
+    assert max(miss) < 0.012, miss
