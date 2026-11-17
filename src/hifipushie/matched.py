@@ -134,10 +134,30 @@ def load_camera(name: str, label: str = "concept") -> dict:
     return json.loads(p.read_text())
 
 
+def landmark(name: str, what) -> np.ndarray:
+    """A model point a picture's pixel can be pinned to: a joint, a blob's centre, a bone's middle, or [x, y, z]."""
+    from .spec import expand_mirror, resolve_point
+    if isinstance(what, (list, tuple)):
+        return np.asarray(what, float)
+    s = expand_mirror(store.load(name))
+    if what in (s.get("joints") or {}) or what in (s.get("blobs") or {}):
+        return resolve_point(s, what)
+    b = (s.get("bones") or {}).get(what)
+    if b is not None:
+        return (resolve_point(s, b["a"]) + resolve_point(s, b["b"])) / 2
+    raise ValueError(f"point {what!r}: no joint, blob or bone of that name (a mirrored one is \"eye.R\" for the "
+                     "figure's right)")
+
+
 def fit_camera(name: str, image: str, mask: str | None = None, label: str = "concept", resolution: int = 96,
-               az: float | None = None, el: float | None = None, dist: float | None = None) -> dict:
-    """Fit and save the concept's camera (module docstring). az / el: a starting guess (default: a sweep)."""
+               az: float | None = None, el: float | None = None, dist: float | None = None,
+               points: list | None = None) -> dict:
+    """Fit and save the concept's camera (module docstring). az / el: a starting guess (default: a sweep).
+    points: [{"at": a mass or joint (or [x, y, z]), "px": [x, y] where the picture shows it}, ...]: pins the camera's
+    turn on features as well as the outline (a round figure's outline barely changes as it turns: Puddles' camera
+    turned the head ~15 degrees off and every comparison from the painting was skewed, p7 to e6)."""
     from scipy.optimize import minimize
+    pins = [(landmark(name, p["at"]), np.asarray(p["px"], float), str(p["at"])) for p in (points or [])]
     meta = store.build(name, resolution)
     P = _samples(Path(meta["mesh"]))
     ref = mask_of(image, mask)
@@ -156,9 +176,15 @@ def fit_camera(name: str, image: str, mask: str | None = None, label: str = "con
         return {"az": float(x[0]), "el": float(x[1]), "roll": float(x[2]), "f_px": float(x[3]),
                 "aim": [float(v) for v in x[4:7]], "dist": dist, "size": [W0, H0]}
 
-    def iou(x, size):
+    diag = float(np.hypot(W0, H0))
+
+    def iou(x, size):  # (with pins: the outline's overlap less the pins' mean miss as a part of the diagonal, x2)
         m, R = _splat(project(P, cam_of(x), size)[0], size), ref_at(size)
-        return (m & R).sum() / max((m | R).sum(), 1)
+        o = (m & R).sum() / max((m | R).sum(), 1)
+        if pins:
+            xy = project(np.array([w for w, _, _ in pins]), cam_of(x))[0]
+            o -= 2.0 * float(np.mean(np.linalg.norm(xy - np.array([q for _, q, _ in pins]), axis=1))) / diag
+        return o
 
     ys, xs = np.nonzero(ref)
     rbox = np.array([xs.min(), ys.min(), xs.max(), ys.max()], float)
@@ -202,8 +228,14 @@ def fit_camera(name: str, image: str, mask: str | None = None, label: str = "con
     r = branches[0]
     cam = cam_of(r.x)
     other = [{"az": round(float(b.x[0]), 1), "iou": round(-float(b.fun), 4)} for b in branches[1:]]
-    cam.update(mirror=other[0] if other and other[0]["iou"] > -float(r.fun) - 0.015 else None,
-               iou=round(-float(r.fun), 4), image=str(Path(image).expanduser().resolve()), label=label,
+    if pins:
+        xy, z = project(np.array([w for w, _, _ in pins]), cam)
+        cam["pins"] = [{"at": n, "px": [round(float(v), 1) for v in q], "miss_px": round(float(np.linalg.norm(a - q)), 1),
+                        "miss_m": round(float(np.linalg.norm(a - q) * zz / cam["f_px"]), 4)}
+                       for (_, q, n), a, zz in zip(pins, xy, z)]
+    m, R = _splat(project(P, cam, fine)[0], fine), ref_at(fine)
+    cam.update(mirror=None if pins else (other[0] if other and other[0]["iou"] > -float(r.fun) - 0.015 else None),
+               iou=round(float((m & R).sum() / max((m | R).sum(), 1)), 4), image=str(Path(image).expanduser().resolve()), label=label,
                mask=str(Path(mask).expanduser().resolve()) if mask else None, resolution=resolution)
     p = cam_path(name, label)
     p.parent.mkdir(parents=True, exist_ok=True)

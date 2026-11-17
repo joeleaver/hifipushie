@@ -8,7 +8,7 @@ THE NECK EDGE (one half, CB -> the collar end, mirrored for the other): the toil
 along the neckline) from CB to where it ends (near the side neck point: the opening takes the front), the front's neck
 down the toile's edge to the lapel's roll line's top (the gorge point), then the lapel's top to the notch trace's first
 point (the gorge corner).
-THE ONE ROLL LINE (R3f-3, C499; a tailor's: the lapel's roll line and the collar's are one line): the lapel's roll line
+THE ONE ROLL LINE (R3f-3, C500; a tailor's: the lapel's roll line and the collar's are one line): the lapel's roll line
 (t.roll_line) carried STRAIGHT on up past its top to the side stand's height above the seam's end (SIDE_STAND x stand_mm:
 the draft's roll line through 2/3 of the stand beyond the side neck point), then one curve round to SPAN_FROM of the back
 neck, from there walked up the neck at h(s) (stand_mm at CB, cos^2 to the side's) to CB. Inside it the STAND: on the

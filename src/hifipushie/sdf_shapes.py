@@ -114,6 +114,16 @@ def _path_closest(q: np.ndarray, P: np.ndarray):
     return j, tj, a[j] + tj[:, None] * d[j]
 
 
+def _mask(q: np.ndarray, pr: dict, soft: float):
+    """A stroke's mask (spec._masks): 1 on and in the masked masses' clay, fading to 0 `soft` beyond it; None
+    without one."""
+    ms = pr.get("prims")
+    if not ms or not pr.get("only"):
+        return None
+    d = np.min([SDF[m.kind](q, m.params) for m in ms], 0)
+    return 1 - _smoothstep(np.clip(d / soft, 0, 1))
+
+
 def mod_displace(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.ndarray:
     """A stroke: push the surface out (depth > 0, clay) or in (depth < 0, crease) along its normal.
 
@@ -146,7 +156,9 @@ def mod_displace(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) ->
         lat = np.sqrt(np.maximum((r * r).sum(-1) - h * h, 0.0)) / W[j]
         k = np.where(ok & (lat < 1.0), prof(np.minimum(lat, 1.0)), 0.0)
         k *= 1 - _smoothstep(np.clip((np.abs(h) - H) / H, 0, 1))
-        out[s:s + chunk] = c0[s:s + chunk] - (k * gain[j]).sum(1)
+        push = (k * gain[j]).sum(1)
+        mk = _mask(q, pr, max(0.25 * float(W.max()), 0.006))
+        out[s:s + chunk] = c0[s:s + chunk] - (push if mk is None else push * mk)
     return out.reshape(cur.shape)
 
 
@@ -163,6 +175,9 @@ def mod_flatten(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
     lat = np.linalg.norm(r - h[:, None] * n, axis=1)
     wgt = 1 - _smoothstep(np.clip((lat - pr["width"]) / pr["soft"], 0, 1))
     wgt *= 1 - _smoothstep(np.clip((h - pr["height"]) / pr["height"], 0, 1))
+    mk = _mask(q, pr, max(0.25 * pr["width"], 0.006))
+    if mk is not None:
+        wgt = wgt * mk
     c0 = cur.reshape(-1)
     hp = (q - P[0]) @ n
     shaved = -smin(-c0, -hp, pr["blend"])  # smooth max(cur, height above the plane)
@@ -329,14 +344,24 @@ def sd_csg(p: np.ndarray, pr: dict, pre: np.ndarray | None = None) -> np.ndarray
     style deformation), everything is evaluated at the undeformed point and the field divided by its stretch."""
     wp = pr.get("warp")
     p0 = p  # where the point is in the world: a trim (reshape.py) cuts there, after any bending
-    if wp is not None:
+    d = None
+    if wp is not None and wp[0] and "bend" in wp[0][-1]:  # a bend last (bend.py): two pieces, unioned
+        from . import bend
+        from .deform import undeform
+        rest = wp[0][:-1]
+        sh = p.shape
+        d, p = bend.field(wp[0][-1]["bend"], lambda x: SDF[pr["kind"]](x, pr["p"]), p.reshape(-1, 3),
+                          (lambda x: undeform(rest, x)) if rest else None)
+        d, p = d.reshape(sh[:-1]), p.reshape(sh)
+    elif wp is not None:
         if pre is not None:  # the caller undeformed these points once for all its primitives
             p = pre
         else:
             from .deform import undeform
             sh = p.shape
             p = undeform(wp[0], p.reshape(-1, 3)).reshape(sh)
-    d = SDF[pr["kind"]](p, pr["p"])
+    if d is None:
+        d = SDF[pr["kind"]](p, pr["p"])
     fr = pr.get("frame")
     q, s = (p, 1.0) if fr is None else (p @ fr[0].T + fr[1], fr[2])
     if pr.get("lumpy"):  # knots, axe marks, an uneven stone: noise on the surface itself (amount << scale)

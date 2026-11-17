@@ -47,6 +47,11 @@ def _error_text(e: BaseException) -> str:
     """What the caller needs to fix a failed call: the exception's type and message, and for anything that
     isn't a ValueError (our anticipated spec/argument errors) where it was raised."""
     text = f"{type(e).__name__}: {e}"
+    fn = getattr(e, "filename", None)
+    if isinstance(e, FileNotFoundError) and fn and not Path(str(fn)).expanduser().is_absolute():
+        # (a blind modeller gave "refs/painting.png" from its own folder: paths are read where the server runs)
+        return (f"{text}. A path is read from the modelling server's own folder ({Path.cwd()}), not yours: give the "
+                "file's full path (starting with /).")
     if not isinstance(e, ValueError):
         import traceback
         tb = traceback.extract_tb(e.__traceback__)
@@ -141,14 +146,14 @@ TOOL_GROUPS: dict[str, dict] = {
                 "tools": ["fit_concept_camera", "look_matched", "feature_tiles", "join_report", "fit_matched"]},
     "reshape": {"about": "reshape what is already there, as a modeller's hands do: work two masses into one flowing "
                          "mass, take hold of clay in a flat view and move it, cut clay away along a line (a flat "
-                         "face) or take one shape out of another (a boolean: a mouth, a socket), make a flap that "
+                         "face) or take one shape out of another (a boolean: a mouth, a socket), bend a mass along a path, make a flap that "
                          "folds over (an ear)",
-                "tools": ["fuse", "grab", "trim", "carve", "flap"]},
+                "tools": ["fuse", "grab", "trim", "carve", "flap", "bend"]},
     "features": {"about": "sculpt from reference pictures: read a picture's views, patches and form lines, name its "
                           "features as marks on it (the feature map), build the masses from their marks, measure a "
                           "model feature by feature",
                  "subject": "feature features turnaround",
-                 "tools": ["read_reference", "look_beside", "mark_features", "build_masses", "build_forms", "feature_report"]},
+                 "tools": ["read_reference", "look_beside", "mark_features", "build_masses", "build_forms", "feature_report", "review_part", "study_part"]},
     "scene": {"about": "the Blender scene (sync, pull) and the heavy-job queue",
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",

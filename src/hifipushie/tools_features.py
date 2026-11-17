@@ -208,7 +208,8 @@ def build_forms(name: str, how: dict, view: str | None = None, save: str | None 
 
 @mcp.tool(structured_output=False)
 def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | None = None,
-                on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None):
+                on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None,
+                focus: list[str] | None = None):
     """Compare the model with its reference pictures, view by view, and see what to change: the model beside each
     flat reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
     "painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
@@ -220,21 +221,92 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
     mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
     differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures
     that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
-    its reason and left out of the list and the overlap. ignore: masses to leave out. save: a folder for the
-    pictures. Details: guide(topic="look_beside")."""
+    its reason and left out of the list and the overlap. ignore: masses to leave out. focus: masses to see CLOSE
+    UP (an ear, a snout): every picture is cut to them and drawn large, beside the same part of each reference view
+    and the painting. save: a folder for the pictures, or a .png file name (the first picture; the rest beside it). Details: guide(topic="look_beside")."""
     from pathlib import Path
 
     from . import beside
-    from .tool_common import _png
+    from .tool_common import _png, save_path
     if on_purpose:
         beside.set_on_purpose(name, on_purpose)
-    res = beside.compare(name, views, ignore, resolution)
+    res = beside.compare(name, views, ignore, resolution, focus=focus)
+    import os
     out = []
-    for v, r in res["views"].items():
+    for i, (title, pic) in enumerate(beside.layout(res, "sheet")):
         if save:
-            d = Path(save).expanduser()
-            d.mkdir(parents=True, exist_ok=True)
-            r["picture"].save(d / f"beside_{v}.png")
-        out.append(_png(r["picture"]))
+            d = save_path(save)
+            if d.suffix.lower() == ".png":  # a file name: the first picture there, the rest beside it (e16, e17 got a
+                d.parent.mkdir(parents=True, exist_ok=True)  # folder called "x.png")
+                pic.save(d if i == 0 else d.with_name(f"{d.stem}_{title}.png"))
+            else:
+                d.mkdir(parents=True, exist_ok=True)
+                pic.save(d / f"{title}.png")
+        out.append(_png(pic))
     return [*out, beside.text(name, res)]
 
+
+
+@mcp.tool(structured_output=False)
+def study_part(name: str, what: str, at: list[float], size: float = 0.08, reading: str | None = None):
+    """Study ONE part of the reference before you model it (an ear, a snout, a horn): the same part cut from every
+    reference picture (each flat view and the painting), one large picture each, and the order to read it in.
+    what: the part in plain words ("the left ear"); at: [x, y, z], its middle in metres (read off read_reference's or
+    look_beside's rulers; it need not exist in the model yet); size: half the box's side, m (the part and a little
+    of what it grows from). Why the order: where one part hides another in a view (a folded lobe in front of an
+    ear's root, seen from the side), the outline reads as one broad shape, and plain looking got it wrong every time
+    in blind trials; reading each view alone, naming what hides what and taking each size only from a view where
+    nothing is in front of it got it right. First call: the pictures and the steps. Then call it again with
+    reading="1. ...\n2. ...\n...5. ..." (the five steps written out): it is kept with the model, and flap builds a
+    part only where it has been read. Seconds. Details: guide(topic="study_part")."""
+    from . import study
+    from .tool_common import _png
+    if not (isinstance(at, (list, tuple)) and len(at) == 3):
+        raise ValueError("at is the part's middle [x, y, z] in metres (x, z in the front view; y, z in the side view)")
+    if not 0.005 <= float(size) <= 1.0:
+        raise ValueError("size is half the box's side in metres: the part and a little round it (e.g. 0.06)")
+    if reading is not None:
+        rec = study.save_reading(name, what, at, float(size), reading)
+        return (f"{what}: your reading is kept with {name} (box {[round(c, 3) for c in rec['at']]} +- {rec['size']:g} m). "
+                f"next: model it from your step 5 (flap for an ear, comb or tongue; put_model / edit_model and bend for the "
+                "rest), then look_beside with focus on its masses: where the clay differs from your reading, check the "
+                "pictures again before you change the reading.")
+    got = study.crops(name, at, float(size))
+    if not got:
+        raise ValueError(f"the box {at} +- {size} m falls outside every reference picture: check at against the "
+                         "rulers (look_beside shows them), and that read_reference has been run")
+    lines = [f"{what}: {len(got)} pictures, one each: " + "; ".join(c for c, _, _ in got) + ".", "", study.order(what),
+             "", f"next: write the five steps out and call study_part again with the same what and at and "
+             f"reading=\"1. ...\\n2. ...\\n3. ...\\n4. ...\\n5. ...\": flap builds a part only where it has been read."]
+    return [*[_png(p) for _, p, _ in got], "\n".join(lines)]
+
+
+@mcp.tool(structured_output=False)
+def review_part(name: str, masses: list[str], region: str, context: str = "a game character: a concept painting "
+                "and a clay blockout of it, seen from the same camera"):
+    """A fresh pair of eyes on ONE part of the model: the part rendered in clay through the concept painting's own
+    camera, cut with the same box from the painting, and judged by an independent reviewer who sees only the two
+    pictures (no captions, no numbers, none of your reasoning). Its form first, then the differences, worst first.
+    masses: the part's masses (e.g. ["ear.L", "ear_top.L"]); region: what the reviewer is told it is, plain words
+    ("the ear"). The one who made a part sees what they meant; a fresh reviewer sees what is there: in blind trials
+    the maker passed an ear whose base was plainly wrong, and two fresh reviewers named it unprompted. A minute or
+    two (a render and a review). Needs the painting's camera (fit_concept_camera). Details: guide(topic="review_part")."""
+    from pathlib import Path
+
+    from . import beside_painting, matched
+    from .tools_model import review_view
+    label = beside_painting.camera_label(name)
+    if label is None:
+        raise ValueError("the painting has no camera yet: fit_concept_camera(name, image=<the painting>) first")
+    matched.render(name, label)
+    r = matched.tiles(name, {region: list(masses)}, label)
+    ref, ours, box = r["tiles"][region]
+    # (a first run spent half its faults on clay texture and colour: a blockout is judged on its big form)
+    out = review_view(region=region, reference=ref, result=ours, context=context,
+                      stage="blockout: the big form of this part (its shape, size, thickness, fold and how it meets "
+                            "the head) and where it sits", not_stages="surface texture, colour, material, fine creases",
+                      out_dir=str(Path(r["dir"]) / "review"))
+    text = out[-1] if isinstance(out, (list, tuple)) else str(out)
+    return [*out[:-1], f"{region}: the painting | the model, through the painting's camera (box {box}).\n{text}\n"
+            "next: fix the worst difference the reviewer names that belongs to this pass, then look again. The "
+            "reviewer judges what it sees; where you differ on purpose, say so in your log, not to it."]

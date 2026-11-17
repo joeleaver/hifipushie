@@ -49,10 +49,20 @@ def _parts_note(parts: frozenset | None) -> str:
     return f"silhouettes count parts: {', '.join(sorted(parts))}\n" if parts else ""
 
 
+def save_path(save: str) -> Path:
+    """Where a tool writes a picture it was asked to save: a full path only. A relative one landed in the modelling
+    server's own folder, the code's checkout (e19 wrote a folder "r1" there), where the caller never finds it."""
+    path = Path(save).expanduser()
+    if not path.is_absolute():
+        raise ValueError(f"save: give a full path (starting with /): {save!r} would be read from the modelling server's "
+                         f"own folder ({Path.cwd()}), not yours")
+    return path
+
+
 def _out(im: PILImage.Image, save: str | None) -> Image:
     """The image for the tool result, also written to `save` (a path) when given."""
     if save:
-        path = Path(save).expanduser()
+        path = save_path(save)
         path.parent.mkdir(parents=True, exist_ok=True)
         im.save(path)
     return _png(im)

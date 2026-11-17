@@ -18,7 +18,8 @@ from .tools_export import (  # noqa: F401
     export, export_asset, heavy_queue, heavy_status, judge_asset, pull, rig, sync,
 )
 from .tools_features import (  # noqa: F401
-    build_forms, build_masses, feature_report, look_beside, mark_features, read_reference,
+    build_forms, build_masses, feature_report, look_beside, mark_features, read_reference, review_part,
+    study_part,
 )
 from .tools_find import (  # noqa: F401
     call_tool, find_tool, guide,
@@ -41,7 +42,8 @@ from .tools_plan import (  # noqa: F401
     clearance, compare, feature_tiles, fit, fit_concept_camera, fit_matched, join_report, look_matched, set_plan,
     set_reference, style_check,
 )
-from .tools_reshape import carve, flap, fuse, grab, trim  # noqa: F401
+from .tools_flap import bend, flap  # noqa: F401
+from .tools_reshape import carve, fuse, grab, trim  # noqa: F401
 from .tools_plants import (  # noqa: F401
     edit_plant, export_plant, export_stand, get_plant, grow_plant, grow_stand, look_plant, look_plants, look_stand,
     plant_form, plant_history, plant_reference, sync_plant, wind_plant,

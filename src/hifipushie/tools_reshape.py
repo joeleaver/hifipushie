@@ -1,7 +1,7 @@
 """Reshaping tools: what a modeller's hands do to a blockout that typing a shape's numbers can't.
 `fuse` works two masses into one flowing mass; `grab` takes hold of clay that is already there and moves it;
-`trim` cuts clay away along a line drawn in a flat view and `carve` takes one mass out of others; `flap` makes
-a leaf of clay that grows out, arches over and hangs, from three points (reshape.py is the spec)."""
+`trim` cuts clay away along a line drawn in a flat view and `carve` takes one mass out of others (reshape.py is
+the spec; `flap`, a pad of clay folded over, is tools_flap.py)."""
 from __future__ import annotations
 
 import copy
@@ -188,115 +188,6 @@ def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], 
              "place or the wrong size: that is the mass's own joint or size, not a grab."]
     views = [view if view in ("front", "side", "top") else "front", "three_quarter"]
     return _with_look(name, views, "\n".join(lines))
-
-
-def _nearest_joint(spec: dict, point) -> str:
-    joints = spec.get("joints") or {}
-    if not joints:
-        raise ValueError("this model has no joints yet: a flap rides on one (give at, or put the skeleton in first)")
-    return min(joints, key=lambda j: float(np.linalg.norm(np.array(joints[j]["pos"], float) - point)))
-
-
-@mcp.tool(structured_output=False)
-def flap(name: str, mass: str, root: list[float], over: list[float], tip: list[float], width: float,
-         thickness: float | None = None, pointed: float = 0.6, cup: float = 0.0, at: str | None = None,
-         blend: float | None = None, part: str | None = None, note: str = ""):
-    """A flap of clay that grows out of the figure, arches over and hangs: a folded ear, a comb, a tongue, a tab, a
-    leaf, as a modeller makes one: ONE leaf with thickness, rooted, bent over in a smooth arch (a blade is flat and
-    can only lean). Three points say where it goes, [x, y, z] in metres read off look's rulers (x and z in the front
-    view, y and z in the side view; the figure faces -y): root (the middle of where it grows out: put it a little
-    INSIDE the mass it grows from), over (the top of its arch) and tip (where its tip ends: for an ear folded
-    forward, in front of and below `over`). It bends about its own width: its broad face is square to the plane
-    the three points make. width: across it at the root; thickness (default about a quarter of the width: clay is thick);
-    pointed 0..1 (0 a round leaf, 1 narrowing to a soft point); cup: metres its side edges curl toward the inside
-    of the fold (an ear's hollow). mass: its name; one ending ".L" is made on the left (+x) and mirrored. The same
-    name again replaces it: move ONE point to change where it hangs, how it arches or where it grows from.
-    Returns the look and what was made. Details: guide(topic="flap")."""
-    from .spec import SpecError, mirror_name, resolve_point
-    spec = store.load(name)
-    if mass.endswith(".R"):
-        raise ValueError(f"name the left one ({mass[:-2]}.L, on +x): its right twin is made by mirroring")
-    pts = []
-    for label, v in (("root", root), ("over", over), ("tip", tip)):
-        if not (isinstance(v, (list, tuple)) and len(v) == 3):
-            raise ValueError(f"{label} is a point [x, y, z] in metres, read off look's rulers (x, z in the front view; "
-                             "y, z in the side view)")
-        pts.append(np.array(v, float))
-    r, o, tp = pts
-    l1, l2 = float(np.linalg.norm(o - r)), float(np.linalg.norm(tp - o))
-    width = float(width)
-    # (a fifth of the width came out as thin strips twice, p6 and p7: clay ears are thick)
-    thick = float(thickness) if thickness is not None else max(0.28 * width, 0.008)
-    if width <= 0 or thick <= 0 or thick >= 0.8 * width:
-        raise ValueError(f"width is across the flap at its root and thickness through it, in metres, the thickness "
-                         f"well under the width (got {width:g} and {thick:g})")
-    if min(l1, l2) < thick:
-        raise ValueError(f"root to over is {l1 * 100:.1f} cm and over to tip {l2 * 100:.1f} cm, and the flap is "
-                         f"{thick * 100:.1f} cm thick: each stretch has to be longer than the flap is thick")
-    axis = np.cross(o - r, tp - o)
-    if np.linalg.norm(axis) < 0.05 * l1 * l2:
-        raise ValueError("root, over and tip lie in one line: a flap arches over `over`. Move `over` off the line "
-                         "between root and tip (for a straight flat leaf use a blade blob)")
-    axis = axis / np.linalg.norm(axis)
-    if not 0.0 <= float(pointed) <= 1.0:
-        raise ValueError("pointed is 0 (a round leaf) to 1 (narrowing to a soft point)")
-    blobs = spec.setdefault("blobs", {})
-    old = blobs.get(mass) or {}
-    if mass in (spec.get("bones") or {}):
-        raise ValueError(f"{mass!r} is a bone of this model: give the flap another name")
-    at = at or (old.get("at") if isinstance(old.get("at"), str) else None) or _nearest_joint(spec, r)
-    base = resolve_point(spec, at)
-    W, T = width / 2.0, thick / 2.0
-    hw = [W, W * (1 - 0.45 * pointed), max(W * (1 - 0.85 * pointed), 1.4 * T)]
-    new = {"shape": "sheet", "at": at, "spine": [[round(float(x), 4) for x in p - base] for p in pts], "curve": "spline",
-           "width_axis": [round(float(x), 4) for x in axis], "fold": "crush", "root": round(1.5 * T, 4),
-           "stations": [{"t": t_, "half_width": round(h, 4), "half_thickness": round(T, 4),
-                         **({"cup": round(-float(cup) * c, 4)} if cup else {})}
-                        for t_, h, c in zip((0.0, 0.5, 1.0), hw, (0.0, 1.0, 0.6))]}
-    for k in ("part", "fuse", "fill", "fill_sides", "tags"):
-        if k in old:
-            new[k] = old[k]
-    if part:
-        new["part"] = part
-    b = blend if blend is not None else old.get("blend")
-    new["blend"] = float(b) if b is not None else min(float(spec.get("blend", 0.03)), 0.015)
-    blobs[mass] = new
-    try:
-        compile_prims(spec)
-    except SpecError as e:
-        raise ValueError(f"{e}. The flap turns too sharply for how thick it is: move `over` further from the line "
-                         "between root and tip, or make it thinner") from None
-    bare = copy.deepcopy(spec)
-    for n in (mass, mirror_name(mass)):
-        bare["blobs"].pop(n, None)
-    from .sdf import field_at
-    rest = [p for p in compile_prims(bare) if p.op == "add"] if (bare.get("bones") or bare.get("blobs")) else []
-    out = float(field_at(rest, r[None], clip=False)[0]) if rest else 1.0
-    v = store.save(name, spec, note or f"flap {mass}: root {root}, over {over}, tip {tip}")
-    turn = float(np.degrees(np.arccos(np.clip((o - r) @ (tp - o) / (l1 * l2), -1, 1))))
-    twin = mirror_name(mass)
-    lines = [f"{name} v{v}: {mass} is a flap about {(l1 + l2) * 100:.0f} cm long: it grows from {[round(float(x), 3) for x in r]}, "
-             f"arches over {[round(float(x), 3) for x in o]} and its tip is at {[round(float(x), 3) for x in tp]} (it turns "
-             f"{turn:.0f} degrees on the way); {width * 100:.1f} cm across at the root, {thick * 100:.1f} cm thick. It rides on "
-             f"joint {at!r}" + (f" and is mirrored as {twin}." if twin and bool(spec.get("symmetry", True)) else ".")]
-    k = int(np.argmax(np.abs(axis)))  # a flap is thin only when seen along its width
-    runs, thin, broad = (("left to right (x)", "the side view", "the front and back views"),
-                         ("front to back (y)", "the front and back views", "the side view"),
-                         ("up and down (z)", "from above", "the front and side views"))[k]
-    lines.append(f"A flap bends about its own width, and its width runs square to the plane the three points make: here "
-                 f"mostly {runs} (width axis {[round(float(x), 2) for x in axis]}), so it shows broad in {broad} and thin, "
-                 f"edge-on, in {thin}. For an ear that is broad from the front, keep root, over and tip at about the same "
-                 "x (over above the root, tip in front of and below over); moving the tip or over sideways turns the face.")
-    if out > 0.002:
-        lines.append(f"ITS ROOT IS {out * 100:.1f} cm OUTSIDE the clay it should grow from: it floats. Move root that far "
-                     "(and a little more) into the mass.")
-    lines.append("It is a \"sheet\" blob in the spec (get_model shows it): a put_model of a whole new spec drops it unless "
-                 "that blob is carried over.")
-    lines.append("next: look at it beside the reference from the front, the side AND three-quarter (a flap that is right in "
-                 "two flat views can still be wrong in the round). One point changes one thing: tip is where it hangs, "
-                 "over is how high and which way it arches, root is where it grows from. Call flap again with the same "
-                 "name and the one point moved. width, thickness, pointed and cup change the leaf itself.")
-    return _with_look(name, ["front", "side", "three_quarter"], "\n".join(lines))
 
 
 @mcp.tool(structured_output=False)

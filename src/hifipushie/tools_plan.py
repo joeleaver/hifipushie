@@ -82,16 +82,29 @@ def fit_matched(name: str, targets: list[dict], only: list[str], params: list[st
 
 @mcp.tool(structured_output=False)
 def fit_concept_camera(name: str, image: str, mask: str | None = None, label: str = "concept",
-                       az: float | None = None, el: float | None = None, resolution: int = 96):
+                       az: float | None = None, el: float | None = None, resolution: int = 96,
+                       points: list | None = None):
     """Fit the perspective camera a concept image was drawn from, by the model's silhouette against the image's
     foreground (IoU; mask: a white-on-black PNG when the background isn't plain). Saved under `label`; then
     look_matched renders from it pixel-aligned, feature_tiles cuts review tiles, look(camera={"fitted": label})
-    uses it too. az / el: a starting guess (default: a sweep). Returns the overlay (red = model only, blue = image
-    only) and the camera. Details: guide(topic="fit_concept_camera")."""
+    uses it too. az / el: a starting guess (default: a sweep). points: pin features the picture shows to the model's
+    masses, [{"at": "snout", "px": [x, y]}, {"at": "eye.R", "px": [x, y]}, ...] (pixels of the picture; the
+    figure's right is ".R"): a round figure's outline barely changes as it turns, and fitted on the outline alone the
+    camera can be turned well off; with 2 to 4 pins it is not, and the answer says how far each pin is missed.
+    Returns the overlay (red = model only, blue = image only) and the camera. Details: guide(topic="fit_concept_camera")."""
     from . import matched
-    cam = matched.fit_camera(name, image, mask, label, resolution, az, el)
+    cam = matched.fit_camera(name, image, mask, label, resolution, az, el, points=points)
     note = "" if cam["iou"] >= 0.85 else (" | LOW IoU: the model is far from the concept's shape, or the mask is wrong "
                                           "(pass mask=...; az / el = a guess)")
+    if cam.get("pins"):
+        note += " | pins missed by: " + ", ".join(f"{p['at']} {p['miss_px']:.0f} px ({p['miss_m'] * 100:.1f} cm)"
+                                                  for p in cam["pins"])
+        if max(p["miss_m"] for p in cam["pins"]) > 0.02:
+            note += (" | A PIN IS MISSED BY MORE THAN 2 cm: the model's feature is not where the picture has it, or "
+                     "the pin is wrong: look at the overlay")
+    else:
+        note += (" | fitted on the outline alone: a round figure's turn is uncertain. Pin 2 to 4 features the picture "
+                 "shows (points=[{\"at\": \"snout\", \"px\": [x, y]}, ...]) and fit again")
     if cam.get("mirror"):
         note += (f" | MIRROR: az {cam['mirror']['az']:+.0f} fits nearly as well (IoU {cam['mirror']['iou']:.3f}; a "
                  "symmetric silhouette can't tell the sides apart): check which way the face turns in look_matched, "

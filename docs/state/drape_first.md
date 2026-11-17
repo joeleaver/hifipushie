@@ -27,7 +27,7 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   walked up to the roll; fall turned down. Proof /mnt/data/hifipushie/r3f. Draft-and-fit route deleted.
 
 ## R3f-2 (C498): collar seams name the same runs (neck_corner, NECK_LEAN_M, runs_of, split_gorge); fall along the surface
-## R3f-3 (2026-11-16, C499): one roll line (toile_collar module doc)
+## R3f-3 (2026-11-16, C500): one roll line (toile_collar module doc)
 - The lapel's roll line carried straight up past its top to the side stand (2/3 stand, the draft rule), round the back;
   the stand a span leaning out in front of SPAN_FROM; the fall lands from the roll's foot. Neck edge: seam (ends at the
   HPS on this toile) + the front's neck down to the roll top (45) + the lapel's top (47).

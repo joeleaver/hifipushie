@@ -149,13 +149,14 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
          focus: list[float] | None = None, zoom: float = 1.0, resolution: int = 160,
          matcap: str = "clay_studio.exr", strokes: bool = False, shading: str = "clay", paint: bool = True,
          paint_layer: str | None = None, hide_parts: list[str] | None = None, only_parts: list[str] | None = None,
-         clip: dict | list[dict] | None = None, camera: dict | list[dict] | None = None, instances: bool = False,
+         clip: dict | list[dict] | None = None, camera: dict | list[dict] | str | None = None, instances: bool = False,
          save: str | None = None, shapes: dict | str | None = None):
     """See the model from any side or close up: build and render a contact sheet (clay, or painted from the Blender
     scene). views (front, side, top,
     three_quarter, back, ...), focus=[x,y,z] + zoom for close-ups, resolution (160 quick, 256-320 detail), shading
     "clay"|"raking"|"curvature"|"flat", strokes=True overlays stroke paths, paint / paint_layer (one mask),
-    hide_parts / only_parts, clip (plane cuts), camera (perspective eyes), instances, save (PNG path), shapes (a
+    hide_parts / only_parts, clip (plane cuts), camera (perspective eyes; a fitted camera's name, e.g. "concept",
+    looks from the painting's angle), instances, save (PNG path), shapes (a
     face-kit model posed in face-shape weights as the export makes them: {"jawOpen": 0.8, ...}, "rest" or a preset;
     paint=False is meshed exactly as the export). Details: guide(topic="look")."""
     posed = None
@@ -165,6 +166,7 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
         from . import facepose
         posed = facepose.pose(name, shapes)  # (at the export's resolution, whatever the look's)
     cams = [] if camera is None else (camera if isinstance(camera, list) else [camera])
+    cams = [{"fitted": c} if isinstance(c, str) else c for c in cams]  # (e15 to e17 asked for camera="concept")
     cams = [_resolve_camera(name, c) for c in cams]
     # "hair" is a pseudo-part (the locks aren't spec parts): hide_parts=["hair"] leaves them out of a painted look;
     # clay and geometric views draw no locks anyway, so there it just drops out

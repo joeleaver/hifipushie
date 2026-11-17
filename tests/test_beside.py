@@ -76,7 +76,8 @@ def test_an_ignored_mass_is_left_out_and_a_view_that_is_not_there_is_named(home)
 def test_the_tool_gives_a_picture_a_view_and_the_text(home):
     from hifipushie import server
     out = server.look_beside("fig", save=str(home / "pics"))
-    assert len(out) == 2 and "front: outline overlap" in out[-1] and "next:" in out[-1]
+    assert len(out) == 3 and "front: outline overlap" in out[-1] and "next:" in out[-1]  # (the sheet, then the strip)
+    assert (home / "pics" / "beside_all.png").exists()
     im = Image.open(home / "pics" / "beside_front.png")
     assert im.width > 1.4 * im.height  # three panels of an upright figure, side by side
 
@@ -194,3 +195,36 @@ def test_paired_masses_are_left_out_of_the_model_s_own_width(home):
     body = min((m for m in pr["landmarks"] if m["kind"] == "widest"), key=lambda m: abs(m["z"] - 0.2))
     assert abs(body["model"] - body["reference"]) < 0.015 and body["whole"] > body["model"] + 0.03
     assert pr["ratios"] == []  # a width with limbs in it is not set against another
+
+
+def test_focus_cuts_every_view_to_the_named_mass_and_draws_it_large(home):
+    whole = beside.compare("fig", resolution=144)["views"]["front"]["picture"]
+    near = beside.compare("fig", resolution=144, focus=["ear.L"])["views"]["front"]["picture"]
+    assert near.width > whole.width  # panels round one ear (squarer than the tall figure), drawn at the same height
+    with pytest.raises(ValueError, match="focus: no mass called"):
+        beside.compare("fig", focus=["nose"])
+
+
+def test_studying_a_part_cuts_it_from_each_picture_large_and_gives_the_reading_order(home):
+    from hifipushie import server
+    out = server.study_part("fig", "the left ear", [0.13, 0, 0.69], 0.08)
+    import io
+    pic = Image.open(io.BytesIO(out[0].data))
+    assert len(out) == 2 and max(pic.size) >= 560  # one picture (the one view), drawn large
+    assert "hidden in" in out[-1] and "the front view" in out[-1]
+    with pytest.raises(ValueError, match="outside every reference picture"):
+        server.study_part("fig", "the ear", [5, 5, 5], 0.05)
+
+
+def test_a_part_review_needs_the_painting_s_camera(home):
+    from hifipushie import server
+    with pytest.raises(ValueError, match="fit_concept_camera"):
+        server.review_part("fig", ["ear.L"], "the ear")
+
+
+def test_a_camera_pin_names_a_mass_or_a_point(home):
+    from hifipushie import matched
+    assert np.allclose(matched.landmark("fig", "head"), [0, 0, 0.53])
+    assert matched.landmark("fig", "ear.R")[0] < 0  # (the mirrored one: the figure's right)
+    with pytest.raises(ValueError, match="no joint, blob or bone"):
+        matched.landmark("fig", "nose")
