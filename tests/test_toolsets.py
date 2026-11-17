@@ -21,7 +21,11 @@ grow_plant edit_plant look_plant look_plants grow_stand look_stand export_stand 
 export_plant wind_plant sync_plant plant_history heavy_status heavy_queue make_clutter look_clutter
 clutter_kit""".split()
 # added since: the artist block-in (2026-10-10)
-ADDED = {"fit_concept_camera", "look_matched", "feature_tiles", "join_report",  # (matched views, gap #31)
+ADDED = {"retopo_start", "retopo_look", "retopo_slices", "retopo_measure", "retopo_check", "retopo_fit",
+         "retopo_fit_cylinder", "retopo_primitives", "retopo_cage", "retopo_press", "retopo_bake", "retopo_fill",
+         "retopo_assemble", "retopo_compare", "retopo_armature", "retopo_rom", "retopo_lod",
+         "retopo_report",  # (artist retopo of a fused concept sculpt, C509)
+         "fit_concept_camera", "look_matched", "feature_tiles", "join_report",  # (matched views, gap #31)
          "fit_matched",  # (fit a part to fitted-camera pictures: its seen outline, a press limit; Braynard gap 33)
          "read_reference", "mark_features", "feature_report",  # (the feature map: a sculpt read from its pictures)
          "build_masses",  # (masses from their marked outlines)
