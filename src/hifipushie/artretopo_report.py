@@ -1,7 +1,7 @@
 """Artist retopo: the run's report (the blind-run kit's required output, docs/blind/artist_retopo.md).
 
 report/ holds: final.glb, rigged.glb, rom_sheet.jpg, close_rom.jpg (+ close_mouth.jpg), final_cmp.jpg, wire_sheet.jpg,
-rom.json, press.json, bake.json, cage_check.json, input_check.json, joints.json, props.json (if any), every
+rom.json, press.json, bake.json, lod1_rigged.glb, cage_check.json, input_check.json, joints.json, props.json (if any), every
 cage_v<N>.py, decisions.md (the artist's own log) and report.md (numbers + the file list)."""
 from __future__ import annotations
 
@@ -11,17 +11,18 @@ from pathlib import Path
 
 from .artretopo_run import folder
 
-FILES = ("final.glb", "rigged.glb", "rom_sheet.jpg", "close_rom.jpg", "close_mouth.jpg", "final_cmp.jpg", "wire_sheet.jpg",
+FILES = ("final.glb", "rigged.glb", "lod1_rigged.glb", "bake_sheet.jpg", "close_custom.jpg", "rom_sheet.jpg",
+         "close_rom.jpg", "close_mouth.jpg", "final_cmp.jpg", "wire_sheet.jpg",
          "rom.json", "rom_final.txt", "press.json", "bake.json", "cage_check.json", "input_check.json", "joints.json",
          "props.json", "cage.py")
-NEED = ("final.glb", "rigged.glb", "rom_sheet.jpg", "close_rom.jpg", "final_cmp.jpg", "rom.json")
+NEED = ("final.glb", "rigged.glb", "lod1_rigged.glb", "rom_sheet.jpg", "final_cmp.jpg", "rom.json")
 
 
 def write(name: str, decisions: str, out_dir: str | None = None) -> str:
     d = folder(name); out = Path(out_dir) if out_dir else d / "report"
     miss = [f for f in NEED if not (d / f).exists()]
     if miss:
-        raise ValueError(f"not finished: {miss} missing (press, bake and rig first)")
+        raise ValueError(f"not finished: {miss} missing (press, bake, fill, assemble, rig, rom, lod first)")
     if len(decisions.strip()) < 200:
         raise ValueError("decisions: write the log (what you read off the sculpt, every loop decision and why, what "
                          "you changed after each look, what is still wrong): a few paragraphs at least")

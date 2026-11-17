@@ -1,10 +1,12 @@
-"""Artist retopo, step 4 (Blender): rig (Mixamo names), weight, ROM pass (blender_artretopo_rom.py), LOD1, export.
+"""Artist retopo, step 4 (Blender): rig (Mixamo names), weight, LOD1 weights, export (the ROM is its own step:
+blender_artretopo_posecheck.py loads rigged.blend).
     blender -b --factory-startup --python blender_artretopo_rig.py -- job.json
-job: dir, joints ({name: [x, y, z]}, the LEFT side (+x) for paired joints; see JOINTS), helpers (joints that get a
-half-angle bend helper: default Arm, ForeArm, Leg = shoulder, elbow, knee), clavicle (the share of an arm's lift past
-60 deg the clavicle takes: 0.3), helper_smooth, jaw_smooth, poses (names; default all), close (close-up framing).
+job: dir, joints ({name: [x, y, z]}, the LEFT side (+x) for paired joints; see JOINTS; "fingers": {name: [4 points
+from the knuckle to the tip]} adds Left/RightHand<name>1..3 chains: a hand's fingers, a wing tip's feathers),
+helpers (joints that get a half-angle bend helper: default Arm, ForeArm, Leg = shoulder, elbow, knee), clavicle (the share of an arm's lift past
+60 deg the clavicle takes: 0.3), helper_smooth, jaw_smooth, (nothing else).
 Reads final.glb (else low_uv.glb), low.ply + low_groups.json (the jaw), props.json (which bone holds each prop).
-Writes rigged.glb, rom.json, rom_<pose>_{front,3q}.png, close_<pose>.png, lod1_<pose>.png.
+Writes rigged.glb, rigged.blend, rig.json (bones, helpers, joints, object names, weighting numbers).
 
 Weighting, in order (each step a lesson, guide(topic="retopo") "Rig"):
 1. import with merge_vertices=True (glTF splits vertices at UV seams; bone heat then tears the seams in pose)
@@ -28,7 +30,6 @@ from mathutils.kdtree import KDTree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_artretopo_common as C  # noqa: E402
-import blender_artretopo_rom as ROM  # noqa: E402
 
 PFX = "mixamorig:"
 J = C.job(); D = J["dir"]; JT = J["joints"]
@@ -41,6 +42,7 @@ LODS = [o for o in meshes if o.name.startswith("lod")]
 props = [o for o in meshes if o is not body and o not in LODS]
 PJ = json.load(open(f"{D}/props.json")) if os.path.exists(f"{D}/props.json") else {"eyes": [], "props": []}
 HOLD = {it.get("name", f"prop_{k}"): it.get("bone", "Head") for k, it in enumerate(PJ["props"])}
+HOLD.update({cp["name"]: cp.get("bone", "Head") for cp in PJ.get("cut_parts", [])})     # parts ride a bone by name
 
 # ---- skeleton: (bone, parent, head joint, tail joint)
 BONES = [("Hips", None, "hips", "spine"), ("Spine", "Hips", "spine", "spine1"), ("Spine1", "Spine", "spine1", "spine2"),
@@ -54,6 +56,12 @@ for side, sg in (("Left", 1), ("Right", -1)):
               (f"{side}Foot", f"{side}Leg", S("ankle"), S("toe")), (f"{side}ToeBase", f"{side}Foot", S("toe"), S("toe_end"))]
 if "jaw" in JT:
     BONES.append(("Jaw", "Head", "jaw", "jaw_tip"))      # an extra leaf bone after the Mixamo set
+for fname, pts in (JT.get("fingers") or {}).items():    # Mixamo finger chains (a hand's fingers; feathers at a wing tip)
+    for side, sg in (("Left", 1), ("Right", -1)):
+        prev = f"{side}Hand"
+        for k in range(3):
+            JT[f"f_{fname}_{k}"], JT[f"f_{fname}_{k + 1}"] = pts[k], pts[k + 1]
+            bn = f"{side}Hand{fname}{k + 1}"; BONES.append((bn, prev, f"f_{fname}_{k}.{sg}", f"f_{fname}_{k + 1}.{sg}")); prev = bn
 
 
 def jp(name):
@@ -202,12 +210,17 @@ info = {"source": os.path.basename(SRC), "bones": len(arm_d.bones), "helpers": l
         "empty_filled": len(empty), "props": {o.name: o.parent_bone for o in props}, "groups": len(VG)}
 print("RIG", json.dumps(info))
 
-# ---- ROM, LOD1 weights, export
-rom = ROM.run(J, sc, rig, body, LODS, props, BONES, HELP, PFX)
-rom["rig"] = info
-json.dump(rom, open(f"{D}/rom.json", "w"), indent=1)
-ROM.set_pose(rig, [], J, BONES, HELP, PFX)
+# ---- LOD1 weights (nearest face, interpolated; same skeleton), save, export
+for lo in LODS:
+    C.select_only(lo, body, active=body)
+    bpy.ops.object.data_transfer(use_reverse_transfer=False, data_type="VGROUP_WEIGHTS", vert_mapping="POLYINTERP_NEAREST",
+                                 layers_select_src="ALL", layers_select_dst="NAME", use_create=True)
+    am = lo.modifiers.new("arm", "ARMATURE"); am.object = rig; lo.parent = rig
+    info["lod1"] = {"faces": len(lo.data.polygons), "groups": len(lo.vertex_groups)}
+json.dump({"bones": BONES, "helpers": HELP, "joints": JT, "prefix": PFX, "body": body.name, "rig": rig.name,
+           "lods": [o.name for o in LODS], "props": [o.name for o in props], "info": info},
+          open(f"{D}/rig.json", "w"), indent=1)
 C.select_only(body, rig, *LODS, *props, active=rig)
 bpy.ops.export_scene.gltf(filepath=f"{D}/rigged.glb", use_selection=True, export_format="GLB")
-ROM.close_ups(J, sc, rig, body, BONES, HELP, PFX)
+bpy.ops.wm.save_as_mainfile(filepath=f"{D}/rigged.blend")
 print("RIGGED")

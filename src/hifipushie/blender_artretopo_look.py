@@ -1,7 +1,8 @@
 """Artist retopo: orthographic looks at one mesh (Blender workbench), for studying a sculpt and checking a cage.
     blender -b --factory-startup --python blender_artretopo_look.py -- job.json
 job: mesh (a .ply or .glb), over (optional: a cage .ply drawn as a red wire over the mesh), style ("colour": vertex
-colours / textures, "clay", "wire": clay + a dark wire), views, centre, scale, res, out (prefix: <out>_<view>.png)."""
+colours / textures, "flat": textures unlit (the maps alone, as flat.py), "clay", "wire": clay + a dark wire), red
+(optional: face indices drawn red: folds from the press), views, centre, scale, res, out (prefix: <out>_<view>.png)."""
 import os
 import sys
 
@@ -20,10 +21,19 @@ if J["mesh"].endswith(".glb"):
 else:
     objs = [C.load_ply(J["mesh"], "mesh")]
 style = J.get("style", "colour"); S = J["scale"]
-colour = "MATERIAL" if style != "colour" else ("TEXTURE" if J["mesh"].endswith(".glb") else "VERTEX")
-sh = C.workbench(sc, J.get("res", 768), colour=colour); sh.show_cavity = style != "colour"
-for o in objs:
-    o.data.materials.clear(); o.data.materials.append(C.flat_mat("clay", (0.86, 0.84, 0.80, 1))) if style != "colour" else None
+tex = style in ("colour", "flat")
+colour = "MATERIAL" if not tex else ("TEXTURE" if J["mesh"].endswith(".glb") else "VERTEX")
+sh = C.workbench(sc, J.get("res", 768), colour=colour, light="FLAT" if style == "flat" else "STUDIO",
+                 bg=(0.3, 0.3, 0.3) if style == "flat" else (1, 1, 1))
+sh.show_cavity = not tex
+if not tex:
+    for o in objs:
+        o.data.materials.clear(); o.data.materials.append(C.flat_mat("clay", (0.86, 0.84, 0.80, 1)))
+    if J.get("red"):
+        o = objs[0]; o.data.materials.append(C.flat_mat("red", (0.9, 0.1, 0.1, 1)))
+        for i in J["red"]:
+            if i < len(o.data.polygons):
+                o.data.polygons[i].material_index = 1
 if style == "wire":
     for o in objs:
         C.wire_copy(sc, o, 0.0012 * S / 1.1, (0.1, 0.1, 0.12, 1))

@@ -37,6 +37,6 @@ mouth builder shared (Cage.mouth); cage refused if open / non-manifold.
 1. No blind run yet: Puddles and Max first (the director starts them with docs/blind/artist_retopo.md).
 2. Mabel knee_up 133 / crouch 182 squashed (stubby-leg knee crease); huge-head arms_up stretch.
 3. Wings (Hettie, The Major), hands with fingers, hard-surface props / karts (oxidegen kart-retopo): not covered.
-4. CLAUDE.md is over 8 KB (8.3 KB; it was 8.2 KB before this thread's two lines).
+4. No CLAUDE.md thread line: it is at 8189 of 8192 bytes (test_codified); the coordinator adds one if it trims.
 
 NEXT: Joe reads the regression sheets, bin/suite, coordinator lands; then blind Puddles + Max from prod mesh_ply.

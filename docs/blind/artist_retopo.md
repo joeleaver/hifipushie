@@ -31,7 +31,7 @@ runs through `call_tool("retopo_...", {...})`; `guide(topic=...)` reads the docu
    head. Fix and re-run until the loops are where an artist would put them. Comment every decision in the code.
 6. `retopo_press`, look at the low mesh as a wire where it matters (face, shoulders, hips) and at every fold cluster.
 7. `retopo_bake`; judge final_cmp (the sculpt left, yours right). Black smudges, lost features, a muddy face are faults.
-8. `retopo_rig` with joints you read off slices and side views. Judge the ROM sheet and the close-ups. Fix the worst
+8. `retopo_armature` with joints you read off slices and side views. Judge the ROM sheet and the close-ups. Fix the worst
    pose at its cause (cage, joints, pins) and run again where it pays.
 9. `retopo_report(name, decisions, out_dir="{OUT}")` with your decision log (format below).
 

@@ -45,7 +45,8 @@ from .tools_plan import (  # noqa: F401
 from .tools_flap import bend, flap  # noqa: F401
 from .tools_reshape import carve, fuse, grab, trim  # noqa: F401
 from .tools_retopo import (  # noqa: F401
-    retopo_bake, retopo_cage, retopo_fit, retopo_look, retopo_press, retopo_props, retopo_report, retopo_rig,
+    retopo_assemble, retopo_bake, retopo_cage, retopo_check, retopo_compare, retopo_fill, retopo_fit, retopo_fit_cylinder,
+    retopo_lod, retopo_look, retopo_measure, retopo_press, retopo_primitives, retopo_report, retopo_armature, retopo_rom,
     retopo_slices, retopo_start)
 from .tools_plants import (  # noqa: F401
     edit_plant, export_plant, export_stand, get_plant, grow_plant, grow_stand, look_plant, look_plants, look_stand,

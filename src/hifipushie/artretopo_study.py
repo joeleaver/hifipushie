@@ -23,7 +23,7 @@ from .artretopo_sculpt import Sculpt
 AXES = {"front": (0, 2, 1, False), "back": (0, 2, -1, True), "side_r": (1, 2, 1, True), "side": (1, 2, 1, False),
         "top": (0, 1, 1, False)}       # view: (horizontal axis, vertical axis, -, horizontal flipped?)
 MESHES = {"high": "high.ply", "body": "high_body.ply", "cage": "cage.ply", "low": "low.ply", "lod1": "lod1.ply",
-          "final": "final.glb"}
+          "final": "final.glb", "rigged": "rigged.glb", "lod1_rigged": "lod1_rigged.glb"}
 
 
 def _mesh_path(d: Path, mesh: str) -> Path:
@@ -31,7 +31,7 @@ def _mesh_path(d: Path, mesh: str) -> Path:
 
 
 def views(name: str, mesh: str = "high", views=("front", "side", "top"), centre=None, scale=None, step: float = 0.05,
-          style: str = "colour", over: str | None = None, res: int = 768) -> tuple[Path, str]:
+          style: str = "colour", over: str | None = None, res: int = 768, folds: bool = False) -> tuple[Path, str]:
     from .artretopo_steps import GB, blender, framing
     d = folder(name); src = _mesh_path(d, mesh)
     fr = framing(d)
@@ -41,6 +41,10 @@ def views(name: str, mesh: str = "high", views=("front", "side", "top"), centre=
            "out": str(out)}
     if over:
         job["over"] = str(_mesh_path(d, over))
+    if folds:
+        if mesh != "low" or style not in ("clay", "wire"):
+            raise ValueError("folds: only on mesh low, style clay or wire (the press's folded faces)")
+        need(d, "low_folded.json"); job["red"] = json.loads((d / "low_folded.json").read_text())
     blender("look", job, GB["look"])
     tiles = []
     for v in views:

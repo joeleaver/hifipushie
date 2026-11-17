@@ -12,7 +12,7 @@ their own tools, and a finished model exports as a game-ready GLB.
 
 ## Tools
 
-119 tools in 15 domains. A small core is native MCP tools; every other tool runs through
+137 tools in 16 domains. A small core is native MCP tools; every other tool runs through
 `call_tool(name, args)`. An agent does not need this table: `guide` is the playbook (read first),
 `find_tool("<the job in plain words>")` names the tool for a job with an example call, and
 `guide(topic="<tool>")` gives any tool's full parameters. `guide(topic="example")` returns two whole models to
@@ -34,6 +34,7 @@ start from.
 | cloth | Garments: design, the toile, its marks and the cut flat pattern (drape first), the pattern and its gate, alterations, the chain build, references | `garment_plan`, `body_tape`, `garment_toile`, `garment_mark`, `garment_cut`, `draft_pattern`, `pattern_parts`, `pattern_check`, `chain_garment`, `garment_details`, `look_chain`, `garment_appearance`, `export_garment`, `garment_record` |
 | terrain | Terrain and game levels (height fields in a level designer's words) | `set_terrain`, `check_terrain`, `look_terrain`, `export_terrain`, `terrain_history` |
 | plants | Trees and plants (grown, measured, exported), stands of them, wind | `grow_plant`, `edit_plant`, `get_plant`, `look_plant`, `look_plants`, `plant_form`, `plant_reference`, `export_plant`, `wind_plant`, `sync_plant`, `plant_history`, `grow_stand`, `look_stand`, `export_stand` |
+| retopo | Artist-style retopology of a fused concept sculpt (oxidegen make_point_cloud): your own cage of loops, pressed, baked, rigged and range-of-motion checked | `retopo_start`, `retopo_look`, `retopo_slices`, `retopo_measure`, `retopo_check`, `retopo_fit`, `retopo_fit_cylinder`, `retopo_primitives`, `retopo_cage`, `retopo_press`, `retopo_bake`, `retopo_fill`, `retopo_assemble`, `retopo_compare`, `retopo_armature`, `retopo_rom`, `retopo_lod`, `retopo_report` |
 | clutter | Ground clutter kits (rocks, logs, leaves ...) for terrain | `make_clutter`, `look_clutter`, `clutter_kit` |
 
 ## Install

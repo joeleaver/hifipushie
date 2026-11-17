@@ -24,21 +24,28 @@ really looks toward -y. (The two examples were made in an older frame centred on
 numbers are theirs.) Paired parts are built once in a `for sd in (+1, -1):` loop with x * sd.
 Horizontal ring directions: `az(deg)`, 0 = front (-y), 90 = +x side, 180 = back, 270 = -x.
 
-## The steps (tools; each makes files in the character's folder)
+## The steps (tools; each makes files in the character's folder; each is its own call)
 1. `retopo_start(name, mesh, concept)`: copy the sculpt and the concept; input check (watertight, outward, symmetric);
    a gridded front / side / top sheet. Look at it beside the concept: is the face really toward -y?
 2. Study: `retopo_slices` (horizontal and vertical cuts with numbers), `retopo_look` (gridded views of any part,
-   `centre` + `scale` to frame a head or a hand). Write down the numbers you will use (see "Study").
+   `centre` + `scale` to frame a head or a hand), `retopo_measure` (a tip's extreme vertex, ray hits, a part's
+   thickness, the colour at a point). Write down the numbers you will use (see "Study").
 3. Eyes and props: if the concept has eyeballs that stand out (googly eyes) or a held / worn hard object (a canister,
-   a cup, a weapon), rebuild each as a primitive: `retopo_fit` (sphere fit; pick an eye's vertices by colour) and
-   `retopo_props` (cut them out of the sculpt -> high_body.ply). Skip for painted eyes and soft parts.
+   a cup, a weapon), rebuild each as a primitive: `retopo_fit` (sphere; pick an eye's vertices by colour: read the
+   colour with `retopo_measure what="colour"`), `retopo_fit_cylinder` (from cross-sections), then `retopo_primitives` (cut
+   them out of the sculpt -> high_body.ply). Skip for painted eyes and soft parts.
 4. `retopo_cage(name, code)`: your cage. Refused if it isn't a closed quad manifold (the refusal names the open
    edges' places). Look at the red cage over the sculpt from every side before going on.
-5. `retopo_press`: subdivide, press, relax. Folds are counted and listed; look at the low mesh as a wire.
-6. `retopo_bake`: UVs from your seams, normal + colour bakes, repairs, final.glb, and the sculpt beside it.
-7. `retopo_rig(name, joints)`: the skeleton from your joints, weights, the range of motion (16 poses), LOD1 weights,
-   rigged.glb. Read the close-ups: red faces are edges squashed below half or stretched past 1.8 x their rest length.
-8. Fix the worst pose at its cause (a loop, a joint, a pin), not with a weight knob. Then `retopo_report`.
+5. `retopo_press`: subdivide, press, relax. Folds are counted and listed; look at them:
+   `retopo_look(mesh="low", style="wire", folds=True, centre=..., scale=...)`. `retopo_check` repeats any check.
+6. `retopo_bake` (UVs from your seams, raw normal + colour bakes and masks) -> `retopo_fill` (the repairs) ->
+   `retopo_assemble` (final.glb, shown beside the sculpt). `retopo_compare` renders any result beside the sculpt from
+   any view; `retopo_look(mesh="final", style="flat")` shows the maps alone.
+7. `retopo_armature(name, joints)`: the skeleton from your joints, weights, LOD1 weights -> rigged.glb.
+8. `retopo_rom`: the range of motion (16 standard poses, or yours): numbers, a sheet, close-ups (red faces: edges
+   squashed below half or stretched past 1.8 x their rest length). Fix the worst pose at its cause (a loop, a joint,
+   a pin), not with a weight knob.
+9. `retopo_lod` (LOD1 rigged on its own), then `retopo_report`.
 
 ## Study (before any code)
 An artist turns the model round and measures it. You slice it.
@@ -87,6 +94,19 @@ necks the raised arm through a hole. If the slices show the arm fused to the tor
    arm; tracks starting on invented vertices leave sideways and stay invented). Bridge hole -> mids -> rings.
 The rig adds a shoulder half-angle helper and gives the clavicle 0.3 of any arm lift past 60 deg.
 
+### Limbs fused along their length (a wing pressed to the flank, an arm glued to the side)
+Where the slices show one region for body + limb all the way down, give the limb its own cross-section: `c.ring_clip(
+origin, normal, u, v, n, keep_side=((x_in, y), (1, 0)), pick2d, start_dir)` keeps the part of the contour beyond the
+flank line x_in (measured per height: where the body's side would be), resamples it evenly and pins the vertices on
+the cut (the limb's invented inner side). The torso's vertices under the limb are invented ~1.2 cm inside x_in.
+
+### Wings
+A wing is an ARM: the Mixamo arm chain inside the paddle (shoulder at the wing root, elbow and wrist along its
+leading edge) plus finger chains across the tip: joints `"fingers": {"Index": [4 points], "Middle": [...], "Ring":
+[...]}` (left side) add LeftHandIndex1..3 etc. A folding / grip pose: the upper arm aimed at an elbow point beside the
+belly, the forearm aimed at the rim, the fingers curled about their own x axis (`["LeftHandIndex1", "lx", -40]` for
+each joint of each finger). No wing loops of their own yet: build it from ring_clip contours like a fused arm.
+
 ### Legs: thin or wide
 - THIN legs (a goat's, a bird's): close the torso with a pelvis FLOOR (`cap_grid(T[0], 4, 4, ...)`) and cut a hole
   in it per leg, sized to the leg (`holes={(3, 1), (3, 2), (0, 1), (0, 2)}`). The crotch between the holes belongs to
@@ -114,7 +134,7 @@ the throat under an overhanging jaw, the jaw's corners where that crease turns u
 ### Eyes
 - Painted / flat eyes: an eye hole of 4 cells, two concentric insets (0.62, 0.3), one quad. The eye loops sit on the
   muzzle's top edge and under the brow.
-- Eyeballs that stand out (googly): rebuild each as a sphere (`retopo_fit`, then `retopo_props`). Snap the eye hole
+- Eyeballs that stand out (googly): rebuild each as a sphere (`retopo_fit`, then `retopo_primitives`). Snap the eye hole
   onto the circle where the eyeball meets the skin (`c.snap_to_sphere(hole, centre, R + 4 mm, axis, 62)`, each
   vertex keeping its angle round the eye axis, then `c.closest`), a lid ring ON the eyeball (52 deg), a hidden ring
   inside it (35 deg) and a `cap8`, all pinned. The eyeball is parented rigidly to the Head bone.
@@ -130,8 +150,13 @@ sweeping back). EVEN the root's directions round the tube (`dirs` at equal angle
 vertex): a hole's 3-on-top / 3-below directions make a crease along the horn. The hole's front edge becomes the
 horn's top when it rises and sweeps back. Close to the extreme vertex along the horn (`c.extreme`).
 
+### Soft parts kept as their own pieces (a comb, a wattle, a crest)
+`retopo_primitives(parts=[{name, cut: [shapes], bone}])` cuts a part out of the sculpt as part_<name>.ply (a piece of its
+own; it rides `bone` by name: a wattle the Jaw, a comb the Head). Skin within 2.5 cm of a cut part bakes as invented
+(its cut edge reads raw interior). Parts' own cages are not a tool yet.
+
 ### Props and accessories
-A hard object (canister, cup, gem, button eye) is a primitive, not part of the skin: `retopo_props` items
+A hard object (canister, cup, gem, button eye) is a primitive, not part of the skin: `retopo_primitives` items
 `{name, type: cylinder|sphere, axis, c, R, length, bone}` (bone "Jaw" for a thing held in the teeth, else "Head" or
 leave it). Measure it from x-plane cross-sections (`retopo_slices(axis="x")`). The cut (`cut` shapes, or each
 primitive grown 6 mm) leaves the skin around it open: slice rings off the WHOLE sculpt (closed contours; the tools do)
@@ -164,7 +189,7 @@ hole with twisted order). Look: `retopo_look(mesh="low", style="wire", centre=..
   face, the colour patches. Black smudges = a bake miss or an invented area that should be smaller.
 - `head=[x, y, z]` frames the head close-up when the default (the top third's centre) misses it.
 
-## Rig (`retopo_rig`)
+## Rig (`retopo_armature`)
 Joints you give (metres, LEFT side for paired joints; read them off slices and side views; inside the body, at the
 joint's pivot, not on the surface): hips, spine, spine1, spine2, neck, head, head_top, clavicle, shoulder, elbow,
 wrist, hand_end, hip, knee, ankle, toe, toe_end; for a mouth: jaw (the hinge, under the ear) and jaw_tip (the chin).
@@ -173,8 +198,8 @@ clavicle taking 0.3 of an arm lift past 60 deg, a Jaw leaf bone under Head drive
 inside on the head (+ jaw) only, empty vertices copying their nearest weighted neighbour, props parented rigidly
 (eyes to Head; a held prop to Jaw), LOD1 weights copied from the full mesh.
 
-## Range of motion
-16 poses: rest, arms_side_80, arms_up_150, arms_forward_90, arms_back_40, elbows_120, leg_forward_80, knee_up_100,
+## Range of motion (`retopo_rom`)
+16 standard poses: rest, arms_side_80, arms_up_150, arms_forward_90, arms_back_40, elbows_120, leg_forward_80, knee_up_100,
 leg_back_35, leg_side_40, crouch, spine_forward_40, spine_side_30, spine_twist_45, head_turn_60, head_down_up,
 mouth_open_20. The director's limits: arms "up" means each arm AIMED 30 deg off vertical, out to the side, not
 straighter (that clips the head; these characters don't need it).
@@ -191,6 +216,10 @@ mouth_open_20's few hundred "stretched" edges are the mouth bag opening: expecte
 counts: a red band across a joint's crease (knee, elbow) is compression and reads as a crease; a red tear at an
 armpit or a lip corner is a fault. Stubby legs crease at the knee whatever the weights (Mabel): accept or rebuild
 the leg's loops; huge heads stretch the shoulders in arms_up.
+Your own poses: `poses=["rest", "arms_up_150", {"wave": [["LeftArm", "aim", [0.5, -0.3, 0.8]],
+["LeftForeArm", [1, 0, 0], -60]]}]` (a bone, a world axis and degrees, or "aim" and a direction; the clavicle
+share and the half-angle helpers are added for you) and close-ups `close={"wave": {"view": [-0.6, -1, 0.2],
+"target": [x, y, z], "scale": 0.3}}` ("wave#2" for a second view of a pose).
 Fix at the cause: an armpit tearing = the shoulder root too small or not invented under the arm; a thigh web on
 knee_up = a hip loop as the leg's root (use a pelvis floor); a mouth corner tearing = jaw weights missing the 0.5
 corners. Weight knobs (global smoothing, limb fades, a hip helper) made every one of these worse.
@@ -206,6 +235,12 @@ corners. Weight knobs (global smoothing, limb fades, a hip helper) made every on
 - Un-subdividing triangles for a LOD leaves speckles: LOD1 is the coarse pressed mesh with its own unwrap and bake.
 - Nearest-point pressing folds thin cupped ears and touching armpits: press along normals.
 - Texture-space filling pulls colour from unrelated UV neighbours (shards): fill on the surface.
+- final.glb / rigged.glb hold LOD1 on top of LOD0: every render but LOD1's own must hide the lod objects, or LOD1's
+  bake z-fights through as black "shards" (the dark shards seen on Scraps' lips were this). The tools do.
+- A bake ray that meets the sculpt from BEHIND reads its dark interior: coverage counts it as a miss (the tools do);
+  colour is spread into invented skin only from skin the bake truly hit.
+- An AIMED bone is aimed from its CURRENT direction at pose time (its parent may have moved) and takes no clavicle
+  share (that pulls an aimed arm inward); its helper turns half the aim.
 
 ## Dead ends
 Weight smoothing over the whole body; raising the hips; a thigh-weight fade by distance; a hip half-angle helper
@@ -214,9 +249,9 @@ leg's root; ring fitting from a skeleton chain (the old quad-retopo); a rule eng
 (loop-plan): both replaced by this.
 
 ## Not covered yet (extension points)
-Wings (Hettie, The Major): a wing is a limb out of a back / shoulder hole, a flat sheet (ring_even) with its own
-bones; no wing joints or poses exist yet in the rig (BONES / POSES in blender_artretopo_rig.py / _rom.py are where they
-go). Hard-surface props and vehicles (the karts): a different press (no relax across hard edges) and a vehicle rig;
+Wings (Hettie, The Major): rigged as arms + finger chains (above); a wing's own loop layout beyond ring_clip
+contours is untested (Hettie is in progress in the oxidegen spike). Soft parts' own cages (comb, wattle), a beak's
+mouth split along its mid-line, and toes: in progress there too. Hard-surface props and vehicles (the karts): a different press (no relax across hard edges) and a vehicle rig;
 not this path. Hands with fingers: a hand ring + finger holes like an ear's, untested.
 
 ## Tool reference
@@ -244,9 +279,10 @@ outlines in colour per plane. Use the centroids as rings' `pick` and `centre`.
 of near (and coloured within tol of rgb 0-255: pick an eye's white or yellow). Returns c, R, rms (rms under ~1.5 mm:
 it is a ball).
 
-### `retopo_props`
-`retopo_props(name, eyes=[{c, R}], items=[{name, type, axis, c, R, length, bone}], cut=None, margin=0.006)`: writes
-props.json and high_body.ply (the sculpt minus the cut shapes, biggest part kept). cut shapes: {type: sphere, c, R} or
+### `retopo_primitives`
+`retopo_primitives(name, eyes=[{c, R}], items=[{name, type, axis, c, R, length, bone}], cut=None, margin=0.006,
+parts=[{name, cut: [shapes], bone}])`: writes props.json, high_body.ply (the sculpt minus the cut shapes, biggest part
+kept) and part_<name>.ply per part. cut shapes: {type: sphere, c, R} or
 {type: cylinder, axis, c, R, span: [lo, hi] along the axis, bounds: {"y": [lo, hi]} optional}. Shows the body.
 
 ### `retopo_cage`
@@ -257,7 +293,8 @@ props.json and high_body.ply (the sculpt minus the cut shapes, biggest part kept
   `c.centre_of(z, pick)`, `c.extreme(lo, hi, direction)`; `s.slice(origin, normal, u, v)` -> regions (`.centroid`,
   `.area`, `.exterior`, `.contains(p)`, `.ray_exit(c, d)`), `s.normal_at(p)`
 - rings: `c.hring(z, dirs, centre=None, pick=(0, 0))`, `c.ring(origin, normal, u, v, dirs, centre2d, pick2d)`,
-  `c.ring_even(origin, normal, u, v, n, pick2d, start_dir, ccw=True)`, `c.dirs_from(loop, centre_xy, axes=(0, 1))`,
+  `c.ring_even(origin, normal, u, v, n, pick2d, start_dir, ccw=True)`, `c.ring_clip(origin, normal, u, v, n,
+  keep_side=((x, y), (nx, ny)), pick2d, start_dir, ccw=True, pin_inner=True)`, `c.dirs_from(loop, centre_xy, axes=(0, 1))`,
   `c.inset(loop, centre_xz, scale)`, `c.snap_to_sphere(loop, centre, R, axis, theta_deg)` (points),
   `c.tracks(hole, ring0, down, pinned_out=None, n=2)` (rings)
 - faces: `c.bridge(a, b, skip=())`, `c.bridge_new(prev, points, pin=False)`, `c.quad(a, b, c, d)`,
@@ -272,12 +309,50 @@ Refused (nothing saved past the code) when edges are open, non-manifold, or a fa
 `retopo_press(name, levels=1, relax=6, after=1)`: see Press. Returns cage volume, LOD1 quads, low quads, folds (and
 where), invented vertices; a sheet of the cage over the sculpt and the low mesh, 4 views.
 
-### `retopo_bake`
-`retopo_bake(name, res=2048, extrusion=0.012, reach=0.03, head=None)`: see Bake. ~3-6 minutes on the CPU.
+### `retopo_measure`
+`retopo_measure(name, what, point=None, direction=None, lo=None, hi=None, radius=0.01, mesh="high")`: what "extreme"
+(lo, hi: the box corners; direction: the vertex furthest that way inside it; a horn / ear tip), "ray" (point,
+direction: every hit, nearest first, with its distance), "thickness" (point: from the nearest surface point inward
+along its normal to the far side), "colour" (point, radius: the mean vertex colour, 0-255).
 
-### `retopo_rig`
-`retopo_rig(name, joints, helpers=["Arm","ForeArm","Leg"], clavicle=0.3)`: see Rig. ~3-5 minutes. Returns the ROM
-sheet (every pose, front + 3/4), the close-ups (clay, red = bad edges), the mouth close-ups, the numbers.
+### `retopo_check`
+`retopo_check(name, what="low")`: "input" (as retopo_start), "cage" (as retopo_cage's refusal), "low" (the press's
+numbers + the low mesh's volume and open edges).
+
+### `retopo_fit_cylinder`
+`retopo_fit_cylinder(name, axis, at, pick)`: axis x | y | z; at: stations along it (inside the prop); pick: a point in
+the section's plane near the prop's centre (axis x: (y, z); y: (x, z); z: (x, y)). Returns c, R, R_spread and every
+slice's circle (centre, R, rms): stations whose R departs from the rest are past the cylinder's ends (or a rim:
+a second, wider cylinder).
+
+### `retopo_bake`
+`retopo_bake(name, res=2048, extrusion=0.012, reach=0.03, thin_extrusion=0.004, thin_reach=0.015)`: see Bake. Writes
+the raw maps and masks and low_uv.glb; ~3 minutes on the CPU. Shows the raw colour and normal maps.
+
+### `retopo_fill`
+`retopo_fill(name)`: repairs every baked tag (low, lod1, each prop) in place; returns the misses and invented texels
+per tag.
+
+### `retopo_assemble`
+`retopo_assemble(name)`: the repaired maps into low_uv.glb -> final.glb (body, props, LOD1); renders final_cmp.jpg
+(sculpt left, yours right: whole figure 3/4, back, head).
+
+### `retopo_compare`
+`retopo_compare(name, result="final.glb", views=None, head=None)`: result final.glb | rigged.glb | lod1_rigged.glb |
+low.ply (clay); views [{name, view: [dx, dy, dz] (from the target toward the camera), target: [x, y, z], scale}];
+head frames the standard head view.
+
+### `retopo_armature`
+`retopo_armature(name, joints, helpers=["Arm","ForeArm","Leg"])`: see Rig. ~1 minute. Writes rigged.glb, rigged.blend,
+rig.json (bones, helpers, jaw vertices, which bone holds each prop, LOD1 weights).
+
+### `retopo_rom`
+`retopo_rom(name, poses=None, clavicle=0.3, close=None, close_ups=True)`: see Range of motion. ~2-4 minutes. Returns
+the ROM sheet (every pose, front + 3/4), the standard close-ups, the mouth close-ups, your close-ups, the numbers.
+
+### `retopo_lod`
+`retopo_lod(name)`: LOD1 (the pressed coarse mesh, its own 1K bake, weights copied from the full mesh) with the rig
+and props -> lod1_rigged.glb; a picture of it.
 
 ### `retopo_report`
 `retopo_report(name, decisions, out_dir=None)`: decisions is your log in markdown (what you read off the sculpt, every

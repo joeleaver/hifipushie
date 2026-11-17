@@ -86,10 +86,12 @@ def _shape_mask(P, sh) -> np.ndarray:
     return m
 
 
-def props(name: str, eyes=None, items=None, cut=None, margin: float = 0.006) -> dict:
+def props(name: str, eyes=None, items=None, cut=None, margin: float = 0.006, parts=None) -> dict:
     """eyes: [{c, R}] spheres (from fit_sphere); items: [{type: cylinder|sphere, axis, c, R, length, bone}] the props
     (bone "Head" or "Jaw": a prop held in the teeth rides the jaw); cut: extra cut shapes (default: every eye and item
-    grown by margin). Writes props.json and high_body.ply (the biggest part left after the cut)."""
+    grown by margin); parts: [{name, cut: [shapes], bone}] soft parts of the sculpt kept as pieces of their own
+    (part_<name>.ply: a comb, a wattle; skin within 2.5 cm of one bakes as invented). Writes props.json and
+    high_body.ply (the biggest part left after the cut)."""
     d = folder(name); need(d, "high.ply")
     eyes = eyes or []; items = items or []
     shapes = list(cut) if cut else (
@@ -103,14 +105,22 @@ def props(name: str, eyes=None, items=None, cut=None, margin: float = 0.006) -> 
     kill = np.zeros(len(centres), bool)
     for sh in shapes:
         kill |= _shape_mask(centres, sh)
+    cut_parts = []
+    for pt in parts or []:      # soft parts of the sculpt kept as their own pieces (a comb, a wattle): cut out whole
+        pk = np.zeros(len(centres), bool)
+        for sh in pt["cut"]:
+            pk |= _shape_mask(centres, sh)
+        piece = m.submesh(pk); f = f"part_{pt['name']}.ply"; write_ply(d / f, piece.V, piece.F, piece.C)
+        cut_parts.append({"name": pt["name"], "file": f, "bone": pt.get("bone", "Head"), "triangles": int(pk.sum())})
+        kill |= pk
     body = m.submesh(~kill)
     lab = body.components(); big = np.bincount(lab).argmax(); parts = len(np.unique(lab))
     body = body.submesh(lab == big)
     write_ply(d / "high_body.ply", body.V, body.F, body.C)
-    J = {"eyes": eyes, "props": items, "cut": shapes}
+    J = {"eyes": eyes, "props": items, "cut": shapes, "cut_parts": cut_parts}
     (d / "props.json").write_text(json.dumps(J, indent=1))
     return {"removed_triangles": int(kill.sum()), "parts_after_cut": parts, "kept_triangles": len(body.F),
-            "eyes": len(eyes), "props": len(items)}
+            "eyes": len(eyes), "props": len(items), "cut_parts": [(c_["name"], c_["triangles"]) for c_ in cut_parts]}
 
 
 # ---- the cage

@@ -192,17 +192,17 @@ TOOL_GROUPS: dict[str, dict] = {
                "tools": ["grow_plant", "edit_plant", "get_plant", "look_plant", "look_plants", "plant_form",
                          "plant_reference", "export_plant", "wind_plant", "sync_plant", "plant_history",
                          "grow_stand", "look_stand", "export_stand"]},
-    "retopo": {"subject": "retopo retopology topology cage loops fused sculpt point cloud bake rig rom range motion "
-                          "game character cartoon",
+    "retopo": {"subject": "retopo retopology retopologise retopologize topology cage fused pointcloud",
                "workflow": "Artist retopo (a fused concept sculpt -> a game character): retopo_start -> study "
-                           "(retopo_look, retopo_slices) -> retopo_fit / retopo_props (eyes, held props) -> retopo_cage "
-                           "(your cage as code) -> retopo_press -> retopo_bake -> retopo_rig -> retopo_report",
-               "steps": ["retopo_start", "retopo_look", "retopo_slices", "retopo_fit", "retopo_props", "retopo_cage",
-                         "retopo_press", "retopo_bake", "retopo_rig", "retopo_report"],
-               "about": "artist-style retopology of a fused sculpt (oxidegen make_point_cloud): your own cage of loops, "
-                        "pressed, baked, rigged and range-of-motion checked",
-               "tools": ["retopo_start", "retopo_look", "retopo_slices", "retopo_fit", "retopo_props", "retopo_cage",
-                         "retopo_press", "retopo_bake", "retopo_rig", "retopo_report"]},
+                           "(retopo_look, retopo_slices, retopo_measure) -> eyes / props (retopo_fit, "
+                           "retopo_fit_cylinder, retopo_primitives) -> retopo_cage (your cage as code) -> retopo_press -> "
+                           "retopo_bake -> retopo_fill -> retopo_assemble -> retopo_armature -> retopo_rom -> retopo_lod -> "
+                           "retopo_report",
+               "steps": ["retopo_start", "retopo_slices", "retopo_cage", "retopo_press", "retopo_bake", "retopo_fill",
+                         "retopo_assemble", "retopo_armature", "retopo_rom", "retopo_lod", "retopo_report"],
+               "about": "artist-style retopology of a fused concept sculpt (oxidegen make_point_cloud): your own cage of "
+                        "loops, pressed, baked, rigged and range-of-motion checked",
+               "tools": ["retopo_start", "retopo_look", "retopo_slices", "retopo_measure", "retopo_check", "retopo_fit", "retopo_fit_cylinder", "retopo_primitives", "retopo_cage", "retopo_press", "retopo_bake", "retopo_fill", "retopo_assemble", "retopo_compare", "retopo_armature", "retopo_rom", "retopo_lod", "retopo_report"]},
     "clutter": {"subject": "clutter rock boulder pebble log driftwood litter debris", "entry": "make_clutter",
                 "about": "ground clutter kits (rocks, logs, leaves ...) for terrain",
                 "tools": ["make_clutter", "look_clutter", "clutter_kit"]},

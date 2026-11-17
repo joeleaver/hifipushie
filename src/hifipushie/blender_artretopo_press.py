@@ -110,6 +110,7 @@ out.update({"pinned_cage_verts": len(pin), "seam_edges": sum(e.use_seam for e in
             "low_verts": len(low.data.vertices), "low_faces": len(low.data.polygons), "folded": len(bad),
             "folded_at": [list(map(lambda x: round(x, 3), low.data.polygons[i].center)) for i in bad[:12]],
             "invented_verts": sum(1 for w in pw.values() if w < 0.5)})
+json.dump(bad, open(f"{D}/low_folded.json", "w"))
 json.dump(out, open(f"{D}/press.json", "w"), indent=1)
 
 # ---- render: solid grey + dark wire on top (red faces = folded)

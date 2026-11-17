@@ -102,6 +102,20 @@ class Poly:
         return np.asarray(out)
 
 
+def clip(loop: np.ndarray, point, normal) -> np.ndarray:
+    """the part of a loop on the side `normal` points to from the line through `point` (Sutherland-Hodgman against one
+    half-plane); the cut edge runs along the line"""
+    P = np.asarray(loop, float); c = np.asarray(point, float); n = np.asarray(normal, float)
+    d = (P - c) @ n; out = []
+    for i in range(len(P)):
+        a, b, da, db = P[i], P[(i + 1) % len(P)], d[i], d[(i + 1) % len(P)]
+        if da >= 0:
+            out.append(a)
+        if (da >= 0) != (db >= 0):
+            out.append(a + (b - a) * (da / (da - db)))
+    return np.asarray(out)
+
+
 def polygons(loops: list[np.ndarray]) -> list[Poly]:
     """closed loops of one slice -> filled regions (holes go to the smallest loop round them)"""
     loops = [np.asarray(l, float) for l in loops if len(l) >= 3]

@@ -1,6 +1,6 @@
 """Artist retopo, step 3 (Blender, Cycles CPU): UVs on the low mesh from the artist's seams, then bake the sculpt onto
 it: tangent-space normals + base colour (an EMIT bake of the sculpt's vertex colours), plus the masks the repair step
-(artretopo_fill.py) needs. Props (eyes, held things) are rebuilt as primitives and bake from the WHOLE sculpt.
+(artretopo_fill.py) needs. Coverage counts a ray that met the sculpt from BEHIND (its dark interior) as a miss. Props (eyes, held things) are rebuilt as primitives and bake from the WHOLE sculpt.
     blender -b --factory-startup --python blender_artretopo_bake.py -- job.json
 job: dir, high (the body sculpt: high_body.ply when props were cut), res, extrusion, reach (the cage extrusion and
 max ray distance of the main bake: ~1-2 cm / 3-4 cm; fur and drips need the longer reach), thin_extrusion,
@@ -8,8 +8,8 @@ thin_reach (the second bake for thin parts), lod_res.
 Writes low_uv.glb (low + props + lod1, maps wired in), color.png / normal.png (+ <tag>_color / _normal for props and
 lod1), <tag>_cover.png (rays that found nothing stay black), <tag>_island.png (texels inside a UV island),
 low_thin.png + *_thinbake.png (thin parts' short-offset bake), low_mouth.png (the mouth inside), low_invented.png +
-low_diffused.png (invented skin and its colour spread over the SURFACE), <prop>_invented.png (prop texels touching
-the body).
+low_diffused.png (invented skin and its colour spread over the SURFACE, seeded only from skin the bake truly hit;
+skin within 2.5 cm of a cut part is invented too), <prop>_invented.png (prop texels touching the body).
 
 Rules learnt (guide(topic="retopo") "Bake"): artist seams survive Catmull-Clark; unwrap ANGLE_BASED + pack. Thin parts
 (horn / ear tips) read the far side with a long extrusion: a 2nd bake at 4 mm composited by a thickness mask. Invented
@@ -121,9 +121,14 @@ def bake_onto(lo, hi, tag, res, extr, reach):
         tex[k].select = True; lt.nodes.active = tex[k]
         bpy.ops.object.bake(type=typ)
         imgs[k].filepath_raw = f"{D}/{k}.png" if tag == "low" else f"{D}/{tag}_{k}.png"; imgs[k].file_format = "PNG"; imgs[k].save()
-    # coverage: the source glows white; a texel whose ray found nothing stays black
+    # coverage: the source glows white on its FRONT faces only; a texel whose ray found nothing, or found the sculpt
+    # from behind (its dark, unseen interior), stays black
     cov = bpy.data.images.new(f"{tag}_cover", res, res); cn = lt.nodes.new("ShaderNodeTexImage"); cn.image = cov
-    keep = list(hi.data.materials); hi.data.materials.clear(); hi.data.materials.append(C.emission_material("white", rgba=(1, 1, 1, 1)))
+    wm = C.emission_material("white", rgba=(1, 1, 1, 1)); wt = wm.node_tree
+    geo = wt.nodes.new("ShaderNodeNewGeometry"); inv_ = wt.nodes.new("ShaderNodeMath"); inv_.operation = "SUBTRACT"
+    inv_.inputs[0].default_value = 1.0; em_ = next(n for n in wt.nodes if n.type == "EMISSION")
+    wt.links.new(geo.outputs["Backfacing"], inv_.inputs[1]); wt.links.new(inv_.outputs[0], em_.inputs["Strength"])
+    keep = list(hi.data.materials); hi.data.materials.clear(); hi.data.materials.append(wm)
     for n in lt.nodes:
         n.select = False
     cn.select = True; lt.nodes.active = cn; bk.margin = 0
@@ -159,8 +164,17 @@ if "mouth_inside" in G:
     vertex_mask(low, {i: w for i, w in enumerate(G["mouth_inside"]) if w > 0}, "low_mouth", RES)
 inv = set(json.load(open(f"{D}/low_invented.json"))) if os.path.exists(f"{D}/low_invented.json") else set()
 NEAR = 0.012                 # skin touching a prop reads the cut-out cavity behind it: invented too
+from mathutils.bvhtree import BVHTree as _BV  # noqa: E402
+CUT = []                     # parts cut out of the sculpt (a comb, a wattle): their cut edge reads raw interior
+for cp in P.get("cut_parts", []):
+    po = C.load_ply(f"{D}/{cp['file']}", "cut_part")
+    CUT.append(_BV.FromObject(po, bpy.context.evaluated_depsgraph_get())); bpy.data.objects.remove(po)
 for v in low.data.vertices:
     p = v.co
+    for bv in CUT:
+        h_ = bv.find_nearest(p)
+        if h_[3] is not None and h_[3] < 0.025:
+            inv.add(v.index)
     for e in P["eyes"]:
         if (p - mathutils.Vector(e["c"])).length < e["R"] + NEAR:
             inv.add(v.index)
@@ -188,7 +202,15 @@ if inv:
             acc[vi] += px[min(H_ - 1, int(v * H_)), min(W_ - 1, int(u * W_)), :3]; cnt[vi] += 1
     vc = acc / np.maximum(cnt, 1)[:, None]
     vc = np.where(vc <= 0.04045, vc / 12.92, ((vc + 0.055) / 1.055) ** 2.4)   # sRGB pixels -> linear emission
-    known = np.array([i not in inv for i in range(nv)])
+    # seed the spread only from skin the bake truly hit (coverage; a hit from behind counts as a miss)
+    cv = bpy.data.images.load(f"{D}/low_cover.png", check_existing=False); cpx = np.empty(W_ * H_ * 4, np.float32)
+    cv.pixels.foreach_get(cpx); cpx = cpx.reshape(H_, W_, 4)[..., 0]
+    hitv = np.zeros(nv); hcnt = np.zeros(nv)
+    for poly in low.data.polygons:
+        for li in poly.loop_indices:
+            vi = low.data.loops[li].vertex_index; u, v = uvl[li].uv
+            hitv[vi] += cpx[min(H_ - 1, int(v * H_)), min(W_ - 1, int(u * W_))]; hcnt[vi] += 1
+    known = np.array([i not in inv for i in range(nv)]) & (hitv / np.maximum(hcnt, 1) > 0.6)
     nbrs = [[] for _ in range(nv)]
     for e in low.data.edges:
         a_, b_ = e.vertices; nbrs[a_].append(b_); nbrs[b_].append(a_)

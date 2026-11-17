@@ -126,6 +126,9 @@ def test_props_cut_keeps_biggest_part(blob, tmp_path, monkeypatch):
     assert rep["removed_triangles"] > 0
     body = Mesh.load(d / "high_body.ply"); assert body.edges_open() > 0
     assert json.loads((d / "props.json").read_text())["cut"][0]["R"] == pytest.approx(0.056)
+    rep = R.props(str(d), parts=[{"name": "crest", "cut": [{"type": "sphere", "c": [0, 0, 0.8], "R": 0.1}], "bone": "Head"}])
+    J = json.loads((d / "props.json").read_text())
+    assert J["cut_parts"][0]["file"] == "part_crest.ply" and Mesh.load(d / "part_crest.ply").F.shape[0] > 10
 
 
 def test_cage_tool_runs_code_and_keeps_versions(blob, tmp_path):
@@ -189,8 +192,19 @@ def test_press_and_bake_tiny(blob, tmp_path):
                    "b = c.cap_grid(T[0], 6, 2, lambda i, j, p: c.bottom(p[0], p[1])); c.fill(b, 6, 2)\n"
                    "c.seam([t[8] for t in T], closed=False); c.seam(T[0]); c.seam(T[-1])\n")
     p = S.press(str(d)); assert p["folded"] == 0 and p["low_faces"] > 1000
-    b = S.bake(str(d), res=256)
-    assert (d / "final.glb").exists() and (d / "final_cmp.jpg").exists() and b["seams"] > 0
+    b = S.bake(str(d), res=256); assert b["seams"] > 0 and (d / "low_uv.glb").exists()
+    S.fill(str(d)); S.assemble(str(d)); S.compare(str(d))
+    assert (d / "final.glb").exists() and (d / "final_cmp.jpg").exists()
+    joints = {"hips": [0, 0, -0.3], "spine": [0, 0, -0.15], "spine1": [0, 0, 0.0], "spine2": [0, 0, 0.15],
+              "neck": [0, 0, 0.4], "head": [0, 0, 0.5], "head_top": [0, 0, 0.75], "clavicle": [0.02, 0, 0.35],
+              "shoulder": [0.2, 0, 0.35], "elbow": [0.25, 0, 0.1], "wrist": [0.27, 0, -0.1], "hand_end": [0.28, 0, -0.15],
+              "hip": [0.1, 0, -0.35], "knee": [0.1, 0, -0.55], "ankle": [0.1, 0, -0.7], "toe": [0.1, -0.05, -0.75],
+              "toe_end": [0.1, -0.1, -0.78]}
+    info = S.rig(str(d), joints); assert info["bones"] >= 25
+    rom = S.rom(str(d), poses=["spine_side_30", {"lean": [["Spine", [0, 1, 0], 20]]}], close_ups=False,
+                close={"lean": {"view": [0, -1, 0], "target": [0, 0, 0], "scale": 1.5}})
+    assert set(rom["poses"]) == {"rest", "spine_side_30", "lean"} and (d / "close_custom.jpg").exists()
+    assert S.lod(str(d))["lod1_faces"] > 100 and (d / "lod1_rigged.glb").exists()
 
 
 def test_symmetry_yaw_turns_a_yawed_sculpt_back():
@@ -201,3 +215,32 @@ def test_symmetry_yaw_turns_a_yawed_sculpt_back():
     r = np.radians(-30); Rz = np.array([[np.cos(r), -np.sin(r), 0], [np.sin(r), np.cos(r), 0], [0, 0, 1]])
     yaw, _, err = check.symmetry_yaw(P @ Rz.T + [0.05, 0, 0])
     assert abs(yaw - 30) < 1.0 and err < 0.02
+
+
+def test_measures(blob):
+    from hifipushie import artretopo_measure as M
+    s = Sculpt(blob)
+    assert M.extreme(s, (-1, -1, 0.5), (1, 1, 1), (0, 0, 1))["point"][2] > 0.79       # the capsule's top
+    hits = M.ray(s, (0, -2, 0), (0, 1, 0))["hits"]
+    assert len(hits) == 2 and abs(hits[1]["t"] - hits[0]["t"] - 0.6) < 0.01
+    assert abs(M.thickness(s, (0.0, -0.5, 0.0))["thickness"] - 0.6) < 0.01
+    assert M.colour_at(s, (0, -0.3, 0), 0.05)["rgb"] == [200, 200, 200]
+    cyl = M.fit_cylinder(s, "z", [-0.3, 0.0, 0.3], (0, 0))
+    assert abs(cyl["R"] - 0.3) < 0.01 and cyl["R_spread"] < 0.01 and abs(cyl["c"][0]) < 0.01
+
+
+def test_retopo_tools_are_registered_and_documented():
+    from hifipushie import mcp_app, tools_find
+    names = mcp_app.TOOL_GROUPS["retopo"]["tools"]
+    assert {"retopo_measure", "retopo_fill", "retopo_assemble", "retopo_compare", "retopo_rom", "retopo_lod"} <= set(names)
+    for n in names:
+        assert n in mcp_app._TOOLS and tools_find._tool_section(n)
+    assert "def build" in tools_find.guide("retopo_scraps") or "c.mouth" in tools_find.guide("retopo_scraps")
+
+
+def test_ring_clip_takes_the_part_beyond_a_line_and_pins_the_cut(blob):
+    c = Cage(Sculpt(blob))
+    r = c.ring_clip((0, 0, 0.0), Z, X, Y, 8, ((0.15, 0.0), (1.0, 0.0)), (0.2, 0.0), (1, 0))
+    P = np.array([c.V[i] for i in r])
+    assert (P[:, 0] >= 0.15 - 1e-9).all() and P[:, 0].max() > 0.29                   # beyond x = 0.15, out to the side
+    assert any(i in c.pinned for i in r) and not all(i in c.pinned for i in r)       # the cut edge invented

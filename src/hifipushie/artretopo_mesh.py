@@ -246,7 +246,10 @@ class Mesh:
         s = o - t0; uu = np.einsum("ij,ij->i", s, p) * inv
         q = np.cross(s, e1); vv = (q @ dvec) * inv; tt = np.einsum("ij,ij->i", e2, q) * inv
         hit = ok & (uu >= 0) & (vv >= 0) & (uu + vv <= 1) & (tt > 1e-9)
-        return np.sort(tt[hit])
+        t = np.sort(tt[hit])
+        if len(t) > 1:              # a ray through a shared edge or vertex hits each triangle there: count it once
+            t = t[np.concatenate([[True], np.diff(t) > 1e-7])]
+        return t
 
     # ---- nearest
     def closest(self, pts, k: int = 12):

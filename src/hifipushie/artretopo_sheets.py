@@ -36,7 +36,12 @@ def rom_sheet(d: Path, names):
 
 def close_sheet(d: Path):
     names = ["arms_side_80", "arms_up_150", "arms_forward_90", "elbows_120", "knee_up_100", "crouch"]
-    grid(d / "close_rom.jpg", [d / f"close_{n}.png" for n in names], 3, 500, names)
+    if any((d / f"close_{n}.png").exists() for n in names):
+        grid(d / "close_rom.jpg", [d / f"close_{n}.png" for n in names], 3, 500, names)
+    std = set(names) | {"rest_mouth_front", "mouth_open_20_front", "mouth_open_20_3q"}
+    own = sorted(p.stem[6:] for p in d.glob("close_*.png") if p.stem[6:] not in std)
+    if own:
+        grid(d / "close_custom.jpg", [d / f"close_{n}.png" for n in own], min(3, len(own)), 500, own)
     m = ["rest_mouth_front", "mouth_open_20_front", "mouth_open_20_3q"]
     if (d / "close_mouth_open_20_front.png").exists():
         grid(d / "close_mouth.jpg", [d / f"close_{n}.png" for n in m], 3, 400, m)

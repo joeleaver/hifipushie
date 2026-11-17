@@ -109,6 +109,25 @@ class Cage:
         o, u, v = np.asarray(origin, float), np.asarray(u, float), np.asarray(v, float)
         return [self.add(o + q[0] * u + q[1] * v) for q in poly.even(n, start_dir, ccw)]
 
+    def ring_clip(self, origin, normal, u, v, n, keep_side, pick2d, start_dir, ccw=True, pin_inner=True):
+        """the part of a contour beyond a line in the plane (keep_side = ((x, y) on the line, the outward normal)),
+        resampled evenly by length from where it lies furthest along start_dir: a limb FUSED to the body (a wing pressed
+        to the flank, an arm glued to the side) gets its own cross-section; its cut edge is its invented inner side
+        (those vertices pinned when pin_inner)"""
+        from .artretopo_poly import Poly, clip
+        poly = self._region(origin, normal, u, v, pick2d)
+        (cx, cy), nn = keep_side
+        piece = clip(poly.exterior, (cx, cy), nn)
+        if len(piece) < 3:
+            raise ValueError(f"ring_clip: nothing of the contour at {tuple(np.round(origin, 4))} lies beyond the line")
+        o, u, v = np.asarray(origin, float), np.asarray(u, float), np.asarray(v, float)
+        nn = np.asarray(nn, float) / np.linalg.norm(nn); out = []
+        for q in Poly(piece).even(n, start_dir, ccw):
+            out.append(self.add(o + q[0] * u + q[1] * v))
+            if pin_inner and abs((q - np.array([cx, cy])) @ nn) < 0.004:
+                self.pinned.add(out[-1])
+        return out
+
     def dirs_from(self, loop, centre_xy, axes=(0, 1)):
         """directions from a centre to a loop's vertices: the next ring down a limb keeps the hole's directions"""
         return [np.asarray(self.V[i])[list(axes)] - np.asarray(centre_xy) for i in loop]
