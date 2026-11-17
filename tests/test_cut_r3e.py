@@ -33,7 +33,7 @@ def test_closure_marks_on_both_fronts_at_the_centre_line():
         pcs[p] = {"V": V, "U": V[:, [0, 2]] + 1.0, "F": F}
     B = {"pieces": {p: {"marks": {}} for p in pcs},
          "closures": [{"name": "front_closure", "over": "front.L", "under": "front.R", "edge": {}}]}
-    why = cut_tapes.closure_marks(B, pcs, {"wear": "closed", "buttons_z": [0.04, 0.07]}, {})
+    why = cut_tapes.closure_marks(B, pcs, {"wear": "closed", "buttons_z": [0.04, 0.07]})
     assert not why
     assert B["closures"][0]["pairs"] == [["button1", "buttonhole1"], ["button2", "buttonhole2"]]
     assert np.allclose(B["pieces"]["front.L"]["marks"]["button1"], [1.0, 1.07], atol=1e-6)
