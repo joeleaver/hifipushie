@@ -61,6 +61,10 @@ prev = root; rings_m = []
 for sc_ in (0.78, 0.5):
     r = c.inset(root, MC, sc_); c.bridge(prev, r); prev = r; rings_m.append(r)
 r1, r2 = rings_m
+# the lip line: the 0.5 loop's bottom arc sits on the muzzle's front (z ~0.19-0.23, a smile); her real crease is a
+# straight notch under the overhanging upper lip at z ~0.175: move the arc and its corners onto it
+for k in (0, 1, 2, 3, 4):
+    c.put(r2[k], c.crease(c.V[r2[k]][0], 0.15, 0.20))
 c.mouth(r1, r2, lip=[1, 2, 3])
 
 # ---- eyes: two concentric loops, closed by one quad

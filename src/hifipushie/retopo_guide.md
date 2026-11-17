@@ -124,10 +124,13 @@ the throat under an overhanging jaw, the jaw's corners where that crease turns u
 - The muzzle's ROOT is its own oval loop of 12, seen from the front (centre, half width, half height measured from the
   front view), made from the head rings' vertices moved onto the oval (`c.front(x, z)`; below the chin from under it).
 - Concentric loops forward to the nose pad: `c.inset(root, centre_xz, 0.78)` then `0.5`, bridged.
-- The MOUTH: the small loop's bottom arc lies on the lip crease. `c.mouth(r1, r2, lip=[1, 2, 3])` splits it into two
-  lip lines (both pinned: pressed, they weld shut), closes the upper lip / nose pad with a grid, adds the mouth bag
+- The MOUTH: the small loop's bottom arc (lip=[1, 2, 3]) and its corners (0, 4) go ON the lip crease: look at the
+  muzzle from the side; where an upper lip overhangs, the crease is a notch under it, not the inset loop's arc on the
+  front (Mabel's sat 3 cm too high and read as a smile): `c.put(r2[k], c.crease(c.V[r2[k]][0], z_lo, z_hi))`.
+  `c.mouth(r1, r2, lip=[1, 2, 3])` splits it into two lip lines 0.5 mm apart (both pinned: pressed, they weld shut;
+  further apart, the subdivided slit gapes), closes the upper lip / nose pad with a grid, adds the mouth bag
   ("sock": ellipse rings with real height behind the slit; a flat bag folds over itself when the jaw opens) and its
-  cap, and writes the groups `jaw` (lower lip, the loop below it, the bag's lower half; corners 0.5), `mouth_inside`
+  cap (a thin lip-roll ring first, so the lips meet at rest), and writes the groups `jaw` (lower lip, the loop below it, the bag's lower half; corners 0.5), `mouth_inside`
   (painted dark, flat normals; head + jaw weights only) and `freeze` (not relaxed). `jaw_extra=[...]`: chin vertices
   that ride the jaw too. A prop held in the teeth: the lips and jaw WRAP a shell just outside it (invented, pinned).
 
@@ -289,7 +292,7 @@ kept) and part_<name>.ply per part. cut shapes: {type: sphere, c, R} or
 `retopo_cage(name, code)`: code is Python run with: `c` (the Cage), `s` (the body sculpt), `full` (the whole sculpt),
 `props` (props.json), `az`, `X`, `Y`, `Z`, `np`, `math`, `fit_sphere`. Cage API:
 - vertices: `c.add(p)`, `c.put(i, p)`, `c.pin(i | [i...])`, `c.V[i]`
-- sculpt: `c.front(x, z)`, `c.top(x, y)`, `c.bottom(x, y)`, `c.hit(origin, d, last=False)`, `c.closest(p)`,
+- sculpt: `c.front(x, z)`, `c.top(x, y)`, `c.bottom(x, y)`, `c.crease(x, z_lo, z_hi)`, `c.hit(origin, d, last=False)`, `c.closest(p)`,
   `c.centre_of(z, pick)`, `c.extreme(lo, hi, direction)`; `s.slice(origin, normal, u, v)` -> regions (`.centroid`,
   `.area`, `.exterior`, `.contains(p)`, `.ray_exit(c, d)`), `s.normal_at(p)`
 - rings: `c.hring(z, dirs, centre=None, pick=(0, 0))`, `c.ring(origin, normal, u, v, dirs, centre2d, pick2d)`,
@@ -300,7 +303,8 @@ kept) and part_<name>.ply per part. cut shapes: {type: sphere, c, R} or
 - faces: `c.bridge(a, b, skip=())`, `c.bridge_new(prev, points, pin=False)`, `c.quad(a, b, c, d)`,
   `c.cap_grid(loop, nx, ny, interior)` -> {(i, j): vertex}, `c.fill(grid, nx, ny, holes=())`, `c.cap6(r)`,
   `c.cap8(r, centre_point, pin=False)`, `c.close_to(r, tip_point)`
-- `c.mouth(r1, r2, lip=[1, 2, 3], gap=0.002, bag=((0.75, 0.018, 0.016), (0.5, 0.04, 0.022)), jaw_extra=[])`
+- `c.mouth(r1, r2, lip=[1, 2, 3], gap=0.0005, bag=((0.95, 0.005, 0.0015), (0.75, 0.018, 0.016), (0.5, 0.04,
+  0.022)), jaw_extra=[])`
 - `c.seam(loop, closed=True)`, `c.groups[name] = {vertex: weight} | {vertices}`
 Refused (nothing saved past the code) when edges are open, non-manifold, or a face isn't 4 distinct vertices. Notes
 (not refusals): inconsistent winding (the press fixes it), quads folded across a diagonal (look at them).

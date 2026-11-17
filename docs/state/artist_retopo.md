@@ -31,6 +31,12 @@ symmetric about x = 0 (mirror error 0.11-0.15). retopo_start now finds the mirro
 +33.25, Scraps -32.75, The Major +33.75 deg; error -> 0.005-0.01; Mabel then matches the spike's frame within ~1 cm).
 Facing is checked by eye (mirror symmetry can't tell face from back; the nearest turn is taken). Feet on z = 0.
 
+## Fixed after the regression (2026-11-17, Joe asked)
+- Mabel's mouth sat on the muzzle front 3 cm above her lip crease and gaped 6 mm (the spike's too): the lip arc now
+  goes onto the crease (`c.crease`), lips 0.5 mm apart, a thin lip-roll ring before the bag: closed at rest.
+- Scraps' eye: skin beside a prop takes the sculpt's own vertex colour at the nearest body point (the dark socket
+  ring is back); only pinned (invented) skin is diffused. mouth_open_20 stretched: Mabel 239, Scraps 482 (the roll).
+
 ## Changes from the spike (on purpose)
 LIMB_FADE, global weight smoothing, the bake's pre-fill cmp renders deleted; helpers fixed to shoulder / elbow / knee;
 props generalised (props.json primitives with a bone each; the canister = 3 cylinders); every framing (renders,
@@ -38,8 +44,6 @@ close-ups) from the bounds and joints, not constants; LOD1 hidden in ROM renders
 mouth builder shared (Cage.mouth); cage refused if open / non-manifold.
 
 ## Open (ranked)
-0. Scraps: since coverage counts back-face hits as misses, the invented lid skin round his left eye diffuses to a pale
-   disk where the sculpt has a dark socket ring (seen in final_cmp; the spike lost the ring too).
 1. No blind run yet: Puddles and Max first (the director starts them with docs/blind/artist_retopo.md).
 2. Mabel knee_up 133 / crouch 182 squashed (stubby-leg knee crease); huge-head arms_up stretch.
 3. Wings (Hettie, The Major), hands with fingers, hard-surface props / karts (oxidegen kart-retopo): not covered.

@@ -2,8 +2,9 @@
 
 The muzzle's concentric loops end in a small loop r2 (about half the root's size) whose bottom arc lies on the lip
 crease. That arc (`lip`, three vertices; the corners r2[0] and r2[4] stay shared) is SPLIT: the lower lip keeps r2's
-vertices, the upper lip gets copies `gap` above them, and both lines are PINNED (pressed, they land on one point and
-weld shut). The upper lip and the nose pad close with a 4 x 2 grid pressed on from the front.
+vertices, the upper lip gets copies `gap` (0.5 mm) above them, and both lines are PINNED (pressed, they land on one
+point and weld shut). Put the arc ON the sculpt's lip crease first (`c.crease(x, z_lo, z_hi)` per lip vertex and
+corner): the inset loop's bottom arc is only where the crease is on a flat-fronted muzzle. The upper lip and the nose pad close with a 4 x 2 grid pressed on from the front.
 
 Behind the slit, the mouth bag (the "sock"): rings that are ELLIPSES with real height (`bag`: (shrink of the slit's
 width, depth back, height) per ring; a flat copy of the closed slit folds over itself when the jaw opens), then a
@@ -23,7 +24,7 @@ import math
 
 import numpy as np
 
-BAG = ((0.75, 0.018, 0.016), (0.5, 0.04, 0.022))
+BAG = ((0.95, 0.005, 0.0015), (0.75, 0.018, 0.016), (0.5, 0.04, 0.022))
 
 
 def sock(cage, mouth, mc, shrink, depth, height):
@@ -41,7 +42,7 @@ def sock(cage, mouth, mc, shrink, depth, height):
     return out
 
 
-def build(cage, r1, r2, lip, gap=0.002, bag=BAG, jaw_extra=(), nose=None):
+def build(cage, r1, r2, lip, gap=0.0005, bag=BAG, jaw_extra=(), nose=None):
     if len(lip) != 3 or len(r2) != 12:
         raise ValueError("mouth: the small muzzle loop r2 has 12 vertices and the lip arc is 3 of them (e.g. [1, 2, 3])")
     r2u = list(r2)

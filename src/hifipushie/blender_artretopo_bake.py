@@ -163,6 +163,8 @@ G = json.load(open(f"{D}/low_groups.json")) if os.path.exists(f"{D}/low_groups.j
 if "mouth_inside" in G:
     vertex_mask(low, {i: w for i, w in enumerate(G["mouth_inside"]) if w > 0}, "low_mouth", RES)
 inv = set(json.load(open(f"{D}/low_invented.json"))) if os.path.exists(f"{D}/low_invented.json") else set()
+near = set()                 # skin next to a prop / cut part (not pinned): its colour is the sculpt's own there
+pinned_inv = set(inv)
 NEAR = 0.012                 # skin touching a prop reads the cut-out cavity behind it: invented too
 from mathutils.bvhtree import BVHTree as _BV  # noqa: E402
 CUT = []                     # parts cut out of the sculpt (a comb, a wattle): their cut edge reads raw interior
@@ -174,20 +176,20 @@ for v in low.data.vertices:
     for bv in CUT:
         h_ = bv.find_nearest(p)
         if h_[3] is not None and h_[3] < 0.025:
-            inv.add(v.index)
+            inv.add(v.index); near.add(v.index)
     for e in P["eyes"]:
         if (p - mathutils.Vector(e["c"])).length < e["R"] + NEAR:
-            inv.add(v.index)
+            inv.add(v.index); near.add(v.index)
     for it in P["props"]:
         c = mathutils.Vector(it["c"])
         if it["type"] == "sphere":
             if (p - c).length < it["R"] + NEAR:
-                inv.add(v.index)
+                inv.add(v.index); near.add(v.index)
             continue
         a = "xyz".index(it["axis"]); o_ = [k for k in range(3) if k != a]
         r = math.hypot(p[o_[0]] - c[o_[0]], p[o_[1]] - c[o_[1]])
         if abs(p[a] - c[a]) < it["length"] / 2 + 2 * NEAR and r < it["R"] + 1.5 * NEAR:
-            inv.add(v.index)
+            inv.add(v.index); near.add(v.index)
 out["invented_verts"] = len(inv)
 if inv:
     vertex_mask(low, {i: 1.0 for i in inv}, "low_invented", RES)
@@ -211,6 +213,20 @@ if inv:
             vi = low.data.loops[li].vertex_index; u, v = uvl[li].uv
             hitv[vi] += cpx[min(H_ - 1, int(v * H_)), min(W_ - 1, int(u * W_))]; hcnt[vi] += 1
     known = np.array([i not in inv for i in range(nv)]) & (hitv / np.maximum(hcnt, 1) > 0.6)
+    # skin beside a prop: its bake reads the cut cavity, but the sculpt's own vertex colour at the nearest body point
+    # is right (an eye's dark socket ring); only truly invented (pinned) surfaces are diffused
+    if near and high.data.color_attributes:
+        from mathutils.kdtree import KDTree as _KD
+        hv = high.data.vertices; hca = high.data.color_attributes[0]
+        kd = _KD(len(hv))
+        for v in hv:
+            kd.insert(v.co, v.index)
+        kd.balance()
+        for i in near:
+            if i in pinned_inv:
+                continue
+            j = kd.find(low.data.vertices[i].co)[1]; c_ = hca.data[j].color
+            vc[i] = (c_[0], c_[1], c_[2]); known[i] = True
     nbrs = [[] for _ in range(nv)]
     for e in low.data.edges:
         a_, b_ = e.vertices; nbrs[a_].append(b_); nbrs[b_].append(a_)

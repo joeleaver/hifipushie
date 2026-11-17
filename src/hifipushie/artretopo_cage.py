@@ -66,6 +66,9 @@ class Cage:
     def bottom(self, x, y):
         return self.body.bottom(x, y)
 
+    def crease(self, x, z_lo, z_hi):
+        return self.body.crease(x, z_lo, z_hi)
+
     def closest(self, p):
         return self.body.closest([p])[0]
 

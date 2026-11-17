@@ -155,7 +155,9 @@ def test_mouth_groups(blob):
     r1 = c.inset(root, (0.0, 0.0), 0.78); c.bridge(root, r1)
     r2 = c.inset(root, (0.0, 0.0), 0.5); c.bridge(r1, r2)
     out = c.mouth(r1, r2, lip=[1, 2, 3])
-    assert len(out["mouth"]) == 8 and len(out["bag"]) == 2
+    assert len(out["mouth"]) == 8 and len(out["bag"]) == 3            # the lip roll + two sock rings
+    gap = np.asarray(c.V[out["upper"][2]]) - np.asarray(c.V[r2[2]])
+    assert abs(gap[2] - 0.0005) < 1e-9                                   # the lips meet at rest
     assert {r2[1], r2[2], r2[3], out["upper"][1]} <= c.pinned
     jaw = c.groups["jaw"]; assert jaw[out["mouth"][0]] == 0.5 and jaw[r2[2]] == 1.0
     assert c.groups["mouth_inside"] and not (c.groups["mouth_inside"] & set(out["mouth"]))
@@ -230,7 +232,7 @@ def test_measures(blob):
 
 
 def test_retopo_tools_are_registered_and_documented():
-    from hifipushie import mcp_app, tools_find
+    from hifipushie import mcp_app, server, tools_find  # noqa: F401 (server registers every tool)
     names = mcp_app.TOOL_GROUPS["retopo"]["tools"]
     assert {"retopo_measure", "retopo_fill", "retopo_assemble", "retopo_compare", "retopo_rom", "retopo_lod"} <= set(names)
     for n in names:
@@ -244,3 +246,16 @@ def test_ring_clip_takes_the_part_beyond_a_line_and_pins_the_cut(blob):
     P = np.array([c.V[i] for i in r])
     assert (P[:, 0] >= 0.15 - 1e-9).all() and P[:, 0].max() > 0.29                   # beyond x = 0.15, out to the side
     assert any(i in c.pinned for i in r) and not all(i in c.pinned for i in r)       # the cut edge invented
+
+
+def test_crease_finds_the_notch(tmp_path):
+    """a capsule with a groove round it at z = 0.1: the crease is the groove's deepest point"""
+    from skimage.measure import marching_cubes
+    L = 0.9; g = np.linspace(-L, L, 72); x, y, z = np.meshgrid(g, g, g, indexing="ij")
+    sdf = np.sqrt(x ** 2 + y ** 2 + np.maximum(np.abs(z) - 0.5, 0) ** 2) - 0.3 + 0.04 * np.exp(-((z - 0.1) / 0.03) ** 2)
+    V, F, _, _ = marching_cubes(sdf, 0.0, spacing=(g[1] - g[0],) * 3); V = V - L
+    if Mesh(V, F, weld=False).signed_volume() < 0:
+        F = F[:, ::-1]
+    write_ply(tmp_path / "g.ply", V, F)
+    p = Sculpt(tmp_path / "g.ply").crease(0.0, 0.0, 0.2)
+    assert abs(p[2] - 0.1) < 0.02 and p[1] > -0.28

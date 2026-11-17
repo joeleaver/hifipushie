@@ -6,6 +6,7 @@
 - `hit(origin, d, last=False)`: the first (or last) surface point along a ray; ValueError if it misses.
 - `front(x, z)` / `back(x, z)` / `top(x, y)` / `bottom(x, y)` / `side(sign, y, z)`: the first surface met looking
   from outside along an axis (from beyond the bounding box).
+- `crease(x, z_lo, z_hi)`: the deepest point of a crease on the front at x (a lip line under an overhanging lip).
 - `centre_of(z, pick)`: the centre (0, y) of the horizontal region nearest pick: a body ring's centre on the mirror plane.
 - `closest(points)`, `normal_at(point)`: nearest surface point(s) / that triangle's outward normal.
 - `extreme(lo, hi, direction)`: the vertex furthest along a direction inside a box: where a horn or an ear REALLY ends.
@@ -57,6 +58,18 @@ class Sculpt:
     def side(self, sign, y, z):
         """from beyond +x (sign 1) or -x (sign -1), looking in"""
         return self.hit((sign * (max(abs(self.lo[0]), abs(self.hi[0])) + self.far), y, z), (-sign, 0, 0))
+
+    def crease(self, x, z_lo, z_hi):
+        """the deepest point of a horizontal crease on the FRONT in the plane x = const between heights z_lo and z_hi
+        (a lip line under an overhanging upper lip, a chin fold): where the front profile reaches furthest back (+y)"""
+        zm = (z_lo + z_hi) / 2; fy = self.front(x, zm)[1]
+        polys = self.slice((x, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1))
+        P = min(polys, key=lambda p: p.distance((fy, zm))).exterior
+        sel = P[(P[:, 1] >= z_lo) & (P[:, 1] <= z_hi) & (P[:, 0] < fy + 0.06)]
+        if not len(sel):
+            raise ValueError(f"no front profile at x = {x} between z {z_lo} and {z_hi}")
+        q = sel[np.argmax(sel[:, 0])]
+        return np.array([x, q[0], q[1]])
 
     # ---- nearest
     def closest(self, pts):
