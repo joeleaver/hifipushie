@@ -33,13 +33,14 @@ def made(pcs: dict, edges: dict, decl: dict, s1: dict, out4: dict, log=lambda *_
     folds, rows = [], []
     flaps = _both(decl.get("flaps") or {})
     if flaps:
-        Z = np.load(out4["toile"])
+        from .mark_flap import load
+        Z = load(out4["toile"])  # (the turned flap split at its gorge marks: the lapels, the collar)
         reps, why = [], []
         for part, d in flaps.items():
             onto = d.get("onto")
-            if f"{part}:V" not in Z.files or onto not in pcs:
+            if f"{part}:V" not in Z or onto not in pcs:
                 why.append(f"flaps.{part}: no toile part {part!r} or no cut piece {onto!r} (step 4's parts: "
-                           f"{sorted({k.split(':')[0] for k in Z.files})})")
+                           f"{sorted({k.split(':')[0] for k in Z})})")
                 continue
             try:
                 g, e2, names, rep, bad = unfold(pcs[onto], edges[onto], Z[f"{part}:V"].astype(float),

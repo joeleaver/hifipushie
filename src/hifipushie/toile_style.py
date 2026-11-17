@@ -19,7 +19,8 @@ LAPEL (declared lapel: {roll, top, width_mm}): the roll trace up to its first co
 closure (the break goes from the open picture's place to CF + lap; nothing moves at the gorge); the lapel's outer edge
 the edge trace up to its first corner (notch -> break), widened square from the roll line to width_mm when declared;
 its top the roll's top + the top trace up to its first corner (gorge, notch). The lapel = the toile under that outline,
-lifted LAPEL_LIFT_M (the facing out, lying on the chest): its own part, mirrored for the right side."""
+lifted LAPEL_LIFT_M (the facing out, lying on the chest): its own part, mirrored for the right side; with a collar part
+the lapels and the collar are ONE flap about one roll line (toile_flap.py, R3f-9), the lapel's outline its lapel region."""
 from __future__ import annotations
 
 import numpy as np
@@ -219,7 +220,9 @@ def halves(t, V, F, x_edge):
     return Vw, Fw
 
 
-def lapel(t, V, F):
+def lapel_outline(t):
+    """The lapel's outline (module doc) in the front view: g["x_l"] (its outer edge x at z), g["z_line"] (its top z at
+    x); t.roll_line (the roll on the toile, break -> the gorge point) and t.info["lapel"]."""
     g, lp = t.lapel_geom, t.d["lapel"]
     x_roll, shift, z_brk, z_top, LE = g["x_roll"], g["shift"], g["z_brk"], g["z_top"], g["LE"]
     top = to_corner(t.inp.traces[lp["top"]])
@@ -238,40 +241,48 @@ def lapel(t, V, F):
     x_l, w0 = width(1.0)
     k = float(lp["width_mm"]) / 1000 / w0 if lp.get("width_mm") else 1.0
     x_l, w = width(k)
+    g.update(x_l=x_l, z_line=z_line, TOP=TOP)
+    t.info["lapel"] = {"width_traced_mm": round(w0 * 1000, 1), "width_mm": round(w * 1000, 1),
+                       "roll_mm": round(float(np.linalg.norm(np.diff(rl, axis=0), axis=1).sum() * 1000), 1),
+                       "break_z": round(float(z_brk), 4), "gorge_z": round(float(z_top), 4)}
+    t.roll_line = rl
+
+
+def lapel(t, V, F):
+    """A lapel alone (no collar part): the toile under its outline, lifted LAPEL_LIFT_M (with a collar the lapel and the
+    collar are ONE turned flap: toile_flap.py)."""
+    lapel_outline(t)
+    g = t.lapel_geom
+    x_roll, x_l, z_line, z_brk = g["x_roll"], g["x_l"], g["z_line"], g["z_brk"]
     Vl, Fl = V, F
     for ph in (lambda P: P[:, 0] - x_roll(P[:, 2]), lambda P: x_l(P[:, 2]) - P[:, 0],
                lambda P: z_line(P[:, 0]) - P[:, 2], lambda P: P[:, 2] - z_brk, lambda P: (t.yc - 0.03) - P[:, 1]):
         Vl, Fl = clip(Vl, Fl, ph(Vl))
     Vl, Fl = largest(Vl, Fl)
-    Vl = Vl + LAPEL_LIFT_M * t.grad(Vl)
-    t.lapel_mesh, g["z_line"] = (Vl, Fl), z_line
-    t.info["lapel"] = {"width_traced_mm": round(w0 * 1000, 1), "width_mm": round(w * 1000, 1),
-                       "roll_mm": round(float(np.linalg.norm(np.diff(rl, axis=0), axis=1).sum() * 1000), 1),
-                       "break_z": round(float(z_brk), 4), "gorge_z": round(float(z_top), 4)}
-    t.roll_line = rl
-    return Vl, Fl
+    return Vl + LAPEL_LIFT_M * t.grad(Vl), Fl
 
 
-STATE_ATTRS = ("x_edge", "lapel_geom", "lapel_mesh", "roll_line", "collar_grid")
-STATE_INFO = ("opening", "front_neck", "lapel", "collar")
+STATE_ATTRS = ("x_edge", "lapel_geom", "roll_line", "flap_layout")
+STATE_INFO = ("opening", "front_neck", "lapel", "collar", "flap")
 
 
 def _state(t, full, state) -> dict:
     """{part: (V, F)} of the toile in `state` (closure): the halves, the turned flaps, the collar."""
     t.x_edge = closure(t, state)
     out = {"toile": halves(t, *full, t.x_edge) if t.x_edge is not None else full}
-    if "lapel" in t.parts:
+    if "collar" in t.parts:  # (the lapels and the collar: ONE flap turned back about ONE roll line, R3f-9)
+        from .toile_flap import drape
+        lapel_outline(t)
+        out["flap"] = drape(t, out["toile"])
+    elif "lapel" in t.parts:
         Vl, Fl = lapel(t, *full)
         out["lapel.L"] = (Vl, Fl)
         out["lapel.R"] = (Vl * MIR, Fl[:, ::-1].copy())
-    if "collar" in t.parts:
-        from .toile_collar import drape
-        out["collar"] = drape(t, out["toile"])
     return out
 
 
 def cut(t, V, F) -> dict:
-    """{part: (V, F)}: the toile CUT (neck, sleeve hems, the opening), its turned flaps and the collar (toile_collar.py),
+    """{part: (V, F)}: the toile CUT (neck, sleeve hems, the opening), its turned flap (the lapels and the collar as ONE piece, toile_flap.py),
     always in the CLOSED state (R3f-7, C504): a garment worn open is the same pattern as worn closed (the fronts lap at
     centre front, the buttons on it); the wear state is how it is worn, looked at and hung. Worn open, the OPEN state
     (each front's edge where traced, the roll as traced) is built too: t.worn (the look, the outline rows, the hang's
@@ -285,7 +296,7 @@ def cut(t, V, F) -> dict:
     if worn == "open":
         t.worn = _state(t, full, "open")
         t.info["worn"] = {k: t.info.pop(k) for k in STATE_INFO if k in t.info}
-        t.worn_arrays = {k: getattr(t, k) for k in ("roll_line", "collar_grid") if getattr(t, k, None) is not None}
+        t.worn_arrays = {k: getattr(t, k) for k in ("roll_line", "flap_layout") if getattr(t, k, None) is not None}
         for a in STATE_ATTRS:
             setattr(t, a, None)
     out = _state(t, full, "closed")

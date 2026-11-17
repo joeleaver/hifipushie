@@ -18,7 +18,7 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}
   collar     {"stand_mm", "fall_mm" (at CB, read off the reference), "notch": a step-2 trace from the collar end's gorge
-             corner to the collar point (its first corner)}: needs "lapel"; draped on the toile (toile_collar.py)
+             corner to the collar point (its first corner)}: needs "lapel"; with it ONE turned flap (toile_flap.py)
 TODAY'S DRAFT ROUTE: draft_pattern (an agent-written FreeSewing design) no longer writes step 4; its flat gate is what
 step 6 (cut and flatten, R3b) runs on the flattened pieces."""
 from __future__ import annotations
@@ -197,8 +197,8 @@ def save(t, d) -> tuple:
             arrs[f"open/{k}"] = np.asarray(a)
     arrs.update(cone_O=t.cone.O, cone_A=t.cone.A, cone_PS=t.cone.PS, cone_AL=t.cone.AL, armhole=t.armhole,
                 shoulder_line=t.shoulder_line, sleeve_axis=t.CAX, sleeve_r=t.RAX, yc=t.yc)
-    if getattr(t, "collar_grid", None) is not None:
-        arrs["collar_grid"] = np.asarray(t.collar_grid, int)
+    if getattr(t, "flap_layout", None) is not None:  # (the one turned flap: lapels + collar, split at step 5's gorge)
+        arrs["flap_layout"] = np.asarray(t.flap_layout, int)
     if getattr(t, "roll_line", None) is not None:
         arrs["roll_line"] = t.roll_line
     if "opening" in t.parts and getattr(t, "phi_neck", None) is not None:
