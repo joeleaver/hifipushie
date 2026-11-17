@@ -216,7 +216,8 @@ TWIN_M = 0.001  # m: two outlines (3D where the cut gives it) this alike are one
 def twins(B: dict, ring: set, p: str) -> set:
     """The ring's pieces sorted before p with p's own flat outline: layers cut alike (a top collar and its undercollar)
     go round the body once."""
-    at = lambda q: np.asarray(B["pieces"][q].get("P3") or B["pieces"][q]["P"], float)  # (the cut's 3D outline: same toile)
+    pc = B["pieces"]
+    at = lambda q: np.asarray(pc[q]["P"] if pc[q].get("P3") is None else pc[q]["P3"], float)  # (the cut's 3D outline)
     P = at(p)
     alike = lambda Q: Q.shape == P.shape and bool(np.allclose(Q, P, atol=TWIN_M))
     return {q for q in sorted(ring) if q < p and alike(at(q))}

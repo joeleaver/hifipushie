@@ -47,7 +47,7 @@ def test_the_cuts_neck_ring_is_the_collar_alone():
     tp = {"a": ["len"], "b": ["len"], "c": ["len", "waist"], "u": ["len", "waist"]}
     B, s3 = _tube({"a": 0.44, "b": 0.45, "c": 0.38, "u": 0.38}, tp)
     for p in ("c", "u"):  # (a collar and its undercollar: one toile region, cut twice)
-        B["pieces"][p]["P3"] = [[0.0, 0.1, 1.5], [0.1, 0.0, 1.5], [0.0, -0.1, 1.5]]
+        B["pieces"][p]["P3"] = np.array([[0.0, 0.1, 1.5], [0.1, 0.0, 1.5], [0.0, -0.1, 1.5]])  # (as the cut has it)
     drafted = dg.rows(B, s3, {})[0]["value"]
     assert "a " in drafted, drafted  # (a drafted pattern's declared ring: unchanged)
     B["girth_ring"] = dg.CROSSED
