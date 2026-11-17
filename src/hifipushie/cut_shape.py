@@ -204,11 +204,12 @@ def flatten_shaped(V, F, grid, lines: dict, want: dict, grain=45.0):
     up = cb_up(Vg)
     U, S, Fk = flatten(V, F, grain=grain, up=up)
     asks = run_ratio(Vg, U.reshape(nr, nc, 2), lines)
-    rd = lambda k, U: thread_read(V, Fk, U, grain, nc, [lines[k][0]], lines[k][1])
+    gr = 90.0 if grain is None else grain  # (an isotropic flat: read on the straight grain)
+    rd = lambda k, U: thread_read(V, Fk, U, gr, nc, [lines[k][0]], lines[k][1])
     from .flatten_threads import lock_deg
     rep = {"limit_pct": SHAPE_MAX_PCT, "grain_deg": grain, "roll_row": grid[2],
            "curvature": curvature(V, F, grid, lock_deg()),
-           "cone_points": [[r, c, d, thread_read(V, Fk, U, grain, nc, list(range(r - 1, r + 2)), list(range(c - 2, c + 3)))]
+           "cone_points": [[r, c, d, thread_read(V, Fk, U, gr, nc, list(range(r - 1, r + 2)), list(range(c - 2, c + 3)))]
                            for r, c, d in cone_points(V, F, grid)], "runs": {}}
     for k in lines:
         t = rd(k, U)
