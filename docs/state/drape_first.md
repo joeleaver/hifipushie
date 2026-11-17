@@ -53,6 +53,7 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - Cut rows untouched by the roll: flaps (front.R's lapel hinge found on 40 of 68 mm: neck / front split in 2 runs),
   layers (canvas line declared across front.L/R crosses the outline more than twice: a declaration), closures (over
   722 / under 1069 mm). girths:neck and place rows came with main's draft gate (merge), not from the roll.
+## R3f-11 (in progress, C510): the collar flattened as SHAPED cloth: declared shrink / stretch per run, limits.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes.
 NEXT: the collar rising beside the neck flattens with 13.6 % strain (the stand 30 at CB, ~45 beside the neck, 0 at R0
