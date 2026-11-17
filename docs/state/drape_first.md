@@ -49,9 +49,22 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - Looks: r3f7/cut_vs_open_toile.png (open toile look over the closed cut pieces), r3f7/cut_3d.png, r3f7/flat_sheet.png.
   Judged: the fronts close (over front laps the under at CF, lapels turned to a narrow V as closed); the collar a
   crescent but humped at CB with high strain; buttons placed on CF (closures PASS, marks on both fronts).
+## R3f-8 (2026-11-17, C507): the suit collar's shape (Joe: "it was the shape that was throwing me off")
+- toile_collar: the stand leans back against the neck ALL ROUND (walked up the neck from the neck edge; at the side neck
+  point to the collar's top beside the neck read off the notch trace's top: 29 mm; to nothing at the gorge point); the
+  fall covers it (stand_seen_front_pct, jacket 86 -> 60 %) and reaches the traced silhouette over the shoulder (land_out);
+  in front it lands on the trace only where that lies over cloth (above it the trace is the fall seen edge-on: lowered
+  onto the shoulder it stood the collar up as ears). corner_row: a column ON the gorge point (R3f-7's 7.1 mm jog).
+  Declaration stand 30 / fall 45 (r3f8/toile_decl8.json; 20 / 42 left the roll 23 mm lower at CB than at the side).
+- Proof /mnt/data/hifipushie/r3f8 (go.sh, dev.py + devlook.py: neck looks with a grey shirt-collar stand-in, dev_7.png;
+  sf_*.png stand red / fall green). Proof run (toile1 / mark1 / cut1.log): toile PASS, collar_top outline 5.0 / 7.0 mm (was
+  13.8 / 14.3). Cut: the GORGE JOG IS NOT FIXED: front.L:neck gap 7.1 mm at (67, -49, 1503), 3D collar 97.6 / garment
+  102.3 (the closed cut's front neck edge is not the toile edge the collar row follows: lapel flap / its lifted top);
+  flat collar neck now 106.1 (stretched +8.7 %), strain 9.9 % mean; outer edge 402 < roll 418 in 3D (fall lands short).
+- Still: the collar's roll meets the lapel's at ~40 deg (was 18: the stand now leans back to the gorge point).
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes.
-NEXT: the gorge-point jog (toile_style.front_neck meets the lapel's lifted top: make the front's neck edge and the
-collar row one curve through the gorge point, in 3D); the collar's flatten strain (8.7 %: stand / fall shaping, a
+NEXT: the gorge jog read on the CUT front's neck edge (cut_collar._apart), not the toile's; the fall's outer edge
+shorter than its roll (402 / 418 mm); the roll join at the gorge point (~40 deg); the stand still shows 60 % from the front; the collar's flatten strain (8.7 %: stand / fall shaping, a
 tailor's stretch-and-shrink is a declared ease, not a hidden length); girths (hips ring, chest at the underarm); collar
 piece tapes / place; darts from the strain ridge; style_lengths (compare like lines).
