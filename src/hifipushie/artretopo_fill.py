@@ -7,6 +7,9 @@ Per tag ("low", "lod1", every prop):
   invented skin  -> (pinned surfaces; skin touching a prop) colour: the SURFACE-diffused colour (low_diffused.png;
                     else a pull-push of the trusted colour, for props); normals FLAT (no sculpted detail there)
   mouth inside   -> dark (RGB 70, 22, 38), flat normals
+  a cut part's contact shadow -> (texels darker than 0.6 x the part's median luminance: the splat baked the body's
+                    shadow into it) refilled from the part's own colour. Only for cut parts: an eye's pupil is dark
+                    on purpose
   margins        -> every island's colours pushed out over the gutter (no seams at mip levels)
 Writes the maps in place (color.png, normal.png / <tag>_color.png, <tag>_normal.png)."""
 from __future__ import annotations
@@ -58,7 +61,7 @@ def inpaint(rgb, mask, passes=6):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def repair(D: str, tag: str) -> dict:
+def repair(D: str, tag: str, part: bool = False) -> dict:
     j = lambda f: os.path.join(D, f)
     cpath = j("color.png") if tag == "low" else j(f"{tag}_color.png")
     npath = j("normal.png") if tag == "low" else j(f"{tag}_normal.png")
@@ -75,6 +78,12 @@ def repair(D: str, tag: str) -> dict:
             cov = (cov * (1 - m[..., 0]) + c1 * m[..., 0]).astype(np.uint8)
     inv = _grey(_read(j(f"{tag}_invented.png")))
     invented = (inv > 64) & island if inv is not None else np.zeros_like(island)
+    shadow = 0
+    if part:     # a separate part is one coloured piece: where it touched the body the splat baked the CONTACT SHADOW
+        lum = col[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
+        ok = island & ~invented
+        med = float(np.median(lum[ok])) if ok.any() else 0.0
+        sh = island & (lum < 0.6 * med); shadow = int(sh.sum()); invented = invented | sh
     miss = (cov < 128) & island & ~invented
     rgb_c, rgb_n = col[..., :3].copy(), nor[..., :3].copy()
     mk = nd.binary_dilation(miss, np.ones((3, 3), bool))
@@ -96,7 +105,7 @@ def repair(D: str, tag: str) -> dict:
     for arr, pth, orig in ((rgb_c, cpath, col), (rgb_n, npath, nor)):
         out = np.dstack([arr, orig[..., 3]]) if orig.ndim == 3 and orig.shape[2] == 4 else arr
         Image.fromarray(out).save(pth)
-    return {"tag": tag, "misses": int(miss.sum()), "invented": int(invented.sum())}
+    return {"tag": tag, "misses": int(miss.sum()), "invented": int(invented.sum()), "shadow": shadow}
 
 
 def repair_all(D: str) -> list[dict]:
@@ -104,4 +113,7 @@ def repair_all(D: str) -> list[dict]:
     tags = ["low"] + (["lod1"] if os.path.exists(os.path.join(D, "lod1_cover.png")) else [])
     tags += sorted(f[:-10] for f in os.listdir(D) if f.endswith("_cover.png") and f[:-10] not in ("low", "lod1")
                    and not f.endswith("_thick_cover.png"))
-    return [repair(D, t) for t in tags]
+    import json
+    pj = os.path.join(D, "props.json")
+    parts = {c["name"] for c in json.load(open(pj)).get("cut_parts", [])} if os.path.exists(pj) else set()
+    return [repair(D, t, part=t in parts) for t in tags]

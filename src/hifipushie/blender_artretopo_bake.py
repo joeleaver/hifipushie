@@ -34,7 +34,7 @@ EXTR, REACH = J.get("extrusion", 0.012), J.get("reach", 0.03)
 sc = C.reset(); sc.render.engine = "CYCLES"; sc.cycles.device = "CPU"; sc.cycles.samples = 8
 high = C.load_ply(f"{D}/{J.get('high', 'high.ply')}", "high"); low = C.load_ply(f"{D}/low.ply", "low")
 P = json.load(open(f"{D}/props.json")) if os.path.exists(f"{D}/props.json") else {"eyes": [], "props": []}
-full = C.load_ply(f"{D}/high.ply", "full") if (P["eyes"] or P["props"]) else None
+full = C.load_ply(f"{D}/high.ply", "full") if (P["eyes"] or P["props"] or P.get("cut_parts")) else None
 ACC = []
 for k, e in enumerate(P["eyes"]):
     bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=e["R"], location=e["c"])
@@ -50,6 +50,11 @@ for o in ACC:
     C.select_only(o); bpy.ops.object.shade_smooth()
     bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.01); bpy.ops.object.mode_set(mode="OBJECT")
+PART = {}                    # separate parts with their own pressed cage (a comb, a wattle): own seams, reach, near
+for cp in P.get("cut_parts", []):
+    f = f"{D}/part_{cp['name']}_low.ply"
+    if os.path.exists(f):
+        o = C.load_ply(f, cp["name"]); ACC.append(o); PART[o.name] = cp
 for o in (high, low):
     for p in o.data.polygons:
         p.use_smooth = True
@@ -66,6 +71,11 @@ def unwrap(o, seams_file):
 
 
 n_seams = unwrap(low, f"{D}/low_seams.json")
+for nm, cp in PART.items():
+    o = bpy.data.objects[nm]
+    for p_ in o.data.polygons:
+        p_.use_smooth = True
+    unwrap(o, f"{D}/part_{nm}_low_seams.json")
 layer = high.data.color_attributes[0].name if high.data.color_attributes else ""
 high.data.materials.append(C.emission_material("high", layer))
 bk = sc.render.bake
@@ -252,10 +262,15 @@ if full is not None:
     from mathutils.bvhtree import BVHTree
     bb = BVHTree.FromObject(low, bpy.context.evaluated_depsgraph_get())
     for o in ACC:
-        bake_onto(o, full, o.name, 512, 0.015, 0.045)
+        cp = PART.get(o.name)
+        res_ = 1024 if cp else 512
+        bake_onto(o, full, o.name, res_, cp.get("extrusion", 0.006) if cp else 0.015, cp.get("reach", 0.02) if cp else 0.045)
         if not o.name.startswith("eye"):    # an eyeball's visible part sits against its lids: keep its own bake
-            near = {v.index: 1.0 for v in o.data.vertices if bb.find_nearest(o.matrix_world @ v.co)[3] < 0.008}
-            vertex_mask(o, near, f"{o.name}_invented", 512)
+            # texels touching the body read it: a prop's within 8 mm, a part's within its own `near` (its base
+            # bakes the skin colour)
+            lim = cp.get("near", 0.01) if cp else 0.008
+            near_ = {v.index: 1.0 for v in o.data.vertices if bb.find_nearest(o.matrix_world @ v.co)[3] < lim}
+            vertex_mask(o, near_, f"{o.name}_invented", res_)
         elif os.path.exists(f"{D}/{o.name}_invented.png"):
             os.remove(f"{D}/{o.name}_invented.png")
 LOD = None

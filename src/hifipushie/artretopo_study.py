@@ -27,7 +27,10 @@ MESHES = {"high": "high.ply", "body": "high_body.ply", "cage": "cage.ply", "low"
 
 
 def _mesh_path(d: Path, mesh: str) -> Path:
-    f = MESHES.get(mesh, mesh); need(d, f); return d / f
+    f = MESHES.get(mesh, mesh)
+    if not (d / f).exists() and (d / f"{f}.ply").exists():
+        f = f"{f}.ply"                  # part_comb_cage, part_comb_low ...
+    need(d, f); return d / f
 
 
 def views(name: str, mesh: str = "high", views=("front", "side", "top"), centre=None, scale=None, step: float = 0.05,

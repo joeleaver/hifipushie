@@ -107,6 +107,14 @@ leading edge) plus finger chains across the tip: joints `"fingers": {"Index": [4
 belly, the forearm aimed at the rim, the fingers curled about their own x axis (`["LeftHandIndex1", "lx", -40]` for
 each joint of each finger). No wing loops of their own yet: build it from ring_clip contours like a fused arm.
 
+### Feet with toes (a bird's foot, a paw)
+A foot HUB: the leg's last ring, two rings round the foot (6 round, the band's FACES centred on the toe directions),
+holes left in the band between them for each toe (`bridge(hub0, hub1, skip={faces})`), the sole a cap grid. Each toe
+a 4-ring tube out of its hole: rings in planes across the toe at fractions of its length; its tip is the sculpt's
+furthest point inside a narrow cone round the toe's guessed direction (`c.extreme_cone(hub_centre, direction, 12)`:
+a box tip picks the neighbouring toe); close a 4-ring toe with `c.close_small(ring, tip)` (a tip ring and one quad:
+a fan of quads to a point folds).
+
 ### Legs: thin or wide
 - THIN legs (a goat's, a bird's): close the torso with a pelvis FLOOR (`cap_grid(T[0], 4, 4, ...)`) and cut a hole
   in it per leg, sized to the leg (`holes={(3, 1), (3, 2), (0, 1), (0, 2)}`). The crotch between the holes belongs to
@@ -134,6 +142,20 @@ the throat under an overhanging jaw, the jaw's corners where that crease turns u
   (painted dark, flat normals; head + jaw weights only) and `freeze` (not relaxed). `jaw_extra=[...]`: chin vertices
   that ride the jaw too. A prop held in the teeth: the lips and jaw WRAP a shell just outside it (invented, pinned).
 
+### A beak (or any mouth that opens along a line through the muzzle)
+The beak is a muzzle: its root loop, concentric insets, a cap grid to the tip. It opens along a PATH from each corner
+at the base through the loops to the tip: `up = c.split(path_inner)` copies the path's inner vertices 1.5 mm up and
+gives the faces above them the copies (both lines pinned); the opening loop is `[corner] + path + [corner] + [up[i]
+for i in reversed(path)]`; `rings, cap = c.bag(opening, rings=((0.75, 0.045, 0.016), (0.5, 0.075, 0.022)))` puts the
+sock behind it. Write the groups yourself as `c.mouth` does: jaw (the lower half of the beak and of every ring, the
+corners and the base row 0.5, the cap's front row 1, its middle 0.5), mouth_inside (the rings + cap less the opening),
+freeze (opening + rings + cap). And `head_only` (next).
+
+### head_only: a muzzle or beak that sits on the chest
+`c.groups["head_only"] = set(root) | {the insets, the cap grid, the opening, the bag}`: the rig blends those vertices
+to Head (keeping their Jaw share). Without it a beak resting on the chest has its lower half owned by Neck / Spine and
+smears when the head turns.
+
 ### Eyes
 - Painted / flat eyes: an eye hole of 4 cells, two concentric insets (0.62, 0.3), one quad. The eye loops sit on the
   muzzle's top edge and under the brow.
@@ -154,9 +176,16 @@ vertex): a hole's 3-on-top / 3-below directions make a crease along the horn. Th
 horn's top when it rises and sweeps back. Close to the extreme vertex along the horn (`c.extreme`).
 
 ### Soft parts kept as their own pieces (a comb, a wattle, a crest)
-`retopo_primitives(parts=[{name, cut: [shapes], bone}])` cuts a part out of the sculpt as part_<name>.ply (a piece of its
-own; it rides `bone` by name: a wattle the Jaw, a comb the Head). Skin within 2.5 cm of a cut part bakes as invented
-(its cut edge reads raw interior). Parts' own cages are not a tool yet.
+1. Cut it out: `retopo_primitives(parts=[{name, cut: [shapes], bone, extrusion, reach, near}])` -> part_<name>.ply (it
+   rides `bone` by name: a wattle the Jaw, a comb the Head). Skin within 2.5 cm of it bakes as invented.
+2. Its own small cage: `retopo_cage(name, code, part=<name>)` (rings sliced off the whole sculpt; `low`, the pressed
+   body, is in scope). Clip its base UNDER THE BODY's own surface ring by ring: `c.ring_clip(..., keep_side=((0.0,
+   low.top(0, y)[2] - 0.008), (0, 1)), ...)` (a flat cut leaves it floating over a sloping crown with a dark gap). A
+   lobe lying against the body (a wattle on the collar) can't be parted by a slice: rings from its own cut-out points
+   (part_<name>.ply), idealised (an ellipse per height, smoothed along it).
+3. `retopo_press(name, part=<name>)`; the bake picks it up (its extrusion / reach; texels within `near` of the body are
+   invented: its base bakes the skin); the fill refills its CONTACT SHADOW (texels darker than 0.6 x its median: the
+   splat baked the body's shadow into it).
 
 ### Props and accessories
 A hard object (canister, cup, gem, button eye) is a primitive, not part of the skin: `retopo_primitives` items
@@ -201,6 +230,23 @@ clavicle taking 0.3 of an arm lift past 60 deg, a Jaw leaf bone under Head drive
 inside on the head (+ jaw) only, empty vertices copying their nearest weighted neighbour, props parented rigidly
 (eyes to Head; a held prop to Jaw), LOD1 weights copied from the full mesh.
 
+### Weighting passes (automatic, in order)
+Bone heat, then: half-angle helpers (shoulder, elbow, knee); the jaw from the cage's group (what bone heat gave the
+jaw beyond it goes to Head); feather fingers by geometry (tents along the tip, gaussians across the finger lanes: bone
+heat blurs them into each other); head_only to Head; SHOULDERS NEVER OWN THE MIDLINE (a clavicle's weight fades to
+Spine2 from 15 % to 60 % of the shoulder's |x|: bone heat gave a chin on the chest to both clavicles); `neck_ramp`;
+empty vertices from their nearest neighbour; every short total normalised to 1.
+NO NECK (a hen, a blob): give joints `"neck_ramp": [z0, z1]` (the collar band): Spine2 / Neck / Head are re-laid by
+height over it so a head turn twists softly through the collar instead of creasing one row. Its head_turn_60 still
+counts ~240 stretched edges: pure twist shear (r 0.24 m x 60 deg over 20 cm), it reads fine; 60 deg is a neckless
+body's design limit.
+
+### A racer's grip on a wheel
+Joints `"wheel": {"c": [x, y, z], "r": radius, "tilt": deg}`, `"grip_deg"` (where on the rim, from 3 o'clock) and
+`"fingers"`: retopo_rom adds `wheel_grip`, solved by two-bone IK (each wrist just outside its grip point, elbow out and
+down, the hand aimed over the rim) and a search over the fingers' curl (the tips nearest the rim's centre line); the
+wheel is drawn only in that pose. Never hand-set grip angles.
+
 ## Range of motion (`retopo_rom`)
 16 standard poses: rest, arms_side_80, arms_up_150, arms_forward_90, arms_back_40, elbows_120, leg_forward_80, knee_up_100,
 leg_back_35, leg_side_40, crouch, spine_forward_40, spine_side_30, spine_twist_45, head_turn_60, head_down_up,
@@ -219,6 +265,9 @@ mouth_open_20's few hundred "stretched" edges are the mouth bag opening: expecte
 counts: a red band across a joint's crease (knee, elbow) is compression and reads as a crease; a red tear at an
 armpit or a lip corner is a fault. Stubby legs crease at the knee whatever the weights (Mabel): accept or rebuild
 the leg's loops; huge heads stretch the shoulders in arms_up.
+LIMITS ARE PER CHARACTER, not one human table: a short wing paddle can't do elbows_120 (the stretch sits on 0.7 mm
+edges at the wing root), a neckless body turns its head 60 deg at most. Run the poses the character really needs,
+with its own angles (your own poses, below), and say which standard ones you dropped and why.
 Your own poses: `poses=["rest", "arms_up_150", {"wave": [["LeftArm", "aim", [0.5, -0.3, 0.8]],
 ["LeftForeArm", [1, 0, 0], -60]]}]` (a bone, a world axis and degrees, or "aim" and a direction; the clavicle
 share and the half-angle helpers are added for you) and close-ups `close={"wave": {"view": [-0.6, -1, 0.2],
@@ -289,7 +338,7 @@ kept) and part_<name>.ply per part. cut shapes: {type: sphere, c, R} or
 {type: cylinder, axis, c, R, span: [lo, hi] along the axis, bounds: {"y": [lo, hi]} optional}. Shows the body.
 
 ### `retopo_cage`
-`retopo_cage(name, code)`: code is Python run with: `c` (the Cage), `s` (the body sculpt), `full` (the whole sculpt),
+`retopo_cage(name, code, part=None)`: code is Python run with: `c` (the Cage), `s` (the body sculpt), `full` (the whole sculpt), `low` (the pressed body, if any),
 `props` (props.json), `az`, `X`, `Y`, `Z`, `np`, `math`, `fit_sphere`. Cage API:
 - vertices: `c.add(p)`, `c.put(i, p)`, `c.pin(i | [i...])`, `c.V[i]`
 - sculpt: `c.front(x, z)`, `c.top(x, y)`, `c.bottom(x, y)`, `c.crease(x, z_lo, z_hi)`, `c.hit(origin, d, last=False)`, `c.closest(p)`,
@@ -303,6 +352,8 @@ kept) and part_<name>.ply per part. cut shapes: {type: sphere, c, R} or
 - faces: `c.bridge(a, b, skip=())`, `c.bridge_new(prev, points, pin=False)`, `c.quad(a, b, c, d)`,
   `c.cap_grid(loop, nx, ny, interior)` -> {(i, j): vertex}, `c.fill(grid, nx, ny, holes=())`, `c.cap6(r)`,
   `c.cap8(r, centre_point, pin=False)`, `c.close_to(r, tip_point)`
+- `c.split(path, offset=(0, 0, 0.0015))` -> {vertex: upper copy}, `c.bag(opening, rings)` -> (rings, cap),
+  `c.extreme_cone(origin, direction, deg=12, min_dist=0.03, box=None)`, `c.close_small(ring4, tip)`
 - `c.mouth(r1, r2, lip=[1, 2, 3], gap=0.0005, bag=((0.95, 0.005, 0.0015), (0.75, 0.018, 0.016), (0.5, 0.04,
   0.022)), jaw_extra=[])`
 - `c.seam(loop, closed=True)`, `c.groups[name] = {vertex: weight} | {vertices}`
@@ -310,7 +361,7 @@ Refused (nothing saved past the code) when edges are open, non-manifold, or a fa
 (not refusals): inconsistent winding (the press fixes it), quads folded across a diagonal (look at them).
 
 ### `retopo_press`
-`retopo_press(name, levels=1, relax=6, after=1)`: see Press. Returns cage volume, LOD1 quads, low quads, folds (and
+`retopo_press(name, levels=1, relax=6, after=1, part=None)`: see Press (part: a separate part's cage, no LOD1). Returns cage volume, LOD1 quads, low quads, folds (and
 where), invented vertices; a sheet of the cage over the sculpt and the low mesh, 4 views.
 
 ### `retopo_measure`

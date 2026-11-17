@@ -46,15 +46,25 @@ def _body_high(d: Path) -> str:
 
 
 # ---- press
-def press(name: str, levels: int = 1, relax: int = 6, after: int = 1) -> dict:
-    d = folder(name); need(d, "cage.ply")
-    job = {"dir": str(d), "high": _body_high(d), "levels": levels, "relax": relax, "after": after, **framing(d)}
+def press(name: str, levels: int = 1, relax: int = 6, after: int = 1, part: str | None = None) -> dict:
+    """the body (part None), or a separate part's own cage (pressed onto the whole sculpt, no LOD1)"""
+    d = folder(name)
+    cn, on = (f"part_{part}_cage", f"part_{part}_low") if part else ("cage", "low")
+    need(d, f"{cn}.ply")
+    job = {"dir": str(d), "cage": cn, "out": on, "high": "high.ply" if part else _body_high(d), "levels": levels,
+           "relax": relax, "after": after, **framing(d)}
     job["scale"] = round(job["scale"] / 1.15 * 1.1, 4)
+    if part:
+        from .artretopo_mesh import Mesh as _M
+        lo, hi = _M.load(d / f"{cn}.ply").bounds(); job["centre"] = ((lo + hi) / 2).round(4).tolist()
+        job["scale"] = round(float(max(hi - lo)) * 1.6, 4)
     blender("press", job, GB["press"])
-    out = json.loads((d / "press.json").read_text())
-    vs = ("front", "side", "back", "3q")
-    sheets.grid(d / "wire_sheet.jpg", [d / f"wire_{t}_{v}.png" for t in ("cage", "low") for v in vs],
+    out = json.loads((d / ("press.json" if not part else f"{on}_press.json")).read_text())
+    vs = ("front", "side", "back", "3q"); pre = "wire" if not part else f"wire_{on}"
+    sheet = d / ("wire_sheet.jpg" if not part else f"wire_{on}_sheet.jpg")
+    sheets.grid(sheet, [d / f"{pre}_{t}_{v}.png" for t in ("cage", "low") for v in vs],
                 cols=4, tile=420, labels=[f"{t} {v}" for t in ("cage", "low") for v in vs])
+    out["sheet"] = str(sheet)
     return out
 
 

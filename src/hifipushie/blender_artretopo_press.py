@@ -1,6 +1,6 @@
 """Artist retopo, step 2 (Blender): subdivide the cage, PRESS it onto the sculpt, relax, check for folds, render wires.
     blender -b --factory-startup --python blender_artretopo_press.py -- job.json
-job: dir, high (the sculpt to press onto: high_body.ply when props were cut), levels (Catmull-Clark levels before
+job: dir, cage / out (default cage / low; a separate part: part_<name>_cage / part_<name>_low, no LOD1), high (the sculpt to press onto: high_body.ply when props were cut), levels (Catmull-Clark levels before
 pressing), relax (smooth-and-press rounds), after (extra subdivision levels AFTER pressing, unpressed: the form;
 then the pressed mesh is also LOD1), centre, scale (render framing).
 Reads cage.ply + cage_{pinned,seams,groups}.json; writes low.ply, low_seams.json, low_groups.json, low_invented.json,
@@ -22,22 +22,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_artretopo_common as C  # noqa: E402
 
 J = C.job(); D = J["dir"]; LEVELS = J.get("levels", 1); RELAX = J.get("relax", 6); AFTER = J.get("after", 1)
+CN, ON = J.get("cage", "cage"), J.get("out", "low")      # a separate part: part_<name>_cage -> part_<name>_low
 sc = C.reset()
 high = C.load_ply(f"{D}/{J.get('high', 'high.ply')}", "high")
-cage = C.load_ply(f"{D}/cage.ply", "cage")
+cage = C.load_ply(f"{D}/{CN}.ply", "cage")
 bm = bmesh.new(); bm.from_mesh(cage.data); bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
 if bm.calc_volume(signed=True) < 0:      # recalc guesses the side; a closed cage's signed volume doesn't
     bmesh.ops.reverse_faces(bm, faces=bm.faces)
 out = {"cage_volume": round(bm.calc_volume(signed=True), 5)}
 bm.to_mesh(cage.data); bm.free()
 
-pin = set(json.load(open(f"{D}/cage_pinned.json"))) if os.path.exists(f"{D}/cage_pinned.json") else set()
+pin = set(json.load(open(f"{D}/{CN}_pinned.json"))) if os.path.exists(f"{D}/{CN}_pinned.json") else set()
 g = cage.vertex_groups.new(name="press")
 g.add([v.index for v in cage.data.vertices if v.index not in pin], 1.0, "REPLACE")
 if pin:
     g.add(sorted(pin), 0.0, "REPLACE")
-SEAMS = json.load(open(f"{D}/cage_seams.json")) if os.path.exists(f"{D}/cage_seams.json") else []
-GROUPS = json.load(open(f"{D}/cage_groups.json")) if os.path.exists(f"{D}/cage_groups.json") else {}
+SEAMS = json.load(open(f"{D}/{CN}_seams.json")) if os.path.exists(f"{D}/{CN}_seams.json") else []
+GROUPS = json.load(open(f"{D}/{CN}_groups.json")) if os.path.exists(f"{D}/{CN}_groups.json") else {}
 want = {tuple(sorted(e)) for e in SEAMS}
 for e in cage.data.edges:
     if tuple(sorted(e.vertices)) in want:
@@ -79,22 +80,23 @@ def export_ply(o, path):
                           export_normals=False, apply_modifiers=True)
 
 
-if AFTER:   # the coarse pressed mesh is LOD1 (same loops); the FORM is it subdivided further, unpressed
+if AFTER and ON == "low":   # the coarse pressed mesh is LOD1 (same loops); the FORM is it subdivided further, unpressed
     export_ply(low, f"{D}/lod1.ply")
     json.dump([list(e.vertices) for e in low.data.edges if e.use_seam], open(f"{D}/lod1_seams.json", "w"))
     out["lod1_faces"] = len(low.data.polygons)
+if AFTER:
     sub2 = low.modifiers.new("sub2", "SUBSURF"); sub2.levels = sub2.render_levels = AFTER
     C.apply_mod(low, sub2)
-elif os.path.exists(f"{D}/lod1.ply"):
+if not AFTER and ON == "low" and os.path.exists(f"{D}/lod1.ply"):
     os.remove(f"{D}/lod1.ply")
 from mathutils.bvhtree import BVHTree  # noqa: E402
 bvh = BVHTree.FromObject(high, bpy.context.evaluated_depsgraph_get())
 gp = low.vertex_groups["press"].index
 pw = {v.index: next((x.weight for x in v.groups if x.group == gp), 1.0) for v in low.data.vertices}
-json.dump([list(e.vertices) for e in low.data.edges if e.use_seam], open(f"{D}/low_seams.json", "w"))
+json.dump([list(e.vertices) for e in low.data.edges if e.use_seam], open(f"{D}/{ON}_seams.json", "w"))
 json.dump({name: [next((x.weight for x in v.groups if x.group == low.vertex_groups[name].index), 0.0) for v in low.data.vertices]
-           for name in GROUPS}, open(f"{D}/low_groups.json", "w"))
-json.dump([i for i, w in pw.items() if w < 0.5], open(f"{D}/low_invented.json", "w"))
+           for name in GROUPS}, open(f"{D}/{ON}_groups.json", "w"))
+json.dump([i for i, w in pw.items() if w < 0.5], open(f"{D}/{ON}_invented.json", "w"))
 bad = []
 for f in low.data.polygons:
     if min(pw[i] for i in f.vertices) < 0.5:
@@ -105,13 +107,13 @@ for f in low.data.polygons:
 low.data.materials.append(C.flat_mat("ok", (0.86, 0.84, 0.80, 1))); low.data.materials.append(C.flat_mat("bad", (0.9, 0.1, 0.1, 1)))
 for i in bad:
     low.data.polygons[i].material_index = 1
-export_ply(low, f"{D}/low.ply")
+export_ply(low, f"{D}/{ON}.ply")
 out.update({"pinned_cage_verts": len(pin), "seam_edges": sum(e.use_seam for e in low.data.edges),
             "low_verts": len(low.data.vertices), "low_faces": len(low.data.polygons), "folded": len(bad),
             "folded_at": [list(map(lambda x: round(x, 3), low.data.polygons[i].center)) for i in bad[:12]],
             "invented_verts": sum(1 for w in pw.values() if w < 0.5)})
-json.dump(bad, open(f"{D}/low_folded.json", "w"))
-json.dump(out, open(f"{D}/press.json", "w"), indent=1)
+json.dump(bad, open(f"{D}/{ON}_folded.json", "w"))
+json.dump(out, open(f"{D}/press.json" if ON == "low" else f"{D}/{ON}_press.json", "w"), indent=1)
 
 # ---- render: solid grey + dark wire on top (red faces = folded)
 C.workbench(sc, 900)
@@ -127,5 +129,5 @@ for tag, shown in {"cage": [high, wc], "low": [low, wl]}.items():
             o.hide_render = o not in shown
     for vn in ("front", "side", "back", "3q"):
         C.aim(cam, J["centre"], C.VIEWS[vn])
-        sc.render.filepath = f"{D}/wire_{tag}_{vn}.png"; bpy.ops.render.render(write_still=True)
+        sc.render.filepath = f"{D}/wire_{tag}_{vn}.png" if ON == "low" else f"{D}/wire_{ON}_{tag}_{vn}.png"; bpy.ops.render.render(write_still=True)
 print("PRESS", json.dumps(out))

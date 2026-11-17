@@ -8,28 +8,20 @@ helpers (joints that get a half-angle bend helper: default Arm, ForeArm, Leg = s
 Reads final.glb (else low_uv.glb), low.ply + low_groups.json (the jaw), props.json (which bone holds each prop).
 Writes rigged.glb, rigged.blend, rig.json (bones, helpers, joints, object names, weighting numbers).
 
-Weighting, in order (each step a lesson, guide(topic="retopo") "Rig"):
-1. import with merge_vertices=True (glTF splits vertices at UV seams; bone heat then tears the seams in pose)
-2. Blender bone heat (automatic weights). No global smoothing and no limb fade: both made the ROM worse.
-3. half-angle helpers on shoulder, elbow, knee (a _bend bone turned half as far as its joint takes the joint's
-   share of the vertices weighted to both sides): stretches gone at the knee and shoulder. NO hip helper (5x
-   stretches). The hand-over is Laplacian-smoothed `helper_smooth` times.
-4. the jaw: the cage's own jaw group replaces bone heat's guess (bone heat makes a group named after the Jaw bone:
-   reuse it; a second "...Jaw.001" group is never driven); the mouth inside is the head's (and jaw's) only; the
-   border smoothed `jaw_smooth` times.
-5. any vertex left with no weight copies its nearest weighted neighbour.
+Weighting: import with merge_vertices=True (glTF splits vertices at UV seams; bone heat then tears them), Blender
+bone heat, then the passes in blender_artretopo_weights.py (helpers, jaw, fingers, head_only, shoulder midline, neck
+ramp, empty, normalise). No global smoothing and no limb fade: both made the ROM worse.
 Props parent rigidly to a bone: eyes to Head, a prop held in the teeth to Jaw (props.json "bone")."""
 import json
 import os
 import sys
 
 import bpy
-import bmesh
 from mathutils import Vector
-from mathutils.kdtree import KDTree
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blender_artretopo_common as C  # noqa: E402
+import blender_artretopo_weights as W  # noqa: E402
 
 PFX = "mixamorig:"
 J = C.job(); D = J["dir"]; JT = J["joints"]
@@ -87,118 +79,9 @@ C.select_only(body, rig, active=rig)
 bpy.ops.object.parent_set(type="ARMATURE_AUTO")
 VG = body.vertex_groups
 
-# ---- 3. half-angle helpers
-ALLH = {"Arm": "Shoulder", "ForeArm": "Arm", "UpLeg": None, "Leg": "UpLeg"}
-HELP = {j: ALLH[j] for j in J.get("helpers", ["Arm", "ForeArm", "Leg"]) if j in ALLH}
-kids = {}
-for n, par, *_ in BONES:
-    kids.setdefault(par, []).append(n)
-
-
-def subtree(n):
-    out = [n]
-    for k in kids.get(n, []):
-        out += subtree(k)
-    return out
-
-
-if HELP:
-    bpy.context.view_layer.objects.active = rig; bpy.ops.object.mode_set(mode="EDIT")
-    for side in ("Left", "Right"):
-        for j, par in HELP.items():
-            jb = arm_d.edit_bones[PFX + side + j]
-            h = arm_d.edit_bones.new(PFX + side + j + "_bend"); h.head = jb.head; h.tail = jb.head + (jb.tail - jb.head) * 0.3
-            h.parent = arm_d.edit_bones[PFX + (side + par if par else "Hips")]; h.roll = jb.roll
-    bpy.ops.object.mode_set(mode="OBJECT")
-    for side in ("Left", "Right"):
-        for j in HELP:
-            sub = {PFX + x for x in subtree(side + j)}
-            hg = VG.new(name=PFX + side + j + "_bend")
-            for v in body.data.vertices:
-                ws = {VG[g.group].name: g.weight for g in v.groups}
-                a_ = sum(w for n, w in ws.items() if n in sub)
-                b_ = sum(w for n, w in ws.items() if n not in sub and not n.endswith("_bend"))
-                hgt = 2 * min(a_, b_)
-                if hgt <= 1e-4:
-                    continue
-                sa = (a_ - hgt / 2) / a_ if a_ > 0 else 0; sb = (b_ - hgt / 2) / b_ if b_ > 0 else 0
-                for n, w in ws.items():
-                    if not n.endswith("_bend"):
-                        VG[n].add([v.index], w * (sa if n in sub else sb), "REPLACE")
-                hg.add([v.index], hgt, "REPLACE")
-    bm_ = bmesh.new(); bm_.from_mesh(body.data); bm_.verts.ensure_lookup_table()
-    nb = [[e.other_vert(v).index for e in v.link_edges] for v in bm_.verts]; bm_.free()
-    for side in ("Left", "Right"):
-        for j, par in HELP.items():
-            names = [PFX + side + j + "_bend", PFX + side + j, PFX + (side + par if par else "Hips")]
-            W = {n: [0.0] * len(body.data.vertices) for n in names}
-            for v in body.data.vertices:
-                for g in v.groups:
-                    n = VG[g.group].name
-                    if n in W:
-                        W[n][v.index] = g.weight
-            zone = [i for i in range(len(nb)) if any(W[n][i] > 0 for n in names)]
-            tot = [sum(W[n][i] for n in names) for i in range(len(nb))]
-            for _ in range(J.get("helper_smooth", 6)):
-                for n in names:
-                    w = W[n]; W[n] = w[:]
-                    for i in zone:
-                        W[n][i] = 0.5 * w[i] + 0.5 * sum(w[k] for k in nb[i]) / len(nb[i])
-            for i in zone:
-                ssum = sum(W[n][i] for n in names) or 1
-                for n in names:
-                    val = W[n][i] / ssum * tot[i]
-                    if val > 1e-4:
-                        VG[n].add([i], val, "REPLACE")
-                    else:
-                        VG[n].remove([i])
-
-# ---- 4. the jaw
-njaw = 0
-if "jaw" in JT and os.path.exists(f"{D}/low_groups.json"):
-    G = json.load(open(f"{D}/low_groups.json")); jaw = G.get("jaw"); inside = G.get("mouth_inside")
-    ref = C.load_ply(f"{D}/low.ply", "ref")
-    kd = KDTree(len(ref.data.vertices))
-    for v in ref.data.vertices:
-        kd.insert(v.co, v.index)
-    kd.balance()
-    gj = VG.get(PFX + "Jaw") or VG.new(name=PFX + "Jaw"); gh = VG[PFX + "Head"]
-    for v in body.data.vertices:
-        ix = kd.find(body.matrix_world @ v.co)[1]; w = jaw[ix] if jaw else 0.0
-        if inside and inside[ix] > 1e-3:      # the inside of the mouth is the head's (and the jaw's) only
-            for g in list(v.groups):
-                if g.group != gh.index:
-                    VG[g.group].remove([v.index])
-            gh.add([v.index], 1.0, "REPLACE")
-        others = [g for g in v.groups if g.group != gj.index]
-        tot = sum(g.weight for g in others) or 1.0
-        for g in others:
-            g.weight = g.weight / tot * (1 - w)
-        if w > 1e-3:
-            gj.add([v.index], w, "REPLACE"); njaw += 1
-        else:
-            gj.remove([v.index])
-    bpy.data.objects.remove(ref)
-    if J.get("jaw_smooth", 4):
-        C.select_only(body); VG.active_index = gj.index
-        bpy.ops.object.mode_set(mode="WEIGHT_PAINT")
-        bpy.ops.object.vertex_group_smooth(group_select_mode="ACTIVE", factor=0.5, repeat=J.get("jaw_smooth", 4))
-        bpy.ops.object.vertex_group_normalize_all(lock_active=True)
-        bpy.ops.object.mode_set(mode="OBJECT")
-
-# ---- 5. empty vertices copy their nearest weighted neighbour
-wsum = {v.index: sum(g.weight for g in v.groups) for v in body.data.vertices}
-empty = [i for i, w in wsum.items() if w < 1e-3]
-if empty and len(empty) < len(wsum):
-    kd2 = KDTree(len(wsum) - len(empty))
-    for v in body.data.vertices:
-        if wsum[v.index] >= 1e-3:
-            kd2.insert(v.co, v.index)
-    kd2.balance()
-    for i in empty:
-        src = body.data.vertices[kd2.find(body.data.vertices[i].co)[1]]
-        for g in src.groups:
-            VG[g.group].add([i], g.weight, "REPLACE")
+# ---- 3-8: helpers, jaw, fingers, head_only, shoulder midline, neck ramp, empty, normalise (blender_artretopo_weights)
+J["joints"] = JT
+HELP, winfo = W.run(J, D, body, rig, BONES, PFX)
 for o in props:
     base = o.name.split(".")[0]
     bone = HOLD.get(base, "Head") if not base.startswith("eye") else "Head"
@@ -206,8 +89,8 @@ for o in props:
         bone = "Head"
     mw = o.matrix_world.copy(); o.parent = rig; o.parent_type = "BONE"; o.parent_bone = PFX + bone
     bpy.context.view_layer.update(); o.matrix_world = mw
-info = {"source": os.path.basename(SRC), "bones": len(arm_d.bones), "helpers": list(HELP), "jaw_verts": njaw,
-        "empty_filled": len(empty), "props": {o.name: o.parent_bone for o in props}, "groups": len(VG)}
+info = {"source": os.path.basename(SRC), "bones": len(arm_d.bones), **winfo,
+        "props": {o.name: o.parent_bone for o in props}, "groups": len(VG)}
 print("RIG", json.dumps(info))
 
 # ---- LOD1 weights (nearest face, interpolated; same skeleton), save, export

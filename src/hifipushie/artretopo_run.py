@@ -87,6 +87,8 @@ def _shape_mask(P, sh) -> np.ndarray:
 
 
 def props(name: str, eyes=None, items=None, cut=None, margin: float = 0.006, parts=None) -> dict:
+    """(parts: [{name, cut: [shapes], bone, extrusion, reach, near}]: extrusion / reach for its bake, near: how far
+    up from the body its texels are invented, its base reading the skin)"""
     """eyes: [{c, R}] spheres (from fit_sphere); items: [{type: cylinder|sphere, axis, c, R, length, bone}] the props
     (bone "Head" or "Jaw": a prop held in the teeth rides the jaw); cut: extra cut shapes (default: every eye and item
     grown by margin); parts: [{name, cut: [shapes], bone}] soft parts of the sculpt kept as pieces of their own
@@ -111,7 +113,8 @@ def props(name: str, eyes=None, items=None, cut=None, margin: float = 0.006, par
         for sh in pt["cut"]:
             pk |= _shape_mask(centres, sh)
         piece = m.submesh(pk); f = f"part_{pt['name']}.ply"; write_ply(d / f, piece.V, piece.F, piece.C)
-        cut_parts.append({"name": pt["name"], "file": f, "bone": pt.get("bone", "Head"), "triangles": int(pk.sum())})
+        cut_parts.append({"name": pt["name"], "file": f, "bone": pt.get("bone", "Head"), "triangles": int(pk.sum()),
+                          "extrusion": pt.get("extrusion", 0.006), "reach": pt.get("reach", 0.02), "near": pt.get("near", 0.01)})
         kill |= pk
     body = m.submesh(~kill)
     lab = body.components(); big = np.bincount(lab).argmax(); parts = len(np.unique(lab))
@@ -124,24 +127,35 @@ def props(name: str, eyes=None, items=None, cut=None, margin: float = 0.006, par
 
 
 # ---- the cage
-CAGE_SCOPE_DOC = "c (Cage), s (the body sculpt), full (the whole sculpt), props (props.json), az, X, Y, Z, np, math, fit_sphere"
+CAGE_SCOPE_DOC = ("c (Cage), s (the body sculpt), full (the whole sculpt), low (the pressed body, if any), props (props.json), "
+                  "az, X, Y, Z, np, math, fit_sphere")
 
 
-def cage(name: str, code: str) -> dict:
-    """run the artist's cage code (Python; in scope: CAGE_SCOPE_DOC) and save the cage; refuse a broken one"""
+def cage(name: str, code: str, part: str | None = None) -> dict:
+    """run the artist's cage code (Python; in scope: CAGE_SCOPE_DOC) and save the cage; refuse a broken one.
+    part: a separate part's own cage (part_<name>_cage.ply; rings and rays on the WHOLE sculpt; `low` is the pressed
+    body, to clip the part's base under the body's own surface)"""
     d = folder(name); need(d, "high.ply")
     full = Sculpt(d / "high.ply")
-    body = Sculpt(d / "high_body.ply") if (d / "high_body.ply").exists() else full
+    stem = f"part_{part}_cage" if part else "cage"
+    if part:
+        P0 = json.loads((d / "props.json").read_text()) if (d / "props.json").exists() else {}
+        if part not in [c_["name"] for c_ in P0.get("cut_parts", [])]:
+            raise ValueError(f"no cut part {part!r}: cut it out first (retopo_primitives parts=[{{name, cut, bone}}])")
+        body = full
+    else:
+        body = Sculpt(d / "high_body.ply") if (d / "high_body.ply").exists() else full
     c = Cage(full, body)
     P = json.loads((d / "props.json").read_text()) if (d / "props.json").exists() else {"eyes": [], "props": []}
-    n = 1 + max([int(p.stem[6:]) for p in d.glob("cage_v*.py") if p.stem[6:].isdigit()] or [0])
-    (d / f"cage_v{n}.py").write_text(code); (d / "cage.py").write_text(code)
-    scope = {"c": c, "s": body, "full": full, "props": P, "az": az, "X": X, "Y": Y, "Z": Z, "np": np, "math": math,
-             "fit_sphere": fit_sphere}
-    exec(compile(code, str(d / f"cage_v{n}.py"), "exec"), scope)
-    V, F = c.save(str(d / "cage.ply"))
+    n = 1 + max([int(p.stem[len(stem) + 2:]) for p in d.glob(f"{stem}_v*.py") if p.stem[len(stem) + 2:].isdigit()] or [0])
+    (d / f"{stem}_v{n}.py").write_text(code); (d / f"{stem}.py").write_text(code)
+    low = Sculpt(d / "low.ply") if (d / "low.ply").exists() else None
+    scope = {"c": c, "s": body, "full": full, "low": low, "props": P, "az": az, "X": X, "Y": Y, "Z": Z, "np": np,
+             "math": math, "fit_sphere": fit_sphere}
+    exec(compile(code, str(d / f"{stem}_v{n}.py"), "exec"), scope)
+    V, F = c.save(str(d / f"{stem}.ply"))
     rep = check.check_cage(V, F)
     rep.update({"version": n, "pinned": len(c.pinned & {i for q in c.F for i in q}), "seam_edges": len(c.seams),
                 "groups": {k: len(v) for k, v in c.groups.items()}})
-    (d / "cage_check.json").write_text(json.dumps(rep, indent=1))
+    (d / f"{stem}_check.json").write_text(json.dumps(rep, indent=1))
     return rep

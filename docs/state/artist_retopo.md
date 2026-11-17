@@ -10,8 +10,11 @@ Scraps); its lessons are in retopo_guide.md (the playbook) and the tools. Ledger
   PIL; no trimesh / shapely / cv2), blender_artretopo_{common,press,bake,assemble,compare,rig,rom,posecheck,look}.py,
   tools_retopo.py (18 tools: start, look, slices, measure, check, fit, fit_cylinder, primitives, cage, press, bake,
   fill, assemble, compare, armature, rom, lod, report), tests/test_artretopo.py.
-- Folded in from Hettie (oxidegen, 11-17): backface hits = coverage misses, diffusion seeded from true hits, cut parts
-  (2.5 cm invented band; part cages not yet), ring_clip for fused limbs, finger chains (wings = arms), pose-time aim.
+- Folded in from Hettie (oxidegen, 11-17): backface hits = coverage misses, diffusion seeded from true hits, ring_clip
+  for fused limbs, finger chains (wings = arms) weighted by geometry, pose-time aim, the wheel grip solved by IK + a
+  curl search, separate parts (cut, own cage + press, base clipped under the body, own bake reach / near, contact
+  shadow refilled), beak split + bag, head_only, shoulder midline fade, neck_ramp, normalise, foot hub + cone tips.
+  Weights module: blender_artretopo_weights.py. Rig re-run: Mabel arms_forward_90 stretched 16 -> 5, rest +-3.
 - Playbook: guide(topic="retopo") = src/hifipushie/retopo_guide.md; worked cages: examples/retopo/{mabel,scraps}_cage.py
   (guide topics retopo_mabel / retopo_scraps). Blind kit: docs/blind/artist_retopo.md.
 - Regression: /mnt/data/hifipushie/artretopo/regression/ (run.py, scraps_props.json, mabel/, scraps/).
@@ -46,7 +49,8 @@ mouth builder shared (Cage.mouth); cage refused if open / non-manifold.
 ## Open (ranked)
 1. No blind run yet: Puddles and Max first (the director starts them with docs/blind/artist_retopo.md).
 2. Mabel knee_up 133 / crouch 182 squashed (stubby-leg knee crease); huge-head arms_up stretch.
-3. Wings (Hettie, The Major), hands with fingers, hard-surface props / karts (oxidegen kart-retopo): not covered.
+3. Spring bones for hanging parts (Hettie's wattle) next; a wing's loop layout and parts' cages untried blind; karts:
+   not this path (oxidegen kart-retopo).
 4. No CLAUDE.md thread line: it is at 8189 of 8192 bytes (test_codified); the coordinator adds one if it trims.
 
 NEXT: Joe reads the regression sheets, bin/suite, coordinator lands; then blind Puddles + Max from prod mesh_ply.

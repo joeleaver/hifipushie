@@ -259,3 +259,25 @@ def test_crease_finds_the_notch(tmp_path):
     write_ply(tmp_path / "g.ply", V, F)
     p = Sculpt(tmp_path / "g.ply").crease(0.0, 0.0, 0.2)
     assert abs(p[2] - 0.1) < 0.02 and p[1] > -0.28
+
+
+def test_beak_split_bag_and_small_tip(blob):
+    """a beak opening along a path through a front grid: split, bagged; a 4-ring toe closed at its tip"""
+    c = Cage(Sculpt(blob))
+    root = []
+    for k in range(12):
+        t = 2 * math.pi * k / 12 - math.pi / 2
+        root.append(c.add(c.front(0.12 * math.cos(t), 0.12 * math.sin(t))))
+    r1 = c.inset(root, (0.0, 0.0), 0.6); c.bridge(root, r1)
+    g = c.cap_grid(r1[3:] + r1[:3], 4, 2, lambda i, j, p: c.front(p[0], p[2])); c.fill(g, 4, 2)
+    path = [r1[9], g[(1, 1)], g[(2, 1)], g[(3, 1)], r1[3]]
+    up = c.split(path[1:-1])
+    assert len(up) == 3 and all(up[i] in c.pinned for i in path[1:-1])
+    mouth = [path[0]] + path[1:-1] + [path[-1]] + [up[i] for i in reversed(path[1:-1])]
+    rings, cap = c.bag(mouth)
+    assert len(rings) == 2 and len(cap) == 9                                # an 8-loop: a 2 x 2 cap (3 x 3 points)
+    tip = c.extreme_cone((0, 0, 0.5), (0, 0, 1), 12)
+    assert tip[2] > 0.79
+    r = [c.add(p) for p in ((0.01, 0, 0.6), (0, 0.01, 0.6), (-0.01, 0, 0.6), (0, -0.01, 0.6))]
+    end = c.close_small(r, tip)
+    assert len(end) == 4 and c.F[-1] == end

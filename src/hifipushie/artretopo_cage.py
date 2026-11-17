@@ -195,6 +195,53 @@ class Cage:
             self.quad(r[k], r[k + 1], r[(k + 2) % len(r)], t)
         return t
 
+    def close_small(self, r, tip_pt, toward=None, shrink=0.45, back=0.004):
+        """close a 4-vertex tube end at its real tip: a small ring at the tip (the ring shrunk round its centre) and one
+        quad (four quads fanned to a point fold onto each other)"""
+        tip = np.asarray(tip_pt, float); ctr = np.mean([self.V[i] for i in r], axis=0)
+        d = np.asarray(toward if toward is not None else tip - ctr, float); d = d / np.linalg.norm(d)
+        end = [self.add(tip + shrink * (np.asarray(self.V[i]) - ctr) - d * back) for i in r]
+        self.bridge(r, end); self.quad(*end)
+        return end
+
+    def extreme_cone(self, origin, direction, deg=12.0, min_dist=0.03, box=None):
+        """a toe's (a claw's, a finger's) real tip: the whole sculpt's furthest vertex along `direction` from `origin`
+        inside a cone of `deg` round it (box: (lo, hi) to keep to one foot)"""
+        V = self.s.m.V; o = np.asarray(origin, float); g = np.asarray(direction, float); g = g / np.linalg.norm(g)
+        rel = V - o; dist = np.linalg.norm(rel, axis=1)
+        sel = (rel @ g > np.cos(np.radians(deg)) * dist) & (dist > min_dist)
+        if box is not None:
+            sel &= np.all((V >= np.asarray(box[0])) & (V <= np.asarray(box[1])), axis=1)
+        if not sel.any():
+            raise ValueError(f"nothing of the sculpt in a {deg} deg cone from {tuple(np.round(o, 3))} along {tuple(np.round(g, 3))}")
+        return V[sel][np.argmax(rel[sel] @ g)]
+
+    def split(self, path, offset=(0.0, 0.0, 0.0015), above=None):
+        """split the cage along a path of vertices (a beak's or a muzzle's opening): each inner vertex gets a copy moved
+        by `offset`; the faces on the upper side (their centre above `above`, default the path's mean height) take the
+        copies; both lines pinned. Returns {vertex: its upper copy}"""
+        z = np.mean([self.V[i][2] for i in path]) if above is None else above
+        up = {}
+        for i in path:
+            up[i] = self.add(np.asarray(self.V[i]) + np.asarray(offset, float)); self.pinned.update([i, up[i]])
+        ps = set(path)
+        for k, f in enumerate(self.F):
+            if ps & set(f) and np.mean([self.V[i][2] for i in f]) > z:
+                self.F[k] = [up.get(i, i) for i in f]
+        return up
+
+    def bag(self, mouth, rings=((0.75, 0.045, 0.016), (0.5, 0.075, 0.022))):
+        """a mouth bag behind any opening loop `mouth` (corner, lower edge ..., corner, upper edge ...; even length):
+        ellipse rings ((shrink, depth, height) each) and a (len/2 - 2) x 2 cap; all pinned. Returns (rings, cap grid)"""
+        from .artretopo_mouth import sock
+        mc = np.mean([self.V[i] for i in mouth], axis=0); ring = mouth; out = []
+        for shrink, depth, height in rings:
+            ring = self.bridge_new(ring, sock(self, mouth, mc, shrink, depth, height), pin=True); out.append(ring)
+        half = len(mouth) // 2; nx = half - 2; m = half // 2         # cap_grid starts at the lower edge's middle
+        g = self.cap_grid(ring[m:] + ring[:m], nx, 2, lambda i, j, p: p)
+        self.fill(g, nx, 2); self.pinned.update(g.values())
+        return out, g
+
     # ---- face loops
     def inset(self, loop, centre_xz, scale):
         """a smaller copy of a face loop, pressed onto the surface from the front (concentric loops)"""

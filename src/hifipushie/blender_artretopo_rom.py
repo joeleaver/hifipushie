@@ -132,7 +132,7 @@ def spec_of(v):
     return [(b, a if a in ("aim", "lx") else tuple(a), tuple(d) if a == "aim" else float(d)) for b, a, d in v]
 
 
-def run(J, sc, rig, body, LODS, props, BONES, HELP, PFX, poses):
+def run(J, sc, rig, body, LODS, props, BONES, HELP, PFX, poses, wheel=None):
     """pose, measure, render (front + 3/4) every pose in `poses` ({name: spec}); LOD1 in four of them"""
     D = J["dir"]; R = Rest(body); globals()["_REST"] = R
     H = R.hi[2] - R.lo[2]; ctr = [(a + b) / 2 for a, b in zip(R.lo, R.hi)]
@@ -142,6 +142,8 @@ def run(J, sc, rig, body, LODS, props, BONES, HELP, PFX, poses):
     for o in LODS:                  # LOD1 has its own pictures below
         o.hide_render = True
     for name, spec in poses.items():
+        if wheel:
+            wheel.hide_render = name != "wheel_grip"
         set_pose(rig, spec, J, BONES, HELP, PFX)
         r, _ = measure(body, R); res[name] = r; print("POSE", name, r)
         for vn, d in (("front", (0, -1, 0)), ("3q", (-0.9, -1, 0.35))):
@@ -162,7 +164,8 @@ def run(J, sc, rig, body, LODS, props, BONES, HELP, PFX, poses):
 
 def close_framing(J, H):
     """close-up views from the joints (left side, +x): (direction, target, ortho scale) per pose"""
-    jt = {k: Vector(v) for k, v in J["joints"].items()}
+    jt = {k: Vector(v) for k, v in J["joints"].items() if isinstance(v, (list, tuple)) and len(v) == 3
+          and all(isinstance(x, (int, float)) for x in v)}
     sh, el, kn = jt["shoulder"], jt["elbow"], jt["knee"]
     out = {"arms_side_80": ((-0.3, -1, 0.3), sh + Vector((0.05, 0, 0.0)) * H, 0.5 * H),
            "arms_up_150": ((-0.6, -1, 0.2), sh + Vector((0.06, 0, 0.1)) * H, 0.5 * H),
@@ -170,6 +173,9 @@ def close_framing(J, H):
            "elbows_120": ((-0.5, -1, 0.1), el, 0.4 * H),
            "knee_up_100": ((-0.9, -1, 0.1), kn, 0.55 * H),
            "crouch": ((-1, -0.8, 0.2), Vector((0, kn.y, kn.z)), 0.6 * H)}
+    if "wheel" in J["joints"]:
+        wc = Vector(J["joints"]["wheel"]["c"])
+        out.update({"wheel_grip#3q": ((-0.9, -1, 0.35), wc, 0.6 * H), "wheel_grip#side": ((-1, -0.05, 0.05), wc, 0.6 * H)})
     if "jaw" in jt:
         m = jt["jaw"] * 0.3 + jt["jaw_tip"] * 0.7
         out.update({"rest#mouth_front": ((0, -1, 0.1), m, 0.22 * H), "mouth_open_20#front": ((0, -1, 0.1), m, 0.22 * H),
@@ -177,7 +183,7 @@ def close_framing(J, H):
     return out
 
 
-def close_ups(J, sc, rig, body, BONES, HELP, PFX, poses, extra=None, standard=True):
+def close_ups(J, sc, rig, body, BONES, HELP, PFX, poses, extra=None, standard=True, wheel=None):
     """grey clay, faces with an edge squashed < 0.5 or stretched > 1.8 in red, a thin wire"""
     D = J["dir"]; R = globals()["_REST"]; H = R.hi[2] - R.lo[2]
     sh = C.workbench(sc, 700); sh.show_cavity = True
@@ -191,6 +197,8 @@ def close_ups(J, sc, rig, body, BONES, HELP, PFX, poses, extra=None, standard=Tr
             raise ValueError(f"close-up {k!r}: no pose {k.split('#')[0]!r} in this run")
         frames[k] = (tuple(v["view"]), Vector(v["target"]), float(v["scale"]))
     for name, (d, T, scale) in frames.items():
+        if wheel:
+            wheel.hide_render = name.split("#")[0] != "wheel_grip"
         set_pose(rig, poses[name.split("#")[0]], J, BONES, HELP, PFX)
         co = posed(body); badf = set()
         for k, ((i, j), L) in enumerate(zip(R.edges, R.length)):
@@ -202,3 +210,57 @@ def close_ups(J, sc, rig, body, BONES, HELP, PFX, poses, extra=None, standard=Tr
         cam.data.ortho_scale = scale; C.aim(cam, T, d)
         sc.render.filepath = f"{D}/close_{name.replace('#', '_')}.png"; bpy.ops.render.render(write_still=True)
     set_pose(rig, [], J, BONES, HELP, PFX)
+
+
+# ---- a racer's grip on a wheel (joints "wheel": {c, r, tilt}, "grip_deg", "fingers"): two-bone IK, solved by a curl
+def wheel_frame(JT):
+    t = math.radians(JT["wheel"]["tilt"]); Cw = Vector(JT["wheel"]["c"]); r = JT["wheel"]["r"]
+    n = Vector((0, -math.sin(t), math.cos(t))); up = Vector((0, math.cos(t), math.sin(t)))   # the wheel's normal; its 'up'
+    return Cw, r, n, up
+
+
+def grip_spec(rig, JT, PFX, curl):
+    """each wrist just outside its grip point (two-bone IK, elbow out and down), the hand aimed over the rim, every
+    finger joint curled `curl` deg about the rim's tangent there"""
+    Cw, r, n, up = wheel_frame(JT); spec = []; B = rig.data.bones
+    for side, sg, clock in (("Left", 1, JT.get("grip_deg", 30)), ("Right", -1, 180 - JT.get("grip_deg", 30))):
+        th = math.radians(clock); u = (Vector((math.cos(th), 0, 0)) + up * math.sin(th)).normalized()
+        Pg = Cw + u * r; tang = (Vector((-math.sin(th), 0, 0)) + up * math.cos(th)).normalized()
+        S = B[PFX + side + "Arm"].head_local; E0 = B[PFX + side + "ForeArm"].head_local; W0 = B[PFX + side + "Hand"].head_local
+        a_, b_ = (E0 - S).length, (W0 - E0).length
+        Wt = Pg + u * 0.035 - n * 0.015
+        dv = Wt - S; d = min(dv.length, 0.985 * (a_ + b_)); uu = dv.normalized()
+        pole = Vector((sg, 0.0, -0.6)).normalized(); vp = (pole - uu * pole.dot(uu)).normalized()
+        ca = max(-1, min(1, (a_ * a_ + d * d - b_ * b_) / (2 * a_ * d)))
+        E = S + (uu * ca + vp * math.sqrt(1 - ca * ca)) * a_; Wp = S + uu * d
+        spec += [(side + "Arm", "aim", tuple(E - S)), (side + "ForeArm", "aim", tuple(Wp - E)),
+                 (side + "Hand", "aim", tuple((Pg + n * 0.01 - Wp).normalized()))]
+        spec += [(f"{side}Hand{f}{k}", tuple(tang * sg), curl) for f in JT["fingers"] for k in (1, 2, 3)]
+    return spec
+
+
+def grip_error(rig, JT, PFX):
+    """mean distance of the finger tips and middle joints from the rim's centre line"""
+    Cw, r, n, _ = wheel_frame(JT); err = []
+    for side in ("Left", "Right"):
+        for f in JT["fingers"]:
+            for k in (2, 3):
+                p = rig.pose.bones[PFX + f"{side}Hand{f}{k}"].tail; q = p - Cw; q -= n * q.dot(n)
+                err.append((p - (Cw + q.normalized() * r)).length)
+    return sum(err) / len(err)
+
+
+def solve_grip(rig, J, BONES, HELP, PFX):
+    JT = J["joints"]; best = None
+    for curl in range(-75, 80, 5):
+        spec = grip_spec(rig, JT, PFX, curl); set_pose(rig, spec, J, BONES, HELP, PFX); e = grip_error(rig, JT, PFX)
+        if best is None or e < best[0]:
+            best = (e, curl, spec)
+    return best
+
+
+def wheel_object(JT):
+    bpy.ops.mesh.primitive_torus_add(major_radius=JT["wheel"]["r"], minor_radius=0.012, location=JT["wheel"]["c"],
+                                     rotation=(math.radians(JT["wheel"]["tilt"]), 0, 0))
+    w = bpy.context.active_object; w.name = "wheel"; w.hide_render = True
+    return w

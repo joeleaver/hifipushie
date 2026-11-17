@@ -130,39 +130,42 @@ def retopo_fit_cylinder(name: str, axis: str, at: list[float], pick: list[float]
 
 
 @mcp.tool(structured_output=False)
-def retopo_primitives(name: str, eyes: list[dict] | None = None, items: list[dict] | None = None, cut: list[dict] | None = None,
-                 margin: float = 0.006):
+def retopo_primitives(name: str, eyes: list[dict] | None = None, items: list[dict] | None = None,
+                      cut: list[dict] | None = None, margin: float = 0.006, parts: list[dict] | None = None):
     """Rebuild eyeballs and held accessories as primitives and cut them out of the fused mesh (-> high_body.ply, the biggest part
     kept; props.json). eyes [{c, R}]; items [{name, type: cylinder|sphere, axis, c, R, length, bone: Head|Jaw}]; cut:
-    your own cut shapes (default: each one grown by margin). Details: guide(topic="retopo_primitives")."""
+    your own cut shapes (default: each one grown by margin); parts [{name, cut: [shapes], bone, extrusion, reach,
+    near}]: soft pieces kept as their own (a comb, a wattle). Details: guide(topic="retopo_primitives")."""
     from . import artretopo_run as R, artretopo_study as St
-    rep = R.props(name, eyes, items, cut, margin)
+    rep = R.props(name, eyes, items, cut, margin, parts)
     p, txt = St.views(name, "body", ("front", "side"), style="clay")
     return [_img(p), _txt(rep) + "\n" + txt]
 
 
 # ---- the cage and the press
 @mcp.tool(structured_output=False)
-def retopo_cage(name: str, code: str):
+def retopo_cage(name: str, code: str, part: str | None = None):
     """Run your retopo cage code (Python; in scope: c the Cage, s the body mesh, full the whole fused mesh, props, az,
     X, Y, Z, np, math, fit_sphere) and save the low cage; refuses an open or non-manifold cage; shows it in red over
-    the fused mesh. Every version is kept (cage_v<N>.py). Details: guide(topic="retopo_cage")."""
+    the fused mesh. Every version is kept (cage_v<N>.py). part: a separate part's own cage (low = the pressed body in
+    scope). Details: guide(topic="retopo_cage")."""
     from . import artretopo_run as R, artretopo_study as St
-    rep = R.cage(name, code)
+    rep = R.cage(name, code, part)
     if rep["faults"]:
         return f"cage v{rep['version']} REFUSED (fix the code, call again):\n{_txt(rep)}"
-    p, txt = St.views(name, "high", ("front", "side", "back", "3q"), style="clay", over="cage")
-    return [_img(p), f"cage v{rep['version']}: {_txt(rep)}\n{txt}\nnext: retopo_press"]
+    stem = f"part_{part}_cage.ply" if part else "cage"
+    p, txt = St.views(name, "high", ("front", "side", "back", "3q"), style="clay", over=stem)
+    return [_img(p), f"cage v{rep['version']}: {_txt(rep)}\n{txt}\nnext: retopo_press" + (f" part={part!r}" if part else "")]
 
 
 @mcp.tool(structured_output=False)
-def retopo_press(name: str, levels: int = 1, relax: int = 6, after: int = 1):
+def retopo_press(name: str, levels: int = 1, relax: int = 6, after: int = 1, part: str | None = None):
     """Subdivide the cage `levels` times, press it onto the fused mesh along normals (pinned vertices stay invented), relax
-    `relax` rounds, keep that as LOD1, subdivide `after` more levels unpressed (the form); count folds. Details:
-    guide(topic="retopo_press")."""
+    `relax` rounds, keep that as LOD1, subdivide `after` more levels unpressed (the form); count folds. part: a
+    separate part's cage (no LOD1). Details: guide(topic="retopo_press")."""
     from . import artretopo_steps as S
-    rep = S.press(name, levels, relax, after)
-    return [_img(_d(name) / "wire_sheet.jpg"), _txt(rep) + "\nnext: retopo_look mesh=low style=wire folds=true where "
+    rep = S.press(name, levels, relax, after, part)
+    return [_img(rep["sheet"]), _txt(rep) + "\nnext: retopo_look mesh=low style=wire folds=true where "
             "the folds are; then retopo_bake"]
 
 

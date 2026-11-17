@@ -2,7 +2,8 @@
     blender -b --factory-startup --python blender_artretopo_posecheck.py -- job.json
 job: dir; mode "rom" (default) or "lod";
   rom: poses (names of the standard set and / or {name: [[bone, [axis], degrees] | [bone, "aim", [direction]], ...]};
-       default: the whole standard set), clavicle, close (your own close-ups {name: {view, target, scale}}; "name" is a
+       default: the whole standard set, + "wheel_grip" when the joints hold a "wheel" {c, r, tilt} and "fingers": a
+       two-bone IK grip solved by a curl search), clavicle, close (your own close-ups {name: {view, target, scale}}; "name" is a
        pose name, "name#tag" for a second view of it), close_ups (true: the standard close-ups as well).
   Writes rom.json, rom_<pose>_{front,3q}.png, lod1_<pose>.png, close_<pose>.png.
   lod: writes lod1_rigged.glb (LOD1 + the rig + the props) and lod1_rest.png.
@@ -47,6 +48,8 @@ if J.get("mode") == "lod":
 want = J.get("poses") or [n for n in ROM.POSES if n != "mouth_open_20" or "jaw" in J["joints"]]
 poses = {"rest": []}
 for p in want:
+    if p == "wheel_grip":
+        continue                    # solved below (two-bone IK + a curl search) when the joints hold a wheel
     if isinstance(p, str):
         if p not in ROM.POSES:
             raise SystemExit(f"no standard pose {p!r}: {list(ROM.POSES)}")
@@ -56,9 +59,17 @@ for p in want:
             poses[k] = ROM.spec_of(v)
 if "mouth_open_20" in poses and "jaw" not in J["joints"]:
     poses.pop("mouth_open_20")
-rom = ROM.run(J, sc, rig, body, LODS, props, BONES, HELP, PFX, poses)
+WHEEL = None; grip = None
+if "wheel" in J["joints"] and J["joints"].get("fingers") and (not J.get("poses") or "wheel_grip" in want):
+    WHEEL = ROM.wheel_object(J["joints"])
+    grip = ROM.solve_grip(rig, J, BONES, HELP, PFX); poses["wheel_grip"] = grip[2]
+    print("GRIP curl", grip[1], "deg; tips", round(grip[0] * 100, 1), "cm from the rim")
+rom = ROM.run(J, sc, rig, body, LODS, props, BONES, HELP, PFX, poses, wheel=WHEEL)
+if grip:
+    rom["wheel_grip"] = {"curl_deg": grip[1], "tips_from_rim_cm": round(grip[0] * 100, 2)}
 rom["rig"] = RJ["info"]; rom["lod1"] = RJ["info"].get("lod1", {})
 json.dump(rom, open(f"{D}/rom.json", "w"), indent=1)
 if J.get("close_ups", True) or J.get("close"):
-    ROM.close_ups(J, sc, rig, body, BONES, HELP, PFX, poses, extra=J.get("close"), standard=J.get("close_ups", True))
+    ROM.close_ups(J, sc, rig, body, BONES, HELP, PFX, poses, extra=J.get("close"), standard=J.get("close_ups", True),
+                  wheel=WHEEL)
 print("ROM DONE")
