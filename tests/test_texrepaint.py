@@ -46,8 +46,8 @@ def test_surface_blur_crosses_the_uv_seam():
     v = (u < 4).astype(np.float32)                 # marked just left of the seam (u = 0) in UV space
     g = Grid(tx.pos, 0.01); sm, _ = g.smooth(v, 0.02)
     across = (u == 127) & (np.abs(tx.pos[:, 2]) < 0.3)  # far away in UV, touching in 3D
-    far = (u > 50) & (u < 70)
-    assert sm[across].mean() > 0.05 and sm[far].max() < 0.01
+    far = (u > 50) & (u < 70) & (np.abs(tx.pos[:, 2]) < 0.3)
+    assert sm[across].mean() > 0.2 and sm[far].max() < 0.01
 
 
 def test_concept_outvotes_a_wrong_back_and_reports_it():
