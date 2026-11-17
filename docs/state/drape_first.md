@@ -16,20 +16,10 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   Writes cut/flat.npz, pattern.json, cut.json, flat_sheet.png, cut_3d.png.
 - Record: steps 5 / 6 name garment_mark / garment_cut. chain_garment's from_chain writes only 8; a build that stops is
   step 7's failure, back to step 6 (R3b-2).
-
-## R3d-R3e (C495-C496), details in docs/notes/codified.md
-- Step 6 takes tapes / places / collar lines from the toile (R3d); cap ease as a crown flattened at its rest length,
-  girth rings by body part, button marks on both fronts (R3e). Proof /mnt/data/hifipushie/r3e. Still FAIL there:
-  darts_drafted, style_lengths, girths (hips / seat rings miss back.R; chest -44 at the underarm).
-
-## R3f (C497): the collar draped on the toile (toile_collar.py), cut and unfolded at step 6 (cut_collar.py); proof r3f.
-## R3f-2 / R3f-3 (C498, C500): collar seams name the same runs; one roll line (toile_collar doc); proofs r3f2, r3f3.
-## R3f-4 (C501): front neckline gorge point -> HPS (toile_style.front_neck); fall lands on collar_top past its corner.
-  Proof /mnt/data/hifipushie/r3f4: collar seams front -5.5 (flatten 9 % short), back +2 / +1; built CLOSED: V narrow.
-## R3f-5 (C502): the toile built in step 2's WEAR STATE (ties: none done up = open; missing = refused). OPEN: no lap, each
-  front's edge where traced (cutaway below the break), roll as traced; girth rows read t.closed_mesh. Proof r3f5.
-## R3f-6 (C503): layers (cut_layers: "60%" anchors, host split at the line's ends, multi-run lines refused); the open
-  toile cut at its traced edges left each front ~62-97 mm + lap short (chest 952 vs 968 + 140): fixed by R3f-7.
+## R3d-R3e (C495-C496): step 6 tapes / places / collar lines from the toile; cap ease as a crowned rest length;
+  girth rings by body part; button marks. Details in codified.md.
+## R3f..R3f-6 (C497-C503): collar draped on the toile and unfolded at the cut; one roll line; front neckline gorge ->
+  HPS; toile built in step 2's wear state (open from the ties); layer lines; details in codified.md C497-C503.
 ## R3f-7 (2026-11-17, C504): the pattern is cut from the CLOSED toile
 - toile_style.cut builds the CLOSED state always (t.meshes, toile.npz's plain parts: steps 5 / 6 read it); worn open, the
   OPEN state too (t.worn, its numbers t.info["worn"], toile.npz open/<part>, open/roll_line, open/collar_grid): the look,
@@ -49,9 +39,22 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - Looks: r3f7/cut_vs_open_toile.png (open toile look over the closed cut pieces), r3f7/cut_3d.png, r3f7/flat_sheet.png.
   Judged: the fronts close (over front laps the under at CF, lapels turned to a narrow V as closed); the collar a
   crescent but humped at CB with high strain; buttons placed on CF (closures PASS, marks on both fronts).
+## R3f-8 (2026-11-17, C507): the suit collar's shape (Joe: "it was the shape that was throwing me off")
+- toile_collar: the stand leans back against the neck ALL ROUND (walked up the neck from the neck edge; at the side neck
+  point to the collar's top beside the neck read off the notch trace's top: 29 mm; to nothing at the gorge point); the
+  fall covers it (stand_seen_front_pct, jacket 86 -> 60 %) and reaches the traced silhouette over the shoulder (land_out);
+  in front it lands on the trace only where that lies over cloth (above it the trace is the fall seen edge-on: lowered
+  onto the shoulder it stood the collar up as ears). corner_row: a column ON the gorge point (R3f-7's 7.1 mm jog).
+  Declaration stand 30 / fall 45 (r3f8/toile_decl8.json; 20 / 42 left the roll 23 mm lower at CB than at the side).
+- Proof /mnt/data/hifipushie/r3f8 (go.sh, dev.py + devlook.py: neck looks with a grey shirt-collar stand-in, dev_7.png;
+  sf_*.png stand red / fall green). Proof run (toile1 / mark1 / cut1.log): toile PASS, collar_top outline 5.0 / 7.0 mm (was
+  13.8 / 14.3). Cut: the GORGE JOG IS NOT FIXED: front.L:neck gap 7.1 mm at (67, -49, 1503), 3D collar 97.6 / garment
+  102.3 (the closed cut's front neck edge is not the toile edge the collar row follows: lapel flap / its lifted top);
+  flat collar neck now 106.1 (stretched +8.7 %), strain 9.9 % mean; outer edge 402 < roll 418 in 3D (fall lands short).
+- Still: the collar's roll meets the lapel's at ~40 deg (was 18: the stand now leans back to the gorge point).
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes.
-NEXT: the gorge-point jog (toile_style.front_neck meets the lapel's lifted top: make the front's neck edge and the
-collar row one curve through the gorge point, in 3D); the collar's flatten strain (8.7 %: stand / fall shaping, a
+NEXT: the gorge jog read on the CUT front's neck edge (cut_collar._apart), not the toile's; the fall's outer edge
+shorter than its roll (402 / 418 mm); the roll join at the gorge point (~40 deg); the stand still shows 60 % from the front; the collar's flatten strain (8.7 %: stand / fall shaping, a
 tailor's stretch-and-shrink is a declared ease, not a hidden length); girths (hips ring, chest at the underarm); collar
 piece tapes / place; darts from the strain ridge; style_lengths (compare like lines).
