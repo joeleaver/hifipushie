@@ -52,6 +52,7 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   reach CF: the open toile is the closed field cut at the traced edges, so each front is ~62 mm (break) to 97 mm
   (waist) + lap too narrow (chest 952 vs body 968 + ease 140; panels front 163 mm a piece). Closed, these fronts
   would not meet: the buttons are right on the cloth, the cloth is wrong.
+## R3f-7 (2026-11-17, C504): IN PROGRESS: the pattern cut from the CLOSED toile; the open toile kept for the look; held_flatten deleted.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; R3e's girths (hips / seat back.R); side / sleeve_under tapes.
 NEXT: the open toile's fronts must keep the closed garment's cloth (the open front = the closed front swung back about
