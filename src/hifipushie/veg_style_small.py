@@ -328,9 +328,6 @@ def lines(info: dict) -> list[str]:
     return out
 
 
-CARD_WARN = 1.5  # a leaf card wider than this x a crown clump is warned about (pixar's own cards are ~1x one)
-
-
 def warnings(info: dict) -> list[str]:
     m = info["match"]
     w = []
@@ -338,7 +335,7 @@ def warnings(info: dict) -> list[str]:
         if abs(m["height_m"][1] - m["height_m"][0]) > 0.1 * max(m["height_m"][0], 1e-6):
             w.append(f"WARNING: the styled plant is {m['height_m'][1]} m tall, the realistic one {m['height_m'][0]} m")
         return w
-    if info.get("card_vs_clump", 0) > CARD_WARN:  # (pixar's leaf cards: `cards.count` reads like a number of cards; it is leaves per card PICTURE)
+    if info.get("card_vs_clump", 0) > veg_style.CARD_WARN:  # (pixar's leaf cards: `cards.count` reads like a number of cards; it is leaves per card PICTURE)
         w.append(f"WARNING: each leaf card is {info['card_m']} m across, {info['card_vs_clump']}x a crown clump ({info['clump_m']} m): cards that big "
                  f"stand off the shell as flat sheets. A card is 2 x `cards.leaf` x the leaf's length / `cards.length` across; `cards.count` "
                  f"({info.get('card_leaves')}) is the leaves drawn in ONE card's picture, not the number of cards (that is the budget's)")

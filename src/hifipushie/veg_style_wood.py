@@ -6,6 +6,7 @@ import math
 import numpy as np
 
 from . import veg_mesh
+from . import veg_style
 from . import sdf_shapes
 from . import vegetation_kernels, vegetation_tree
 
@@ -262,9 +263,6 @@ def _segments(mini: dict, orders=(0, 1, 2)) -> list:
     return out
 
 
-ROOT_JOIN = 3.0  # a root buttress joins the trunk over this x the wood's `blend` (a pixar blend left a hard crease at its top)
-
-
 def _roots(mini: dict) -> list:
     """The spec's `roots` ({count, spread, height}) on the drawn trunk: one root buttress per root, each its own axis (so
     the union fillets it into the trunk): it leaves the trunk at `height` m, runs out and down, meets the ground at
@@ -297,7 +295,7 @@ def _roots(mini: dict) -> list:
         # (thin tubes read as spider legs: a buttress is a fat lobe, its far end sunk into the ground)
         P = np.array([foot + [0, 0, hh], foot + d * 0.5 * R + [0, 0, 0.35 * hh], foot + d * R - [0, 0, 0.05 * r_b], foot + d * (R + 0.6 * r_b) - [0, 0, 0.4]])
         rr = r_b * np.array([0.65, 0.58, 0.42, 0.25]) * (0.8 + 0.2 * s_)
-        out.append((P[:-1], P[1:], rr[:-1], rr[1:], np.repeat(node, 3), ROOT_JOIN))
+        out.append((P[:-1], P[1:], rr[:-1], rr[1:], np.repeat(node, 3), veg_style.ROOT_JOIN))
     return out
 
 

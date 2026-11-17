@@ -16,8 +16,8 @@ Three gaps Joe hit on Braynard Racing's storybook oak (pixar), fixed in the styl
   is the shell's own top + the most `out`; a card sinks no deeper than its own shell point, and for any overhang left
   it shrinks to half size at most. Returns `pos` (each card's middle).
 - Report: a "leaf cards on the shell" line (count, metres across, x a clump, leaves per picture, leaf cover); a WARNING
-  past CARD_WARN 1.5 x a clump explaining that `cards.count` is leaves per picture.
-- veg_style_wood._roots: spec `roots` -> fat root buttresses (own axes, joined over ROOT_JOIN 3 x blend) in the styled
+  past veg_style.CARD_WARN 1.5 x a clump explaining that `cards.count` is leaves per picture.
+- veg_style_wood._roots: spec `roots` -> fat root buttresses (own axes, joined over veg_style.ROOT_JOIN 3 x blend) in the styled
   wood field (every styled sheet); mesh bounds now cover them.
 - veg_style_crown.skirt + sheet keys `crown.down_to` (null), `skirt_rim` 0.6, `skirt_curl` 0.25, `skirt_max` 2 on all
   four sheets: foliage points hung under the outer twigs, so the masses reach down the crown's sides.
@@ -43,6 +43,8 @@ Three gaps Joe hit on Braynard Racing's storybook oak (pixar), fixed in the styl
 
 ## Commands
 - Tests: `uv run python -m pytest -m "" tests/test_veg_style_crown_depth.py tests/test_veg_style.py`
+- bin/suite (fast) 2026-11-17: 883 passed; its only 2 new failures (constants outside veg_style.py) fixed and
+  re-run green; the tier ran 12.3 min (over the 10 min rule, not from this change's tests: ~40 s).
 - Probe / renders: /mnt/data/hifipushie/vegoak/{probe2,render,render_lumps,render_final,bald}.py (run from the worktree).
 
 NEXT: Braynard regrows the oak from spec_round3_suggested.json once this lands and the runners restart; then a blind

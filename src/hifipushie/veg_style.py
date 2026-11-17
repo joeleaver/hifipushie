@@ -41,6 +41,8 @@ from . import moved
 
 STYLES = Path(__file__).with_name("vegetation_styles")
 AZIMUTHS = (0, 60, 120)
+ROOT_JOIN = 3.0  # a root buttress joins the trunk over this x the wood's `blend` (a pixar blend left a hard crease at its top)
+CARD_WARN = 1.5  # a leaf card wider than this x a crown clump is warned about (pixar's own cards are ~1x one)
 AUTUMN = [0.78, 0.56, 0.16]
 SEASONS = ("spring", "summer", "autumn", "winter", "snow")
 _FIT: dict = {}
