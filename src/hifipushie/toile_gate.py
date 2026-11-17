@@ -240,7 +240,7 @@ def outline_rows(t, view="front") -> list:
         if st == "FAIL":
             back = "4"
         why = (f"p95 {p95:.1f} / max {mx:.1f} mm; worst at x {worst[0]:.3f} z {worst[1]:.3f}" + (f"; {how}" if how else "") +
-               ("" if gated else f" (a {what} edge: the toile is built closed / without it; read, not gated)"
+               ("" if gated else f" (a {what} edge, the toile worn {(t.info.get('opening') or {}).get('wear') or 'without an opening'}; read, not gated)"
                 if what != "outline" else ""))
         rows.append({"id": f"outline:{tid}", "status": st, "value": round(p95, 1),
                      "target": f"p95 <= {SILHOUETTE_MM:g} mm" if gated else "read", "why": why, "back_to": back})

@@ -297,6 +297,9 @@ def drape(t, toile):
     # gorge point (the collar end lies on the lapel)
     T_r0 = _unit(rl[-1] - rl[-4])  # (up the lapel's roll line at its top)
     RH = R0 + (E0[2] + h_side - R0[2]) / max(T_r0[2], 1e-3) * T_r0  # (that line carried straight on to the side stand's
+    if RH[1] > E0[1]:  # (an open front's roll line turns back over the shoulder at its top (R3f-5, C502): carried straight
+        RH = np.array([RH[0], E0[1], RH[2]])  # on it passes behind the neck seam's end and the stand leans backward:
+        T_r0 = _unit(RH - R0)                 # it goes up to the side stand's height no further back than the seam's end)
     s_b = SPAN_FROM * s_neck                                         # height above the seam's end)
     k_b = int(np.searchsorted(s, s_b))
     up_b = _walk(t, B[k_b], T[k_b], +1, h[k_b], lift[k_b])
