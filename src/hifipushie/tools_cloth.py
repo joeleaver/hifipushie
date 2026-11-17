@@ -362,13 +362,11 @@ def draft_pattern(name: str, garment: str, design: str, declarations: dict | str
 
 @mcp.tool(structured_output=False)
 def garment_toile(name: str, garment: str, declarations: dict | str):
-    """STEP 4: THE TOILE, the garment's 3D surface on the body: the body + step 0's ease per fit level
-    (calibrated to the planned girths), shaped by the parts you declare: parts [sleeves, opening, lapel, pad, collar],
-    hang_from (a step-0 level or "none"), armhole {length_mm}, sleeves {ease_mm [top, wrist], crown_mm, hem},
-    opening {closure (wear: step 2's ties; cut closed), edge (a trace), lap_mm, buttons}, lapel {roll, top (traces), width_mm}, pad {thickness_mm},
-    collar {stand_mm, fall_mm (at CB), notch (a trace)}.
-    A missing key is refused. Gate rows (girths, clearance, closed, outline vs step 2's traces), the look
-    (4 views beside the reference), step 4 written. guide(topic="garment_toile")."""
+    """STEP 4: THE TOILE, the garment's 3D surface on the body: body + step 0's ease per fit level, shaped by the parts
+    declared: parts [sleeves, opening, lapel, pad, collar], hang_from, armhole {length_mm}, sleeves {ease_mm, crown_mm,
+    hem}, opening {closure, edge, lap_mm, buttons}, lapel {roll, top, width_mm}, pad {thickness_mm}, collar {stand_mm,
+    fall_mm, notch}: with a collar the lapels + collar are ONE part "flap" turned about one roll line on the toile.
+    A missing key is refused. Gate rows, the look beside the reference, step 4 written. guide(topic="garment_toile")."""
     from . import toile_tool
     sheet, txt = toile_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt

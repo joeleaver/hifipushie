@@ -38,9 +38,23 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
 - LOOK dev_5.png: one turned piece in front (one cloth, no step at the gorge), BUT the Hermite cuts the corner at the
   side neck: the collar lies low, not up beside the neck to the trace's top (back roll 135 mm/half, was 210). ROLL_FROM
   0.8 / 1.0 kept the height but kinked (38-66 deg) and showed the stand (77-83 %). Three tries: stopped.
-- Not done: the merge of local main into this branch, the toile_tool / README / cloth_tools.md tool text for "flap".
+## R3f-10 (2026-11-17, C509): the roll line drawn ON the toile (toile_flap.roll_on_surface)
+- One row on the surface pinned at CB (stand height), at the notch trace's top PIN_BACK (2) columns behind the side neck
+  point (raised once so the side neck point reaches it) and R0; faired by bending along the surface, the lapel's roll
+  running on below R0. Deleted: the Hermite through the air, ROLL_FROM. New info: roll_side_deg / _z_mm, trace_top_z_mm,
+  stand_front_area_pct (stand / collar area seen from the front, side neck -> gorge).
+- Proof /mnt/data/hifipushie/r3f10 (go.sh; toile1 / mark1 / cut1.log; dev_1..6.png; pin0/, pin2/ logs): toile PASS, mark
+  PASS (gorge 46.5 / 46.5). Closed: side neck z 1577.3 vs trace top 1577.6 (R3f-9 ~1546); turns at the gorge 17.1, side
+  neck 28.6, max 41.3 deg (85 mm from CB, the pinned top; R3f-9 22). The roll peaks 7 mm above the trace behind the side
+  neck. Stand from the front 6 % of the collar's area (an edge 1-4 mm wide; sample count 81 %, edge-on).
+- LOOK dev_6.png: the collar rises beside the neck to the trace's top like the reference, one piece with the lapel.
+- COST: the collar flattens worse: strain 13.6 % (R3f-9 6.0), roll 335 3D / 300 flat; seams front 46.3 / 51.3 (was
+  44.2), back 105.6 / 93.3 (was 93.2). PIN_BACK 0 (side pinned, 64 deg turn): strain 15.4, front 54.2 / 51.3, back +7.
+- Cut rows untouched by the roll: flaps (front.R's lapel hinge found on 40 of 68 mm: neck / front split in 2 runs),
+  layers (canvas line declared across front.L/R crosses the outline more than twice: a declaration), closures (over
+  722 / under 1069 mm). girths:neck and place rows came with main's draft gate (merge), not from the roll.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes.
-NEXT: the roll's height beside the neck without a kink: ONE curve on the surface through break, R0, the side neck point
-at stand_side height and CB, faired as one row (not a Hermite through air, projected); the front neck run flattens 12 %
-short; cut rows flaps / layers / closures FAIL (why in r3f9/cut1.log); girths, darts, style_lengths, piece tapes.
+NEXT: the collar rising beside the neck flattens with 13.6 % strain (the stand 30 at CB, ~45 beside the neck, 0 at R0
+in 70 mm: not developable about the roll): flatten the stand and the fall about the roll separately, or the tailor's
+shrink / stretch as declared ease; then flaps (front.R hinge), layers (canvas line), closures; girths, darts.

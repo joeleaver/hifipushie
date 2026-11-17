@@ -123,7 +123,9 @@ heights), 1, 2 (traces) and 3 (tapes: neck among them). The toile = the body off
   (closure: a step-1 closure, built in the wear state its step-2 ties give: none done up = open, the fronts parting on
   the traced edge, the roll as traced; all = closed, lapped by lap_mm; none recorded refused; edge: a step-2 trace); `lapel {roll, top, width_mm}` (traces; turned about the roll line); `pad {thickness_mm}` (its own part);
   `collar {stand_mm, fall_mm, notch}` (needs lapel; heights at CB read off the reference, notch a step-2 trace from the
-  gorge corner: the stand rises from the neck seam to the roll, the fall turns down and lies out; toile_collar.py).
+  gorge corner). With a collar the lapels and the collar are ONE part "flap" turned back about ONE roll line drawn on the
+  toile (break -> gorge point -> beside the neck at the notch trace's top -> CB at the stand's height); the stand leans on
+  the neck inside it, the fall lies out over it; step 5's gorge mark splits it into collar + lapels (toile_flap.py).
 A missing key is refused by name. Writes `<look dir>/toile/` toile.npz (each part "<part>:V/F", the sleeve axis, the
 armhole, the roll line), toile.json, toile_sheet.png, and step 4 (output, gate rows, look). Gate rows: girth per level
 (+-6 mm), clearance (nothing inside the body), closed (one surface, its free loops), neck (no stand: the back no higher

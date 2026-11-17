@@ -3,11 +3,13 @@ roll line, as a tailor sees it ("it's all supposed to be one piece with the lape
 (toile_style) and the collar (toile_collar) as two parts: every collar fault lived at their joint (the roll kinked 40 deg
 where the collar's roll met the lapel's, the gorge seam 7 mm open, the fall short of its roll).
 
-THE ROLL LINE (one curve, left half; mirrored): from the break up the lapel's roll line (step 2's roll trace, moved with
-the closure) to its top (the gorge point R0, on the neck edge), on up and round, tangent-continuous (a cubic Hermite
-leaving R0 the way the lapel's roll arrives), to the side neck point at the stand's side height, then round the back of
-the neck at the stand's height to CB (walked up the neck from the neck seam as toile_collar's stand: stand_mm at CB, the
-collar's top beside the neck at the side read off the notch trace's top).
+THE ROLL LINE (one row ON the toile, R3f-10, C509; left half, mirrored): from the break up the lapel's roll line (step 2's
+roll trace, moved with the closure) to its top (the gorge point R0, on the neck edge), then on up beside the neck to the
+traced collar top's height at the side neck point and round the back of the neck at the stand's height to CB. Built on
+the surface (roll_on_surface): pinned at CB, at the top beside the neck (PIN_BACK columns behind the side neck point,
+walked up the neck to the trace's top, raised once so the side neck point reaches it) and at R0, leaving R0 the way the
+lapel's roll arrives; faired by its bending along the surface only. R3f-9's Hermite through the air, pushed onto the
+body, cut the corner at the side neck point: the collar lay low.
 THE STAND (inside the roll, at the neck only): from the neck edge (the toile's neck seam CB -> the side neck point, then
 the front's own neck edge down to R0) up to the roll: it leans back against the neck and dies out to nothing at R0,
 where the roll comes down onto the chest.
@@ -34,19 +36,49 @@ from .toile_collar import (GAP, H_MIN, KF, KS, NC, SIDE_STAND, SMOOTH, SPAN_FROM
 from .toile_style import LAPEL_LIFT_M, MIR, to_corner
 
 NL = 24  # lapel columns (the gorge -> the break)
-ROLL_FROM = 0.5  # of the back neck from CB: the roll walked up the neck behind this; from here on it is one curve to R0
+ROLL_GHOST_M = 0.006  # m: the lapel's roll read this far (and twice) below R0: the roll on the surface leaves R0 its way
+PIN_BACK = 2  # columns behind the side neck point: the roll's top pinned there (at the trace's top), so it can turn
+#               down to R0 round the side of the neck, not all at once in front of it
+FAIR_PASSES = 40  # the roll's fairing on the surface (roll_on_surface)
 
 
 def _len(Z):
     return float(np.linalg.norm(np.diff(Z, axis=0), axis=1).sum())
 
 
-def hermite(P0, T0, P1, T1, u):
-    """Cubic Hermite points at u (0..1) from P0 (tangent T0) to P1 (tangent T1); the tangents scaled by the chord."""
-    L = float(np.linalg.norm(P1 - P0))
-    u = np.asarray(u, float)[:, None]
-    h00, h10, h01, h11 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u, -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
-    return h00 * P0 + h10 * L * T0 + h01 * P1 + h11 * L * T1
+def roll_on_surface(t, P, pins, ghost):
+    """The roll line as ONE row on the toile's surface (R3f-10, C509): P (n, 3) a first guess on the surface, CB first;
+    pins (indices) held; the row faired by its bending ALONG the surface only (each pass: a smooth curve through the
+    pins (least second differences by arc length, its CB end mirrored across x = 0, its R0 end running on into ghost,
+    the lapel's roll below R0); the move toward it kept in the surface's tangent plane; back onto the surface; the free
+    points spaced evenly between the pins). Never a curve through the air pushed onto the body: that cuts the corner
+    at the side neck point (R3f-9)."""
+    P = np.array(P, float)
+    n = len(P)
+    pins = sorted(set(int(i) for i in pins))
+    free = np.setdiff1d(np.arange(n), pins)
+    for _ in range(FAIR_PASSES):
+        E = np.r_[(P[2:0:-1] * MIR), P, ghost]  # (2 ghosts each end)
+        L = np.linalg.norm(np.diff(E, axis=0), axis=1) + 1e-9
+        m = len(E)
+        A = np.zeros((m - 2, m))
+        for i in range(1, m - 1):
+            w = 2.0 / (L[i - 1] + L[i])
+            A[i - 1, i - 1], A[i - 1, i], A[i - 1, i + 1] = w / L[i - 1], -w * (1 / L[i - 1] + 1 / L[i]), w / L[i]
+        fx = free + 2
+        kn = np.setdiff1d(np.arange(m), fx)
+        Q = E.copy()
+        Q[fx] = np.linalg.lstsq(A[:, fx], -A[:, kn] @ E[kn], rcond=None)[0]
+        d = Q[2:-2] - P
+        nrm = t.grad(P)
+        d -= (d * nrm).sum(1, keepdims=True) * nrm
+        P[free] = t.onto(P[free] + 0.7 * d[free])
+        for a, b in zip(pins[:-1], pins[1:]):  # (evenly spaced between pins: the columns keep their order)
+            if b - a > 1:
+                seg = P[a:b + 1]
+                ar = np.r_[0, np.cumsum(np.linalg.norm(np.diff(seg, axis=0), axis=1))]
+                P[a + 1:b] = t.onto(np.array([_at(seg, x) for x in np.linspace(0, ar[-1], b - a + 1)[1:-1]]))
+    return P
 
 
 TURN_ARC_M = 0.01  # the roll's turning read between chords this long either side of a point (equal arcs: the columns'
@@ -90,7 +122,7 @@ def lapel_block(t, G3):
     return P.reshape(KF + 1, NL, 3), Lp
 
 
-def collar_block(t, toile, R0, T_r0, R0_lift):
+def collar_block(t, toile, R0, lapel_roll, R0_lift):
     """(KS + KF + 1, nc, 3) the collar region, left half, columns CB -> the gorge column (its last: R0 -> the gorge
     corner, set by the caller), and its numbers (module doc; the landing as toile_collar's)."""
     d = t.d["collar"]
@@ -129,24 +161,32 @@ def collar_block(t, toile, R0, T_r0, R0_lift):
     fr = np.nonzero(~back)[0]
     fl = np.full(NC, fall)
     k_b = int(np.searchsorted(s, SPAN_FROM * s_neck))
-    k_r = int(np.searchsorted(s, ROLL_FROM * s_neck))
-    X[:KS + 1, :k_r + 1] = fair_rows(t, X[:, :k_r + 1].copy(), KS, lift[:k_r + 1])[:KS + 1]  # (the stand faired)
-    # THE ONE ROLL LINE from ROLL_FROM of the back neck on: on from the (faired) back's roll, tangent-continuous, past
-    # the side neck point down to R0, arriving the way the lapel's roll leaves it (no kink at the old join; the turn
-    # from round the neck to down the chest spread over the whole arc, not taken at the side neck point); never
-    # re-faired (a fairing with its ends held bends the ends' tangents back toward the chord)
-    hc = np.arange(k_r + 1, NC - 1)
-    P0 = X[KS, k_r]
-    T0 = _unit(X[KS, k_r] - X[KS, k_r - 2])
-    uu = (s[hc] - s[k_r]) / max(s_rl - s[k_r], 1e-9)
-    Hs = t.onto(hermite(P0, T0, R0_lift, -T_r0, uu))
-    Hs = Hs + lift[hc, None] * t.grad(Hs)
-    for i, c in enumerate(hc):
+    # THE ONE ROLL LINE, drawn on the toile (R3f-10, C509): pinned at CB (the stand's height), the side neck point (at
+    # the traced collar top's height, walked up the neck: the collar rises beside the neck there) and the gorge point
+    # R0, leaving R0 the way the lapel's roll arrives; faired along the surface as one row (roll_on_surface)
+    zs = None if SIL is None else float(SIL[:, 1].max())
+    k_p = k_h - PIN_BACK
+    up = _walk(t, B[k_p], T[k_p], +1, 2.5 * stand, 0.0)
+    a_side = h_side if zs is None or up[-1, 2] < zs else float(np.r_[0, np.cumsum(np.linalg.norm(
+        np.diff(up, axis=0), axis=1))][int(np.argmax(up[:, 2] >= zs))])
+    h_side = max(a_side, h_side)
+    P_side = _at(up, h_side)
+    ghost = np.array([_at(t.onto(lapel_roll), a) for a in (ROLL_GHOST_M, 2 * ROLL_GHOST_M)])
+    init = X[KS].copy()
+    init[k_p] = P_side
+    init[k_p + 1:] = t.onto(P_side + (R0 - P_side) * np.linspace(0, 1, NC - k_p)[1:, None])
+    init[:k_p + 1] = t.onto(X[KS, :k_p + 1] + (P_side - X[KS, k_p]) * (s[:k_p + 1] / s[k_p])[:, None] ** 2)
+    roll = roll_on_surface(t, init, [0, k_p, NC - 1], ghost)
+    if zs is not None and roll[k_h, 2] < zs:  # (once: the pin raised by what the side neck point fell short of the trace)
+        roll[k_p] = P_side = _at(up, h_side + float(zs - roll[k_h, 2]))
+        roll = roll_on_surface(t, roll, [0, k_p, NC - 1], ghost)
+    for c in range(NC):  # (the stand: from the neck edge up to the roll, on the toile, lifted toward R0)
         for r in range(KS + 1):
-            p = B[c] + (Hs[i] - B[c]) * r / KS
-            X[r, c] = t.onto(p[None])[0] + (lift[c] * r / KS) * t.grad(p[None])[0]
-        X[KS, c] = Hs[i]
-        h[c] = float(np.linalg.norm(Hs[i] - B[c]))
+            p = t.onto((B[c] + (roll[c] - B[c]) * r / KS)[None])[0]
+            X[r, c] = p + (lift[c] * r / KS) * t.grad(p[None])[0]
+        h[c] = _len(X[:KS + 1, c])
+    X[1:KS, :k_h + 1] = fair_rows(t, X[:, :k_h + 1].copy(), KS, lift[:k_h + 1])[1:KS]  # (the roll stays as faired)
+    X[KS, -1] = R0_lift
     for c in range(k_h + 1):  # (round the back: the fall over the stand, out on the shoulders)
         R = X[KS, c] + GAP * t.grad(X[KS, c][None])[0]
         down = _walk(t, B[c] + GAP * t.grad(B[c][None])[0], T[c], -1, 2 * fl[c], GAP)
@@ -169,9 +209,17 @@ def collar_block(t, toile, R0, T_r0, R0_lift):
             X[r, c] = R + (L - R) * (r - KS) / KF
     for r in range(KS + 1):  # (the gorge column's stand: R0, standing H_MIN off it)
         X[r, -1] = R0 + (R0_lift - R0) * r / KS
-    geo = dict(s=s, s_neck=s_neck, s_rl=s_rl, h=h, h_side=h_side, i_hps=k_h, B=B, Pc=Pc, G3=G3, stand=stand, fall=fall,
+    geo = dict(z_top=None if zs is None else round(zs * 1000, 1), s=s, s_neck=s_neck, s_rl=s_rl, h=h, h_side=h_side, i_hps=k_h, B=B, Pc=Pc, G3=G3, stand=stand, fall=fall,
                s_front=_len(front))
     return X, geo
+
+
+def front_area(G) -> float:
+    """m2: grid G (rows, cols, 3) seen from the front (projected on x-z, before occlusion)."""
+    a, b, c, d = G[:-1, :-1], G[:-1, 1:], G[1:, 1:], G[1:, :-1]
+    cr = lambda p, q, r: 0.5 * np.abs((q[..., 0] - p[..., 0]) * (r[..., 2] - p[..., 2])
+                                      - (r[..., 0] - p[..., 0]) * (q[..., 2] - p[..., 2]))
+    return float((cr(a, b, c) + cr(a, c, d)).sum())
 
 
 def _grid_faces(idx):
@@ -219,8 +267,7 @@ def drape(t, toile):
     G3 = t.front_hit([G2[0]], [G2[1]])[0]
     Y, Lp = lapel_block(t, G3)
     R0_lift = Y[0, 0]
-    T_r0 = _unit(Y[0, 0] - Y[0, 1])  # (up the lapel's roll as it lies, at its top: the collar's roll leaves it so)
-    X, geo = collar_block(t, toile, R0, T_r0, R0_lift)
+    X, geo = collar_block(t, toile, R0, Y[0], R0_lift)
     X[KS:, -1] = Y[:, 0]  # (the gorge column: the lapel's, one set of vertices)
     V, F, lay = assemble(X, Y)
     t.flap_layout = lay
@@ -247,9 +294,12 @@ def drape(t, toile):
         "lands_below_seam_cb_mm": round(float(B[0, 2] - outer[0, 2]) * 1000, 1),
         "roll_above_seam_cb_mm": round(float(roll[0, 2] - B[0, 2]) * 1000, 1),
         "collar_point_miss_mm": round(float(np.linalg.norm(outer[-2] - geo["Pc"])) * 1000, 1),
-        "stand_seen_front_pct": seen, "grid": [nr, ncf, KS]}
+        "stand_seen_front_pct": seen,
+        "stand_front_area_pct": round(100 * front_area(X[:KS + 1, k_side:kg]) / max(front_area(X[:, k_side:kg]), 1e-12), 1), "grid": [nr, ncf, KS]}
     t.info["flap"] = {
-        "roll_join_deg": round(turn_at(ROLL, s_join), 1), "roll_turn_max_deg": round(float(tn.max()), 1),
+        "roll_join_deg": round(turn_at(ROLL, s_join), 1),
+        "roll_side_deg": round(turn_at(ROLL, _len(roll[:k_side + 1])), 1),
+        "roll_side_z_mm": round(float(roll[k_side, 2]) * 1000, 1), "trace_top_z_mm": geo["z_top"], "roll_turn_max_deg": round(float(tn.max()), 1),
         "roll_turn_max_at_mm": round(float(sa[np.argmax(tn)]) * 1000, 1), "roll_join_at_mm": round(s_join * 1000, 1),
         "roll_mm": round(_len(ROLL) * 1000, 1), "turn_arc_mm": TURN_ARC_M * 1000,
         "collar_outer_over_roll": round(_len(outer[:-1]) / max(_len(roll), 1e-9), 3),
