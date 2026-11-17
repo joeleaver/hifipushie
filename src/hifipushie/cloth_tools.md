@@ -119,8 +119,9 @@ heights), 1, 2 (traces) and 3 (tapes: neck among them). The toile = the body off
   jacket from the hips: flare to the lowest level's girth at the hem), or "none".
 - `armhole {length_mm}`; `sleeves {ease_mm: [top, wrist], crown_mm, hem}` (hem: a step-2 sleeve-end trace, its length past the picture's wrist
   carried onto the model's wrist, or a step-0 height; smooth tubes
-  through the arm's sections, the armhole a cone from the shoulder joint); `opening {lap_mm, edge, buttons}` (edge: a
-  step-2 trace); `lapel {roll, top, width_mm}` (traces; turned about the roll line); `pad {thickness_mm}` (its own part);
+  through the arm's sections, the armhole a cone from the shoulder joint); `opening {closure, edge, lap_mm, buttons}`
+  (closure: a step-1 closure, built in the wear state its step-2 ties give: none done up = open, the fronts parting on
+  the traced edge, the roll as traced; all = closed, lapped by lap_mm; none recorded refused; edge: a step-2 trace); `lapel {roll, top, width_mm}` (traces; turned about the roll line); `pad {thickness_mm}` (its own part);
   `collar {stand_mm, fall_mm, notch}` (needs lapel; heights at CB read off the reference, notch a step-2 trace from the
   gorge corner: the stand rises from the neck seam to the roll, the fall turns down and lies out; toile_collar.py).
 A missing key is refused by name. Writes `<look dir>/toile/` toile.npz (each part "<part>:V/F", the sleeve axis, the

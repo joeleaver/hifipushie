@@ -64,7 +64,7 @@ MIR = np.array([-1.0, 1, 1])
 class Inputs:
     """What the toile reads: the body (V, T triangles), step 3's tapes {name: points (n, 3)}, step 0's fit levels
     {name: (z m, planned garment girth m)} and heights {name: z m}, step 2's traces {id: {"xz", "corners"}} and row
-    marks {id: (n, 2) xz} in model metres, and the declaration."""
+    marks {id: (n, 2) xz} in model metres, the declaration, and the closures' wear state from step 2's ties."""
     V: np.ndarray
     T: np.ndarray
     tapes: dict
@@ -74,6 +74,7 @@ class Inputs:
     traces: dict = field(default_factory=dict)
     marks: dict = field(default_factory=dict)
     wrists: dict = field(default_factory=dict)  # {"photo": [x, z] from step 2's body marks, "model": [x, z]}, folded +x
+    wear: dict = field(default_factory=dict)  # {closure: "open" | "closed"}: step 2's ties (toile_tool.wear_of)
 
 
 def folded(P):
@@ -362,6 +363,8 @@ class Toile:
 
     def build(self):
         from . import toile_style
+        if "opening" in self.parts:
+            toile_style.wear(self)  # (refused before the field is built: the wear state is step 2's, never defaulted)
         self.grid()
         self.arm()
         F0 = self.hang(self.ease_fields())

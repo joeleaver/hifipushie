@@ -2,6 +2,7 @@
 why, back_to):
   girth:<level>   the toile's tape at each step-0 fit level (the convex hull of the MESH's section, the arms and the
                   turned flaps left out) vs the planned garment girth: within GIRTH_TOL_MM (by construction; measured).
+                  Worn open: read on the closed toile (the same field before the fronts were opened: C502).
   clearance       nothing inside the body: the least distance of the toile's vertices to the body >= 0; the share
                   closer than CLOSE_MM is reported (cloth touching the body there).
   closed          the toile is ONE surface, every edge used by at most two faces, its free edges in the loops its
@@ -39,7 +40,10 @@ COLLAR_POINT_MM = 10.0  # the collar's end reaches the collar point (the notch t
 
 
 def girth_rows(t) -> list:
-    V, F = t.meshes["toile"]
+    """OPEN (C502): read on the CLOSED toile (the same field before the fronts were opened, t.closed_mesh): the plan's
+    ease is the garment's worn closed (C388); the open section's hull would bridge the parting with a chord."""
+    shut = getattr(t, "closed_mesh", None)
+    V, F = shut if shut is not None else t.meshes["toile"]
     rows = []
     for n, (z, plan) in sorted(t.inp.levels.items(), key=lambda kv: -kv[1][0]):
         zz = max(z, t.hem + 0.004)
@@ -49,7 +53,8 @@ def girth_rows(t) -> list:
         d = (g - plan) * 1000
         rows.append({"id": f"girth:{n}", "status": "PASS" if abs(d) <= GIRTH_TOL_MM else "FAIL",
                      "value": round(g * 1000, 1), "target": f"{plan * 1000:.1f} mm (step 0's plan) +-{GIRTH_TOL_MM:g}",
-                     "why": f"{d:+.1f} mm at z {zz:.3f}", "back_to": "4" if abs(d) > GIRTH_TOL_MM else None})
+                     "why": f"{d:+.1f} mm at z {zz:.3f}" + (" (worn open: read on the closed toile, "
+                     "the plan's ease is the garment's worn closed)" if shut is not None else ""), "back_to": "4" if abs(d) > GIRTH_TOL_MM else None})
     return rows
 
 
@@ -235,7 +240,7 @@ def outline_rows(t, view="front") -> list:
         if st == "FAIL":
             back = "4"
         why = (f"p95 {p95:.1f} / max {mx:.1f} mm; worst at x {worst[0]:.3f} z {worst[1]:.3f}" + (f"; {how}" if how else "") +
-               ("" if gated else f" (a {what} edge: the toile is built closed / without it; read, not gated)"
+               ("" if gated else f" (a {what} edge, the toile worn {(t.info.get('opening') or {}).get('wear') or 'without an opening'}; read, not gated)"
                 if what != "outline" else ""))
         rows.append({"id": f"outline:{tid}", "status": st, "value": round(p95, 1),
                      "target": f"p95 <= {SILHOUETTE_MM:g} mm" if gated else "read", "why": why, "back_to": back})

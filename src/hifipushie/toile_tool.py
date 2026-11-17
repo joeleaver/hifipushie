@@ -11,7 +11,9 @@ THE DECLARATION (what the garment has, said by the agent, never inferred from a 
   sleeves    {"ease_mm": [top, wrist], "crown_mm", "hem": a step-2 sleeve-end trace (its length past the picture's
              wrist mark carried onto the model's wrist along the arm) or a step-0 height, "cap_ease_pct" (optional:
              the cap's ease built into the crown, toile.CAP_EASE_PCT when unsaid)}
-  opening    {"lap_mm", "edge": a step-2 trace (the over front's edge), "buttons": a step-2 row id (optional)}
+  opening    {"closure": a step-1 closure (its step-2 ties give the WEAR STATE: none done up = open, all = closed;
+             none recorded or partly: refused), "edge": a step-2 trace (the over front's edge), "lap_mm" (closed only),
+             "buttons": a step-2 row id (optional)}. Open: the fronts don't lap, each edge where traced (C502).
   lapel      {"roll": a step-2 trace, "top": a step-2 trace, "width_mm" (optional: else as traced)}
   pad        {"thickness_mm"}
   collar     {"stand_mm", "fall_mm" (at CB, read off the reference), "notch": a step-2 trace from the collar end's gorge
@@ -26,7 +28,7 @@ import time
 import numpy as np
 
 PARTS = ("sleeves", "opening", "lapel", "pad", "collar")
-NEEDS = {"sleeves": ("ease_mm", "crown_mm", "hem"), "opening": ("lap_mm", "edge"), "lapel": ("roll", "top"),
+NEEDS = {"sleeves": ("ease_mm", "crown_mm", "hem"), "opening": ("closure", "edge"), "lapel": ("roll", "top"),
          "pad": ("thickness_mm",), "collar": ("stand_mm", "fall_mm", "notch")}
 TAPES = ("neck", "chest", "armhole_front", "armhole_back", "shoulderToWrist", "wrist")
 HEAVY_GB = 3.0  # the field (~2 M grid points x a few float64 copies) + the body's contact tree
@@ -79,6 +81,15 @@ def validate(decl: dict, s0: dict, s2: dict) -> list:
         v = (decl.get(p) or {}).get(k) if p in parts else None
         if v and v not in traces:
             bad.append(f"{p}.{k}: {v!r} is not a step-2 trace ({', '.join(sorted(traces))})")
+    if "opening" in parts and isinstance(decl.get("opening"), dict) and decl["opening"].get("closure"):
+        c, wear = decl["opening"]["closure"], wear_of(s2)
+        if c not in wear:
+            bad.append(f"opening.closure: {c!r} has no wear state in step 2's ties ({', '.join(sorted(wear)) or 'none'}): "
+                       "garment_plan step style writes ties for every closure (fastened [] = open, all = closed)")
+        elif wear[c] not in ("open", "closed"):
+            bad.append(f"opening.closure: {c!r} is worn {wear[c]} (step 2's ties): the toile is built open or closed")
+        elif wear[c] == "closed" and not decl["opening"].get("lap_mm"):
+            bad.append(f"opening.lap_mm: missing: {c!r} is worn closed (step 2's ties): the fronts lap by it")
     b = (decl.get("opening") or {}).get("buttons") if "opening" in parts else None
     if b and b not in rows:
         bad.append(f"opening.buttons: {b!r} is not a step-2 row")
@@ -91,6 +102,12 @@ def validate(decl: dict, s0: dict, s2: dict) -> list:
     if "sleeves" in parts and len((decl.get("sleeves") or {}).get("ease_mm") or []) != 2:
         bad.append("sleeves.ease_mm: [top, wrist] in mm")
     return bad
+
+
+def wear_of(s2: dict) -> dict:
+    """{closure: "open" | "closed" | "partly"} from step 2's ties (closure_ties: derived, never a named state)."""
+    from . import closure_ties as ct
+    return {c: ct.summary(tie) for c, tie in ct.of_style(s2).items()}
 
 
 def _tapes(s3: dict) -> dict:
@@ -156,7 +173,7 @@ def inputs(name: str, garment: str, decl: dict):
     heights = {k: float(v["z_mm"]) / 1000 for k, v in (s0.get("heights") or {}).items() if isinstance(v, dict) and "z_mm" in v}
     ref = ((s0.get("views") or [{}])[0]).get("image")
     return Inputs(V=V, T=T, tapes=tp, levels=levels, heights=heights, decl=decl, traces=traces, marks=marks,
-                  wrists=wrists), ref, view, pl
+                  wrists=wrists, wear=wear_of(s2)), ref, view, pl
 
 
 def build(inp, log=print):

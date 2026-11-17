@@ -35,7 +35,7 @@ def _circle(c, r, n=48):
     return np.c_[c[0] + r * np.cos(a), c[1] + r * np.sin(a), np.full(n, c[2])]
 
 
-def _inputs(decl):
+def _inputs(decl, wear=None):
     V, T = _body()
     tapes = {"neck": _circle((0, 0, 1.58), 0.062), "chest": _circle((0, 0, 1.30), 0.152),
              "armhole_front": np.array([[0.245, 0, 1.475], [0.215, -0.05, 1.42], [0.185, -0.05, 1.36], [0.165, 0, 1.32]]),
@@ -52,12 +52,12 @@ def _inputs(decl):
                                "what": "sleeve_end"}}
     marks = {"buttons": np.array([[0.0, 1.15], [0.0, 1.05]])}
     return Inputs(V=V, T=T, tapes=tapes, levels=levels, heights=heights, decl=decl, traces=traces, marks=marks,
-                  wrists={"photo": [0.437, 0.88], "model": [0.437, 0.88]})
+                  wrists={"photo": [0.437, 0.88], "model": [0.437, 0.88]}, wear=dict(wear or {"front_closure": "closed"}))
 
 
 DECL = {"parts": ["sleeves", "opening", "pad"], "hang_from": "hips", "armhole": {"length_mm": 470},
         "sleeves": {"ease_mm": [18, 22], "crown_mm": 10, "hem": "sleeve_hem"},
-        "opening": {"lap_mm": 20, "edge": "front_edge.L", "buttons": "buttons"}, "pad": {"thickness_mm": 6}}
+        "opening": {"closure": "front_closure", "lap_mm": 20, "edge": "front_edge.L", "buttons": "buttons"}, "pad": {"thickness_mm": 6}}
 
 
 @pytest.mark.timeout(600)
@@ -102,7 +102,8 @@ def test_a_back_neck_stand_fails():
 
 def test_a_missing_declaration_is_refused_by_name():
     s0 = {"fit": {"hips": {"level_z_m": 0.98}}, "heights": {"hem": {"z_mm": 920}, "sleeve_hem": {"z_mm": 980}}}
-    s2 = {"traces": [{"id": "front_edge.L"}], "rows": [{"id": "buttons"}]}
+    s2 = {"traces": [{"id": "front_edge.L"}], "rows": [{"id": "buttons"}],
+          "ties": {"front_closure": {"fastened": [1, 2], "of": 2, "source": "seen"}}}
     assert toile_tool.validate(DECL, s0, s2) == []
     bad = toile_tool.validate({k: v for k, v in DECL.items() if k != "armhole"}, s0, s2)
     assert any(b.startswith("armhole:") for b in bad)
@@ -113,5 +114,5 @@ def test_a_missing_declaration_is_refused_by_name():
     assert any("hang_from: 'seat'" in b for b in bad)
     bad = toile_tool.validate(dict(DECL, sleeves=dict(DECL["sleeves"], hem="nope")), s0, s2)
     assert any(b.startswith("sleeves.hem: 'nope'") for b in bad)
-    bad = toile_tool.validate(dict(DECL, opening={"lap_mm": 20, "edge": "nope"}), s0, s2)
+    bad = toile_tool.validate(dict(DECL, opening={"closure": "front_closure", "lap_mm": 20, "edge": "nope"}), s0, s2)
     assert any("opening.edge: 'nope'" in b for b in bad)
