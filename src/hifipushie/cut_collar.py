@@ -183,7 +183,8 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
         pp, ee = g.split(":", 1)
         seams[g] = {"collar_mm": round(flat_c * 1000, 1), "garment_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee], "U")) * 1000, 1),
                     "collar_3d_mm": round(sum(float(np.linalg.norm(Vg[0, c + 1] - Vg[0, c])) for c in cols) * 1000, 1),
-                    "garment_3d_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee])) * 1000, 1)}
+                    "garment_3d_mm": round(_len(_edge_pts(pcs[pp], edges[pp][ee])) * 1000, 1),
+                    **_apart(garm[g], Vg[0, min(cols): max(cols) + 2])}
     chord = Ug[0, -1] - Ug[0, 0]
     cu, dv = chord / np.linalg.norm(chord), Ug[0] - Ug[0, 0]
     bow = float(np.abs(cu[0] * dv[:, 1] - cu[1] * dv[:, 0]).max())
@@ -197,6 +198,28 @@ def build(pcs: dict, edges: dict, d: dict, s1: dict, layers: dict, out4: dict):
            "strain_mean_pct": next(iter(out_pcs.values()))["rep"]["strain_mean_pct"] if out_pcs else None,
            "toile": {k: info.get(k) for k in ("stand_mm", "fall_mm", "lands_below_seam_cb_mm", "outer_off_toile_mm")}}
     return out_pcs, out_edges, folds, rep, bad
+
+
+APART_M = 0.003  # m: a garment neck edge's point farther than this from the collar's neck row is off it
+
+
+def _apart(G, R) -> dict:
+    """Where a garment neck edge G and the collar's neck row R (its run on G) disagree in 3D (C504: fixed there, never
+    in the flat): the length of G off R (> APART_M) at each end and in between, G's wiggle (its length over its
+    smoothed length) and the largest gap."""
+    from scipy.spatial import cKDTree
+    d = cKDTree(R).query(G)[0]
+    seg = np.linalg.norm(np.diff(G, axis=0), axis=1)
+    off = (d[:-1] > APART_M) | (d[1:] > APART_M)
+    on = np.where(~off)[0]
+    k0, k1 = (int(on[0]), int(on[-1])) if len(on) else (len(seg), len(seg))
+    Gs = G.copy()
+    for _ in range(4):
+        Gs[1:-1] = 0.25 * Gs[:-2] + 0.5 * Gs[1:-1] + 0.25 * Gs[2:]
+    return {"off_row_mm": {"start": round(float(seg[:k0].sum()) * 1000, 1), "end": round(float(seg[k1 + 1:].sum()) * 1000, 1),
+                           "between": round(float(seg[k0:k1 + 1][off[k0:k1 + 1]].sum()) * 1000, 1)},
+            "gap_max_mm": round(float(d.max()) * 1000, 1), "gap_at_mm": np.round(G[int(np.argmax(d))] * 1000, 1).tolist(),
+            "edge_ends_mm": np.round(G[[0, -1]] * 1000, 1).tolist(), "wiggle_pct": round((_len(G) / max(_len(Gs), 1e-9) - 1) * 100, 2)}
 
 
 def _lift():
