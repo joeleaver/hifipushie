@@ -108,10 +108,27 @@ def rest_shape(V, F, p, t, e):
     return p + e[:, None, None] * np.einsum("fkd,fd->fk", p, t2)[:, :, None] * t2[:, None, :]
 
 
+def rest_edges(p, t2, ev, F):
+    """The faces' local shapes p with each EDGE's component along t2 (per face, local) stretched by (1 + e) at its
+    middle (ev per vertex): a stretch varying across a face (a shaped collar's rows, cut_shape.py) laid exactly on
+    the edges along it; each triangle rebuilt from its three lengths."""
+    def ln(a, b):
+        v = p[:, b] - p[:, a]
+        along = np.einsum("fd,fd->f", v, t2)
+        return np.linalg.norm(v + ((ev[F[:, a]] + ev[F[:, b]]) / 2 * along)[:, None] * t2, axis=1)
+    l01, l02, l12 = ln(0, 1), ln(0, 2), ln(1, 2)
+    x = (l01 ** 2 + l02 ** 2 - l12 ** 2) / (2 * l01)
+    q = np.zeros_like(p)
+    q[:, 1, 0] = l01
+    q[:, 2, 0], q[:, 2, 1] = x, np.sqrt(np.maximum(l02 ** 2 - x ** 2, 1e-16))
+    return q
+
+
 def flatten(V, F, rest=None):
     """LSCM then ARAP; (U grain up (NaN at vertices no face uses), singular values s1 >= s2, the faces kept: the
     degenerate ones of a strip mesh dropped). rest(V, F) -> (t, e) per face: ARAP against a rest shape stretched by
-    (1 + e) along t (rest_shape), the singular values then against it."""
+    (1 + e) along t (rest_shape), the singular values then against it; e per VERTEX (len V): along each edge
+    (rest_edges)."""
     F = F[areas(V, F) > 1e-10]
     used = np.unique(F)
     remap = -np.ones(len(V), int)
@@ -119,7 +136,16 @@ def flatten(V, F, rest=None):
     Vc, Fc = V[used], remap[F]
     U, p = lscm(Vc, Fc)
     if rest is not None:
-        p = rest_shape(Vc, Fc, p, *rest(Vc, Fc))
+        t, e = rest(Vc, Fc)
+        if len(e) == len(Vc) != len(Fc):
+            ex = Vc[Fc[:, 1]] - Vc[Fc[:, 0]]
+            ex /= np.linalg.norm(ex, axis=1, keepdims=True)
+            nn = np.cross(Vc[Fc[:, 1]] - Vc[Fc[:, 0]], Vc[Fc[:, 2]] - Vc[Fc[:, 0]])
+            ey = np.cross(nn / np.linalg.norm(nn, axis=1, keepdims=True), ex)
+            t2 = np.c_[np.einsum("ij,ij->i", t, ex), np.einsum("ij,ij->i", t, ey)]
+            p = rest_edges(p, t2 / (np.linalg.norm(t2, axis=1, keepdims=True) + 1e-12), e, Fc)
+        else:
+            p = rest_shape(Vc, Fc, p, t, e)
     U, S = arap(Vc, Fc, U, p)
     Uf = np.full((len(V), 2), np.nan)
     Uf[used] = grain_up(U, Vc)
