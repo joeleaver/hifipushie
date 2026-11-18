@@ -3,7 +3,7 @@
 Director 2026-11-17: cartoon / Pixar / non-realistic characters and most organic shapes go concept -> oxidegen
 make_point_cloud (mesh_ply) -> THIS -> rig -> ROM -> refine. It replaces loop-plan (branch loop-plan stays unmerged,
 untouched) and limb loops. Codified from the oxidegen spike artifacts/budget3d_spike/retopo/ (3 rounds, Mabel +
-Scraps); its lessons are in retopo_guide.md (the playbook) and the tools. Ledger C513 (provisional until blind runs).
+Scraps); its lessons are in retopo_guide.md (the playbook) and the tools. Ledger C514 (provisional until blind runs).
 
 ## Where things are
 - Code: artretopo_{poly,mesh,sculpt,cage,mouth,check,measure,run,steps,fill,sheets,study,report}.py (numpy / scipy /
