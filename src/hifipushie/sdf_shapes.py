@@ -405,7 +405,12 @@ def sd_shell(p: np.ndarray, pr: dict) -> np.ndarray:
 SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_box, "cylinder": sd_cylinder,
        "blade": sd_blade, "collar": sd_collar, "sweep": sd_sweep, "super": sd_super, "loft": sd_loft, "sheet": sd_sheet,
        "csg": sd_csg, "shell": sd_shell, "base": lambda p, pr: _sd_base(p, pr),
-       "gnmpiece": lambda p, pr: _sd_gnm_piece(p, pr)}
+       "gnmpiece": lambda p, pr: _sd_gnm_piece(p, pr), "outline": lambda p, pr: _sd_outline(p, pr)}
+
+
+def _sd_outline(p, pr):
+    from .outline import sd_outline
+    return sd_outline(p, pr)
 
 
 def _sd_gnm_piece(p, pr):

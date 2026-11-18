@@ -317,6 +317,9 @@ def lines(info: dict) -> list[str]:
                f"alpha fill {info.get('card_fill', 0)}: overdraw ~{1 / max(info.get('card_fill', 1), 1e-3):.1f}x the visible leaf), for {info['twigs']} twigs"
                if info["masses"] else "; no crown masses"))
            + (f", {info.get('tones', 0)} tones" if info.get("tones") else "")]
+    if info.get("kind") != "clouds" and info.get("cards_triangles"):
+        out.append(f"leaf cards on the shell: {info['cards']} cards, each {info['card_m']} m across ({info.get('card_vs_clump', 0)}x a crown clump of "
+                   f"{info.get('clump_m', 0)} m), {info.get('card_leaves', 0)} leaves painted per card picture, leaf cover {info.get('leaf_cover', 0)}")
     out.append(f"same individual: outline IoU {m['iou']} against the realistic tree in leaf (true scale, feet together; azimuths "
                f"{'/'.join(str(a) for a in m['azimuths'])}: {'/'.join(f'{v:.2f}' for v in m['iou_by_azimuth'])}); height "
                f"{m['height_m'][1]} m (realistic {m['height_m'][0]}), crown width {m['width_m'][1]} m (realistic {m['width_m'][0]})")
@@ -332,9 +335,14 @@ def warnings(info: dict) -> list[str]:
         if abs(m["height_m"][1] - m["height_m"][0]) > 0.1 * max(m["height_m"][0], 1e-6):
             w.append(f"WARNING: the styled plant is {m['height_m'][1]} m tall, the realistic one {m['height_m'][0]} m")
         return w
+    if info.get("card_vs_clump", 0) > veg_style.CARD_WARN:  # (pixar's leaf cards: `cards.count` reads like a number of cards; it is leaves per card PICTURE)
+        w.append(f"WARNING: each leaf card is {info['card_m']} m across, {info['card_vs_clump']}x a crown clump ({info['clump_m']} m): cards that big "
+                 f"stand off the shell as flat sheets. A card is 2 x `cards.leaf` x the leaf's length / `cards.length` across; `cards.count` "
+                 f"({info.get('card_leaves')}) is the leaves drawn in ONE card's picture, not the number of cards (that is the budget's)")
     if m["iou"] < 0.8:
         w.append(f"WARNING: the {info['style']} tree's outline is only {m['iou']} IoU of the realistic one: at a distance it is not "
-                 f"the same tree (style.crown.spread / pad / masses)")
+                 f"the same tree (style.crown.spread / pad / masses)"
+                 + (f"; crown.down_to {info['down_to']} hangs the crown below the realistic tree's on purpose, which costs IoU" if info.get("down_to") is not None else ""))
     if abs(m["height_m"][1] - m["height_m"][0]) > 0.06 * m["height_m"][0]:
         w.append(f"WARNING: the styled tree is {m['height_m'][1]} m tall, the realistic one {m['height_m'][0]} m")
     return w

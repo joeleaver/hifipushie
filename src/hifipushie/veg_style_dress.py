@@ -10,7 +10,7 @@ import numpy as np
 from . import veg_style
 from . import vegetation_kernels
 from .veg_style import color_gain, evergreen, season_color
-from .veg_style_crown import _decimate, compare, crown_mesh, field, leaf_points, masses, reference
+from .veg_style_crown import _decimate, compare, crown_mesh, field, leaf_points, masses, reference, skirt
 from .veg_style_small import _slab, dress_clump
 from .veg_style_wood import grad, onto, wood, wood_dense, wood_field, wood_tubes
 
@@ -28,6 +28,8 @@ def fit(tree: dict, st: dict) -> dict:
     wm = (Wm["V"], Wm["F"])
     X, tl = leaf_points(tree)
     out = {"mini": mini, "ells": [], "dense": None, "tried": {}, "twigs": int(len(X)), "blend": 0.0}
+    X = skirt(X, float(tree["height"]), st.get("crown") or {}, int(tree["spec"].get("seed", 1)))  # (`crown.down_to`: the dome hangs down its sides)
+    out["skirt_points"] = int(len(X)) - out["twigs"]
     floor = float(tree["spec"]["leaves"].get("clear", 0.03)) + 0.02
     refs = reference(tree)
     cr = st.get("crown") or {}
@@ -104,7 +106,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         out["forks"] = surface(ft["forks"], float(st["wood"].get("forks_share", 0.3)) * triangles)
     info = {"style": st["name"], **mini["info"], "masses": sum(not e.get("core") and "of" not in e for e in ft["ells"]), "core": any(e.get("core") for e in ft["ells"]),
             "blend_m": round(ft["blend"], 2), "twigs": ft["twigs"], "match": ft["match"],
-            "masses_tried": ft["tried"], "wood_triangles": int(len(Fw)), "crown_triangles": 0, "budget": triangles,
+            "masses_tried": ft["tried"], "down_to": (st.get("crown") or {}).get("down_to"), "skirt_points": ft.get("skirt_points", 0), "wood_triangles": int(len(Fw)), "crown_triangles": 0, "budget": triangles,
             "forks_triangles": int(len(out["forks"]["F"])) if out["forks"] else 0, "kind": (st.get("crown") or {}).get("kind", "masses")}
     if ft["ells"] and season_color(tree["spec"], season, st) is not None and st["crown"].get("kind") == "clouds":
         from . import veg_cloud
@@ -294,6 +296,10 @@ def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget:
         if crease is not None:  # (the cards in a crease between clumps darken with it)
             K["col"] = K["col"] * (1 - 0.8 * float(cr["crease_dark"]) * crease[idx])[:, None]
         out["cards"] = K
+        clump_m = 2 * float(np.mean([e["r"].mean() for e in ells if not e.get("core") and "of" not in e])) if ells else float(np.ptp(V[:, 2]))
+        cs_ = cr.get("cards") or {}
+        info.update(card_vs_clump=round(K["card_m"] / max(clump_m, 1e-6), 2), clump_m=round(clump_m, 2),
+                    card_leaves=int(cs_.get("count", veg_cloud.CARDS["count"])))
         info.update(cards=K["cards"], card_m=round(K["card_m"], 2), leaf_cover=round(K["cover"], 2), card_fill=round(K["atlas"]["fill"], 3), cards_triangles=int(len(K["F"])),
                     thickness_m=[round(float(np.percentile(th, 10)), 2), round(float(np.median(th)), 2), round(float(np.percentile(th, 90)), 2)])
 

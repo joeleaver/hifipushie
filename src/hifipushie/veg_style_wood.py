@@ -6,6 +6,7 @@ import math
 import numpy as np
 
 from . import veg_mesh
+from . import veg_style
 from . import sdf_shapes
 from . import vegetation_kernels, vegetation_tree
 
@@ -241,7 +242,8 @@ def wood_tubes(mini: dict, st: dict, f: float = 1.0) -> dict:
 
 
 def _segments(mini: dict, orders=(0, 1, 2)) -> list:
-    """Per axis of those orders: (a, b, ra, rb, node of b) for its segments, with the foot run 0.3 m into the ground."""
+    """Per axis of those orders: (a, b, ra, rb, node of b) for its segments, with the foot run 0.3 m into the ground;
+    with order 0, the spec's root buttresses (_roots: a 6th number, their join)."""
     out = []
     for ai in np.unique(mini["axis"]):
         if mini["order"][np.flatnonzero(mini["axis"] == ai)[-1]] not in orders:
@@ -256,6 +258,44 @@ def _segments(mini: dict, orders=(0, 1, 2)) -> list:
         else:
             a[0] = a[0] - [0, 0, 0.3]
         out.append((a, b, ra, rb, nodes))
+    if 0 in orders:
+        out += _roots(mini)
+    return out
+
+
+def _roots(mini: dict) -> list:
+    """The spec's `roots` ({count, spread, height}) on the drawn trunk: one root buttress per root, each its own axis (so
+    the union fillets it into the trunk): it leaves the trunk at `height` m, runs out and down, meets the ground at
+    the flared foot's radius + (`spread` - 1) x the bole's (the grown tree's root flares reach `spread` x its radius)
+    and runs on into the ground. Directions and strengths as the realistic tree's (veg_mesh.tubes: the same seed)."""
+    ro = (mini.get("spec") or {}).get("roots")
+    if not ro or float(ro.get("spread", 2.0)) <= 1.0 or int(ro.get("count", 5)) < 1:
+        return []
+    tn = np.flatnonzero(mini["axis"] == mini["axis"][1])
+    tn = tn[tn >= 1]
+    zs, rs = mini["pos"][tn, 2], mini["radius"][tn]
+    o = np.argsort(zs)
+    zs, rs = zs[o], rs[o]
+    h = max(float(ro.get("height", 0.8)), 0.05)
+    r_b = float(np.interp(max(h, float(zs[0])), zs, rs))  # the bole over the roots
+    r_g = max(float(np.interp(0.0, zs, rs)), float(mini["radius"][0]) if mini["pos"][0, 2] < 0 else 0.0, r_b)  # the foot at the ground
+    foot = mini["pos"][0].copy()
+    foot[2] = 0.0
+    cnt = int(ro.get("count", 5))
+    rng = np.random.default_rng(int((mini.get("spec") or {}).get("seed", 1)) + 77)
+    th = (np.arange(cnt) + rng.uniform(-0.3, 0.3, cnt)) * (2 * math.pi / cnt) + rng.uniform(0, 6.28)
+    st = rng.uniform(0.6, 1.0, cnt)
+    node = np.array([int(tn[0])])
+    out = []
+    for t_, s_ in zip(th, st):
+        d = np.array([math.cos(t_), math.sin(t_), 0.0])
+        R = r_g + (float(ro["spread"]) - 1.0) * r_b * s_
+        hh = h * (0.6 + 0.4 * s_)
+        # (axis points: on the trunk's axis, a third of the way out, at the ground, in it; radii a fin's: thick at the trunk)
+        # (thin tubes read as spider legs: a buttress is a fat lobe, its far end sunk into the ground)
+        P = np.array([foot + [0, 0, hh], foot + d * 0.5 * R + [0, 0, 0.35 * hh], foot + d * R - [0, 0, 0.05 * r_b], foot + d * (R + 0.6 * r_b) - [0, 0, 0.4]])
+        rr = r_b * np.array([0.65, 0.58, 0.42, 0.25]) * (0.8 + 0.2 * s_)
+        out.append((P[:-1], P[1:], rr[:-1], rr[1:], np.repeat(node, 3), veg_style.ROOT_JOIN))
     return out
 
 
@@ -265,8 +305,9 @@ def wood_field(segs: list, p: np.ndarray, blend: float, node: bool = False):
     node=True also returns the nearest segment's end node per point."""
     d = np.full(len(p), 1e3)
     nn = np.zeros(len(p), np.int64)
-    for a, b, ra, rb, nodes in segs:
-        k = blend * float(rb[0])
+    for sg in segs:
+        a, b, ra, rb, nodes = sg[:5]
+        k = blend * float(rb[0]) * (sg[5] if len(sg) > 5 else 1.0)  # (a root's own wider fillet: its 6th number)
         lo, hi = np.minimum(a, b).min(0) - ra.max() - k - 0.3, np.maximum(a, b).max(0) + ra.max() + k + 0.3
         m = np.flatnonzero(((p >= lo) & (p <= hi)).all(1))
         if not len(m):
@@ -333,10 +374,12 @@ def wood_dense(mini: dict, st: dict, orders=(0, 1)) -> dict | None:
         return None
     blend = float(st["wood"].get("blend", 0.6))
     fn = lambda q: np.maximum(wood_field(segs, q, blend), -0.3 - q[:, 2])  # (cut flat 0.3 m under the foot)
-    rmin = float(min(rb.min() for _, _, _, rb, _ in segs))
+    rmin = float(min(sg[3].min() for sg in segs))
     voxel = float(st["wood"].get("voxel") or np.clip(0.4 * rmin, 0.05, 0.12))
     r = float(mini["radius"].max())
-    V, F = mesh_field(fn, mini["pos"].min(0) - r - 0.4, mini["pos"].max(0) + r + 0.2, voxel)
+    lo = np.minimum(mini["pos"].min(0) - r - 0.4, np.min([np.minimum(sg[0], sg[1]).min(0) - sg[2].max() for sg in segs], 0) - 0.2)
+    hi = np.maximum(mini["pos"].max(0) + r + 0.2, np.max([np.maximum(sg[0], sg[1]).max(0) + sg[2].max() for sg in segs], 0) + 0.2)
+    V, F = mesh_field(fn, lo, hi, voxel)
     return {"V": V, "F": F, "segs": segs, "blend": blend, "voxel": voxel, "axes": len(segs)}
 
 

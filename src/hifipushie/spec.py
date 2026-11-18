@@ -27,6 +27,8 @@ Blob shapes: "ellipsoid" (default), "box" / "cylinder" (+ "round"), "blade", "li
 soft primary forms (softforms.py): "super" (a superellipsoid, "squareness" 2 = ellipsoid rising toward a box, no band
 where a plane turns into an edge) and "loft" (ONE seamless mass through cross-sections: a head and body as one pear);
 "sheet" (sheet.py: one seamless thick sheet along a spine curve, tapering, folding without seams: ears, leaves, flaps).
+"outline" (outline.py: a flat outline extruded, bevelled and rounded: signs, logos, cut-outs) and "text" (lettering
+from a font, set as one "outline" blob per letter).
 
 Elements are combined in layer order; within a layer adds come first, then subtracts, then modifiers
 (strokes: they displace or plane whatever the layer has built so far).
@@ -219,7 +221,7 @@ class Prim:
     sides: tuple | None = None  # a fuse whose fill differs by side: (centre, size, ((axis, sign, part of the fill), ...))
 
 
-BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "loft", "super", "sweep", "collar", "lids", "displace",
+BLOB_SHAPES = ("ellipsoid", "box", "cylinder", "blade", "sheet", "loft", "super", "sweep", "collar", "lids", "outline", "displace",
                "flatten")
 
 
@@ -351,6 +353,12 @@ def _compile(spec: dict) -> list[Prim]:
         if bl.get("shape") == "loft":
             pr, lo, hi = softforms.loft_params(name, bl, c, rot, SpecError)
             prims.append(Prim(name, "loft", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr, reach=3.0))
+            continue
+        if bl.get("shape") == "outline":  # an extruded, bevelled outline: letters, signs, logos (outline.py)
+            from . import outline
+            pr, lo, hi = outline.outline_params(name, bl, c, rot, SpecError)
+            prims.append(Prim(name, "outline", bl.get("op", "add"), k, int(bl.get("layer", 0)), lo, hi, pr,
+                              reach=1.0))  # exact distance
             continue
         if bl.get("shape") == "box":
             rnd =min(float(bl.get("round", 0.0)), float(size.min()))
