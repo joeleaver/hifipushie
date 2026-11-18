@@ -109,11 +109,11 @@ def low_lookup(D, body):
 
 
 def jaw(D, body, PFX, look, smooth=4):
-    G = json.load(open(f"{D}/low_groups.json")); jw = G.get("jaw"); inside = G.get("mouth_inside")
+    G = json.load(open(f"{D}/low_groups.json")); jaw_w = G.get("jaw"); inside = G.get("mouth_inside")
     VG = body.vertex_groups
     gj = VG.get(PFX + "Jaw") or VG.new(name=PFX + "Jaw"); gh = VG[PFX + "Head"]; n = 0
     for v in body.data.vertices:
-        ix = look[v.index]; w = jw[ix] if jw else 0.0
+        ix = look[v.index]; w = jaw_w[ix] if jaw_w else 0.0
         if inside and inside[ix] > 1e-3:      # the inside of the mouth is the head's (and the jaw's) only
             for g in list(v.groups):
                 if g.group != gh.index:
@@ -195,14 +195,14 @@ def head_only(D, body, PFX, look):
         if h > 0.5:
             inside.add(v.index)
         ws = {g.group: g.weight for g in v.groups}; tot = sum(ws.values()) or 1.0
-        jw = ws.get(gj.index, 0.0) / tot if gj else 0.0
+        jaw_w = ws.get(gj.index, 0.0) / tot if gj else 0.0
         for gi, w in ws.items():
             if gj and gi == gj.index:
                 continue
             VG[gi].add([v.index], w / tot * (1 - h), "REPLACE")
-        gh.add([v.index], (ws.get(gh.index, 0.0) / tot) * (1 - h) + h * (1 - jw), "REPLACE")
-        if gj and jw > 0:
-            gj.add([v.index], jw, "REPLACE")
+        gh.add([v.index], (ws.get(gh.index, 0.0) / tot) * (1 - h) + h * (1 - jaw_w), "REPLACE")
+        if gj and jaw_w > 0:
+            gj.add([v.index], jaw_w, "REPLACE")
         n += 1
     return n, inside
 
