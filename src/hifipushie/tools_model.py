@@ -152,13 +152,11 @@ def look(name: str, views: list[str] | None = None, size: int = 448, grid: bool 
          clip: dict | list[dict] | None = None, camera: dict | list[dict] | str | None = None, instances: bool = False,
          save: str | None = None, shapes: dict | str | None = None):
     """See the model from any side or close up: build and render a contact sheet (clay, or painted from the Blender
-    scene). views (front, side, top,
-    three_quarter, back, ...), focus=[x,y,z] + zoom for close-ups, resolution (160 quick, 256-320 detail), shading
-    "clay"|"raking"|"curvature"|"flat", strokes=True overlays stroke paths, paint / paint_layer (one mask),
-    hide_parts / only_parts, clip (plane cuts), camera (perspective eyes; a fitted camera's name, e.g. "concept",
-    looks from the painting's angle), instances, save (PNG path), shapes (a
-    face-kit model posed in face-shape weights as the export makes them: {"jawOpen": 0.8, ...}, "rest" or a preset;
-    paint=False is meshed exactly as the export). Details: guide(topic="look")."""
+    scene). views (front, side, top, three_quarter, back, ...), focus=[x,y,z] + zoom for close-ups, resolution (160
+    quick, 256-320 detail), shading "clay"|"raking"|"curvature"|"flat", strokes=True overlays stroke paths, paint /
+    paint_layer (one mask), hide_parts / only_parts, clip (plane cuts), camera (perspective eyes; a fitted camera's
+    name, e.g. "concept", looks from the painting's angle), instances, save (PNG path), shapes (a face-kit model
+    posed in face-shape weights as the export... Details: guide(topic="look")."""
     posed = None
     if shapes is not None:  # face shapes: the model meshed and posed as export_asset does it (facepose.py)
         if strokes or instances or shading == "curvature":

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 import test_artist as T  # (sets HIFIPUSHIE_HOME / XDG_* to temp dirs)
+from test_artist import _artist_env  # noqa: F401 (its module env here too: PYTHONPATH reaches tests/ in the worker)
 from hifipushie import artist, artist_setup as S, artist_update as U
 
 REPO = Path(__file__).resolve().parent.parent

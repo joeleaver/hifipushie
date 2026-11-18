@@ -201,8 +201,7 @@ def export_asset(name: str, out_dir: str, triangles: int | None = None, texture:
     role (hero / main_npc / secondary_npc / crowd: budgets from budgets.json; explicit arguments win), triangles,
     texture / texel_density, lods, rig=True (Mixamo for humanoids; correctives: knee / elbow / shoulder morphs),
     face_shapes (ARKit), cloth_triangles, preview (the GLB rendered as a game draws it), hide, asset_name,
-    recolour_masks ([{"R": [part], "G": [...], "B": [...], "A": [...]}, ...]: those parts bake a neutral base + RGBA
-    mask textures in one material, each channel's default colour in the json: a colour scheme = a tint per channel). Minutes;
+    recolour_masks (parts baked as a neutral base + RGBA masks: a colour scheme = a tint per channel). Minutes;
     progress in progress.log. Details: guide(topic="export_asset")."""
     from . import asset
     from . import asset_export

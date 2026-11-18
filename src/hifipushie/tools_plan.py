@@ -85,13 +85,8 @@ def fit_concept_camera(name: str, image: str, mask: str | None = None, label: st
                        az: float | None = None, el: float | None = None, resolution: int = 96,
                        points: list | None = None):
     """Fit the perspective camera a concept image was drawn from, by the model's silhouette against the image's
-    foreground (IoU; mask: a white-on-black PNG when the background isn't plain). Saved under `label`; then
-    look_matched renders from it pixel-aligned, feature_tiles cuts review tiles, look(camera={"fitted": label})
-    uses it too. az / el: a starting guess (default: a sweep). points: pin features the picture shows to the model's
-    masses, [{"at": "snout", "px": [x, y]}, {"at": "eye.R", "px": [x, y]}, ...] (pixels of the picture; the
-    figure's right is ".R"): a round figure's outline barely changes as it turns, and fitted on the outline alone the
-    camera can be turned well off; with 2 to 4 pins it is not, and the answer says how far each pin is missed.
-    Returns the overlay (red = model only, blue = image only) and the camera. Details: guide(topic="fit_concept_camera")."""
+    foreground (IoU; mask: a white-on-black PNG when the background isn't plain). Details:
+    guide(topic="fit_concept_camera")."""
     from . import matched
     cam = matched.fit_camera(name, image, mask, label, resolution, az, el, points=points)
     note = "" if cam["iou"] >= 0.85 else (" | LOW IoU: the model is far from the concept's shape, or the mask is wrong "

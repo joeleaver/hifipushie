@@ -210,20 +210,12 @@ def build_forms(name: str, how: dict, view: str | None = None, save: str | None 
 def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | None = None,
                 on_purpose: list[dict] | None = None, resolution: int = 176, save: str | None = None,
                 focus: list[str] | None = None):
-    """Compare the model with its reference pictures, view by view, and see what to change: the model beside each
-    flat reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
+    """Compare the model with its reference pictures, view by view, and see what to change: the model beside each flat
+    reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
     "painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
     outline over it (the painting) | the model, its parts tinted, with the reference's outline and inside lines in
-    red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists those
-    places biggest first, with the mass each is on, the PROPORTIONS (how wide and deep the figure is where the
-    reference is widest and narrowest: the balance of the masses), and the pieces that touch nothing. Seconds, no render: use it
-    after every change. LOOK at the pictures: the painting's view is where a figure reads as itself, and where a
-    mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
-    differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures
-    that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
-    its reason and left out of the list and the overlap. ignore: masses to leave out. focus: masses to see CLOSE
-    UP (an ear, a snout): every picture is cut to them and drawn large, beside the same part of each reference view
-    and the painting. save: a folder for the pictures, or a .png file name (the first picture; the rest beside it). Details: guide(topic="look_beside")."""
+    red | the difference (red = add clay, blue = take away) with its worst places numbered. Details:
+    guide(topic="look_beside")."""
     from pathlib import Path
 
     from . import beside
@@ -250,15 +242,10 @@ def look_beside(name: str, views: list[str] | None = None, ignore: list[str] | N
 @mcp.tool(structured_output=False)
 def study_part(name: str, what: str, at: list[float], size: float = 0.08, reading: str | None = None):
     """Study ONE part of the reference before you model it (an ear, a snout, a horn): the same part cut from every
-    reference picture (each flat view and the painting), one large picture each, and the order to read it in.
-    what: the part in plain words ("the left ear"); at: [x, y, z], its middle in metres (read off read_reference's or
+    reference picture (each flat view and the painting), one large picture each, and the order to read it in. what:
+    the part in plain words ("the left ear"); at: [x, y, z], its middle in metres (read off read_reference's or
     look_beside's rulers; it need not exist in the model yet); size: half the box's side, m (the part and a little
-    of what it grows from). Why the order: where one part hides another in a view (a folded lobe in front of an
-    ear's root, seen from the side), the outline reads as one broad shape, and plain looking got it wrong every time
-    in blind trials; reading each view alone, naming what hides what and taking each size only from a view where
-    nothing is in front of it got it right. First call: the pictures and the steps. Then call it again with
-    reading="1. ...\n2. ...\n...5. ..." (the five steps written out): it is kept with the model, and flap builds a
-    part only where it has been read. Seconds. Details: guide(topic="study_part")."""
+    of what it grows from). Details: guide(topic="study_part")."""
     from . import study
     from .tool_common import _png
     if not (isinstance(at, (list, tuple)) and len(at) == 3):
@@ -288,9 +275,7 @@ def review_part(name: str, masses: list[str], region: str, context: str = "a gam
     camera, cut with the same box from the painting, and judged by an independent reviewer who sees only the two
     pictures (no captions, no numbers, none of your reasoning). Its form first, then the differences, worst first.
     masses: the part's masses (e.g. ["ear.L", "ear_top.L"]); region: what the reviewer is told it is, plain words
-    ("the ear"). The one who made a part sees what they meant; a fresh reviewer sees what is there: in blind trials
-    the maker passed an ear whose base was plainly wrong, and two fresh reviewers named it unprompted. A minute or
-    two (a render and a review). Needs the painting's camera (fit_concept_camera). Details: guide(topic="review_part")."""
+    ("the ear"). Details: guide(topic="review_part")."""
     from pathlib import Path
 
     from . import beside_painting, matched

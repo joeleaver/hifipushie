@@ -37,23 +37,8 @@ def flap(name: str, mass: str, base: list[float], length: float, width: float, r
          face: str | list = "forward", fold: float = 0.0, fold_at: float = 0.5, round: float | None = None,  # noqa: A002
          thickness: float | None = None, pointed: float = 0.4, flare: float | None = None,
          blend: float | None = None, part: str | None = None, note: str = ""):
-    """A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, blocked straight, its
-    top then BENT over. A folded ear, a comb, a tongue, a tab. base: [x, y, z], the middle of where it grows from,
-    ON the surface of the mass it grows from (read off look's rulers; it is sunk in a little by itself). rise: the
-    way it stands, words ("up", "up out", "up out back": out is away from the centre line) or [x, y, z]. face: the
-    way its broad face looks ("forward", "forward out"); it is made square to rise; the fold bends toward it.
-    length: base to tip laid straight, m; width: across its base; thickness: through its base (default 0.6 of the
-    width: clay ears are thick lumps, not straps); pointed 0..1 (0 the same width to its end, 1 narrowing to a soft
-    point). fold: degrees its top bends over toward its face (0 none; 90 the top sticks out forward; 150 to 180 it
-    lies down along the standing part); fold_at: where along its length the bend starts; round: the bend's radius,
-    m: how broad the rim over the top is (default 0.6 of the thickness: a soft rim; under half the thickness the
-    inside of the fold creases). The
-    bend keeps the clay's thickness and makes the cup inside the fold. flare: metres the root swells into the clay
-    it grows from (default a quarter of the width; 0 none). A name ending ".L" is made on the left (+x) and
-    mirrored. The same name again replaces it: change ONE thing at a time. It builds only where the part has been
-    read first: study_part, then study_part with your reading.
-    Then look_beside with focus=[mass]. The bend is the model's bend "flap:<mass>"; the bend tool bends any other
-    mass the same way. Details: guide(topic="flap")."""
+    """A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, blocked straight, its top
+    then BENT over. Details: guide(topic="flap")."""
     from . import flap as flapmod
     from .spec import SpecError, mirror_name
     from .spec_hands import _aim_vec
@@ -201,11 +186,9 @@ def bend(name: str, masses: list[str], path: list[list[float]], label: str | Non
     """Bend masses along a path, as a modeller bends clay: a tail curled, a horn swept back, a trunk, a finger, a
     drooping brim, an ear's top laid over. Block the mass STRAIGHT first (put_model / edit_model), then bend it.
     path: two or more points [[x, y, z], ...] in metres: the first is where the bending starts, ON the mass's own
-    line (for a bone, a short first step along its own line is added for you); the clay past the start
-    is carried along the path keeping its length and thickness, and past the path's end it goes on straight. A
-    gentle curve gives a round rim, a tight one squeezes the inside into a crease. Clay before the start stays put.
-    masses: the masses to bend (".L" ones bend mirrored on the right too). label: the bend's name (default
-    "bend1", ...); the same label again replaces it; remove=True takes it off. Details: guide(topic="bend")."""
+    line (for a bone, a short first step along its own line is added for you); the clay past the start is carried
+    along the path keeping its length and thickness, and past the path's end it goes on straight. A gentle curve
+    gives a round rim, a tight one squeezes the inside into a crease. Details: guide(topic="bend")."""
     from . import bend as bendmod
     from .spec import SpecError
     spec = store.load(name)

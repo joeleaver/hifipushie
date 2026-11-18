@@ -167,6 +167,16 @@ hand is kept and said. ~10 s a look; the first after a geometry change ~25-40 s 
 paint=False is the exact one; a painted look carries the moves onto the scene's coarser meshes (nearest posed point
 of the same part) and says when its lips aren't meshed apart.
 
+From the tool's description (in full):
+See the model from any side or close up: build and render a contact sheet (clay, or painted from the Blender
+scene). views (front, side, top,
+three_quarter, back, ...), focus=[x,y,z] + zoom for close-ups, resolution (160 quick, 256-320 detail), shading
+"clay"|"raking"|"curvature"|"flat", strokes=True overlays stroke paths, paint / paint_layer (one mask),
+hide_parts / only_parts, clip (plane cuts), camera (perspective eyes; a fitted camera's name, e.g. "concept",
+looks from the painting's angle), instances, save (PNG path), shapes (a
+face-kit model posed in face-shape weights as the export makes them: {"jawOpen": 0.8, ...}, "rest" or a preset;
+paint=False is meshed exactly as the export).
+
 ### `check`
 
 `check(name, resolution=160, save=None, only_parts=None, hide_parts=None)`
@@ -242,6 +252,16 @@ left (+X); el + = from above. Saved as <model>/cameras/<label>.json. Returns the
 blue = image only) and the camera. IoU under 0.85 is flagged: the model's shape is far off, or the mask is wrong.
 Re-fit after big shape changes; small ones keep the camera. Puddles (pud2): az -19, el +8.5, IoU 0.93.
 
+From the tool's description (in full):
+Fit the perspective camera a concept image was drawn from, by the model's silhouette against the image's
+foreground (IoU; mask: a white-on-black PNG when the background isn't plain). Saved under `label`; then
+look_matched renders from it pixel-aligned, feature_tiles cuts review tiles, look(camera={"fitted": label})
+uses it too. az / el: a starting guess (default: a sweep). points: pin features the picture shows to the model's
+masses, [{"at": "snout", "px": [x, y]}, {"at": "eye.R", "px": [x, y]}, ...] (pixels of the picture; the
+figure's right is ".R"): a round figure's outline barely changes as it turns, and fitted on the outline alone the
+camera can be turned well off; with 2 to 4 pins it is not, and the answer says how far each pin is missed.
+Returns the overlay (red = model only, blue = image only) and the camera.
+
 ### `fit_matched`
 
 `fit_matched(name, targets, only, params=None, lock=None, press=None, iterations=20, max_step=0.01, stiffness=0.05, resolution=128)`
@@ -281,6 +301,16 @@ Returns the front and side look, and the waist as measured: its width (across x)
 with what they were before. The masses must both add clay, in the same layer and part; a mass in a kit's group
 can't be fused. In the spec it is two keys on each mass: "fuse": "<tag>", "fill": metres.
 
+From the tool's description (in full):
+Work two masses into ONE flowing mass, as a modeller smooths two lumps of clay together: the hollow between `a`
+and `b` fills and the line between them goes (a head and body that should read as one pear, not two balls with
+a neck crease). Give fill (how far the two are worked into each other, in metres: 0.05 leaves a soft crease,
+0.15 a clear waist, 0.25 one mass with a slight pinch) OR width (how wide the figure is at its narrowest between the two, in metres, read off the
+reference: the fill is found for you). sides: {"front": 0.2} works in only that part of the fill on
+that side (front, back, left, right, up, down): smooth behind and creased in front, which the same fill all
+round can't give (it trades a snowman's neck for a bean). fill=0 parts them again. Returns the look and the
+waist as measured.
+
 ### `grab`
 
 `grab(name, of, view, at, to, radius, label='', remove=False, note='')`
@@ -305,6 +335,18 @@ label names the grab (default grab1, grab2 ...): the same label replaces it; rem
 off. On a symmetric model a grab on a ".L" mass is made on its ".R" twin, and a grab off the centre line of a
 centre mass is made on the other side too. Returns the look from that view and three-quarter. In the spec:
 "grabs": {label: {"of", "view", "at", "to", "radius"}}.
+
+From the tool's description (in full):
+Take hold of clay that is already there and move it, as a modeller's move brush does: in a flat view, the clay
+of the masses `of` at the point `at` goes to `to`, and the clay within `radius` of it follows, less the
+further out it is (a ball of clay round where you took hold, not the whole depth of the view), so the surface
+stays smooth and the form stays round. view "front" (points are [x, z]),
+"side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres, read off look's rulers. Use it where the
+WHOLE FORM of a mass should lean, swell or flatten in a way its own numbers can't say: a head's corner out, a
+belly fuller low down. It is a BROAD move: the clay goes at most a fifth of the radius, and the radius is at
+least 0.3 of the mass (a smaller pull dents the clay: it is refused, with the radius it needs). It is not for an
+outline's last centimetre: that is the mass's size or place. label names it: the same label replaces it, remove=True takes it off.
+Mirrored on a symmetric model.
 
 ### `look_matched`
 
@@ -360,6 +402,25 @@ It builds only where the part has been read first (`study_part`, then `study_par
 In the spec: the bone `<mass>` (its numbers under "flap") on joints `<stem>_root`, `<stem>_tip`, and the bend
 `flap:<mass>` under "bends".
 
+From the tool's description (in full):
+A flap of clay made as a modeller makes an ear: a thick lump standing on the figure, blocked straight, its
+top then BENT over. A folded ear, a comb, a tongue, a tab. base: [x, y, z], the middle of where it grows from,
+ON the surface of the mass it grows from (read off look's rulers; it is sunk in a little by itself). rise: the
+way it stands, words ("up", "up out", "up out back": out is away from the centre line) or [x, y, z]. face: the
+way its broad face looks ("forward", "forward out"); it is made square to rise; the fold bends toward it.
+length: base to tip laid straight, m; width: across its base; thickness: through its base (default 0.6 of the
+width: clay ears are thick lumps, not straps); pointed 0..1 (0 the same width to its end, 1 narrowing to a soft
+point). fold: degrees its top bends over toward its face (0 none; 90 the top sticks out forward; 150 to 180 it
+lies down along the standing part); fold_at: where along its length the bend starts; round: the bend's radius,
+m: how broad the rim over the top is (default 0.6 of the thickness: a soft rim; under half the thickness the
+inside of the fold creases). The
+bend keeps the clay's thickness and makes the cup inside the fold. flare: metres the root swells into the clay
+it grows from (default a quarter of the width; 0 none). A name ending ".L" is made on the left (+x) and
+mirrored. The same name again replaces it: change ONE thing at a time. It builds only where the part has been
+read first: study_part, then study_part with your reading.
+Then look_beside with focus=[mass]. The bend is the model's bend "flap:<mass>"; the bend tool bends any other
+mass the same way.
+
 ### `bend`
 
 `bend(name, masses, path, label=None, remove=False, note='')`
@@ -371,6 +432,16 @@ first step goes along that line. Clay past the start is carried along the path k
 past the path's end it goes on straight; before the start it stays put. A gentle curve gives a round rim; a curve
 tighter than the clay is thick squeezes the inside into a crease. ".L" masses bend mirrored on the right. The same
 label again replaces the bend; remove=True takes it off. In the spec: "bends": {label: {"of", "path"}}.
+
+From the tool's description (in full):
+Bend masses along a path, as a modeller bends clay: a tail curled, a horn swept back, a trunk, a finger, a
+drooping brim, an ear's top laid over. Block the mass STRAIGHT first (put_model / edit_model), then bend it.
+path: two or more points [[x, y, z], ...] in metres: the first is where the bending starts, ON the mass's own
+line (for a bone, a short first step along its own line is added for you); the clay past the start
+is carried along the path keeping its length and thickness, and past the path's end it goes on straight. A
+gentle curve gives a round rim, a tight one squeezes the inside into a crease. Clay before the start stays put.
+masses: the masses to bend (".L" ones bend mirrored on the right too). label: the bend's name (default
+"bend1", ...); the same label again replaces it; remove=True takes it off.
 
 ### `trim`
 
@@ -389,6 +460,16 @@ knife sharp. label names the trim (default trim1, trim2 ...): the same label rep
 On a symmetric model a trim on a ".L" mass, or off the centre line, is made on the other side too.
 The cut is made where the figure stands now (after its grabs). A mass blended wide into its neighbours fills the
 cut back in a little at the join.
+
+From the tool's description (in full):
+Cut clay away along a straight line drawn in a flat view, as a modeller's trim (knife) does: the line runs
+through a and b, and the clay of the masses `of` on its `off` side is cut away all the way through the depth,
+leaving a flat face: the flat front of a snout, a flat sole under a hoof, a seat, a squared-off end. view
+"front" (points are [x, z]), "side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres read off look's
+rulers. off: the side that goes: up, down, left (+x), right, front (-y) or back. of: the masses cut, or "all".
+soft: how far the cut's edge is rounded, metres (0: knife sharp). label names it: the same label replaces it,
+remove=True takes it off. Mirrored on a symmetric model. To take a SHAPE out instead (a mouth, a socket), use
+carve.
 
 ### `carve`
 
@@ -416,6 +497,20 @@ outline reads as one broad shape; looking plainly, every reader in the blind tri
 again with `reading` (the five steps written out, each on its own line starting "1." to "5."): it is kept with the
 model, and `flap` builds a part only where it has been read.
 
+From the tool's description (in full):
+Study ONE part of the reference before you model it (an ear, a snout, a horn): the same part cut from every
+    reference picture (each flat view and the painting), one large picture each, and the order to read it in.
+    what: the part in plain words ("the left ear"); at: [x, y, z], its middle in metres (read off read_reference's or
+    look_beside's rulers; it need not exist in the model yet); size: half the box's side, m (the part and a little
+    of what it grows from). Why the order: where one part hides another in a view (a folded lobe in front of an
+    ear's root, seen from the side), the outline reads as one broad shape, and plain looking got it wrong every time
+    in blind trials; reading each view alone, naming what hides what and taking each size only from a view where
+    nothing is in front of it got it right. First call: the pictures and the steps. Then call it again with
+    reading="1. ...
+2. ...
+...5. ..." (the five steps written out): it is kept with the model, and flap builds a
+    part only where it has been read. Seconds.
+
 ### `review_part`
 
 `review_part(name, masses, region, context=...)`
@@ -426,6 +521,15 @@ pictures, no captions and none of your reasoning. It describes the form, then th
 ends with a verdict. The maker of a part sees what they meant; a fresh reviewer sees what is there. Use it once a
 part looks right to you, before you call it done. masses: the part's masses (a flap: `<mass>` and `<stem>_top<side>`);
 region: plain words ("the ear"). Needs the painting's camera, pinned (fit_concept_camera with points). A minute or two.
+
+From the tool's description (in full):
+A fresh pair of eyes on ONE part of the model: the part rendered in clay through the concept painting's own
+camera, cut with the same box from the painting, and judged by an independent reviewer who sees only the two
+pictures (no captions, no numbers, none of your reasoning). Its form first, then the differences, worst first.
+masses: the part's masses (e.g. ["ear.L", "ear_top.L"]); region: what the reviewer is told it is, plain words
+("the ear"). The one who made a part sees what they meant; a fresh reviewer sees what is there: in blind trials
+the maker passed an ear whose base was plainly wrong, and two fresh reviewers named it unprompted. A minute or
+two (a render and a review). Needs the painting's camera (fit_concept_camera).
 
 ### `look_beside`
 
@@ -476,6 +580,22 @@ ignore: masses left out of the model (a limb held away from the body for the rig
 hanging); the reference's own limb still shows where the picture has it. views: which views (default: every flat
 view, and the painting when its camera is fitted). save: a folder; the pictures are written there as beside_<view>.png. The outline overlap in the text is one
 number among these, never the verdict.
+
+From the tool's description (in full):
+Compare the model with its reference pictures, view by view, and see what to change: the model beside each
+flat reference view (front, side, back; read_reference first) AND from the concept painting's own angle (view
+"painting": fit_concept_camera once, on the painting), one picture a view: the reference with the model's
+outline over it (the painting) | the model, its parts tinted, with the reference's outline and inside lines in
+red | the difference (red = add clay, blue = take away) with its worst places numbered. The text lists those
+places biggest first, with the mass each is on, the PROPORTIONS (how wide and deep the figure is where the
+reference is widest and narrowest: the balance of the masses), and the pieces that touch nothing. Seconds, no render: use it
+after every change. LOOK at the pictures: the painting's view is where a figure reads as itself, and where a
+mass in the wrong place shows (a snout beside the painted snout) that no outline number says. These are
+differences, not faults: where you differ ON PURPOSE (a limb held out for the rig, a choice between pictures
+that disagree) record it with on_purpose=[{"view", "at": [u, v] as listed, "why"}]: it is then shown apart with
+its reason and left out of the list and the overlap. ignore: masses to leave out. focus: masses to see CLOSE
+UP (an ear, a snout): every picture is cut to them and drawn large, beside the same part of each reference view
+and the painting. save: a folder for the pictures, or a .png file name (the first picture; the rest beside it).
 
 ### `mark_features`
 
@@ -737,6 +857,8 @@ asset_name: what the exported files, nodes, meshes and materials are called (def
 that already loads "hero.glb" with hero_body etc. gets the same names from a model saved under another name).
 Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
 furnished building; progress in workspace/<model>/progress.log.
+- recolour_masks: `[{"R": [part, ...], "G": [...], "B": [...], "A": [...]}, ...]`: those parts bake a neutral base +
+  RGBA mask textures in one material, each channel's default colour in the json; a colour scheme is a tint per channel.
 
 ### `rig`
 

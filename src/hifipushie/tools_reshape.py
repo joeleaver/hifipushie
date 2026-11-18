@@ -38,13 +38,8 @@ def _with_look(name: str, views: list[str], text: str):
 def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | None = None,
          sides: dict | None = None, note: str = ""):
     """Work two masses into ONE flowing mass, as a modeller smooths two lumps of clay together: the hollow between `a`
-    and `b` fills and the line between them goes (a head and body that should read as one pear, not two balls with
-    a neck crease). Give fill (how far the two are worked into each other, in metres: 0.05 leaves a soft crease,
-    0.15 a clear waist, 0.25 one mass with a slight pinch) OR width (how wide the figure is at its narrowest between the two, in metres, read off the
-    reference: the fill is found for you). sides: {"front": 0.2} works in only that part of the fill on
-    that side (front, back, left, right, up, down): smooth behind and creased in front, which the same fill all
-    round can't give (it trades a snowman's neck for a bean). fill=0 parts them again. Returns the look and the
-    waist as measured. Details: guide(topic="fuse")."""
+    and `b` fills and the line between them goes (a head and body that should read as one pear, not two balls with a
+    neck crease). Details: guide(topic="fuse")."""
     spec = store.load(name)
     els = _need(spec, (a, b))
     if a == b:
@@ -133,15 +128,10 @@ def fuse(name: str, a: str, b: str, fill: float | None = None, width: float | No
 def grab(name: str, of: list[str], view: str, at: list[float], to: list[float], radius: float, label: str = "",
          remove: bool = False, note: str = ""):
     """Take hold of clay that is already there and move it, as a modeller's move brush does: in a flat view, the clay
-    of the masses `of` at the point `at` goes to `to`, and the clay within `radius` of it follows, less the
-    further out it is (a ball of clay round where you took hold, not the whole depth of the view), so the surface
-    stays smooth and the form stays round. view "front" (points are [x, z]),
-    "side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres, read off look's rulers. Use it where the
-    WHOLE FORM of a mass should lean, swell or flatten in a way its own numbers can't say: a head's corner out, a
-    belly fuller low down. It is a BROAD move: the clay goes at most a fifth of the radius, and the radius is at
-    least 0.3 of the mass (a smaller pull dents the clay: it is refused, with the radius it needs). It is not for an
-    outline's last centimetre: that is the mass's size or place. label names it: the same label replaces it, remove=True takes it off.
-    Mirrored on a symmetric model. Details: guide(topic="grab")."""
+    of the masses `of` at the point `at` goes to `to`, and the clay within `radius` of it follows, less the further
+    out it is (a ball of clay round where you took hold, not the whole depth of the view), so the surface stays
+    smooth and the form stays round. view "front" (points are [x, z]), "side" ([y, z]; the figure faces -y) or "top"
+    ([x, y]), in metres, read off look's rulers. Details: guide(topic="grab")."""
     spec = store.load(name)
     grabs = dict(spec.get("grabs") or {})
     if remove:
@@ -198,9 +188,7 @@ def trim(name: str, of: list[str] | str, view: str, a: list[float], b: list[floa
     leaving a flat face: the flat front of a snout, a flat sole under a hoof, a seat, a squared-off end. view
     "front" (points are [x, z]), "side" ([y, z]; the figure faces -y) or "top" ([x, y]), in metres read off look's
     rulers. off: the side that goes: up, down, left (+x), right, front (-y) or back. of: the masses cut, or "all".
-    soft: how far the cut's edge is rounded, metres (0: knife sharp). label names it: the same label replaces it,
-    remove=True takes it off. Mirrored on a symmetric model. To take a SHAPE out instead (a mouth, a socket), use
-    carve. Details: guide(topic="trim")."""
+    soft: how far the cut's edge is rounded, metres (0:... Details: guide(topic="trim")."""
     spec = store.load(name)
     trims = dict(spec.get("trims") or {})
     if remove:
