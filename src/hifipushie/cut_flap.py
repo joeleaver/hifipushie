@@ -18,7 +18,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .flatten import flatten, strain
+from .flatten import flatten
+from .flatten_threads import numbers
 from .mark_split import areas
 from .cut import FREE_MERGE_MM
 
@@ -88,7 +89,7 @@ def unfold(f: dict, edges: dict, Vf: np.ndarray, Ff: np.ndarray, emap: dict, fol
     as outline positions; report). f / edges: the piece as cut.flatten_piece / cut.name_runs give them."""
     from .cut import _group
     Uf, Sf, Ff = flatten(Vf, Ff)
-    badf = strain(Sf)
+    badf = numbers(Vf, Ff, Uf, Sf, 90.0, areas(Vf, Ff))[0]  # (by the threads, the straight grain: C512)
     fl = _loop(Ff)
     lp = np.asarray(f["lp"])
     P3 = f["V"][lp]

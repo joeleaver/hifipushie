@@ -18,6 +18,10 @@ own edge: hem, neckline, opening, sleeve end) is named by THE DECLARATION:
          its band; else trued, +-1 % (draft_own.PLAIN_TOL). ".L" entries serve ".R". The cap's ease itself comes from step 4
          (cut_ease.py: the eased band flattened at its rest length, the cap longer than the toile's seam by the ease).
   folds  {piece: {fold name: edge}}: a planned fold (step 2's sleeve hem) along a cut edge: a press fold (cut_tapes.py).
+  grain  {piece: deg}: the warp's angle in the flat (90: up the body, the straight grain: the default for every
+         marked piece, a tailor's rule for bodies and sleeves); ".L" serves ".R". Every piece is flattened BY ITS
+         THREADS (flatten_threads.py, R3g C512: warp / weft kept, shear free to the weave's jam) and its strain read
+         along them (strain_mean_pct; iso_strain_mean_pct the isotropic reading). The collar's grain: its own `grain`.
 TAPES and PLACE: each piece names the step-3 tapes it lies on and its place (torso front / back / side, a limb), read
 off the toile where it was cut (cut_tapes.py): never declared.
 MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked pieces are flattened, in this order:
@@ -27,13 +31,14 @@ MADE PIECES (cut_made.py; each module's docstring is its spec), after the marked
          its host's flat (cut_layers.py); its seams are the host's runs.
   collar {"pieces", "neck", "outer", "end", "fold", "fold_on"}: the collar draped on the toile at step 4 (its part)
          cut and flattened, the fall unfolded about the roll line (cut_collar.py).
+  shaped {"piece:run": pct}: the tailor's steam shaping of a collar's runs (+ stretch, - shrink), the flat cut to the
+         shaped target, beyond cut_shape.SHAPE_MAX_PCT refused (cut_shape.py).
 Writes <look dir>/cut/flat.npz (per piece U, F, V, strain), pattern.json (the block), cut.json, cut_3d.png (the pieces
 where they lie, beside the reference); record step 6."""
 from __future__ import annotations
 
 import numpy as np
 
-from .flatten import strain
 from .mark_split import areas, edge_faces, chains
 
 FREE_MERGE_MM = 15.0
@@ -169,7 +174,9 @@ def name_runs(p, rs, V, loop, s1, absent, runs_decl, free_decl):
     return out, bad
 
 
-def flatten_piece(V, F, lab, p, nm, ease=None):
+def flatten_piece(V, F, lab, p, nm, ease=None, grain=90.0):
+    """The piece flattened by its threads (warp at grain deg; flatten_threads.py), its strain read along them."""
+    from .flatten_threads import numbers, threads
     loop = outline(F, lab, p)
     fid = np.where(lab == p)[0]
     used = np.unique(F[fid])
@@ -177,23 +184,20 @@ def flatten_piece(V, F, lab, p, nm, ease=None):
     remap[used] = np.arange(len(used))
     Vp, Fp = V[used], remap[F[fid]]
     from .cut_ease import flatten_eased
-    U, S, Fk, cap = flatten_eased(Vp, Fp, remap[loop], ease)
-    bad = strain(S)
+    U, S, Fk, cap = flatten_eased(Vp, Fp, remap[loop], ease, grain)
     ar = areas(Vp, Fk)
+    bad, th = numbers(Vp, Fk, U, S, grain, ar)
     lp = remap[loop]
     P = U[lp]
     if 0.5 * float(np.dot(P[:, 0], np.roll(P[:, 1], -1)) - np.dot(P[:, 1], np.roll(P[:, 0], -1))) < 0:
         loop, lp = loop[::-1], lp[::-1]
     worst = np.argsort(-bad)[: max(1, len(bad) // 50)]
-    rep = {"faces": int(len(Fk)), "area_cm2": round(float(ar.sum()) * 1e4, 1),
-           "strain_mean_pct": round(float((bad * ar).sum() / ar.sum() * 100), 2),
-           "area_over_2pct": round(float(ar[bad > 0.02].sum() / ar.sum() * 100), 1),
+    w, f_, _ = threads(Vp, Fk[worst], U, 90.0 if grain is None else grain)
+    rep = {"faces": int(len(Fk)), "area_cm2": round(float(ar.sum()) * 1e4, 1), **th,
            "area_over_5pct": round(float(ar[bad > 0.05].sum() / ar.sum() * 100), 1),
-           "stretch_max_pct": round(float((S[:, 0] - 1).max() * 100), 1),
-           "compress_max_pct": round(float((1 - S[:, 1]).max() * 100), 1),
            "worst_2pct_at": np.round(Vp[Fk[worst]].mean((0, 1)), 3).tolist(),
-           "worst_kind": "compression (a dart wanted)" if (1 - S[worst, 1]).mean() > (S[worst, 0] - 1).mean()
-           else "stretch (ease wanted)"}
+           "worst_kind": "threads short on the toile (cloth over: a dart wanted)" if (w + f_).mean() < 0
+           else "threads long on the toile (stretched: ease wanted)"}
     if cap:
         rep["cap_ease"] = cap
     return {"name": nm, "loop": list(loop), "U": U, "F": Fk, "V": Vp, "bad": bad, "lp": lp, "rep": rep}

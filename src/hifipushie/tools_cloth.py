@@ -362,13 +362,11 @@ def draft_pattern(name: str, garment: str, design: str, declarations: dict | str
 
 @mcp.tool(structured_output=False)
 def garment_toile(name: str, garment: str, declarations: dict | str):
-    """STEP 4: THE TOILE, the garment's 3D surface on the body: the body + step 0's ease per fit level
-    (calibrated to the planned girths), shaped by the parts you declare: parts [sleeves, opening, lapel, pad, collar],
-    hang_from (a step-0 level or "none"), armhole {length_mm}, sleeves {ease_mm [top, wrist], crown_mm, hem},
-    opening {closure (wear: step 2's ties; cut closed), edge (a trace), lap_mm, buttons}, lapel {roll, top (traces), width_mm}, pad {thickness_mm},
-    collar {stand_mm, fall_mm (at CB), notch (a trace)}.
-    A missing key is refused. Gate rows (girths, clearance, closed, outline vs step 2's traces), the look
-    (4 views beside the reference), step 4 written. guide(topic="garment_toile")."""
+    """STEP 4: THE TOILE, the garment's 3D surface on the body: body + step 0's ease per fit level, shaped by the parts
+    declared: parts [sleeves, opening, lapel, pad, collar], hang_from, armhole {length_mm}, sleeves {ease_mm, crown_mm,
+    hem}, opening {closure, edge, lap_mm, buttons}, lapel {roll, top, width_mm}, pad {thickness_mm}, collar {stand_mm,
+    fall_mm, notch}: with a collar the lapels + collar are ONE part "flap" turned about one roll line on the toile.
+    A missing key is refused. Gate rows, the look beside the reference, step 4 written. guide(topic="garment_toile")."""
     from . import toile_tool
     sheet, txt = toile_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt
@@ -389,13 +387,12 @@ def garment_mark(name: str, garment: str, declarations: dict | str):
 
 @mcp.tool(structured_output=False)
 def garment_cut(name: str, garment: str, declarations: dict | str | None = None):
-    """STEP 6: CUT AND FLATTEN the marked toile: each piece cut on step 5's marks, flattened (strain per piece and
-    where: a dart or ease wanted), each seam trued, the flat pattern written in draft_pattern's form and the flat gate
-    run on it. declarations: free {piece: {edge: top | bottom | side}} (the toile's
-    own edges), ease {"piece:edge": [lo, hi]} (kept as cut), folds {piece: {fold: edge}} (a planned hem), flaps (a lapel
-    unfolded onto its piece), layers (facings / canvases traced off a host), collar (step 4's draped collar cut, its
-    fall unfolded about the roll); ".L" serves ".R". Tapes and places are read off the toile. Returns the flat pieces + every
-    row; step 6. guide(topic="garment_cut")."""
+    """STEP 6: CUT AND FLATTEN the marked toile: pieces cut on step 5's marks, flattened (strain: a dart or ease
+    wanted), seams trued, the flat pattern written in draft_pattern's form and gated. declarations: free {piece: {edge:
+    top | bottom | side}}, ease {"piece:edge": [lo, hi]}, folds {piece: {fold: edge}}, flaps (a lapel unfolded onto its
+    piece), layers (facings / canvases off a host), collar (step 4's collar cut, its fall unfolded about the roll),
+    shaped {"piece:run": +-pct} (steam shaping, max 8 %); ".L" serves ".R". Returns the flat pieces + every row; step 6.
+    guide(topic="garment_cut")."""
     from . import cut_tool
     sheet, txt = cut_tool.run(name, garment, _spec_arg(declarations) if isinstance(declarations, str) else declarations)
     return [_out(PILImage.open(sheet).convert("RGB"), None), txt] if sheet else txt

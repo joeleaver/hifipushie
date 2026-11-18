@@ -78,20 +78,20 @@ def seam_stretch(U, V, loop, on):
     return float(np.linalg.norm(U[a[m]] - U[b[m]], axis=1).sum() / max(l3, 1e-9) - 1), float(l3)
 
 
-def flatten_eased(V, F, loop, ce: CapEase):
+def flatten_eased(V, F, loop, ce: CapEase, grain=90.0):
     """flatten.flatten with the cap's ease (module doc): (U, S, F kept, report or None)."""
     from .flatten import flatten
     if ce is None or not ce.ok:
-        return (*flatten(V, F), None)
+        return (*flatten(V, F, grain=grain), None)
     s, w = ce.fields(V)
     if not np.median(s) > 0:  # (a body piece lies outside the cone: it meets it along its seam)
-        return (*flatten(V, F), None)
+        return (*flatten(V, F, grain=grain), None)
     on = np.abs(s) < SEAM_TOL_M
     wl = w[np.asarray(loop)][on[np.asarray(loop)]]
     want = ce.pct / 100 * (float(wl.mean()) / ce.wmean if len(wl) else 0.0)
     k, got, hist, kg = 1.0, 0.0, [], []
     for _ in range(CAL_PASSES):
-        U, S, Fk = flatten(V, F, rest=lambda Vc, Fc, k=k: ce.rest(Vc, Fc, k))
+        U, S, Fk = flatten(V, F, rest=lambda Vc, Fc, k=k: ce.rest(Vc, Fc, k), grain=grain)
         got, l3 = seam_stretch(U, V, loop, on)
         hist.append(round(got * 100, 2))
         kg.append((k, got))

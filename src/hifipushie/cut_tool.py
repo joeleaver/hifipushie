@@ -27,7 +27,7 @@ def block(pcs: dict, edges: dict, s1: dict, absent: dict, ease: dict, folds=()) 
             names[f"{e}.a"], names[f"{e}.m"], names[f"{e}.b"] = a, m, b
             arcs[p][e] = f"{e}.a>{e}.m>{e}.b" if m not in (a, b) else f"{e}.a>{e}.b"
             fwd3[p][e] = (f["V"][f["lp"][a]], f["V"][f["lp"][b]])
-        out[p] = {"name": p, "P": P, "names": names, "marks": {}, "lines": {}, "grain": 90.0, "wrap": {"to": "torso"},
+        out[p] = {"name": p, "P": P, "names": names, "marks": {}, "lines": {}, "grain": float(f.get("grain", 90.0)), "wrap": {"to": "torso"},
                   "cut": 1, "P3": f["V"][f["lp"]]}
 
     seams, dseams, notes, done = [], [], {}, set()
@@ -140,7 +140,12 @@ def look(pcs, path, S_=500):
             dr.polygon([xy(U[i]) for i in tri], fill=col)
         P = U[f["lp"]]
         dr.line([xy(q) for q in np.r_[P, P[:1]]], fill=(0, 0, 0), width=2)
-        dr.text((6, 4), f"{p}: strain mean {f['rep']['strain_mean_pct']} % (red = 6 %)", fill=(0, 0, 0))
+        g = np.radians(float(f.get("grain", 90.0)))  # the grain: warp (long, blue) and weft (short) through the middle
+        c0, ew = np.nanmean(P, 0), np.array([np.cos(g), np.sin(g)])
+        for d, ln in ((ew, 0.06), (np.array([-ew[1], ew[0]]), 0.025)):
+            dr.line([xy(c0 - d * ln), xy(c0 + d * ln)], fill=(30, 60, 200), width=3)
+        dr.text((6, 4), f"{p}: thread strain mean {f['rep']['strain_mean_pct']} % (red = 6 %), grain "
+                        f"{f.get('grain', 90.0):g} deg", fill=(0, 0, 0))
         tiles.append(im)
     hh = max(t.height for t in tiles)
     out = Image.new("RGB", (sum(t.width + 10 for t in tiles), hh), (255, 255, 255))
@@ -201,7 +206,9 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     ce = CapEase(rec["steps"]["4"].get("output") or {})
     for p, nm in enumerate(names):
         try:
-            f = flatten_piece(V, F, lab, p, nm, ce)
+            gd = declarations.get("grain") or {}
+            f = flatten_piece(V, F, lab, p, nm, ce, float(gd.get(nm, gd.get(nm[:-2] + ".L" if nm.endswith(".R") else nm, 90.0))))
+            f["grain"] = f["rep"]["grain_deg"]
         except CutRefused as e:
             why.append(str(e))
             continue
@@ -224,6 +231,8 @@ def run(name: str, garment: str, declarations: dict, log=lambda *_: None):
     ease.update({_mir(k): v for k, v in ease.items() if _mir(k) not in ease})  # (a ".L" seam's ease serves ".R")
     B, decl = block(pcs, edges, rd["1"], absent, ease, folds)
     decl["tapes"] = piece_tapes(pcs, rd["3"], edges)  # (each piece lies where it was cut from: the tapes there are its own)
+    from .draft_girths import CROSSED
+    B["girth_ring"] = CROSSED  # (a girth's ring: the pieces its loop crosses, draft_girths)
     for p, w in places(pcs, rd["3"]).items():
         B["pieces"][p]["wrap"] = w
     from .cut_ease import step4_numbers
