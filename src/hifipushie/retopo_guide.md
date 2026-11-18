@@ -9,6 +9,16 @@ colour maps, rig it, and bend it through a range of motion so you can see where 
 Your decisions are the product: which loops, where, how many, what is invented. The tools give you slices, gridded
 views, numbers, and refuse a broken cage. Nothing chooses loops for you.
 
+THE JOB IS RETOPO PLUS REDESIGNING THE LIMB ATTACHMENTS. A concept sculpt is posed for a picture, not for animation:
+its arms are usually fused or pressed to the torso, the shoulder roots too small or too low, the legs merged into the
+belly, with no real armpit and no real crotch. Retopologising those joins as they are gives a character that tears
+the first time it lifts an arm or a knee. Before any loop, decide each attachment for a body that MOVES: where the
+shoulder root runs (as tall as the arm is thick), where the real armpit is, where each hip root runs and whether the
+legs part through a crotch vertex or come out of a pelvis floor. Then build that in the cage, inventing (pinning) the
+surface the sculpt doesn't have: the torso's side under a fused arm, the arm's inner side, the crotch. The mechanics:
+"Shoulders, and arms fused to the body", "Limbs fused along their length", "Legs: thin or wide" (pelvis floor or
+crotch split) below. The sculpt is the evidence for the shape; it is not the authority on how the body bends.
+
 Two worked characters are the reference for every decision below: `examples/retopo/mabel_cage.py` (a cow on two
 legs: arms fused to the torso, wide stubby legs, painted eyes, horns, ears, a big muzzle with a mouth) and
 `examples/retopo/scraps_cage.py` (a goat: thin legs, googly eyeballs and a gas-mask canister held in the teeth, both
@@ -272,8 +282,9 @@ Your own poses: `poses=["rest", "arms_up_150", {"wave": [["LeftArm", "aim", [0.5
 ["LeftForeArm", [1, 0, 0], -60]]}]` (a bone, a world axis and degrees, or "aim" and a direction; the clavicle
 share and the half-angle helpers are added for you) and close-ups `close={"wave": {"view": [-0.6, -1, 0.2],
 "target": [x, y, z], "scale": 0.3}}` ("wave#2" for a second view of a pose).
-Fix at the cause: an armpit tearing = the shoulder root too small or not invented under the arm; a thigh web on
-knee_up = a hip loop as the leg's root (use a pelvis floor); a mouth corner tearing = jaw weights missing the 0.5
+Fix at the cause: an armpit tearing or a pinched shoulder = an ATTACHMENT fault (the shoulder root too small or too
+low, the armpit not invented under the arm): fixed in the cage, never in the weights; a thigh dragging belly skin on
+knee_up (a web) = an attachment fault too (a hip loop as the leg's root: use a pelvis floor, or move the crotch); a mouth corner tearing = jaw weights missing the 0.5
 corners. Weight knobs (global smoothing, limb fades, a hip helper) made every one of these worse.
 
 ## Gotchas (each cost a round)
