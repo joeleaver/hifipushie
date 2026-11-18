@@ -23,7 +23,8 @@ collar's columns lie behind it, the lapel's below it. Step 5's gorge mark is tha
 the gorge seam are the same vertices, equal by construction.
 The mesh (one part, "flap"): the collar block, a grid (rows: neck edge -> roll (KS) -> outer edge; columns: the right
 gorge -> CB -> the left gorge), and each lapel block (rows: the roll -> its outer edge; columns: the gorge -> the break),
-sharing the gorge column's vertices; t.flap_layout = [rows, collar columns, roll row, lapel columns]. Numbers in
+sharing the gorge column's vertices; the fall's spans re-landed along its outer edge for the least curvature (fan_fall,
+R3h); step 4's collar row fails cone points over cut_shape.CONE_MAX_DEG (toile_gate.collar_row); t.flap_layout = [rows, collar columns, roll row, lapel columns]. Numbers in
 t.info["collar"] (the collar region) and t.info["flap"] (the roll's smoothness, the stand seen from the front, the
 lapel's width). Nothing here knows a garment."""
 from __future__ import annotations
@@ -209,9 +210,60 @@ def collar_block(t, toile, R0, lapel_roll, R0_lift):
             X[r, c] = R + (L - R) * (r - KS) / KF
     for r in range(KS + 1):  # (the gorge column's stand: R0, standing H_MIN off it)
         X[r, -1] = R0 + (R0_lift - R0) * r / KS
-    geo = dict(z_top=None if zs is None else round(zs * 1000, 1), s=s, s_neck=s_neck, s_rl=s_rl, h=h, h_side=h_side, i_hps=k_h, B=B, Pc=Pc, G3=G3, stand=stand, fall=fall,
+    geo = dict(z_top=None if zs is None else round(zs * 1000, 1), s=s, s_neck=s_neck, s_rl=s_rl, h=h, h_side=h_side, i_hps=k_h, B=B, Pc=Pc, lift=lift, G3=G3, stand=stand, fall=fall,
                s_front=_len(front))
     return X, geo
+
+
+FAN_SMOOTH = 0.5  # deg per mm of second difference: the fall's landings slide along the outer edge, kept in order
+FAN_ITER = 60     # least-squares evaluations' budget (x the columns)
+
+
+def fan_fall(t, X, lift):
+    """THE FALL FANS (R3h, C513): the fall between the roll and its outer edge is a span off the toile (a ruled surface);
+    which landing each roll column spans to decides its curvature. The outer edge stays where it lands (same outline);
+    each column's landing slides along it (in order) so the roll and fall rows keep the least angle defect (on the
+    jacket, R3h: the fall's curvature -231 -> -126 deg, the bias collar's thread strain 5.8 -> 4.8 %). What it can't
+    do: cancel the roll's turn where the roll peaks beside the neck (the neck edge's corner at the side neck point,
+    -67 deg, carried up the stand): a fall folded DOWN turns with the stand there (cut_shape.crease), so that cone stays
+    (+125 deg); only a gentler roll (lower beside the neck) or a seam along the roll removes it (C513).
+    X (rows, NC, 3) the collar half, CB first, the gorge column set; returns X with the fall rows re-spanned."""
+    from scipy.optimize import least_squares
+    from .cut_shape import defects
+    nr, nc = X.shape[:2]
+    oe = X[-1, :nc - 1].copy()
+    a0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(oe, axis=0), axis=1))]
+    OE = np.c_[[np.interp(np.linspace(0, a0[-1], 400), a0, oe[:, k]) for k in range(3)]].T
+    Rp = X[KS] + GAP * t.grad(X[KS])
+    Fi = _grid_faces(np.arange(nr * nc).reshape(nr, nc))
+    sp = np.linspace(0, 1, KF + 1)[1:, None]
+
+    def build(a):
+        Y = X.copy()
+        aa = np.r_[0.0, a, a0[nc - 2]]
+        L = np.c_[[np.interp(aa, np.linspace(0, a0[-1], 400), OE[:, k]) for k in range(3)]].T
+        for c in range(1, nc - 2):
+            Y[KS + 1:, c] = Rp[c] + (L[c] - Rp[c]) * sp
+        return Y
+
+    def res(a):
+        K = defects(build(a).reshape(-1, 3), Fi, (nr, nc, KS))[KS:-1, 1:nc - 1]
+        sm = FAN_SMOOTH * 1000 * np.diff(np.r_[0.0, a, a0[nc - 2]], 2)
+        return np.r_[K.sum(0), K.ravel() * 0.3, sm]
+
+    a_in = a0[1:nc - 2]
+    lo = np.full(len(a_in), 0.0)
+    sol = least_squares(res, a_in, bounds=(lo, np.full(len(a_in), a0[nc - 2])), max_nfev=FAN_ITER * len(a_in),
+                        diff_step=1e-3)
+    a = np.maximum.accumulate(sol.x)
+    Y = build(a)
+    for r in range(KS + 1, nr - 1):  # (the spans pushed out only where they would come nearer the toile than GAP)
+        inside = t.FD(Y[r]) < lift + GAP
+        if inside.any():
+            Y[r, inside] = t.onto(Y[r, inside]) + (lift[inside] + GAP)[:, None] * t.grad(t.onto(Y[r, inside]))
+    t.info["fan"] = {"before_deg": round(float(np.abs(res(a_in)[:nc - 2]).max()), 1),
+                     "after_deg": round(float(np.abs(res(a)[:nc - 2]).max()), 1), "evals": int(sol.nfev)}
+    return Y
 
 
 def front_area(G) -> float:
@@ -269,6 +321,8 @@ def drape(t, toile):
     R0_lift = Y[0, 0]
     X, geo = collar_block(t, toile, R0, Y[0], R0_lift)
     X[KS:, -1] = Y[:, 0]  # (the gorge column: the lapel's, one set of vertices)
+    if FAN_SMOOTH:
+        X = fan_fall(t, X, geo["lift"])
     V, F, lay = assemble(X, Y)
     t.flap_layout = lay
     s, s_neck, B = geo["s"], geo["s_neck"], geo["B"]

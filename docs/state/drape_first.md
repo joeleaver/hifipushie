@@ -30,26 +30,30 @@ History: docs/notes (grep C489-C495); spikes/r1_*, r2_*, r2b_*.
   beyond). Proof /mnt/data/hifipushie/r3f11: best shaping within 8 %: strain 13.3 %; cone points +125 / -57 deg.
 ## R3f-12 (C511): the cone points come from the roll's turn (crease rule, cut_shape.crease): R3f-10's roll turns +78 deg
   per half in the stand, the fall +7 with it: defect = 2 x the turn. Step 4 reports t.info["collar_surface"].
-## R3g (2026-11-17, C512): FLATTEN BY THE THREADS (proof /mnt/data/hifipushie/r3g: cut_g.log, diag_collar.py)
-- flatten_threads.py: ARAP's local step keeps warp and weft unit and the threads' angle within the jam (35 deg,
-  pattern_form.SHEAR_LOCK_DEG), a weak pull to square (SHEAR_WEAK 0.02: free shear is a gauge and wandered). Every cut
-  piece: garment_cut `grain` {piece: deg} (default 90); the collar's own `grain` (default 45 to its CB: the bias).
-  strain_mean_pct = THREAD strain; iso_strain_mean_pct the old reading; rep.threads: warp / weft / shear split.
-- cut_shape: runs / cone points read warp, weft, shear; the 8 % (an assumption, no source found) is on THREAD stretch;
-  `curvature`: the piece's total angle defect beside what one thread quad carries (Hazzidakis: 4 x jam = 140 deg).
-- Body pieces (straight grain): thread strain front 0.24 (iso was 1.15), side 0.06 (0.35), back 0.31-0.38 (2.0),
-  sleeve_top 2.0 (3.3), sleeve_under 0.8 (1.0): shear takes most of what read as strain (caveat: darts read from it).
-- THE COLLAR ON THE BIAS DOES NOT FLATTEN: thread strain 5.81 % mean (iso 13.6 before), shear 22.9 deg mean, 24 % of
-  area past the jam; straight grain 3.6 % (bias no better). Curvature total -300 deg (stand -202, roll +133, fall
-  -231; per half -137 vs 140 one thread quad carries); side-neck cones +125 read threads 20-42 % max, shear 40-43.
-  Neck seams on the bias: 3D agree (50.3 / 51.5, 99.6 / 99.7) but the runs' threads 15-27 % max: front flat 43.4 /
-  garment 51.3, back 111.1 / 95.4. Flat collar lumpy, red all over: NOT a tailored undercollar shape.
-- New FAILs vs R3f-12: seams (sleeve_under cap vs side armhole -2.9 %: a bias edge's flat length is a shear state)
-  and shape_fall_landing (outer 541 / 510: same). Flaps / layers FAILs as before.
+## R3g (C512): flatten by the threads (flatten_threads.py; warp / weft kept, shear free to 35 deg; body pieces 90,
+  the collar 45 deg). Body thread strain 0.06-2.0 %. The bias collar stays 5.81 % (curvature -300 deg, cones +125).
+## R3h (2026-11-17, C513): GENTLER COLLAR (Joe's pick). Proof /mnt/data/hifipushie/r3h (measure.py, hmeas.py, dev.py,
+  chain.sh: toile.log / mark.log / cut.log; dev_<n>.json per try).
+- WHAT MAKES THE CONE (measured, R3f-10 toile): the neck edge turns -67 deg in the surface at the side neck point
+  (the toile's neck seam ends, the front neckline leaves straight for the gorge). The 30 mm stand carries that corner
+  up: the roll turns +28 / +27 / +15 deg in the stand at columns 21-23 from CB (pinned at the trace's top 2 columns
+  behind); the fall, folded DOWN, turns WITH it (+17 / +14 / +8): roll defects +44 / +39 / +22 = the +125 cone.
+  A fold cancels only if the fall turns the other way: impossible for a fall below a roll that peaks.
+- TRIES (dev_2..8): PIN_BACK 8: cone 178, 10.5 %. Side pin soft (weight 0.08): side 13 mm under the trace, cone 130,
+  6.0 %; (0.02): side 34 mm under (stand gone, inverted), cones -44, 2.2 %. Front neckline curved into the HPS:
+  broke the neck edge. Fall re-landed along its outer edge (KEPT, toile_flap.fan_fall): curvature -300 -> -184
+  (half -78.5; stand -202, roll +144, fall -231 -> -126), thread 5.81 -> 4.84 %, cones unchanged (+125 / -57).
+- Height kept: roll at the side neck point 1577.3 vs the trace's top 1577.6 mm. Step 4's collar row now FAILS cone
+  points over cut_shape.CONE_MAX_DEG (15 deg / 5 columns, toile_gate.collar_row): the jacket's toile FAILS there.
+- Cut (bias): thread 4.84 % (warp 3.82, weft 2.74), shear 21.9 deg mean, 23.7 % past the jam; flat 387 x 104,
+  neck 315 / roll 318 / outer 524 (1.66 x neck), lumpy and red: NOT a tailored undercollar. Neck seams flat / garment:
+  front 42.9 / 51.3, 45.9 / 51.6; back 111.1 / 95.4, 115.0 / 96.7 (threads 16.5-19.9 %). Gorge 47.4 / 47.4 PASS.
+  Roll asks +5.3 %, outer -8.6 % (threads 32 / 28 %): no shaping within 8 % covers it.
+- Not done: thread-aware seam / shape_fall_landing checks (cap -2.9 %, 524 / 479): out of budget.
 ## Left: downstream readers (chain_garment piece_start, garment_details, draft_own_tool.flat_check) read FLAT from a
   FreeSewing draft dir, not pattern.json; side / sleeve_under tapes; biceps / chest rings still take torso pieces;
   seam truing / shape rows compare flat lengths of bias edges (shear can take them up): not thread-aware yet.
-NEXT: JOE DECIDES: the bias alone doesn't make R3f-10's collar one piece (its curvature, not its grain). Options: (a) a
-seam along the roll (stand cut separately: the roll's +133 deg goes in the seam; stand and fall each within what
-shear carries: untested), (b) the crease rule's trades (R3f-12: roll lower / fall flares / soft roll), (c) more
-shaping. Then step 4 builds it, gated on collar_surface + curvature.
+NEXT: JOE DECIDES: a one-piece collar that rises to the trace beside the neck keeps a +125 deg cone (its roll peaks
+there over the neck edge's corner); gentler = ~34 mm lower beside the neck (no stand there). Options: (a) a seam
+along the roll (stand cut separately, the corner goes in the seam; the look unchanged), (b) accept the lower collar,
+(c) the front neckline curved into the HPS (removes the corner itself; changes the fronts: needs its own run).

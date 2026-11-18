@@ -258,6 +258,14 @@ def collar_row(t) -> list:
         why.append(f"the fall lands {-below:.1f} mm ABOVE the neck seam at CB: it doesn't cover it (fall_mm deeper)")
     if miss > COLLAR_POINT_MM:
         why.append(f"the collar end misses the collar point by {miss:.0f} mm (> {COLLAR_POINT_MM:g})")
+    cs = t.info.get("collar_surface") or {}  # (R3h, C513: a cone point can't be cut flat, whatever its grain)
+    lim = cs.get("cone_max_deg", 15.0)
+    cones = [c for c in cs.get("cone_points") or [] if abs(c[2]) > lim]
+    if cones:
+        why.append(f"the collar has cone points {', '.join(f'{c[2]:+.0f} deg (row {c[0]}, column {c[1]})' for c in cones)} "
+                   f"over {lim:g} deg (cut_shape.CONE_MAX_DEG, summed over 5 columns): no flat piece lies there; the roll "
+                   f"turns {cs.get('stand_turn_deg')} deg per half in the stand, {cs.get('fall_turn_deg')} in the fall "
+                   "(they must cancel: a gentler roll, or a seam along it)")
     return [{"id": "collar", "status": "FAIL" if why else "PASS", "back_to": "4", "why": "; ".join(why),
              "value": f"stand {c['stand_mm']:g} / fall {c['fall_mm']:g} mm at CB (roll {c['roll_above_seam_cb_mm']} mm above "
                       f"the neck seam, the outer edge {below} mm below it); neck edge {c['neck_half_mm']} + gorge "
@@ -265,7 +273,7 @@ def collar_row(t) -> list:
                       f"({c['outer_behind_half_mm']} behind the side neck point); outer off the toile {off[0]} mean / "
                       f"{off[1]} max mm beyond the gap; collar point missed by {miss} mm",
              "target": f"the fall lies on the toile (outer edge within {COLLAR_OFF_MM:g} mm), covers the neck seam, "
-                       f"reaches the collar point within {COLLAR_POINT_MM:g} mm"}]
+                       f"reaches the collar point within {COLLAR_POINT_MM:g} mm, no cone point over {lim:g} deg"}]
 
 
 def rows(t, view="front") -> list:
