@@ -5,6 +5,11 @@ one-piece mesh with vertex colours, made from a concept painting) and the concep
 game character: a clean low-poly mesh whose loops you decide, baked normal + colour maps, LOD1, a Mixamo-named rig
 with a jaw, checked through a range of motion. Then report what you did and why.
 
+This is not only retopology. The sculpt's arm and leg attachments are usually wrong for animation (arms fused or
+pressed to the torso, shoulder roots too small or low, legs merged into the belly, no real armpit or crotch). You will
+usually REDESIGN them: decide where each limb really joins a body that moves, and build that in the cage, inventing the
+surface the sculpt doesn't have.
+
 Your inputs (the person who started you fills these in):
 - character name: `{NAME}`
 - fused sculpt (PLY): `{MESH}`
@@ -24,16 +29,27 @@ runs through `call_tool("retopo_...", {...})`; `guide(topic=...)` reads the docu
 3. Study before you write code: horizontal slices every 3-5 cm from the feet to the crown, vertical slices through
    ears / horns, gridded close views of the head. Write your list of numbers (ring heights, the arm's thickness and
    where it is free of the body, leg thickness, muzzle oval, eye centres, ear / horn roots and tips) into your log.
-4. Decide the special cases the guide names, explicitly, in your log: arms fused or free; legs thin (pelvis floor)
-   or wide (crotch split); eyes painted or eyeballs (rebuild); props held / worn (rebuild, which bone); mouth or none;
-   messy surface (press coarse, subdivide unpressed; bake extrusion).
-5. Write the cage (`retopo_cage`). Look at the red cage over the sculpt from front, side, back, 3/4 and close on the
+4. DECIDE THE ATTACHMENTS, before any cage code, and log each with its evidence (the slice or view you read it from):
+   - each shoulder root: its bottom (the real armpit) and top heights, as tall as the arm is thick; whether the arm is
+     fused to the torso and from where to where; what you will invent (the torso's side under the arm, the arm's
+     inner side) and at what width;
+   - each hip root and the crotch: legs thin (a pelvis floor with leg holes sized to the leg) or wide (a crotch split
+     through one vertex), the crotch's height and depth, the legs' first free ring;
+   - anything else fused that must move: a tail, wings against the flank (ring_clip), a head with no neck (neck_ramp).
+   The sculpt is evidence for the shape, not the authority on how the body bends.
+5. Decide the other special cases the guide names, explicitly, in your log: eyes painted or eyeballs (rebuild); props
+   held / worn (rebuild, which bone); separate soft parts (comb, wattle); mouth, beak or none; messy surface (press
+   coarse, subdivide unpressed; bake extrusion).
+6. Write the cage (`retopo_cage`). Look at the red cage over the sculpt from front, side, back, 3/4 and close on the
    head. Fix and re-run until the loops are where an artist would put them. Comment every decision in the code.
-6. `retopo_press`, look at the low mesh as a wire where it matters (face, shoulders, hips) and at every fold cluster.
-7. `retopo_bake`; judge final_cmp (the sculpt left, yours right). Black smudges, lost features, a muddy face are faults.
-8. `retopo_armature` with joints you read off slices and side views. Judge the ROM sheet and the close-ups. Fix the worst
-   pose at its cause (cage, joints, pins) and run again where it pays.
-9. `retopo_report(name, decisions, out_dir="{OUT}")` with your decision log (format below).
+7. `retopo_press`, look at the low mesh as a wire where it matters (face, shoulders, hips) and at every fold cluster.
+8. `retopo_bake` -> `retopo_fill` -> `retopo_assemble`; judge final_cmp (the sculpt left, yours right). Black smudges,
+   lost features, a muddy face are faults.
+9. `retopo_armature` with joints you read off slices and side views, then `retopo_rom`. Judge the ROM sheet and the
+   close-ups. Fix the worst pose at its cause (cage, joints, pins) and run again where it pays. A pinched shoulder, a
+   tearing armpit or a thigh dragging belly skin is an ATTACHMENT fault: go back to step 4 and fix it in the cage,
+   never in the weights.
+10. `retopo_lod`, then `retopo_report(name, decisions, out_dir="{OUT}")` with your decision log (format below).
 
 Limits: about 120 tool calls in all; at most 8 cage versions; at most 3 full press -> bake -> rig rounds. When you
 reach a limit, report what you have and what is still wrong. Never claim something works without having looked at it.
@@ -52,6 +68,11 @@ Judge your own renders bluntly: what is wrong first.
 # <name>: decision log
 ## Reading the sculpt
 The numbers you measured (a short table) and what the slices told you (fused arms? leg thickness? ...).
+## Attachments
+Per shoulder and per hip / crotch: what the sculpt has (fused? from where to where? the root's size), what you decided
+for a body that moves (armpit height, root top and bottom, pelvis floor or crotch split, crotch height), what you
+invented and where, the evidence. After the ROM: did the attachments hold (the shoulder and hip poses' numbers and
+close-ups), and what you changed in them.
 ## Decisions
 One short paragraph per region: torso, shoulders + arms, hips + legs, neck + head, muzzle + mouth, eyes, ears,
 horns / other parts, props, seams. Each: what you chose, the evidence (a slice, a view), the rule from the guide.
