@@ -106,3 +106,11 @@ def test_turnaround_panels_and_colour_registration():
     p = C.Panel("front", sheet, (40, 0, 220, 200))
     p = C.register(p, v, (r, c, rgb))
     assert abs(p.k - 1.5) < 0.08 and abs(p.t[0] - 50) < 6 and abs(p.t[1] - 20) < 6
+
+
+def test_mirror_pools_a_symmetric_feature():
+    s = sphere(); tx = s.texels("color", 128); g = Grid(tx.pos, 0.02)
+    ring = ((tx.pos[:, 0] > 0.15) & (tx.pos[:, 0] < 0.3) & (np.abs(tx.pos[:, 2]) < 0.1)).astype(np.float32)  # one side
+    plain, _ = g.smooth(ring, 0.02); pooled, _ = g.smooth(ring, 0.02, mirror=True)
+    other = (tx.pos[:, 0] < -0.2) & (tx.pos[:, 0] > -0.25) & (np.abs(tx.pos[:, 2]) < 0.05)
+    assert plain[other].max() < 0.05 and pooled[other].mean() > 0.3

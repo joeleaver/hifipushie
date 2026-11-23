@@ -76,7 +76,8 @@
      "eye_1"
     ],
     "within": 0.035
-   }
+   },
+   "mirror": true
   },
   {
    "name": "pink_skin",
@@ -91,7 +92,8 @@
     228,
     152,
     146
-   ]
+   ],
+   "mirror": true
   },
   {
    "name": "horn",
@@ -106,7 +108,8 @@
      0.88,
      1
     ]
-   ]
+   ],
+   "mirror": true
   },
   {
    "name": "eye_yellow (eyeball part)",

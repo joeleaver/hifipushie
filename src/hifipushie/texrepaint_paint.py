@@ -62,8 +62,8 @@ def detail(kind: str, pos, nrm, model_h: float, seed=0):
 
 def base_colours(materials, R, tex_rgb, con_rgb, con_w, tx: Texels, per_view=None):
     """the colour each material is painted: an explicit "paint" wins; else the art's: per panel, the median of
-    squarely seen, confidently labelled texels that the art itself reads as this material, then the median across
-    panels (no one panel's lighting decides); else the generated texture's median"""
+    squarely seen, confidently labelled texels that the art itself reads as this material (its shadowed 30 % left
+    out), then across panels weighted by how much of it each sees squarely; else the generated texture's median"""
     from .texrepaint_regions import classify
     lab_ = R["P"].argmax(1); conf = R["P"].max(1) > 0.85; out, src = [], []
     views = per_view or [(con_rgb, con_w)]
@@ -75,10 +75,13 @@ def base_colours(materials, R, tex_rgb, con_rgb, con_w, tx: Texels, per_view=Non
             sel = (lab_ == k) & conf & (w_ > 0.5)
             if sel.sum() > 100:
                 sel[sel] = classify(c_[sel], materials)[0] == k
-            if sel.sum() > 100:
-                meds.append(np.median(c_[sel], 0))
+            if sel.sum() > 100:   # the shadowed 30 % out: the render shades again (albedo, not shading)
+                c = c_[sel]; L = lab(c)[:, 0]
+                meds.append((np.median(c[L >= np.percentile(L, 30)], 0), float(w_[sel].sum())))
         if meds:
-            out.append(np.median(np.array(meds), 0).astype(np.float32)); src.append(f"concept ({len(meds)} views)")
+            # weighted by how much of the material each panel sees squarely: the panel that faces it decides
+            cs = np.array([m_[0] for m_ in meds]); ws = np.array([m_[1] for m_ in meds])
+            out.append((cs * ws[:, None]).sum(0) / ws.sum()); src.append(f"concept ({len(meds)} views)")
             continue
         sel = (lab_ == k) & conf
         c = tex_rgb[sel] if sel.sum() > 50 else np.array([m["colour"]], np.float32)

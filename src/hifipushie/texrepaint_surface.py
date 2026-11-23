@@ -202,20 +202,24 @@ class Grid:
     """a 3D grid over the texel cloud: splat per-texel values, blur, read back = smoothing ON THE SURFACE"""
 
     def __init__(self, pos: np.ndarray, voxel: float):
-        self.lo = pos.min(0) - 4 * voxel; self.h = voxel
-        self.shape = tuple(np.ceil((pos.max(0) + 4 * voxel - self.lo) / voxel).astype(int) + 1)
+        both = np.concatenate([pos, pos * [-1, 1, 1]])    # room for the mirror image too (mirror=True smoothing)
+        self.lo = both.min(0) - 4 * voxel; self.h = voxel
+        self.shape = tuple(np.ceil((both.max(0) + 4 * voxel - self.lo) / voxel).astype(int) + 1)
         self.ijk = (pos - self.lo) / voxel
+        self.ijk_m = (pos * np.array([-1, 1, 1], np.float32) - self.lo) / voxel
 
-    def splat(self, values, weights=None):
+    def splat(self, values, weights=None, mirror=False):
         g = np.zeros(self.shape, np.float32); n = np.zeros(self.shape, np.float32)
-        i = np.round(self.ijk).astype(int).T
         w = np.ones(len(self.ijk), np.float32) if weights is None else weights.astype(np.float32)
-        np.add.at(g, tuple(i), values * w); np.add.at(n, tuple(i), w)
+        for ijk in ((self.ijk, self.ijk_m) if mirror else (self.ijk,)):
+            i = np.round(ijk).astype(int).T
+            np.add.at(g, tuple(i), values * w); np.add.at(n, tuple(i), w)
         return g, n
 
-    def smooth(self, values, sigma: float, weights=None):
-        """weighted Gaussian average (sigma in metres) of per-texel values, read back at every texel"""
-        g, n = self.splat(values, weights)
+    def smooth(self, values, sigma: float, weights=None, mirror=False):
+        """weighted Gaussian average (sigma in metres) of per-texel values, read back at every texel; mirror pools
+        each texel's evidence with its mirror image across x = 0 (a symmetric feature: eye rings)"""
+        g, n = self.splat(values, weights, mirror)
         s = sigma / self.h
         g = ndimage.gaussian_filter(g, s, truncate=2.5); n = ndimage.gaussian_filter(n, s, truncate=2.5)
         gv = ndimage.map_coordinates(g, self.ijk.T, order=1); nv = ndimage.map_coordinates(n, self.ijk.T, order=1)
