@@ -12,7 +12,7 @@ their own tools, and a finished model exports as a game-ready GLB.
 
 ## Tools
 
-147 tools in 17 domains. A small core is native MCP tools; every other tool runs through
+154 tools in 18 domains. A small core is native MCP tools; every other tool runs through
 `call_tool(name, args)`. An agent does not need this table: `guide` is the playbook (read first),
 `find_tool("<the job in plain words>")` names the tool for a job with an example call, and
 `guide(topic="<tool>")` gives any tool's full parameters. `guide(topic="example")` returns two whole models to
@@ -27,6 +27,7 @@ start from.
 | features | Sculpt from reference pictures: read a picture's views, patches and form lines, name its features as marks on it (the feature map), build the masses from their marks, measure a model feature by feature | `read_reference`, `look_beside`, `mark_features`, `build_masses`, `build_forms`, `feature_report`, `review_part`, `study_part` |
 | scene | The Blender scene (sync, pull) and the heavy-job queue | `sync`, `pull`, `heavy_status`, `heavy_queue` |
 | export | OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB | `export`, `export_asset`, `rig`, `judge_asset` |
+| texrepaint | Redo a generated texture (concept -> point cloud -> retopo bakes) like a texture artist: regions and materials, the concept as authority, 4K maps, graphics redrawn as decals | `texrepaint_start`, `texrepaint_regions`, `texrepaint_paint`, `texrepaint_look`, `texrepaint_face`, `texrepaint_decal`, `texrepaint_render` |
 | human | Realistic humans: the base body, the artist block-in of a head from pictures (the default), measurements, fits, skin | `human`, `measure_human`, `fit_human`, `nudge_human`, `human_reference`, `block_in_start`, `block_in_look`, `block_in_step`, `block_in_solve`, `block_in_expression`, `set_expression`, `lid_read`, `eye_ruler`, `face_ruler`, `lip_read`, `gnm_controls` |
 | skin | A human's skin: description, measured from the reference pictures, close looks beside them | `skin`, `skin_from_reference`, `brow_read`, `look_skin`, `skin_reference`, `skin_project` |
 | likeness | Matching a real person's face and look from reference pictures | `likeness`, `fit_likeness`, `likeness_points`, `character_read`, `project_reference`, `texture_from_reference`, `reference_brief`, `check_references` |

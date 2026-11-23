@@ -106,8 +106,8 @@ def texrepaint_decal(name: str, part: str, concept: str, concept_pts: list[list[
 
 @mcp.tool(structured_output=False)
 def texrepaint_render(name: str, views: list[str] | None = None, hide: list[str] | None = None):
-    """EEVEE renders of the model before (generated maps) and after (the repaint), same cameras: a sheet with
-    before above after per view. hide: object names to leave out (stray helpers)."""
+    """EEVEE renders of the repainted asset before (generated maps) and after (the repaint), same cameras: a sheet with
+    before over after per view. hide: object names to leave out (stray helpers)."""
     from . import texrepaint_run as R
     p = R.render(name, tuple(views or ("front", "side", "back", "3q")), hide=tuple(hide or ()))
     return [_img(p), "before (top) / after (bottom); judge beside the turnaround (sheet_register.jpg)"]

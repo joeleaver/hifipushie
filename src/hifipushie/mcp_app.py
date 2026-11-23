@@ -158,11 +158,13 @@ TOOL_GROUPS: dict[str, dict] = {
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig, judging a GLB",
                "tools": ["export", "export_asset", "rig", "judge_asset"]},
-    "texrepaint": {"subject": "texture repaint retexture colour map texture artist decal sign graphic hallucination",
+    "texrepaint": {"subject": "texrepaint repaint retexture decal hallucination",
                    "about": "redo a generated texture (concept -> point cloud -> retopo bakes) like a texture artist: "
                             "regions and materials, the concept as authority, 4K maps, graphics redrawn as decals",
                    "workflow": "texrepaint_start -> texrepaint_regions -> texrepaint_paint (texrepaint_look to point at "
                                "kept details) -> texrepaint_face + texrepaint_decal (graphics) -> texrepaint_render",
+                   "steps": ["texrepaint_start", "texrepaint_regions", "texrepaint_paint", "texrepaint_face",
+                             "texrepaint_decal", "texrepaint_render"],
                    "tools": ["texrepaint_start", "texrepaint_regions", "texrepaint_paint", "texrepaint_look",
                              "texrepaint_face", "texrepaint_decal", "texrepaint_render"]},
     "human": {"subject": "human humanoid man woman boy girl actor actress", "entry": "human",
