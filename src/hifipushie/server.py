@@ -44,6 +44,9 @@ from .tools_plan import (  # noqa: F401
 )
 from .tools_flap import bend, flap  # noqa: F401
 from .tools_reshape import carve, fuse, grab, trim  # noqa: F401
+from .tools_hardsurf import (  # noqa: F401
+    hardsurf_bake, hardsurf_build, hardsurf_check, hardsurf_disagree, hardsurf_fit, hardsurf_frame, hardsurf_look,
+    hardsurf_rig, hardsurf_start, hardsurf_vote)
 from .tools_retopo import (  # noqa: F401
     retopo_assemble, retopo_bake, retopo_cage, retopo_check, retopo_compare, retopo_fill, retopo_fit, retopo_fit_cylinder,
     retopo_lod, retopo_look, retopo_measure, retopo_press, retopo_primitives, retopo_report, retopo_armature, retopo_rom,
@@ -62,7 +65,7 @@ from .tools_terrain import (  # noqa: F401
 # A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
 __getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
                                       "tools_features", "tools_reshape", "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
-                                      "tools_terrain", "tools_plants", "tools_clutter", "tools_retopo"))
+                                      "tools_terrain", "tools_plants", "tools_clutter", "tools_retopo", "tools_hardsurf"))
 
 _register_core()
 

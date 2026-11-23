@@ -17,7 +17,7 @@ def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); its parts: "spec", "blockout",
     "props", "looking", "style", "story", "paint"; a domain: "hair", "cloth",
     "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
-    "likeness", "terrain", "vegetation", "clutter", "retopo" (a fused concept sculpt -> a game character), "tools" (core tools' reference), "example" (two whole specs:
+    "likeness", "terrain", "vegetation", "clutter", "retopo" (a fused concept sculpt -> a game character), "hardsurf" (a fused concept sculpt -> a hard-surface prop / vehicle), "tools" (core tools' reference), "example" (two whole specs:
     a fox, a chair), "traps" (symptom -> real cause), "gates" (describe, measure, look, approve), "tailoring"; or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
     if t.startswith("tool:"):  # always a tool's section, even where a topic has the tool's name (skin, human, likeness)
@@ -74,7 +74,7 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "features": "guide_fe
                 "strokes": "guide_blockout.md", "parts": "guide_blockout.md", "props": "guide_props.md",
                 "style": "guide_style.md", "story": "guide_story.md", "paint": "guide_paint.md",
                 "game_export": "guide_export.md", "rigging": "guide_rigging.md",
-                "retopo": "retopo_guide.md", "artist_retopo": "retopo_guide.md",
+                "retopo": "retopo_guide.md", "artist_retopo": "retopo_guide.md", "hardsurf": "hardsurf_guide.md", "hard_surface": "hardsurf_guide.md", "hardsurf_example": "examples/hardsurf_hettie_kart.py",
                 # the two worked cages (a source checkout's examples/): read the closer one before writing yours
                 "retopo_mabel": "examples/retopo/mabel_cage.py", "retopo_scraps": "examples/retopo/scraps_cage.py",
                 "example": "guide_example.md", "examples": "guide_example.md",

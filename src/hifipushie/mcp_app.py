@@ -192,6 +192,17 @@ TOOL_GROUPS: dict[str, dict] = {
                "tools": ["grow_plant", "edit_plant", "get_plant", "look_plant", "look_plants", "plant_form",
                          "plant_reference", "export_plant", "wind_plant", "sync_plant", "plant_history",
                          "grow_stand", "look_stand", "export_stand"]},
+    "hardsurf": {"subject": "hardsurface hardsurf vehicle kart machine lathe",
+                 "workflow": "Hard surface from the point cloud (a fused concept sculpt -> clean fitted parts): "
+                             "hardsurf_start -> hardsurf_frame -> read (hardsurf_look, hardsurf_vote) -> hardsurf_fit each "
+                             "part (turned / sweep / outline_tube / ring / trace / part) -> hardsurf_build -> hardsurf_check "
+                             "-> hardsurf_bake -> hardsurf_rig (rigid joints) ; hardsurf_disagree for every call",
+                 "steps": ["hardsurf_start", "hardsurf_frame", "hardsurf_fit", "hardsurf_build", "hardsurf_check",
+                           "hardsurf_bake", "hardsurf_rig"],
+                 "about": "props, vehicles, furniture, buildings from a fused point-cloud sculpt: fit primitives "
+                          "(never press), bake colour from the point cloud's renders, rigid rig with numeric tests",
+                 "tools": ["hardsurf_start", "hardsurf_frame", "hardsurf_look", "hardsurf_vote", "hardsurf_fit",
+                           "hardsurf_build", "hardsurf_check", "hardsurf_bake", "hardsurf_rig", "hardsurf_disagree"]},
     "retopo": {"subject": "retopo retopology retopologise retopologize topology cage fused pointcloud",
                "workflow": "Artist retopo (a fused concept sculpt -> a game character): retopo_start -> study "
                            "(retopo_look, retopo_slices, retopo_measure) -> eyes / props (retopo_fit, "
