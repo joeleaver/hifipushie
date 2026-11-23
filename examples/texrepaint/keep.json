@@ -1,0 +1,102 @@
+{
+ "mabel": [
+  {
+   "why": "eye (painted lid + pupil)",
+   "view": "front",
+   "px": [
+    63,
+    42
+   ],
+   "r": 0.03
+  },
+  {
+   "why": "eye (painted lid + pupil)",
+   "view": "front",
+   "px": [
+    106,
+    40
+   ],
+   "r": 0.03
+  },
+  {
+   "why": "nostril",
+   "view": "front",
+   "px": [
+    68,
+    68
+   ],
+   "r": 0.013
+  },
+  {
+   "why": "nostril",
+   "view": "front",
+   "px": [
+    98,
+    68
+   ],
+   "r": 0.013
+  },
+  {
+   "why": "mouth line",
+   "view": "front",
+   "px": [
+    83,
+    80
+   ],
+   "r": 0.022
+  }
+ ],
+ "hettie": [
+  {
+   "why": "eye (white ball + pupil)",
+   "view": "front",
+   "px": [
+    85,
+    32
+   ],
+   "r": 0.042
+  },
+  {
+   "why": "eye (white ball + pupil)",
+   "view": "front",
+   "px": [
+    118,
+    32
+   ],
+   "r": 0.042
+  }
+ ],
+ "scraps": [],
+ "scraps_brush": [
+  {
+   "why": "lip crevice (dark sculpt colour)",
+   "view": "front",
+   "px": [
+    53,
+    67
+   ],
+   "r": 0.022,
+   "material": "cream_fur"
+  },
+  {
+   "why": "lip crevice (dark sculpt colour)",
+   "view": "front",
+   "px": [
+    90,
+    67
+   ],
+   "r": 0.022,
+   "material": "cream_fur"
+  },
+  {
+   "why": "lip line under the nose",
+   "view": "front",
+   "px": [
+    71,
+    70
+   ],
+   "r": 0.02,
+   "material": "cream_fur"
+  }
+ ]
+}

@@ -58,6 +58,9 @@ from .tools_plants import (  # noqa: F401
 from .tools_skin import (  # noqa: F401
     brow_read, look_skin, skin, skin_from_reference, skin_project, skin_reference,
 )
+from .tools_texrepaint import (  # noqa: F401
+    texrepaint_decal, texrepaint_face, texrepaint_look, texrepaint_paint, texrepaint_regions, texrepaint_render,
+    texrepaint_start)
 from .tools_terrain import (  # noqa: F401
     check_terrain, export_terrain, look_terrain, set_terrain, terrain_history,
 )
@@ -65,7 +68,7 @@ from .tools_terrain import (  # noqa: F401
 # A helper that moved out of server.py says where it is now (C427): the tools above are still server.<tool>.
 __getattr__ = moved.refuse(__name__, ("mcp_app", "tool_common", "tools_find", "tools_model", "tools_plan", "tools_export",
                                       "tools_features", "tools_reshape", "tools_human", "tools_likeness", "tools_skin", "tools_hair", "tools_cloth",
-                                      "tools_terrain", "tools_plants", "tools_clutter", "tools_retopo", "tools_hardsurf"))
+                                      "tools_terrain", "tools_plants", "tools_clutter", "tools_retopo", "tools_hardsurf", "tools_texrepaint"))
 
 _register_core()
 
